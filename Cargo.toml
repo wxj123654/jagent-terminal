@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+# Phase 1 建目录后加入: "packages/native"
+# .refs/ 里的参考仓库（gpuix + zed fork）有自己的 workspace；排除之，
+# 否则 path 依赖的 gpui 会被本 workspace 认领，workspace 继承解析错乱。
+exclude = [".refs"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+
+[profile.dev]
+opt-level = 0
+debug = 1
+
+[profile.release]
+lto = "thin"

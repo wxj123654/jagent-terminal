@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>j-agent · Agent Plane Layout Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* ── Tokens: Zed One Dark ── */
+  :root {
+    --bg-app: #1e2127;
+    --bg-sidebar: #21252b;
+    --bg-pane: #282c34;
+    --bg-hover: #2c313a;
+    --bg-active: #2f343e;
+    --bg-elevated: #333842;
+    --bg-terminal: #1a1d23;
+    --border: #181a1f;
+    --border-subtle: #3e4451;
+    --text: #abb2bf;
+    --text-bright: #d7dae0;
+    --text-muted: #5c6370;
+    --text-dim: #4b5263;
+    --accent: #61afef;
+    --accent-soft: rgba(97, 175, 239, 0.15);
+    --green: #98c379;
+    --red: #e06c75;
+    --amber: #e5c07b;
+    --purple: #c678dd;
+    --cyan: #56b6c2;
+    --orange: #d19a66;
+    --sidebar-w: 248px;
+    --row-h: 28px;
+    --radius: 4px;
+    --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", Consolas, monospace;
+    --ease: 150ms ease;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-ui);
+    background: #0d0f12;
+    color: var(--text);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+  }
+
+  /* ── App window ── */
+  .window {
+    width: min(1280px, 96vw);
+    height: min(820px, 92vh);
+    background: var(--bg-app);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    box-shadow: 0 24px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.03);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .titlebar {
+    height: 36px;
+    background: var(--bg-sidebar);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px;
+    flex-shrink: 0;
+    user-select: none;
+  }
+  .traffic { display: flex; gap: 7px; }
+  .traffic i {
+    width: 11px; height: 11px; border-radius: 50%;
+    display: block;
+  }
+  .traffic .r { background: #ff5f57; }
+  .traffic .y { background: #febc2e; }
+  .traffic .g { background: #28c840; }
+  .titlebar-label {
+    flex: 1;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    letter-spacing: .02em;
+  }
+  .titlebar-badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--amber);
+    background: rgba(229,192,123,.1);
+    border: 1px solid rgba(229,192,123,.25);
+    padding: 2px 7px;
+    border-radius: 999px;
+  }
+
+  /* ── Main split ── */
+  .main {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: var(--sidebar-w);
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .sidebar-header {
+    height: 36px;
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-header .hint {
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .threads {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-subtle) transparent;
+  }
+
+  .thread {
+    height: var(--row-h);
+    margin: 1px 6px;
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    position: relative;
+    transition: background var(--ease);
+    outline: none;
+  }
+  .thread:hover { background: var(--bg-hover); }
+  .thread:focus-visible {
+    box-shadow: inset 0 0 0 1.5px var(--accent);
+  }
+  .thread.active {
+    background: var(--bg-active);
+  }
+  .thread.active::before {
+    content: "";
+    position: absolute;
+    left: -6px;
+    top: 5px;
+    bottom: 5px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+  }
+  .thread.exited { opacity: .55; }
+  .thread.exited .thread-title { color: var(--text-muted); }
+
+  .thread-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    color: var(--text-muted);
+  }
+  .thread.active .thread-icon { color: var(--accent); }
+  .thread[data-kind="terminal"] .thread-icon { color: var(--green); }
+  .thread[data-kind="terminal"].active .thread-icon { color: var(--green); }
+  .thread[data-kind="acp"] .thread-icon { color: var(--purple); }
+  .thread-icon svg { width: 13px; height: 13px; }
+
+  .thread-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+  }
+  .thread.active .thread-title { color: var(--text-bright); }
+  .thread-title.editing {
+    background: var(--bg-elevated);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 2px 4px;
+    outline: none;
+    color: var(--text-bright);
+    font: inherit;
+    width: 100%;
+  }
+
+  .thread-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .badge-bell {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--red);
+    box-shadow: 0 0 0 2px rgba(224,108,117,.25);
+    flex-shrink: 0;
+  }
+  .badge-exited {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-muted);
+    letter-spacing: .02em;
+  }
+  .thread-close {
+    width: 18px;
+    height: 18px;
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    border-radius: 3px;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--ease), color var(--ease), background var(--ease);
+    flex-shrink: 0;
+  }
+  .thread:hover .thread-close,
+  .thread:focus-within .thread-close,
+  .thread.active .thread-close { opacity: 1; }
+  .thread-close:hover { color: var(--red); background: rgba(224,108,117,.12); }
+  .thread-close:focus-visible { opacity: 1; outline: 1px solid var(--accent); }
+  .thread-close svg { width: 11px; height: 11px; }
+
+  /* New thread footer */
+  .sidebar-footer {
+    border-top: 1px solid var(--border);
+    padding: 8px;
+    position: relative;
+  }
+  .new-row {
+    display: flex;
+    gap: 4px;
+  }
+  .btn-new {
+    flex: 1;
+    height: 28px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-hover);
+    color: var(--text);
+    border-radius: var(--radius);
+    font: 500 12px/1 var(--font-ui);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: background var(--ease), border-color var(--ease);
+  }
+  .btn-new:hover { background: var(--bg-elevated); border-color: #4b5263; }
+  .btn-new:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btn-new .plus {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--green);
+  }
+  .btn-chevron {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-hover);
+    color: var(--text-muted);
+    border-radius: var(--radius);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: background var(--ease), color var(--ease);
+  }
+  .btn-chevron:hover { background: var(--bg-elevated); color: var(--text); }
+  .btn-chevron:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btn-chevron svg { width: 12px; height: 12px; }
+  .btn-chevron[aria-expanded="true"] {
+    background: var(--bg-elevated);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .preset-menu {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: calc(100% + 4px);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.45);
+    padding: 4px;
+    display: none;
+    z-index: 20;
+  }
+  .preset-menu.open { display: block; }
+  .preset-item {
+    height: 32px;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    border: 0;
+    background: transparent;
+    width: 100%;
+    color: var(--text);
+    font: 13px/1 var(--font-ui);
+    text-align: left;
+    transition: background var(--ease);
+  }
+  .preset-item:hover,
+  .preset-item:focus-visible { background: var(--bg-hover); outline: none; }
+  .preset-item .dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .preset-item .label { flex: 1; }
+  .preset-item .hint {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .preset-item.default .hint::after { content: " · default"; color: var(--accent); }
+
+  /* ── Body pane ── */
+  .pane {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-pane);
+    position: relative;
+  }
+
+  /* Chat surface */
+  .view-chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .chat-header {
+    height: 36px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-bright);
+    flex-shrink: 0;
+  }
+  .chat-header .kind {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-subtle) transparent;
+  }
+  .msg {
+    max-width: 640px;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  .msg.user {
+    align-self: flex-end;
+    background: var(--accent-soft);
+    border: 1px solid rgba(97,175,239,.25);
+    color: var(--text-bright);
+    padding: 10px 14px;
+    border-radius: 10px 10px 2px 10px;
+  }
+  .msg.assistant {
+    align-self: flex-start;
+    color: var(--text);
+  }
+  .msg.assistant .role {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--green);
+    margin-bottom: 6px;
+    letter-spacing: .04em;
+  }
+  .composer {
+    border-top: 1px solid var(--border);
+    padding: 12px 16px;
+    background: var(--bg-sidebar);
+    flex-shrink: 0;
+  }
+  .composer-box {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    background: var(--bg-pane);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .composer-box:focus-within { border-color: var(--accent); }
+  .composer-box textarea {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    outline: none;
+    resize: none;
+    color: var(--text-bright);
+    font: 14px/1.45 var(--font-ui);
+    min-height: 24px;
+    max-height: 120px;
+  }
+  .composer-box textarea::placeholder { color: var(--text-dim); }
+  .composer-send {
+    height: 28px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 5px;
+    background: var(--accent);
+    color: #1e2127;
+    font: 600 12px/1 var(--font-ui);
+    cursor: pointer;
+  }
+  .composer-send:hover { filter: brightness(1.08); }
+
+  /* Terminal surface — C1: no chrome, full height */
+  .view-terminal {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--bg-terminal);
+  }
+  .terminal-screen {
+    flex: 1;
+    padding: 14px 16px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.45;
+    color: #abb2bf;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-subtle) transparent;
+    outline: none;
+  }
+  .terminal-screen:focus-visible {
+    box-shadow: inset 0 0 0 1px rgba(97,175,239,.35);
+  }
+  .t-green { color: var(--green); }
+  .t-cyan { color: var(--cyan); }
+  .t-amber { color: var(--amber); }
+  .t-red { color: var(--red); }
+  .t-blue { color: var(--accent); }
+  .t-purple { color: var(--purple); }
+  .t-muted { color: var(--text-muted); }
+  .t-bright { color: var(--text-bright); }
+  .t-dim { color: var(--text-dim); }
+  .cursor {
+    display: inline-block;
+    width: 8px;
+    height: 14px;
+    background: var(--green);
+    vertical-align: text-bottom;
+    margin-left: 1px;
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .cursor { animation: none; }
+    * { transition: none !important; }
+  }
+
+  /* ACP surface */
+  .view-acp {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .acp-banner {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    background: rgba(198,120,221,.06);
+  }
+  .acp-banner .pill {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--purple);
+    background: rgba(198,120,221,.12);
+    border: 1px solid rgba(198,120,221,.3);
+    padding: 2px 7px;
+    border-radius: 999px;
+  }
+
+  /* Empty / preset cards */
+  .view-empty {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    padding: 32px;
+  }
+  .empty-card {
+    width: min(520px, 100%);
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 28px;
+  }
+  .empty-card h2 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin-bottom: 6px;
+  }
+  .empty-card p {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 18px;
+    line-height: 1.5;
+  }
+  .preset-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .preset-card {
+    height: 72px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-pane);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: var(--text);
+    font: 500 13px/1 var(--font-ui);
+    transition: background var(--ease), border-color var(--ease), transform var(--ease);
+  }
+  .preset-card:hover {
+    background: var(--bg-hover);
+    border-color: #4b5263;
+    transform: translateY(-1px);
+  }
+  .preset-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .preset-card .pc-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+  }
+  .preset-card .pc-sub {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    font-weight: 400;
+  }
+
+  /* Hidden view helper */
+  .view { display: none; flex: 1; flex-direction: column; min-height: 0; }
+  .view.active { display: flex; }
+
+  /* ── Demo HUD (prototype only) ── */
+  .hud {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    width: 260px;
+    background: rgba(33,37,43,.96);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    box-shadow: 0 16px 48px rgba(0,0,0,.5);
+    backdrop-filter: blur(8px);
+    z-index: 50;
+    overflow: hidden;
+  }
+  .hud-head {
+    height: 34px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--amber);
+  }
+  .hud-head button {
+    border: 0; background: transparent; color: var(--text-muted);
+    cursor: pointer; font-size: 14px; line-height: 1;
+  }
+  .hud-body { padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .hud-body.collapsed { display: none; }
+  .hud-btn {
+    height: 28px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-hover);
+    color: var(--text);
+    border-radius: var(--radius);
+    font: 12px/1 var(--font-ui);
+    cursor: pointer;
+    text-align: left;
+    padding: 0 10px;
+    transition: background var(--ease);
+  }
+  .hud-btn:hover { background: var(--bg-elevated); }
+  .hud-note {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.4;
+    padding: 4px 2px 2px;
+  }
+  .decision-chip {
+    display: inline-flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .decision-chip span {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--cyan);
+    background: rgba(86,182,194,.1);
+    border: 1px solid rgba(86,182,194,.25);
+    padding: 2px 6px;
+    border-radius: 999px;
+  }
+
+  /* Tooltip */
+  [data-tip] { position: relative; }
+  [data-tip]:hover::after,
+  [data-tip]:focus-visible::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 100%;
+    top: 50%;
+    transform: translate(8px, -50%);
+    background: var(--bg-elevated);
+    color: var(--text-bright);
+    border: 1px solid var(--border-subtle);
+    font: 11px/1.3 var(--font-mono);
+    padding: 5px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    max-width: 360px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    z-index: 30;
+    pointer-events: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0,0,0,0); border: 0;
+  }
+</style>
+</head>
+<body>
+  <div class="window" role="application" aria-label="j-agent Agent Plane">
+    <div class="titlebar">
+      <div class="traffic" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+      <div class="titlebar-label">j-agent</div>
+      <div class="titlebar-badge">LAYOUT PROTOTYPE · A/C1/D1/E2</div>
+    </div>
+
+    <div class="main">
+      <!-- SIDEBAR -->
+      <aside class="sidebar" aria-label="Agent threads">
+        <div class="sidebar-header">
+          <span>Agent</span>
+          <span class="hint">Ctrl-Tab</span>
+        </div>
+        <div class="threads" id="threadList" role="listbox" aria-label="Thread list"></div>
+        <div class="sidebar-footer">
+          <div class="new-row">
+            <button class="btn-new" id="btnNew" type="button" title="新建（上次预设）">
+              <span class="plus">+</span>
+              <span id="btnNewLabel">Claude</span>
+            </button>
+            <button class="btn-chevron" id="btnPreset" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="选择预设">
+              <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4.5 L6 7.5 L9 4.5"/></svg>
+            </button>
+          </div>
+          <div class="preset-menu" id="presetMenu" role="menu" aria-label="Terminal presets"></div>
+        </div>
+      </aside>
+
+      <!-- PANE -->
+      <section class="pane" aria-live="polite">
+        <div class="view view-chat" id="viewChat">
+          <div class="chat-header">
+            <span class="kind">CHAT</span>
+            <span id="chatTitle">修登录</span>
+          </div>
+          <div class="messages" id="chatMessages"></div>
+          <div class="composer">
+            <div class="composer-box">
+              <textarea rows="1" placeholder="Ask…" aria-label="Chat composer"></textarea>
+              <button class="composer-send" type="button">Send</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="view view-terminal" id="viewTerminal">
+          <div class="terminal-screen" id="terminalScreen" tabindex="0" aria-label="Native terminal view"></div>
+        </div>
+
+        <div class="view view-acp" id="viewAcp">
+          <div class="acp-banner">
+            <span class="pill">ACP</span>
+            <span>External agent · JSON-RPC — not a PTY</span>
+          </div>
+          <div class="messages" id="acpMessages"></div>
+          <div class="composer">
+            <div class="composer-box">
+              <textarea rows="1" placeholder="Message ACP agent…" aria-label="ACP composer"></textarea>
+              <button class="composer-send" type="button">Send</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="view view-empty" id="viewEmpty">
+          <div class="empty-card">
+            <h2>开一个 Terminal Thread</h2>
+            <p>选一个预设。init command 会作为键入打进 shell，不是 exec 替换进程。</p>
+            <div class="preset-grid" id="emptyPresets"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Prototype-only demo controls -->
+  <div class="hud" id="hud">
+    <div class="hud-head">
+      <span>Demo Controls</span>
+      <button type="button" id="hudToggle" aria-label="折叠演示控件">−</button>
+    </div>
+    <div class="hud-body" id="hudBody">
+      <button class="hud-btn" type="button" data-demo="bell">模拟 BEL → 红点</button>
+      <button class="hud-btn" type="button" data-demo="osc">模拟 OSC 长标题</button>
+      <button class="hud-btn" type="button" data-demo="exit">模拟进程 Exit</button>
+      <button class="hud-btn" type="button" data-demo="rename">重命名当前（冻结 OSC）</button>
+      <button class="hud-btn" type="button" data-demo="clear">清空全部 → 空状态</button>
+      <div class="hud-note">
+        非产品 UI。拍板项：
+        <div class="decision-chip">
+          <span>A 单 pane</span>
+          <span>C1 无顶栏</span>
+          <span>D1 混排</span>
+          <span>E2 预设</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const PRESETS = [
+    { id: "claude", label: "Claude", hint: "claude", color: "#d19a66", env: "CLAUDE" },
+    { id: "pi", label: "Pi", hint: "pi", color: "#61afef", env: "PI" },
+    { id: "codex", label: "Codex", hint: "codex", color: "#98c379", env: "CODEX" },
+    { id: "amp", label: "Amp", hint: "amp", color: "#c678dd", env: "AMP" },
+    { id: "shell", label: "Shell", hint: "shell", color: "#56b6c2", env: null },
+  ];
+
+  const ICONS = {
+    chat: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5.2"/><circle cx="8" cy="8" r="1.6" fill="currentColor" stroke="none"/></svg>`,
+    terminal: `<svg viewBox="0 0 16 16" fill="currentColor"><rect x="5" y="2" width="3.2" height="12" rx="0.6"/></svg>`,
+    acp: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4 L8 12 L12 4"/><path d="M5.5 8 H10.5"/></svg>`,
+    close: `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 3 L9 9 M9 3 L3 9"/></svg>`,
+  };
+
+  const TERM_SCREENS = {
+    claude: `<span class="t-amber">✻</span> <span class="t-bright">Welcome to Claude Code</span> <span class="t-muted">v1.0</span>
+<span class="t-dim">────────────────────────────────────────</span>
+<span class="t-muted">cwd</span>  <span class="t-cyan">D:/document/j-agent</span>
+<span class="t-muted">model</span>  <span class="t-blue">claude-sonnet-4</span>
+
+<span class="t-green">●</span> Ready. Type a task or <span class="t-amber">/help</span>.
+
+<span class="t-bright">›</span> <span class="cursor"></span>`,
+
+    pi: `<span class="t-blue">π</span> <span class="t-bright">pi coding agent</span> <span class="t-muted">· session</span>
+<span class="t-dim">────────────────────────────────────────</span>
+<span class="t-muted">project</span>  j-agent
+<span class="t-muted">plane</span>    GPUIX × Terminal Threads
+
+<span class="t-green">✓</span> extensions loaded · zed-bell.ts
+
+<span class="t-bright">pi&gt;</span> <span class="cursor"></span>`,
+
+    codex: `<span class="t-green">●</span> <span class="t-bright">OpenAI Codex</span>
+<span class="t-dim">spinner · j-agent · running · implement-layout</span>
+
+<span class="t-muted">Thinking…</span>
+  · read docs/gpuix-zed-terminal-fusion.md
+  · draft Agent Plane layout (A / C1 / D1 / E2)
+
+<span class="t-amber">?</span> Continue with HTML prototype? <span class="t-muted">[Y/n]</span> <span class="cursor"></span>`,
+
+    amp: `<span class="t-purple">◆</span> <span class="t-bright">Amp</span> <span class="t-muted">· Sourcegraph</span>
+<span class="t-dim">────────────────────────────────────────</span>
+<span class="t-muted">AMP_FORCE_BEL=1</span>
+
+<span class="t-green">●</span> connected
+
+<span class="t-bright">amp»</span> <span class="cursor"></span>`,
+
+    shell: `<span class="t-green">PS</span> <span class="t-cyan">D:\\document\\j-agent</span><span class="t-bright">&gt;</span> <span class="cursor"></span>`,
+
+    exited: `<span class="t-muted">Process exited with code 0.</span>
+<span class="t-dim">PTY retained for scrollback. Close the thread to destroy.</span>
+
+<span class="t-red">[exited]</span>`,
+  };
+
+  /** @type {{id:string,kind:'chat'|'terminal'|'acp',title:string,oscTitle?:string,customTitle?:string,preset?:string,status:'idle'|'running'|'needs-you'|'exited',hasBell:boolean}[]} */
+  let threads = [
+    { id: "t1", kind: "chat", title: "修登录", status: "idle", hasBell: false },
+    { id: "t2", kind: "terminal", title: "claude", oscTitle: "✻ Processing… · j-agent · main · auth-fix", preset: "claude", status: "running", hasBell: true },
+    { id: "t3", kind: "terminal", title: "pi", oscTitle: "pi · main", preset: "pi", status: "idle", hasBell: false },
+    { id: "t4", kind: "acp", title: "ACP Codex", status: "idle", hasBell: false },
+  ];
+
+  let activeId = "t2";
+  let lastPreset = "claude";
+  let uid = 5;
+
+  const $ = (sel) => document.querySelector(sel);
+  const threadList = $("#threadList");
+  const presetMenu = $("#presetMenu");
+  const btnNew = $("#btnNew");
+  const btnNewLabel = $("#btnNewLabel");
+  const btnPreset = $("#btnPreset");
+
+  function displayTitle(t) {
+    return t.customTitle ?? t.oscTitle ?? t.title;
+  }
+
+  function fullTip(t) {
+    const base = t.customTitle
+      ? `${t.customTitle} (frozen · was: ${t.oscTitle ?? t.title})`
+      : (t.oscTitle ?? t.title);
+    return base;
+  }
+
+  function renderList() {
+    threadList.innerHTML = threads.map((t) => {
+      const active = t.id === activeId ? "active" : "";
+      const exited = t.status === "exited" ? "exited" : "";
+      const title = displayTitle(t);
+      const bell = t.hasBell && t.id !== activeId ? `<span class="badge-bell" title="needs-you (BEL)"></span>` : "";
+      const exitedBadge = t.status === "exited" ? `<span class="badge-exited">exited</span>` : "";
+      return `
+        <div class="thread ${active} ${exited}"
+             role="option"
+             tabindex="0"
+             aria-selected="${t.id === activeId}"
+             data-id="${t.id}"
+             data-kind="${t.kind}"
+             data-tip="${escapeAttr(fullTip(t))}">
+          <span class="thread-icon" aria-hidden="true">${ICONS[t.kind]}</span>
+          <span class="thread-title">${escapeHtml(title)}</span>
+          <span class="thread-meta">
+            ${bell}
+            ${exitedBadge}
+            <button class="thread-close" type="button" data-close="${t.id}" aria-label="关闭 ${escapeAttr(title)}">${ICONS.close}</button>
+          </span>
+        </div>`;
+    }).join("");
+  }
+
+  function renderPresets() {
+    presetMenu.innerHTML = PRESETS.map((p) => `
+      <button class="preset-item ${p.id === lastPreset ? "default" : ""}" type="button" role="menuitem" data-preset="${p.id}">
+        <span class="dot" style="background:${p.color}"></span>
+        <span class="label">${p.label}</span>
+        <span class="hint">${p.hint}</span>
+      </button>`).join("");
+
+    $("#emptyPresets").innerHTML = PRESETS.map((p) => `
+      <button class="preset-card" type="button" data-preset="${p.id}">
+        <span class="pc-dot" style="background:${p.color}"></span>
+        <span>${p.label}</span>
+        <span class="pc-sub">${p.hint}</span>
+      </button>`).join("");
+
+    btnNewLabel.textContent = PRESETS.find((p) => p.id === lastPreset)?.label ?? "Claude";
+  }
+
+  function renderBody() {
+    document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+    const t = threads.find((x) => x.id === activeId);
+
+    if (!t) {
+      $("#viewEmpty").classList.add("active");
+      return;
+    }
+
+    if (t.kind === "chat") {
+      $("#viewChat").classList.add("active");
+      $("#chatTitle").textContent = displayTitle(t);
+      $("#chatMessages").innerHTML = `
+        <div class="msg user">登录页在错误密码时没有 inline error，帮我修一下。</div>
+        <div class="msg assistant">
+          <div class="role">ASSISTANT</div>
+          可以。建议在表单字段旁放错误文案，不要只在顶部 toast。我先看一下现有的登录组件结构。
+        </div>
+        <div class="msg assistant">
+          <div class="role">ASSISTANT</div>
+          找到了 <code style="font-family:var(--font-mono);font-size:12px;color:var(--amber)">LoginForm.tsx</code> —— 目前只用了 placeholder 当 label，也没有 aria-invalid。下一步我补上可见 label + 字段级错误。
+        </div>`;
+      return;
+    }
+
+    if (t.kind === "acp") {
+      $("#viewAcp").classList.add("active");
+      $("#acpMessages").innerHTML = `
+        <div class="msg assistant">
+          <div class="role" style="color:var(--purple)">ACP · CODEX</div>
+          Connected via JSON-RPC. Diff / accept 走 ACP 通道，不会自动画到 Terminal Thread 上。
+        </div>
+        <div class="msg user">列出当前仓库里的 docs。</div>
+        <div class="msg assistant">
+          <div class="role" style="color:var(--purple)">ACP · CODEX</div>
+          <span class="t-cyan" style="font-family:var(--font-mono);font-size:13px">docs/gpuix-zed-terminal-fusion.md</span>
+        </div>`;
+      return;
+    }
+
+    // terminal — C1: no top bar, no composer
+    $("#viewTerminal").classList.add("active");
+    const screen = $("#terminalScreen");
+    if (t.status === "exited") {
+      screen.innerHTML = TERM_SCREENS.exited;
+    } else {
+      screen.innerHTML = TERM_SCREENS[t.preset] || TERM_SCREENS.shell;
+    }
+    // focus goes to TerminalView (simulated)
+    if (document.activeElement?.closest?.(".thread") == null) {
+      screen.focus({ preventScroll: true });
+    }
+  }
+
+  function activate(id) {
+    activeId = id;
+    const t = threads.find((x) => x.id === id);
+    if (t) {
+      t.hasBell = false;
+      if (t.status === "needs-you") t.status = "running";
+    }
+    renderList();
+    renderBody();
+  }
+
+  function spawnPreset(presetId) {
+    const p = PRESETS.find((x) => x.id === presetId);
+    if (!p) return;
+    lastPreset = presetId;
+    const id = `t${uid++}`;
+    threads.push({
+      id,
+      kind: "terminal",
+      title: p.hint,
+      oscTitle: p.id === "shell" ? undefined : `${p.label.toLowerCase()} · j-agent`,
+      preset: presetId,
+      status: "running",
+      hasBell: false,
+    });
+    renderPresets();
+    closePresetMenu();
+    activate(id);
+  }
+
+  function closeThread(id) {
+    const idx = threads.findIndex((t) => t.id === id);
+    if (idx < 0) return;
+    const wasActive = activeId === id;
+    threads.splice(idx, 1);
+    if (wasActive) {
+      activeId = threads[Math.min(idx, threads.length - 1)]?.id ?? null;
+    }
+    renderList();
+    renderBody();
+  }
+
+  function openPresetMenu() {
+    presetMenu.classList.add("open");
+    btnPreset.setAttribute("aria-expanded", "true");
+  }
+  function closePresetMenu() {
+    presetMenu.classList.remove("open");
+    btnPreset.setAttribute("aria-expanded", "false");
+  }
+  function togglePresetMenu() {
+    presetMenu.classList.contains("open") ? closePresetMenu() : openPresetMenu();
+  }
+
+  // Events
+  threadList.addEventListener("click", (e) => {
+    const closeBtn = e.target.closest("[data-close]");
+    if (closeBtn) {
+      e.stopPropagation();
+      closeThread(closeBtn.getAttribute("data-close"));
+      return;
+    }
+    const row = e.target.closest(".thread");
+    if (row) activate(row.dataset.id);
+  });
+
+  threadList.addEventListener("keydown", (e) => {
+    const row = e.target.closest(".thread");
+    if (!row) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      activate(row.dataset.id);
+    }
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      closeThread(row.dataset.id);
+    }
+  });
+
+  // Double-click title → rename (freeze OSC)
+  threadList.addEventListener("dblclick", (e) => {
+    const row = e.target.closest(".thread");
+    if (!row) return;
+    const t = threads.find((x) => x.id === row.dataset.id);
+    if (!t) return;
+    const titleEl = row.querySelector(".thread-title");
+    const input = document.createElement("input");
+    input.className = "thread-title editing";
+    input.value = displayTitle(t);
+    titleEl.replaceWith(input);
+    input.focus();
+    input.select();
+    const commit = () => {
+      const v = input.value.trim();
+      if (v) t.customTitle = v; // freezes OSC
+      renderList();
+      renderBody();
+    };
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+      if (ev.key === "Escape") { renderList(); }
+    });
+    input.addEventListener("blur", commit);
+  });
+
+  btnNew.addEventListener("click", (e) => {
+    if (e.shiftKey) {
+      togglePresetMenu();
+      return;
+    }
+    spawnPreset(lastPreset);
+  });
+  btnPreset.addEventListener("click", (e) => {
+    e.stopPropagation();
+    togglePresetMenu();
+  });
+  presetMenu.addEventListener("click", (e) => {
+    const item = e.target.closest("[data-preset]");
+    if (item) spawnPreset(item.dataset.preset);
+  });
+  $("#emptyPresets").addEventListener("click", (e) => {
+    const item = e.target.closest("[data-preset]");
+    if (item) spawnPreset(item.dataset.preset);
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".sidebar-footer")) closePresetMenu();
+  });
+
+  // Ctrl-Tab / Ctrl-Shift-Tab
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Tab" && e.ctrlKey && threads.length) {
+      e.preventDefault();
+      const i = threads.findIndex((t) => t.id === activeId);
+      const next = e.shiftKey
+        ? (i <= 0 ? threads.length - 1 : i - 1)
+        : (i >= threads.length - 1 ? 0 : i + 1);
+      activate(threads[next].id);
+    }
+    if (e.key === "Escape") closePresetMenu();
+  });
+
+  // Demo HUD
+  $("#hudToggle").addEventListener("click", () => {
+    const body = $("#hudBody");
+    const collapsed = body.classList.toggle("collapsed");
+    $("#hudToggle").textContent = collapsed ? "+" : "−";
+  });
+  $("#hud").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-demo]");
+    if (!btn) return;
+    const action = btn.dataset.demo;
+    const current = threads.find((t) => t.id === activeId);
+
+    if (action === "bell") {
+      // BEL on a non-focused terminal
+      const target = threads.find((t) => t.kind === "terminal" && t.id !== activeId && t.status !== "exited")
+        || threads.find((t) => t.kind === "terminal" && t.status !== "exited");
+      if (!target) return;
+      if (target.id === activeId) {
+        // temporarily switch away so badge is visible
+        const other = threads.find((t) => t.id !== activeId);
+        if (other) activate(other.id);
+      }
+      target.hasBell = true;
+      target.status = "needs-you";
+      renderList();
+      return;
+    }
+    if (action === "osc") {
+      if (!current || current.kind !== "terminal") return;
+      if (current.customTitle) {
+        alert("已手改标题，OSC 不再覆盖（frozen）。先清 customTitle 或新建 thread。");
+        return;
+      }
+      current.oscTitle = "⠋ thinking · j-agent · running · implement-agent-plane-layout-prototype";
+      renderList();
+      return;
+    }
+    if (action === "exit") {
+      if (!current || current.kind !== "terminal") return;
+      current.status = "exited";
+      current.hasBell = false;
+      renderList();
+      renderBody();
+      return;
+    }
+    if (action === "rename") {
+      if (!current) return;
+      const name = prompt("自定义标题（冻结 OSC）", displayTitle(current));
+      if (name && name.trim()) {
+        current.customTitle = name.trim();
+        renderList();
+        renderBody();
+      }
+      return;
+    }
+    if (action === "clear") {
+      threads = [];
+      activeId = null;
+      renderList();
+      renderBody();
+    }
+  });
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => (
+      { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+    ));
+  }
+  function escapeAttr(s) {
+    return escapeHtml(s).replace(/`/g, "&#96;");
+  }
+
+  renderPresets();
+  renderList();
+  renderBody();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>j-agent · Settings UI Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* ── Tokens: Zed One Dark（与 agent-plane-layout.html 同一套）── */
+  :root {
+    --bg-app: #1e2127;
+    --bg-sidebar: #21252b;
+    --bg-pane: #282c34;
+    --bg-hover: #2c313a;
+    --bg-active: #2f343e;
+    --bg-elevated: #333842;
+    --bg-input: #1b1d23;
+    --bg-terminal: #1a1d23;
+    --border: #181a1f;
+    --border-subtle: #3e4451;
+    --text: #abb2bf;
+    --text-bright: #d7dae0;
+    --text-muted: #5c6370;
+    --text-dim: #4b5263;
+    --accent: #61afef;
+    --accent-soft: rgba(97, 175, 239, 0.15);
+    --green: #98c379;
+    --red: #e06c75;
+    --amber: #e5c07b;
+    --purple: #c678dd;
+    --cyan: #56b6c2;
+    --orange: #d19a66;
+    --threads-w: 248px;
+    --nav-w: 218px;
+    --radius: 4px;
+    --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", Consolas, monospace;
+    --ease: 150ms ease;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-ui);
+    background: #0d0f12;
+    color: var(--text);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    font-size: 13px;
+  }
+  button { font-family: inherit; font-size: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  input, select, textarea { font-family: inherit; font-size: inherit; color: var(--text-bright); }
+  :focus { outline: none; }
+  :focus-visible { outline: none; }
+
+  /* ── App window ── */
+  .window {
+    width: min(1320px, 96vw);
+    height: min(840px, 93vh);
+    background: var(--bg-app);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    box-shadow: 0 24px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.03);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .titlebar {
+    height: 36px;
+    background: var(--bg-sidebar);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 14px;
+    flex-shrink: 0;
+    user-select: none;
+  }
+  .traffic { display: flex; gap: 7px; }
+  .traffic i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  .traffic .r { background: #ff5f57; }
+  .traffic .y { background: #febc2e; }
+  .traffic .g { background: #28c840; }
+  .btn-back {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 12px; color: var(--text-muted);
+    padding: 3px 8px; border-radius: var(--radius);
+    transition: background var(--ease), color var(--ease);
+  }
+  .btn-back:hover { background: var(--bg-hover); color: var(--text-bright); }
+  .btn-back:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .titlebar-label {
+    flex: 1; text-align: center;
+    font-size: 12px; color: var(--text-muted); letter-spacing: .02em;
+  }
+  .titlebar-badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--amber);
+    background: rgba(229,192,123,.1);
+    border: 1px solid rgba(229,192,123,.25);
+    padding: 2px 7px;
+    border-radius: 999px;
+  }
+
+  .main { flex: 1; display: flex; min-height: 0; }
+
+  /* ── Thread sidebar（S1：设置打开时保留）── */
+  .threads-bar {
+    width: var(--threads-w);
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    flex-shrink: 0;
+  }
+  .tb-header {
+    height: 36px; padding: 0 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+  }
+  .tb-header .hint {
+    font-weight: 400; letter-spacing: 0; text-transform: none;
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-dim);
+  }
+  .tb-list { flex: 1; overflow-y: auto; padding: 6px 0; }
+  .tb-row {
+    height: 28px; margin: 1px 6px; padding: 0 8px;
+    display: flex; align-items: center; gap: 8px;
+    border-radius: var(--radius);
+    color: var(--text);
+    position: relative;
+  }
+  .tb-row.active { background: var(--bg-active); }
+  .tb-row.active::before {
+    content: ""; position: absolute; left: -6px; top: 5px; bottom: 5px;
+    width: 2px; border-radius: 1px; background: var(--accent);
+  }
+  .tb-row.exited { opacity: .55; }
+  .tb-row .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+  .tb-row .ico { flex-shrink: 0; display: flex; opacity: .9; }
+  .tb-row .ico.term { color: var(--green); }
+  .tb-row .ico.acp { color: var(--purple); }
+  .tb-row .ico.chat { color: var(--text-muted); }
+  .dot-bell {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--red); flex-shrink: 0;
+  }
+  .tag-exited { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+  .tb-footer { border-top: 1px solid var(--border); padding: 8px 10px; display: flex; align-items: center; gap: 8px; }
+  .btn-gear {
+    width: 26px; height: 26px; border-radius: var(--radius);
+    display: grid; place-items: center;
+    color: var(--text-muted);
+    transition: background var(--ease), color var(--ease);
+  }
+  .btn-gear:hover { background: var(--bg-hover); color: var(--text-bright); }
+  .btn-gear.on { background: var(--accent-soft); color: var(--accent); }
+  .btn-gear:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .tb-new {
+    flex: 1; display: flex; align-items: center; justify-content: space-between;
+    height: 26px; padding: 0 8px; border-radius: var(--radius);
+    color: var(--text-muted); font-size: 12px;
+    border: 1px dashed var(--border-subtle);
+    transition: color var(--ease), border-color var(--ease);
+  }
+  .tb-new:hover { color: var(--text-bright); border-color: var(--text-dim); }
+  .tb-new:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+  /* ── Settings nav ── */
+  .settings-nav {
+    width: var(--nav-w);
+    background: var(--bg-pane);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    flex-shrink: 0;
+  }
+  .nav-search-wrap { padding: 10px 10px 8px; border-bottom: 1px solid var(--border); }
+  .nav-search {
+    position: relative; display: flex; align-items: center;
+  }
+  .nav-search svg { position: absolute; left: 8px; color: var(--text-dim); pointer-events: none; }
+  .nav-search input {
+    width: 100%; height: 28px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    padding: 0 26px 0 26px;
+    font-size: 12.5px;
+    color: var(--text-bright);
+    transition: border-color var(--ease), box-shadow var(--ease);
+  }
+  .nav-search input::placeholder { color: var(--text-dim); }
+  .nav-search input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  .nav-search .kbd {
+    position: absolute; right: 7px;
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-dim);
+    border: 1px solid var(--border-subtle); border-radius: 3px;
+    padding: 0 4px; line-height: 14px;
+    pointer-events: none;
+  }
+  .nav-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .nav-item {
+    width: 100%;
+    display: flex; align-items: center; gap: 9px;
+    height: 30px; padding: 0 10px 0 14px;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    text-align: left;
+    position: relative;
+    transition: background var(--ease), color var(--ease);
+  }
+  .nav-item:hover { background: var(--bg-hover); color: var(--text); }
+  .nav-item.active { background: var(--bg-active); color: var(--text-bright); }
+  .nav-item.active::before {
+    content: ""; position: absolute; left: 0; top: 6px; bottom: 6px;
+    width: 2px; background: var(--accent);
+  }
+  .nav-item:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .nav-item .lbl { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav-item .count {
+    display: none;
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 999px;
+    padding: 1px 6px;
+  }
+  .nav-item.dim { opacity: .4; }
+  .searching .nav-item .count { display: inline-block; }
+  .nav-foot {
+    border-top: 1px solid var(--border);
+    padding: 8px 14px;
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--text-dim);
+    display: flex; align-items: center; justify-content: space-between;
+    user-select: none;
+  }
+  .nav-foot .mod-n { color: var(--accent); }
+  .nav-foot .mod-n.zero { color: var(--text-dim); }
+
+  /* ── Settings content ── */
+  .settings-content {
+    flex: 1; min-width: 0;
+    overflow-y: auto;
+    background: var(--bg-app);
+    padding: 22px 30px 40px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-subtle) transparent;
+  }
+  .settings-content:not(.searching) .section { display: none; }
+  .settings-content:not(.searching) .section.active { display: block; }
+  .settings-content.searching .section.no-match { display: none; }
+
+  .sec-head { margin-bottom: 6px; }
+  .sec-head h2 {
+    font-size: 15px; font-weight: 600; color: var(--text-bright);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .sec-head .sec-sub {
+    font-size: 12px; color: var(--text-muted); margin-top: 3px;
+    padding-bottom: 12px;
+  }
+  .group-title {
+    font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 18px 0 2px;
+  }
+
+  /* 设置行 */
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 20px;
+    align-items: center;
+    padding: 11px 2px;
+    border-bottom: 1px solid var(--border);
+  }
+  .row.hidden-by-search { display: none; }
+  .hidden-by-search { display: none !important; }
+  .row-label {
+    font-size: 13px; color: var(--text-bright);
+    display: flex; align-items: center; gap: 7px;
+  }
+  .mod-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .row.modified .mod-dot, .preset.modified .mod-dot { background: var(--accent); border-color: var(--accent); }
+  .row-desc {
+    font-size: 12px; color: var(--text-muted);
+    margin-top: 3px; line-height: 1.45;
+  }
+  .row-ctrl {
+    display: flex; align-items: center; gap: 8px;
+    justify-self: end;
+  }
+  .row-ctrl input[type="text"], .row-ctrl input[type="number"],
+  .row-ctrl select, .row-ctrl textarea {
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    padding: 5px 9px;
+    font-size: 12.5px;
+    transition: border-color var(--ease), box-shadow var(--ease);
+  }
+  .row-ctrl input[type="text"], .row-ctrl input[type="number"] { width: 220px; }
+  .row-ctrl select { width: 220px; padding-right: 26px; appearance: none; cursor: pointer; }
+  .row-ctrl input.mono, .row-ctrl textarea.mono { font-family: var(--font-mono); }
+  .row-ctrl input:focus, .row-ctrl select:focus, .row-ctrl textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  .sel-wrap { position: relative; display: inline-flex; }
+  .sel-wrap svg { position: absolute; right: 8px; pointer-events: none; color: var(--text-muted); }
+  .range-wrap { display: flex; align-items: center; gap: 10px; }
+  .range-wrap input[type="range"] { width: 180px; accent-color: var(--accent); cursor: pointer; }
+  .range-val {
+    font-family: var(--font-mono); font-size: 12px; color: var(--text-bright);
+    min-width: 38px; text-align: right;
+  }
+  .reset {
+    width: 24px; height: 24px; border-radius: var(--radius);
+    display: grid; place-items: center;
+    color: var(--text-muted);
+    opacity: 0; pointer-events: none;
+    transition: opacity var(--ease), background var(--ease), color var(--ease);
+  }
+  .row.modified:hover .reset, .row.modified:focus-within .reset,
+  .preset.modified .p-head:hover .reset { opacity: 1; pointer-events: auto; }
+  .reset:hover { background: var(--bg-hover); color: var(--text-bright); }
+  .reset:focus-visible { opacity: 1; pointer-events: auto; box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+  .preset .p-reset { opacity: 0; pointer-events: none; }
+  .preset.modified .p-head:hover .p-reset,
+  .preset.modified .p-head:focus-within .p-reset { opacity: 1; pointer-events: auto; }
+  .p-reset:focus-visible { opacity: 1; pointer-events: auto; }
+
+  /* toggle */
+  .switch { position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink: 0; }
+  .switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .switch .track {
+    position: absolute; inset: 0;
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    transition: background var(--ease), border-color var(--ease);
+    pointer-events: none;
+  }
+  .switch .knob {
+    position: absolute; top: 3px; left: 3px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--text-muted);
+    transition: transform var(--ease), background var(--ease);
+    pointer-events: none;
+  }
+  .switch input:checked ~ .track { background: var(--accent-soft); border-color: var(--accent); }
+  .switch input:checked ~ .knob { transform: translateX(14px); background: var(--accent); }
+  .switch input:focus-visible ~ .track { box-shadow: 0 0 0 2px var(--accent-soft), inset 0 0 0 1.5px var(--accent); }
+
+  /* 徽章 */
+  .phase-badge {
+    font-size: 10px; font-family: var(--font-mono);
+    color: var(--text-dim);
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    padding: 1px 7px;
+    white-space: nowrap;
+  }
+  .builtin-badge {
+    font-size: 10px; font-family: var(--font-mono);
+    color: var(--green);
+    background: rgba(152,195,121,.1);
+    border: 1px solid rgba(152,195,121,.25);
+    border-radius: 999px;
+    padding: 1px 7px;
+    white-space: nowrap;
+  }
+  .custom-badge {
+    font-size: 10px; font-family: var(--font-mono);
+    color: var(--cyan);
+    background: rgba(86,182,194,.1);
+    border: 1px solid rgba(86,182,194,.25);
+    border-radius: 999px;
+    padding: 1px 7px;
+    white-space: nowrap;
+  }
+  mark { background: rgba(229,192,123,.28); color: var(--amber); border-radius: 2px; padding: 0 1px; }
+
+  /* 预设区 */
+  .preset-list { margin-top: 4px; }
+  .preset {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    background: var(--bg-sidebar);
+    overflow: hidden;
+  }
+  .preset.no-match, .row.no-match { display: none !important; }
+  .p-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    cursor: pointer;
+    transition: background var(--ease);
+  }
+  .p-head:hover { background: var(--bg-hover); }
+  .p-head:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .p-icon { color: var(--green); display: flex; flex-shrink: 0; }
+  .p-label { color: var(--text-bright); font-size: 13px; flex-shrink: 0; }
+  .p-cmd {
+    flex: 1; min-width: 0;
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .p-badges { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .p-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+  .icon-btn {
+    width: 24px; height: 24px; border-radius: var(--radius);
+    display: grid; place-items: center;
+    color: var(--text-muted);
+    transition: background var(--ease), color var(--ease);
+  }
+  .icon-btn:hover { background: var(--bg-active); color: var(--text-bright); }
+  .icon-btn.danger:hover { color: var(--red); }
+  .icon-btn:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .chev { transition: transform var(--ease); color: var(--text-dim); }
+  .preset.open .chev { transform: rotate(90deg); }
+  .preset.open { border-color: var(--border-subtle); }
+  .p-body {
+    display: none;
+    border-top: 1px solid var(--border);
+    padding: 12px 14px 14px;
+    background: var(--bg-app);
+  }
+  .preset.open .p-body { display: block; }
+  .fields { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 9px 14px; align-items: center; }
+  .f-label { font-size: 12.5px; color: var(--text); display: flex; align-items: center; gap: 6px; }
+  .f-label .f-key { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); }
+  .f-label .mod-dot { margin-left: auto; }
+  .fields input[type="text"], .fields textarea {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    padding: 5px 9px;
+    font-size: 12.5px;
+    transition: border-color var(--ease), box-shadow var(--ease);
+  }
+  .fields input.mono, .fields textarea.mono { font-family: var(--font-mono); font-size: 12px; }
+  .fields textarea { resize: vertical; min-height: 54px; line-height: 1.5; }
+  .fields input:focus, .fields textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  .p-note {
+    margin-top: 10px;
+    font-size: 11.5px; color: var(--text-dim); line-height: 1.5;
+    display: flex; gap: 6px; align-items: flex-start;
+  }
+  .p-note svg { flex-shrink: 0; margin-top: 1px; color: var(--amber); }
+  .btn-add {
+    display: flex; align-items: center; gap: 7px;
+    height: 30px; padding: 0 12px;
+    border: 1px dashed var(--border-subtle);
+    border-radius: var(--radius);
+    color: var(--text-muted); font-size: 12.5px;
+    transition: color var(--ease), border-color var(--ease);
+  }
+  .btn-add:hover { color: var(--text-bright); border-color: var(--text-dim); }
+  .btn-add:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+  /* CLI 约定卡 / JSON 卡 / 诊断卡 */
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-sidebar);
+    margin-top: 18px;
+    overflow: hidden;
+  }
+  .card-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12.5px; color: var(--text-bright); font-weight: 500;
+  }
+  .card-body { padding: 4px 12px 10px; }
+  .cli-row {
+    display: grid; grid-template-columns: 74px minmax(0, 1fr) auto;
+    gap: 12px; align-items: baseline;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .cli-row:last-child { border-bottom: none; }
+  .cli-name { color: var(--text-bright); font-size: 12.5px; }
+  .cli-code {
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--cyan);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cli-where { font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); }
+  .card-note { font-size: 12px; color: var(--text-muted); padding: 8px 0 2px; line-height: 1.5; }
+
+  .json-pre {
+    font-family: var(--font-mono); font-size: 11.5px;
+    line-height: 1.55;
+    color: var(--text);
+    padding: 10px 2px;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .jk { color: var(--cyan); }
+  .jv { color: var(--green); }
+  .jn { color: var(--amber); }
+  .jb { color: var(--purple); }
+
+  .diag-row {
+    display: flex; justify-content: space-between; gap: 16px;
+    padding: 7px 0; border-bottom: 1px solid var(--border);
+    font-size: 12.5px;
+  }
+  .diag-row:last-child { border-bottom: none; }
+  .diag-row .k { color: var(--text-muted); }
+  .diag-row .v { color: var(--text-bright); font-family: var(--font-mono); font-size: 12px; }
+
+  /* 键位表 */
+  .kb-table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+  .kb-table th {
+    text-align: left; font-size: 11px; font-weight: 600;
+    letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 6px 2px; border-bottom: 1px solid var(--border-subtle);
+  }
+  .kb-table td { padding: 9px 2px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .kb-table td.k { text-align: right; white-space: nowrap; }
+  kbd {
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--text-bright);
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-left: 4px;
+  }
+
+  /* ACP 列表 */
+  .acp-row {
+    display: grid; grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 10px; align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .acp-row input {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    padding: 5px 9px;
+    font-size: 12.5px;
+  }
+  .acp-row input.mono { font-family: var(--font-mono); font-size: 12px; }
+  .acp-row input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+
+  /* 空搜索态 */
+  .no-results { display: none; padding: 60px 0; text-align: center; color: var(--text-muted); }
+  .no-results .big { font-size: 14px; color: var(--text); margin-bottom: 6px; }
+  .no-results button {
+    margin-top: 12px; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: var(--radius);
+    padding: 4px 12px; font-size: 12.5px;
+  }
+  .no-results button:focus-visible { box-shadow: 0 0 0 2px var(--accent-soft); }
+  .searching.no-hits .no-results { display: block; }
+
+  /* toast */
+  .toast {
+    position: fixed; left: 50%; bottom: 26px;
+    transform: translate(-50%, 12px);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-bright);
+    font-size: 12.5px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.5);
+    opacity: 0; pointer-events: none;
+    transition: opacity var(--ease), transform var(--ease);
+    z-index: 50;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* HUD demo controls */
+  .hud {
+    position: fixed; right: 16px; bottom: 16px;
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.5);
+    z-index: 40;
+    width: 218px;
+    font-size: 12px;
+  }
+  .hud-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px;
+    color: var(--text-muted);
+    font-family: var(--font-mono); font-size: 10.5px;
+    letter-spacing: .06em; text-transform: uppercase;
+    user-select: none;
+  }
+  .hud-head button { color: var(--text-muted); width: 20px; height: 20px; border-radius: 4px; }
+  .hud-head button:hover { color: var(--text-bright); background: var(--bg-hover); }
+  .hud-body { padding: 0 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .hud.collapsed .hud-body { display: none; }
+  .hud-btn {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    padding: 6px 8px;
+    color: var(--text);
+    font-size: 12px;
+    text-align: left;
+    transition: border-color var(--ease), color var(--ease);
+  }
+  .hud-btn:hover { color: var(--text-bright); border-color: var(--text-dim); }
+  .hud-btn:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .hud-note {
+    color: var(--text-dim); font-size: 10.5px; line-height: 1.5;
+    padding-top: 2px;
+  }
+  .hud-note b { color: var(--text-muted); font-weight: 500; }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0s !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="window" role="application" aria-label="j-agent Settings">
+  <div class="titlebar">
+    <div class="traffic" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+    <button class="btn-back" id="btnBack" type="button">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3 5 8l5 5"/></svg>
+      Agent Plane
+    </button>
+    <div class="titlebar-label">j-agent · Settings</div>
+    <div class="titlebar-badge">SETTINGS PROTOTYPE · S1–S5</div>
+  </div>
+
+  <div class="main">
+
+    <!-- Thread sidebar：S1 拍板——设置打开时保留，后台 PTY 继续跑 -->
+    <aside class="threads-bar" aria-label="Agent threads（保留）">
+      <div class="tb-header"><span>Agent</span><span class="hint">Ctrl-Tab</span></div>
+      <div class="tb-list" id="tbList"></div>
+      <div class="tb-footer">
+        <button class="btn-gear on" id="btnGear" type="button" title="设置（Ctrl-,）" aria-label="设置（Ctrl-,）" aria-pressed="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button class="tb-new" id="btnNew" type="button">
+          <span>+ Claude</span><span aria-hidden="true">▾</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Settings nav -->
+    <nav class="settings-nav" aria-label="Settings sections">
+      <div class="nav-search-wrap">
+        <div class="nav-search">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="searchInput" type="search" role="searchbox" placeholder="搜索设置…" aria-label="搜索设置" autocomplete="off" />
+          <span class="kbd" aria-hidden="true">/</span>
+        </div>
+      </div>
+      <div class="nav-list" id="navList" role="tablist" aria-label="设置分区"></div>
+      <div class="nav-foot">
+        <span>settings.json</span>
+        <span>已修改 <span class="mod-n zero" id="modCount">0</span> 项</span>
+      </div>
+    </nav>
+
+    <!-- Settings content -->
+    <section class="settings-content" id="content" aria-live="polite">
+
+      <div class="section" id="sec-presets" role="tabpanel" aria-label="预设">
+        <div class="sec-head">
+          <h2>Presets · 预设</h2>
+          <div class="sec-sub">「+」按钮与空状态卡片使用的终端预设。内置 5 个不可删除；字段可改、可重置。initCommand 是<b>键入</b>，不是 exec。</div>
+        </div>
+        <div class="group-title">新建行为</div>
+        <div id="plusDefaultRow"></div>
+        <div class="group-title">预设列表</div>
+        <div class="preset-list" id="presetList"></div>
+        <button class="btn-add" id="btnAddPreset" type="button">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          新增预设
+        </button>
+      </div>
+
+      <div class="section" id="sec-notifications" role="tabpanel" aria-label="通知">
+        <div class="sec-head">
+          <h2>Notifications · 通知</h2>
+          <div class="sec-sub">j-agent 只信任 BEL 与 OSC 标题两个信号；聚焦该 thread 即清除全部通知。没有「忙碌状态检测」——那是明确否决项。</div>
+        </div>
+        <div id="notifyRows"></div>
+        <div class="card" id="cliCard">
+          <div class="card-head">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+            CLI 侧 BEL / OSC 约定
+            <span class="phase-badge">只读</span>
+          </div>
+          <div class="card-body" id="cliRows"></div>
+        </div>
+      </div>
+
+      <div class="section" id="sec-terminal" role="tabpanel" aria-label="终端">
+        <div class="sec-head">
+          <h2>Terminal · 终端</h2>
+          <div class="sec-sub">只作用于 native TerminalView；行高与 cell 尺寸由 TerminalView 自管，不继承 UI 字体。终端背景使用独立 palette，不被父容器染色。</div>
+        </div>
+        <div id="terminalRows"></div>
+      </div>
+
+      <div class="section" id="sec-appearance" role="tabpanel" aria-label="外观">
+        <div class="sec-head">
+          <h2>Appearance · 外观</h2>
+          <div class="sec-sub">第一期仅 One Dark 主题。侧栏宽度与拖拽实时写回。</div>
+        </div>
+        <div id="appearanceRows"></div>
+      </div>
+
+      <div class="section" id="sec-keybindings" role="tabpanel" aria-label="键位">
+        <div class="sec-head">
+          <h2>Keybindings · 键位</h2>
+          <div class="sec-sub">第一期键位只读；可编辑键位 <span class="phase-badge">Phase 3</span></div>
+        </div>
+        <table class="kb-table" id="kbTable">
+          <thead><tr><th>动作</th><th class="k">键</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="section" id="sec-acp" role="tabpanel" aria-label="ACP agents">
+        <div class="sec-head">
+          <h2>ACP Agents · 外部 agent</h2>
+          <div class="sec-sub">ACP 是外部 JSON-RPC 子进程，不是 PTY；diff / accept 不画在 Terminal Thread 上。凭证走 shell 环境——设置里不出现 API key 输入框。</div>
+        </div>
+        <div id="acpList"></div>
+        <button class="btn-add" id="btnAddAcp" type="button" style="margin-top:10px">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          新增 ACP agent
+        </button>
+      </div>
+
+      <div class="section" id="sec-advanced" role="tabpanel" aria-label="高级">
+        <div class="sec-head">
+          <h2>Advanced · 高级</h2>
+          <div class="sec-sub">settings.json 是唯一事实源——设置界面只是它的表单视图，往返保真。</div>
+        </div>
+        <div id="advancedRows"></div>
+        <div class="card">
+          <div class="card-head">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m14 2-6 9h4l-2 11 8-13h-5l3-7z"/></svg>
+            settings.json
+            <span class="phase-badge">实时视图</span>
+            <span style="flex:1"></span>
+            <button class="hud-btn" id="btnOpenJson" type="button" style="padding:3px 10px;font-size:11.5px">在编辑器中打开</button>
+          </div>
+          <div class="card-body"><pre class="json-pre" id="jsonView" aria-label="settings.json live view"></pre></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            诊断
+            <span class="phase-badge">只读</span>
+          </div>
+          <div class="card-body">
+            <div class="diag-row"><span class="k">版本</span><span class="v">j-agent 0.1.0-dev</span></div>
+            <div class="diag-row"><span class="k">渲染</span><span class="v">GPUIX · pinned GPUI fork · DirectX 12</span></div>
+            <div class="diag-row"><span class="k">终端后端</span><span class="v">gpui-terminal · ConPTY（Win10 1809+）</span></div>
+            <div class="diag-row"><span class="k">设置文件</span><span class="v">~/.j-agent/settings.json</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="no-results" id="noResults">
+        <div class="big">没有匹配的设置</div>
+        <div>换个关键词，或清除搜索查看全部分区。</div>
+        <button type="button" id="btnClearSearch">清除搜索</button>
+      </div>
+
+    </section>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="hud" id="hud">
+  <div class="hud-head">
+    <span>Demo Controls</span>
+    <button type="button" id="hudToggle" aria-label="折叠演示控件">−</button>
+  </div>
+  <div class="hud-body" id="hudBody">
+    <button class="hud-btn" type="button" id="demoModify">随机修改 3 项</button>
+    <button class="hud-btn" type="button" id="demoReset">重置全部设置</button>
+    <div class="hud-note"><b>非产品 UI。</b>仅用于演示 modified 标记 / 单项 reset / JSON 实时同步。</div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════ 默认值（= settings.json 的出厂态）═══════════════ */
+const DEFAULTS = {
+  presets: {
+    plusDefault: null,
+    items: [
+      { id: "claude", label: "Claude", builtin: true, program: "claude", args: [], env: {}, initCommand: "", cwd: "" },
+      { id: "pi",     label: "Pi",     builtin: true, program: "pi",     args: [], env: {}, initCommand: "", cwd: "" },
+      { id: "codex",  label: "Codex",  builtin: true, program: "codex",  args: [], env: {}, initCommand: "", cwd: "" },
+      { id: "amp",    label: "Amp",    builtin: true, program: "amp",    args: [], env: { AMP_FORCE_BEL: "1" }, initCommand: "", cwd: "" },
+      { id: "shell",  label: "Shell",  builtin: true, program: "",       args: [], env: {}, initCommand: "", cwd: "" },
+    ],
+  },
+  notifications: { desktop: true, sound: false },
+  terminal: { fontFamily: "JetBrains Mono", fontSize: 13, cursorBlink: true, scrollbackLines: 10000, palette: "one-dark", closeOnExit: false },
+  appearance: { theme: "one-dark", sidebarWidth: 248 },
+  acpAgents: [
+    { id: "acp-codex",  label: "Codex (ACP)",  command: "codex",           args: ["--acp"] },
+    { id: "acp-claude", label: "Claude (ACP)", command: "claude-code-acp", args: [] },
+  ],
+  advanced: { gpuBackend: "auto" },
+};
+
+const clone = (o) => (typeof structuredClone === "function" ? structuredClone(o) : JSON.parse(JSON.stringify(o)));
+let settings = clone(DEFAULTS);
+const ui = { section: "presets", query: "", openPresetId: null, customN: 0 };
+
+/* ═══════════════ 工具 ═══════════════ */
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
+const getPath = (o, p) => p.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
+const setPath = (o, p, v) => { const ks = p.split("."); const last = ks.pop(); let t = o; ks.forEach(k => t = t[k]); t[last] = v; };
+const isModified = (p) => JSON.stringify(getPath(settings, p)) !== JSON.stringify(getPath(DEFAULTS, p));
+
+const ICON = {
+  presets: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>',
+  notifications: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
+  terminal: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 7 5 5-5 5"/><path d="M13 17h6"/></svg>',
+  appearance: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="1.4"/><circle cx="17.5" cy="10.5" r="1.4"/><circle cx="8.5" cy="7.5" r="1.4"/><circle cx="6.5" cy="12.5" r="1.4"/><path d="M12 2a10 10 0 0 0 0 20c.6 0 1-.4 1-1 0-.3-.1-.5-.3-.7-.2-.2-.3-.4-.3-.7 0-.6.4-1 1-1h2a5 5 0 0 0 5-5c0-6-4-11-8.4-11z"/></svg>',
+  keybindings: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h0M10 10h0M14 10h0M18 10h0M6 14h0M8 14h8M18 14h0"/></svg>',
+  acp: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6"/><path d="M6 8h12v4a6 6 0 0 1-12 0z"/><path d="M12 18v4"/></svg>',
+  advanced: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg>',
+  reset: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.3L3 8"/><path d="M3 3v5h5"/></svg>',
+  copy: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  trash: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>',
+  chev: '<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
+  warn: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h0"/></svg>',
+};
+
+/* ═══════════════ schema：标准设置行 ═══════════════ */
+const ROW_DEFS = {
+  notifications: [
+    { path: "notifications.desktop", label: "桌面通知", desc: "BEL 且未聚焦时弹出系统通知；聚焦该 thread 即清除", type: "toggle" },
+    { path: "notifications.sound", label: "通知声音", desc: "通知附带提示音（依赖桌面通知开启）", type: "toggle" },
+  ],
+  terminal: [
+    { path: "terminal.fontFamily", label: "字体", desc: "终端专用 mono 字体，不继承 UI 字体", type: "text", mono: true, list: ["JetBrains Mono", "Cascadia Code", "SF Mono", "Consolas", "Fira Code", "Iosevka"] },
+    { path: "terminal.fontSize", label: "字号", desc: "行高与 cell 尺寸由 TerminalView 自管", type: "number", min: 10, max: 22, step: 1 },
+    { path: "terminal.cursorBlink", label: "光标闪烁", desc: "系统 reduced-motion 开启时自动关闭", type: "toggle" },
+    { path: "terminal.scrollbackLines", label: "回滚行数", desc: "scrollback 缓冲区大小", type: "number", min: 1000, max: 100000, step: 500 },
+    { path: "terminal.palette", label: "调色板", desc: "终端背景与 16 色独立于父容器", type: "select", options: [{ v: "one-dark", l: "One Dark" }] },
+    { path: "terminal.closeOnExit", label: "退出后直接关闭", desc: "进程 exit 后：开=直接销毁该行；关=保留 exited 灰行查看残留（默认保留）", type: "toggle" },
+  ],
+  appearance: [
+    { path: "appearance.theme", label: "主题", desc: "第一期仅 One Dark", type: "select", options: [
+      { v: "one-dark", l: "One Dark（默认）" },
+      { v: "one-dark-pro", l: "One Dark Pro · Phase 2", disabled: true },
+      { v: "light", l: "Light · Phase 2", disabled: true },
+    ] },
+    { path: "appearance.sidebarWidth", label: "侧栏宽度", desc: "thread 列表宽度，拖拽时实时写回", type: "range", min: 200, max: 400, step: 2 },
+  ],
+  advanced: [
+    { path: "advanced.gpuBackend", label: "GPU 后端", desc: "GPUIX（pinned GPUI fork）渲染后端", type: "select", options: [
+      { v: "auto", l: "Auto（推荐）" }, { v: "dx12", l: "DirectX 12" }, { v: "vulkan", l: "Vulkan" }, { v: "metal", l: "Metal" },
+    ] },
+  ],
+};
+
+const NAV_ITEMS = [
+  { id: "presets", label: "Presets", cn: "预设" },
+  { id: "notifications", label: "Notifications", cn: "通知" },
+  { id: "terminal", label: "Terminal", cn: "终端" },
+  { id: "appearance", label: "Appearance", cn: "外观" },
+  { id: "keybindings", label: "Keybindings", cn: "键位" },
+  { id: "acp", label: "ACP Agents", cn: "ACP" },
+  { id: "advanced", label: "Advanced", cn: "高级" },
+];
+
+const rowRegistry = new Map(); // path -> { rowEl, rowDef, setControl }
+
+/* ═══════════════ 控件工厂 ═══════════════ */
+function makeToggle(row, value, onChange) {
+  const wrap = el("label", "switch");
+  const input = el("input"); input.type = "checkbox"; input.checked = !!value;
+  input.setAttribute("aria-label", row.label);
+  input.addEventListener("change", () => onChange(input.checked));
+  const track = el("span", "track"), knob = el("span", "knob");
+  wrap.append(input, track, knob);
+  return { node: wrap, set: (v) => { input.checked = !!v; } };
+}
+function makeSelect(row, value, onChange) {
+  const wrap = el("div", "sel-wrap");
+  const sel = el("select");
+  sel.setAttribute("aria-label", row.label);
+  row.options.forEach(o => {
+    const opt = el("option", null, o.l);
+    opt.value = o.v; if (o.disabled) opt.disabled = true;
+    sel.append(opt);
+  });
+  sel.value = value ?? "";
+  sel.addEventListener("change", () => onChange(row.nullable && sel.value === "" ? null : sel.value));
+  const chev = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+  wrap.innerHTML = chev; wrap.prepend(sel);
+  return { node: wrap, set: (v) => { sel.value = v ?? ""; } };
+}
+function makeNumber(row, value, onChange) {
+  const input = el("input"); input.type = "number";
+  input.min = row.min; input.max = row.max; input.step = row.step;
+  input.value = value;
+  input.setAttribute("aria-label", row.label);
+  const commit = () => {
+    let v = parseInt(input.value, 10);
+    if (Number.isNaN(v)) { input.value = getPath(settings, row.path); return; }
+    v = Math.min(row.max, Math.max(row.min, v));
+    input.value = v; onChange(v);
+  };
+  input.addEventListener("change", commit);
+  input.addEventListener("blur", commit);
+  return { node: input, set: (v) => { input.value = v; } };
+}
+function makeText(row, value, onChange) {
+  const input = el("input"); input.type = "text";
+  input.value = value ?? "";
+  if (row.mono) input.className = "mono";
+  if (row.placeholder) input.placeholder = row.placeholder;
+  input.setAttribute("aria-label", row.label);
+  input.addEventListener("change", () => onChange(input.value));
+  if (row.list) {
+    const dl = el("datalist"); dl.id = "dl-" + row.path.replace(/\./g, "-");
+    row.list.forEach(f => { const o = el("option", null, f); o.value = f; dl.append(o); });
+    input.setAttribute("list", dl.id); document.body.append(dl);
+  }
+  return { node: input, set: (v) => { input.value = v ?? ""; } };
+}
+function makeRange(row, value, onChange) {
+  const wrap = el("div", "range-wrap");
+  const input = el("input"); input.type = "range";
+  input.min = row.min; input.max = row.max; input.step = row.step; input.value = value;
+  input.setAttribute("aria-label", row.label);
+  const val = el("span", "range-val", value + "px");
+  input.addEventListener("input", () => { val.textContent = input.value + "px"; onChange(parseInt(input.value, 10)); });
+  wrap.append(input, val);
+  return { node: wrap, set: (v) => { input.value = v; val.textContent = v + "px"; } };
+}
+
+function buildRow(row) {
+  const rowEl = el("div", "row");
+  rowEl.dataset.path = row.path;
+  const main = el("div", "row-main");
+  const labelEl = el("div", "row-label");
+  labelEl.append(el("span", null, row.label), el("span", "mod-dot"));
+  const descEl = el("div", "row-desc", row.desc);
+  main.append(labelEl, descEl);
+  const ctrl = el("div", "row-ctrl");
+
+  const factories = { toggle: makeToggle, select: makeSelect, number: makeNumber, text: makeText, range: makeRange };
+  const control = factories[row.type](row, getPath(settings, row.path), (v) => {
+    setPath(settings, row.path, v);
+    refreshRow(row.path); updateJson(); refreshModCount();
+  });
+  ctrl.append(control.node);
+
+  const resetBtn = el("button", "reset", ICON.reset);
+  resetBtn.type = "button";
+  resetBtn.setAttribute("aria-label", `恢复默认：${row.label}`);
+  resetBtn.title = "恢复默认";
+  resetBtn.addEventListener("click", () => {
+    setPath(settings, row.path, clone(getPath(DEFAULTS, row.path)));
+    control.set(getPath(settings, row.path));
+    refreshRow(row.path); updateJson(); refreshModCount();
+    toast(`已恢复默认：${row.label}`);
+  });
+  ctrl.append(resetBtn);
+
+  rowEl.append(main, ctrl);
+  rowEl.dataset.search = (row.label + " " + row.desc + " " + row.path).toLowerCase();
+  rowRegistry.set(row.path, { rowEl, rowDef: row, setControl: (v) => control.set(v) });
+  refreshRow(row.path);
+  return rowEl;
+}
+
+function refreshRow(path) {
+  const r = rowRegistry.get(path);
+  if (!r) return;
+  r.rowEl.classList.toggle("modified", isModified(path));
+}
+
+/* ═══════════════ nav ═══════════════ */
+function buildNav() {
+  const list = $("#navList");
+  NAV_ITEMS.forEach(item => {
+    const btn = el("button", "nav-item");
+    btn.type = "button";
+    btn.setAttribute("role", "tab");
+    btn.dataset.section = item.id;
+    btn.innerHTML = ICON[item.id] + `<span class="lbl">${item.label} · ${item.cn}</span><span class="count" aria-hidden="true"></span>`;
+    btn.addEventListener("click", () => {
+      ui.section = item.id;
+      $("#searchInput").value = ""; ui.query = "";
+      applySection(); applySearch();
+    });
+    list.append(btn);
+  });
+}
+function applySection() {
+  document.querySelectorAll(".nav-item").forEach(n => {
+    const on = n.dataset.section === ui.section;
+    n.classList.toggle("active", on);
+    n.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  document.querySelectorAll(".settings-content .section").forEach(s => {
+    s.classList.toggle("active", s.id === "sec-" + ui.section);
+  });
+}
+
+/* ═══════════════ 预设区 ═══════════════ */
+function presetModified(p) {
+  const d = DEFAULTS.presets.items.find(x => x.id === p.id);
+  return p.builtin && d ? JSON.stringify(p) !== JSON.stringify(d) : false;
+}
+function renderPlusDefaultRow() {
+  const host = $("#plusDefaultRow");
+  host.innerHTML = "";
+  const rowDef = {
+    path: "presets.plusDefault", type: "select",
+    label: "+ 按钮默认", desc: "+ 单击使用的预设；Shift + 或 ▾ 打开菜单。默认跟随上次使用（lastUsedPreset，不写入 settings.json）",
+    nullable: true,
+    options: [{ v: "", l: "跟随上次使用（默认）" }].concat(
+      settings.presets.items.map(p => ({ v: p.id, l: p.label }))
+    ),
+  };
+  const row = buildRow(rowDef);
+  host.append(row);
+}
+function renderPresets() {
+  renderPlusDefaultRow();
+  const list = $("#presetList");
+  list.innerHTML = "";
+  settings.presets.items.forEach(p => list.append(buildPreset(p)));
+}
+function buildPreset(p) {
+  const card = el("div", "preset");
+  card.dataset.presetId = p.id;
+  card.dataset.search = (p.label + " " + p.id + " " + p.program + " " + p.initCommand).toLowerCase();
+
+  const head = el("div", "p-head");
+  head.tabIndex = 0;
+  head.setAttribute("role", "button");
+  head.setAttribute("aria-expanded", "false");
+  const mod = presetModified(p);
+  if (mod) card.classList.add("modified");
+
+  const icon = el("span", "p-icon");
+  icon.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 7 5 5-5 5"/><path d="M13 17h6"/></svg>';
+  const label = el("span", "p-label", p.label);
+  const cmd = el("span", "p-cmd", p.program
+    ? [p.program].concat(p.args).join(" ") + (p.initCommand ? `  →  ${p.initCommand}` : "")
+    : "（系统默认 shell）");
+  const badges = el("span", "p-badges");
+  badges.append(el("span", "mod-dot"));
+  badges.append(el("span", p.builtin ? "builtin-badge" : "custom-badge", p.builtin ? "内置" : "自定义"));
+
+  const actions = el("span", "p-actions");
+  const copyBtn = el("button", "icon-btn", ICON.copy);
+  copyBtn.type = "button"; copyBtn.setAttribute("aria-label", `复制预设 ${p.label}`); copyBtn.title = "复制为自定义预设";
+  copyBtn.addEventListener("click", (e) => { e.stopPropagation(); duplicatePreset(p.id); });
+  actions.append(copyBtn);
+
+  if (p.builtin) {
+    const rst = el("button", "icon-btn p-reset", ICON.reset);
+    rst.type = "button"; rst.setAttribute("aria-label", `重置预设 ${p.label}`); rst.title = "重置为出厂值";
+    rst.addEventListener("click", (e) => { e.stopPropagation(); resetPreset(p.id); });
+    actions.append(rst);
+  }
+  if (!p.builtin) {
+    const del = el("button", "icon-btn danger", ICON.trash);
+    del.type = "button"; del.setAttribute("aria-label", `删除预设 ${p.label}`); del.title = "删除";
+    del.addEventListener("click", (e) => { e.stopPropagation(); deletePreset(p.id); });
+    actions.append(del);
+  }
+  const chev = el("span", null, ICON.chev);
+  chev.style.display = "flex"; chev.style.alignItems = "center";
+
+  head.append(icon, label, cmd, badges, actions, chev);
+  head.addEventListener("click", () => togglePreset(card, p.id));
+  head.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); togglePreset(card, p.id); }
+  });
+
+  const body = el("div", "p-body");
+  body.append(buildPresetFields(p));
+
+  card.append(head, body);
+  if (ui.openPresetId === p.id) { card.classList.add("open"); head.setAttribute("aria-expanded", "true"); }
+  return card;
+}
+function togglePreset(card, id) {
+  const open = card.classList.toggle("open");
+  card.querySelector(".p-head").setAttribute("aria-expanded", open ? "true" : "false");
+  ui.openPresetId = open ? id : null;
+}
+function buildPresetFields(p) {
+  const fields = el("div", "fields");
+  const find = () => settings.presets.items.find(x => x.id === p.id);
+
+  function fieldRow(name, key, input, isModifiedFn) {
+    const wrap = el("div", "f-label", name);
+    if (key) { const k = el("span", "f-key", key); wrap.append(k); }
+    const dot = el("span", "mod-dot"); wrap.append(dot);
+    const cell = el("div");
+    cell.append(input);
+    input.addEventListener("change", () => {
+      const cur = find(); if (!cur) return;
+      input._apply(cur);
+      const card = document.querySelector(`.preset[data-preset-id="${p.id}"]`);
+      if (card) {
+        card.classList.toggle("modified", presetModified(cur));
+        const head = card.querySelector(".p-cmd");
+        head.textContent = cur.program ? [cur.program].concat(cur.args).join(" ") + (cur.initCommand ? `  →  ${cur.initCommand}` : "") : "（系统默认 shell）";
+      }
+      dot.style.background = isModifiedFn() ? "var(--accent)" : "transparent";
+      dot.style.borderColor = isModifiedFn() ? "var(--accent)" : "var(--border-subtle)";
+      updateJson(); refreshModCount(); if (ui.query) applySearch();
+    });
+    if (isModifiedFn()) { dot.style.background = "var(--accent)"; dot.style.borderColor = "var(--accent)"; }
+    fields.append(wrap, cell);
+    return input;
+  }
+  const mkText = (val, mono, ph) => {
+    const i = el("input"); i.type = "text"; i.value = val ?? "";
+    if (mono) i.className = "mono";
+    if (ph) i.placeholder = ph;
+    return i;
+  };
+  const mkArea = (val, mono, ph) => {
+    const t = el("textarea"); t.value = val ?? "";
+    if (mono) t.className = "mono";
+    if (ph) t.placeholder = ph;
+    t.rows = Math.max(2, (val || "").split("\n").length);
+    return t;
+  };
+
+  const iLabel = mkText(p.label, false, "显示名");
+  iLabel._apply = (cur) => { cur.label = iLabel.value || cur.id; };
+  fieldRow("Label", "label", iLabel, () => { const c = find(), d = DEFAULTS.presets.items.find(x => x.id === p.id); return c && d && c.label !== d.label; });
+
+  const iProg = mkText(p.program, true, "可执行文件名或绝对路径；留空 = 系统默认 shell");
+  iProg._apply = (cur) => { cur.program = iProg.value.trim(); };
+  fieldRow("Program", "program", iProg, () => { const c = find(), d = DEFAULTS.presets.items.find(x => x.id === p.id); return c && d && c.program !== d.program; });
+
+  const iArgs = mkArea(p.args.join("\n"), true, "每行一个参数");
+  iArgs._apply = (cur) => { cur.args = iArgs.value.split("\n").map(s => s.trim()).filter(Boolean); };
+  fieldRow("Args", "args[]", iArgs, () => { const c = find(), d = DEFAULTS.presets.items.find(x => x.id === p.id); return c && d && JSON.stringify(c.args) !== JSON.stringify(d.args); });
+
+  const iEnv = mkArea(Object.entries(p.env).map(([k, v]) => `${k}=${v}`).join("\n"), true, "每行 KEY=VALUE，如 AMP_FORCE_BEL=1");
+  iEnv._apply = (cur) => {
+    const env = {};
+    iEnv.value.split("\n").map(s => s.trim()).filter(Boolean).forEach(line => {
+      const i = line.indexOf("=");
+      if (i > 0) env[line.slice(0, i)] = line.slice(i + 1);
+    });
+    cur.env = env;
+  };
+  fieldRow("Env", "env", iEnv, () => { const c = find(), d = DEFAULTS.presets.items.find(x => x.id === p.id); return c && d && JSON.stringify(c.env) !== JSON.stringify(d.env); });
+
+  const iInit = mkText(p.initCommand, true, "作为普通键入打进 shell，不是 exec 替换进程");
+  iInit._apply = (cur) => { cur.initCommand = iInit.value; };
+  fieldRow("InitCommand", "initCommand", iInit, () => { const c = find(), d = DEFAULTS.presets.items.find(x => x.id === p.id); return c && d && c.initCommand !== d.initCommand; });
+
+  const iCwd = mkText(p.cwd, true, "默认项目根目录");
+  iCwd._apply = (cur) => { cur.cwd = iCwd.value.trim(); };
+  fieldRow("Cwd", "cwd?", iCwd, () => { const c = find(), d = DEFAULTS.presets.items.find(x => x.id === p.id); return c && d && c.cwd !== d.cwd; });
+
+  const note = el("div", "p-note");
+  note.innerHTML = ICON.warn + "<span>initCommand 语义：<b>键入</b>而非 exec —— 它以普通输入打进 shell。凭证走 shell 环境；这里不出现任何 API key 输入框。</span>";
+  const holder = el("div"); holder.style.gridColumn = "1 / -1"; holder.append(note);
+  fields.append(holder);
+  return fields;
+}
+function duplicatePreset(id) {
+  const p = settings.presets.items.find(x => x.id === id);
+  if (!p) return;
+  let nid = p.id + "-copy"; let n = 2;
+  while (settings.presets.items.some(x => x.id === nid)) { nid = p.id + "-copy" + n; n++; }
+  const copy = clone(p);
+  copy.id = nid; copy.label = p.label + " 副本"; copy.builtin = false;
+  settings.presets.items.push(copy);
+  ui.openPresetId = nid;
+  renderPresets(); updateJson(); refreshModCount(); if (ui.query) applySearch();
+  toast(`已复制为自定义预设：${copy.label}`);
+}
+function resetPreset(id) {
+  const d = DEFAULTS.presets.items.find(x => x.id === id);
+  const i = settings.presets.items.findIndex(x => x.id === id);
+  if (d && i >= 0) { settings.presets.items[i] = clone(d); renderPresets(); updateJson(); refreshModCount(); toast(`已重置内置预设：${d.label}`); }
+}
+function deletePreset(id) {
+  settings.presets.items = settings.presets.items.filter(x => x.id !== id);
+  if (settings.presets.plusDefault === id) settings.presets.plusDefault = null;
+  if (ui.openPresetId === id) ui.openPresetId = null;
+  renderPresets(); updateJson(); refreshModCount(); if (ui.query) applySearch();
+  toast("已删除自定义预设");
+}
+$("#btnAddPreset").addEventListener("click", () => {
+  ui.customN += 1;
+  const nid = "custom-" + Date.now().toString(36);
+  settings.presets.items.push({ id: nid, label: `自定义 ${ui.customN}`, builtin: false, program: "", args: [], env: {}, initCommand: "", cwd: "" });
+  ui.openPresetId = nid;
+  renderPresets(); updateJson(); refreshModCount();
+  const label = document.querySelector(`.preset[data-preset-id="${nid}"] .p-label`);
+  if (label && typeof label.scrollIntoView === "function") { label.scrollIntoView({ block: "center", behavior: "smooth" }); }
+  toast("已新增自定义预设");
+});
+
+/* ═══════════════ CLI 约定卡 / 键位表 / ACP ═══════════════ */
+const CLI_CONVENTIONS = [
+  { name: "Pi", code: ".pi/extensions/zed-bell.ts → agent_end 时写 \\x07", where: "扩展" },
+  { name: "Amp", code: "AMP_FORCE_BEL=1", where: "环境变量" },
+  { name: "Claude", code: '"preferredNotifChannel": "terminal_bell"', where: "~/.claude/settings.json" },
+  { name: "Codex", code: "tui.terminal_title → OSC 标题", where: "~/.codex/config.toml" },
+];
+function renderCliCard() {
+  const host = $("#cliRows");
+  CLI_CONVENTIONS.forEach(c => {
+    const row = el("div", "cli-row");
+    row.dataset.search = (c.name + " " + c.code).toLowerCase();
+    row.innerHTML = `<span class="cli-name">${c.name}</span><span class="cli-code">${c.code}</span><span class="cli-where">${c.where}</span>`;
+    host.append(row);
+  });
+  const note = el("div", "card-note", "j-agent 只消费 BEL 与 OSC 两个信号——以上配方在各 CLI 自己的配置里设置，本界面不代管、不透传。");
+  host.append(note);
+}
+
+const KB_ROWS = [
+  { action: "循环切换 thread（混排）", keys: ["Ctrl", "Tab"], alt: "Ctrl-Shift-Tab 反向" },
+  { action: "打开 / 关闭设置", keys: ["Ctrl", ","], alt: "" },
+  { action: "聚焦设置搜索", keys: ["/"], alt: "设置内" },
+  { action: "返回 / 清空搜索", keys: ["Esc"], alt: "" },
+  { action: "新建（默认预设）", keys: ["+", "单击"], alt: "Shift + 打开预设菜单" },
+];
+function renderKb() {
+  const tb = $("#kbTable tbody");
+  KB_ROWS.forEach(k => {
+    const tr = el("tr");
+    tr.dataset.search = (k.action + " " + k.keys.join(" ")).toLowerCase();
+    const tdA = el("td", null, k.action);
+    const tdK = el("td", "k");
+    k.keys.forEach(key => { const kb = el("kbd", null, key); tdK.append(kb); });
+    if (k.alt) { tdK.append(el("span", null, " · " + k.alt)); }
+    tr.append(tdA, tdK);
+    tb.append(tr);
+  });
+}
+
+function renderAcp() {
+  const host = $("#acpList");
+  host.innerHTML = "";
+  settings.acpAgents.forEach(a => {
+    const row = el("div", "acp-row");
+    row.dataset.search = (a.label + " " + a.command).toLowerCase();
+
+    const iLabel = el("input"); iLabel.type = "text"; iLabel.value = a.label;
+    iLabel.setAttribute("aria-label", `ACP agent ${a.id} 名称`);
+    const iCmd = el("input", "mono"); iCmd.type = "text"; iCmd.value = a.command;
+    iCmd.setAttribute("aria-label", `ACP agent ${a.id} 命令`);
+    const iArgs = el("input", "mono"); iArgs.type = "text"; iArgs.value = a.args.join(" ");
+    iArgs.setAttribute("aria-label", `ACP agent ${a.id} 参数`);
+    const commit = () => {
+      a.label = iLabel.value || a.id;
+      a.command = iCmd.value.trim();
+      a.args = iArgs.value.split(/\s+/).filter(Boolean);
+      updateJson(); refreshModCount();
+    };
+    [iLabel, iCmd, iArgs].forEach(i => i.addEventListener("change", commit));
+
+    const del = el("button", "icon-btn danger", ICON.trash);
+    del.type = "button"; del.setAttribute("aria-label", `删除 ACP agent ${a.label}`); del.title = "删除";
+    del.addEventListener("click", () => {
+      settings.acpAgents = settings.acpAgents.filter(x => x !== a);
+      renderAcp(); updateJson(); refreshModCount(); if (ui.query) applySearch();
+      toast("已删除 ACP agent");
+    });
+    row.append(iLabel, iCmd, iArgs, del);
+    host.append(row);
+  });
+}
+$("#btnAddAcp").addEventListener("click", () => {
+  settings.acpAgents.push({ id: "acp-" + Date.now().toString(36), label: "新 agent", command: "", args: [] });
+  renderAcp(); updateJson(); refreshModCount();
+  const rows = $("#acpList").querySelectorAll(".acp-row input");
+  if (rows.length) rows[rows.length - 3].focus();
+});
+
+/* ═══════════════ JSON 实时视图 / 修改计数 ═══════════════ */
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function updateJson() {
+  const raw = JSON.stringify(settings, null, 2);
+  $("#jsonView").innerHTML = esc(raw)
+    .replace(/"([^"]+)":/g, '<span class="jk">"$1"</span>:')
+    .replace(/: "([^"]*)"/g, ': <span class="jv">"$1"</span>')
+    .replace(/: (-?\d+)/g, ': <span class="jn">$1</span>')
+    .replace(/: (true|false)/g, ': <span class="jb">$1</span>');
+}
+function countModified() {
+  let n = 0;
+  rowRegistry.forEach((_, path) => { if (isModified(path)) n++; });
+  settings.presets.items.forEach(p => { if (presetModified(p)) n++; });
+  if (JSON.stringify(settings.presets.plusDefault) !== JSON.stringify(DEFAULTS.presets.plusDefault)) { /* counted via registry */ }
+  if (JSON.stringify(settings.acpAgents) !== JSON.stringify(DEFAULTS.acpAgents)) n++;
+  if (JSON.stringify(settings.presets.items.map(p => p.id)) !== JSON.stringify(DEFAULTS.presets.items.map(p => p.id))) { /* add/remove reflected per-item */ }
+  return n;
+}
+function refreshModCount() {
+  const n = countModified();
+  const elN = $("#modCount");
+  elN.textContent = n;
+  elN.classList.toggle("zero", n === 0);
+}
+
+/* ═══════════════ 搜索 ═══════════════ */
+function applySearch() {
+  const content = $("#content");
+  const q = ui.query.trim().toLowerCase();
+  content.classList.toggle("searching", q.length > 0);
+  document.body.classList.toggle("searching", q.length > 0);
+  document.querySelector(".settings-nav").classList.toggle("searching", q.length > 0);
+
+  let total = 0;
+  const counts = {};
+  NAV_ITEMS.forEach(item => counts[item.id] = 0);
+
+  // 标准行 + 预设头 + cli 行 + kb 行 + acp 行
+  const searchable = content.querySelectorAll("[data-search]");
+  searchable.forEach(nodeEl => {
+    const sec = nodeEl.closest(".section");
+    const secId = sec ? sec.id.replace("sec-", "") : null;
+    const hit = !q || nodeEl.dataset.search.includes(q);
+    nodeEl.classList.toggle("hidden-by-search", !hit);
+    // 高亮（row 的 label span；预设卡 .p-label；CLI 行 name/code；键位表动作列）
+    let candidates = [];
+    if (nodeEl.classList.contains("row")) {
+      candidates = [nodeEl.querySelector(":scope > .row-main > .row-label > span:first-child")];
+    } else if (nodeEl.classList.contains("preset")) {
+      candidates = [nodeEl.querySelector(".p-label")];
+    } else if (nodeEl.classList.contains("cli-row")) {
+      candidates = [nodeEl.querySelector(".cli-name"), nodeEl.querySelector(".cli-code")];
+    } else if (nodeEl.tagName === "TR") {
+      candidates = [nodeEl.querySelector("td:first-child")];
+    }
+    candidates = candidates.filter(Boolean);
+    const targets = q ? [candidates.find(c => c.textContent.toLowerCase().includes(q)) || candidates[0]].filter(Boolean) : candidates;
+    targets.forEach(lbl => {
+      if (!lbl.dataset.orig) lbl.dataset.orig = lbl.textContent;
+      lbl.innerHTML = (q && hit)
+        ? esc(lbl.dataset.orig).replace(new RegExp("(" + q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "i"), "<mark>$1</mark>")
+        : esc(lbl.dataset.orig);
+    });
+    if (hit && secId && counts[secId] != null) { counts[secId]++; total++; }
+  });
+
+  NAV_ITEMS.forEach(item => {
+    const navBtn = document.querySelector(`.nav-item[data-section="${item.id}"]`);
+    const c = navBtn.querySelector(".count");
+    c.textContent = counts[item.id];
+    navBtn.classList.toggle("dim", q.length > 0 && counts[item.id] === 0);
+  });
+
+  document.querySelectorAll(".settings-content .section").forEach(s => {
+    const visible = Array.from(s.querySelectorAll("[data-search]")).some(n => !n.classList.contains("hidden-by-search"));
+    s.classList.toggle("no-match", q.length > 0 && !visible);
+  });
+  content.classList.toggle("no-hits", q.length > 0 && total === 0);
+}
+$("#searchInput").addEventListener("input", (e) => { ui.query = e.target.value; applySearch(); });
+$("#searchInput").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.stopPropagation(); e.target.value = ""; ui.query = ""; applySearch(); e.target.blur(); }
+});
+$("#btnClearSearch").addEventListener("click", () => {
+  $("#searchInput").value = ""; ui.query = ""; applySearch(); $("#searchInput").focus();
+});
+
+/* ═══════════════ thread sidebar（演示 S1：设置打开时保留）═══════════════ */
+const TB_THREADS = [
+  { kind: "chat", title: "修登录", active: true },
+  { kind: "term", title: "claude", bell: true },
+  { kind: "term", title: "pi" },
+  { kind: "acp", title: "Codex" },
+  { kind: "term", title: "amp", exited: true },
+];
+function renderThreads() {
+  const list = $("#tbList");
+  TB_THREADS.forEach(t => {
+    const row = el("div", "tb-row" + (t.active ? " active" : "") + (t.exited ? " exited" : ""));
+    const ico = el("span", "ico " + t.kind);
+    if (t.kind === "term") ico.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 7 5 5-5 5"/><path d="M13 17h6"/></svg>';
+    else if (t.kind === "acp") ico.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6"/><path d="M6 8h12v4a6 6 0 0 1-12 0z"/><path d="M12 18v4"/></svg>';
+    else ico.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/></svg>';
+    const title = el("span", "t", t.title);
+    row.append(ico, title);
+    if (t.bell) row.append(el("span", "dot-bell"));
+    if (t.exited) row.append(el("span", "tag-exited", "exited"));
+    row.title = t.title;
+    list.append(row);
+  });
+}
+
+/* ═══════════════ toast / HUD / 全局键 ═══════════════ */
+let toastTimer = null;
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+}
+$("#btnBack").addEventListener("click", () => toast("原型：Esc / Ctrl-, 关闭设置，回到 active thread"));
+$("#btnGear").addEventListener("click", () => toast("原型：Ctrl-, 切换设置（当前已打开）"));
+$("#btnNew").addEventListener("click", () => toast("原型：按 + 默认预设 spawn（见 Presets 分区）"));
+$("#btnOpenJson").addEventListener("click", () => toast("原型：在编辑器中打开 ~/.j-agent/settings.json"));
+$("#hudToggle").addEventListener("click", () => {
+  const hud = $("#hud");
+  hud.classList.toggle("collapsed");
+  $("#hudToggle").textContent = hud.classList.contains("collapsed") ? "+" : "−";
+});
+
+const DEMO_MUTATIONS = [
+  () => { const v = !settings.notifications.desktop; setPath(settings, "notifications.desktop", v); },
+  () => { const v = !settings.notifications.sound; setPath(settings, "notifications.sound", v); },
+  () => { const v = Math.min(22, settings.terminal.fontSize + 1); setPath(settings, "terminal.fontSize", v); },
+  () => { const v = Math.max(10, settings.terminal.fontSize - 1); setPath(settings, "terminal.fontSize", v); },
+  () => { setPath(settings, "terminal.scrollbackLines", settings.terminal.scrollbackLines === 10000 ? 5000 : 10000); },
+  () => { setPath(settings, "terminal.cursorBlink", !settings.terminal.cursorBlink); },
+  () => { setPath(settings, "terminal.closeOnExit", !settings.terminal.closeOnExit); },
+  () => { setPath(settings, "appearance.sidebarWidth", settings.appearance.sidebarWidth === 248 ? 280 : 248); },
+  () => { setPath(settings, "advanced.gpuBackend", settings.advanced.gpuBackend === "auto" ? "dx12" : "auto"); },
+];
+$("#demoModify").addEventListener("click", () => {
+  const pool = [...DEMO_MUTATIONS];
+  for (let i = 0; i < 3 && pool.length; i++) {
+    pool.splice(Math.floor(Math.random() * pool.length), 1)[0]();
+  }
+  rowRegistry.forEach((r, path) => { r.setControl(getPath(settings, path)); refreshRow(path); });
+  updateJson(); refreshModCount();
+  toast("已随机修改 3 项 —— 注意蓝点与 ↺ reset");
+});
+$("#demoReset").addEventListener("click", () => {
+  settings = clone(DEFAULTS);
+  ui.openPresetId = null;
+  rowRegistry.forEach((r, path) => { r.setControl(getPath(settings, path)); refreshRow(path); });
+  renderPresets(); renderAcp();
+  updateJson(); refreshModCount(); if (ui.query) applySearch();
+  toast("已恢复出厂设置（settings.json 全部回默认）");
+});
+
+document.addEventListener("keydown", (e) => {
+  const inField = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "");
+  if (e.key === "/" && !inField) { e.preventDefault(); $("#searchInput").focus(); }
+});
+
+/* ═══════════════ init ═══════════════ */
+(function init() {
+  buildNav(); renderThreads(); renderCliCard(); renderKb();
+  // 标准行挂载
+  const hosts = { notifications: "#notifyRows", terminal: "#terminalRows", appearance: "#appearanceRows", advanced: "#advancedRows" };
+  Object.entries(hosts).forEach(([sec, sel]) => {
+    ROW_DEFS[sec].forEach(row => $(sel).append(buildRow(row)));
+  });
+  renderPresets(); renderAcp();
+  applySection(); updateJson(); refreshModCount();
+})();
+</script>
+</body>
+</html>

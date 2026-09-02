@@ -1,0 +1,14 @@
+# Rust
+/target/
+
+# 参考仓库浅克隆（只读，不进版本库）
+.refs/
+
+# Node / bun（Phase 1 起）
+node_modules/
+*.tsbuildinfo
+
+# 杂项
+*.log
+.DS_Store
+Thumbs.db
