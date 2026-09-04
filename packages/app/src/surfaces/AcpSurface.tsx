@@ -3,7 +3,7 @@
  * 实装后：ACP transcript + composer，顶部 ACP pill（布局契约 §5.3）。
  */
 
-import { COLORS, FONT } from '../plane/tokens'
+import { COLORS, FONT } from '../ui/tokens'
 import type { SurfaceProps } from './registry'
 
 export function AcpSurface({ thread }: SurfaceProps) {

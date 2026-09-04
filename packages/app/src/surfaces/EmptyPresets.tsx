@@ -6,7 +6,7 @@
  */
 
 import { BUILTIN_PRESETS } from '../threads/presets'
-import { COLORS, FONT } from '../plane/tokens'
+import { COLORS, FONT } from '../ui/tokens'
 
 export function EmptyPresets({ onPick }: { onPick: (presetId: string) => void }) {
   return (
@@ -62,10 +62,24 @@ export function EmptyPresets({ onPick }: { onPick: (presetId: string) => void })
               },
             }}
           >
-            <text style={{ color: COLORS.textBright, fontSize: 14, fontFamily: FONT.ui }}>
+            <text
+              style={{
+                color: COLORS.textBright,
+                fontSize: 14,
+                fontFamily: FONT.ui,
+                pointerEvents: 'none',
+              }}
+            >
               {p.label}
             </text>
-            <text style={{ color: COLORS.muted, fontSize: 11, fontFamily: FONT.mono }}>
+            <text
+              style={{
+                color: COLORS.muted,
+                fontSize: 11,
+                fontFamily: FONT.mono,
+                pointerEvents: 'none',
+              }}
+            >
               {p.initCommand ?? p.program ?? 'shell'}
             </text>
           </div>

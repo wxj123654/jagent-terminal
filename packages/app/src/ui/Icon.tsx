@@ -28,8 +28,14 @@ const SOURCES = {
   close: strokeSvg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
   /** plus：新建 */
   plus: strokeSvg('<path d="M5 12h14"/><path d="M12 5v14"/>'),
-  /** chevronDown：预设菜单展开 */
+  /** chevronDown：预设菜单展开 / select 下拉 */
   chevronDown: strokeSvg('<path d="m6 9 6 6 6-6"/>'),
+  /** chevronUp：number stepper 步进钮 */
+  chevronUp: strokeSvg('<path d="m18 15-6-6-6 6"/>'),
+  /** reset：恢复默认（rotate-ccw ↺，settings-ui §5.1） */
+  reset: strokeSvg('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>'),
+  /** search：设置搜索框 */
+  search: strokeSvg('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'),
 } as const
 
 export type IconName = keyof typeof SOURCES

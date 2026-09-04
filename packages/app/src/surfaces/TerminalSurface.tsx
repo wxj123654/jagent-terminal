@@ -13,7 +13,7 @@
 
 import type { TerminalThread } from '../threads/store'
 import type { SurfaceProps } from './registry'
-import { FONT } from '../plane/tokens'
+import { FONT } from '../ui/tokens'
 
 // ── `<terminal>` JSX 类型声明（GPUIX jsx-runtime 的 augmentation）──────
 

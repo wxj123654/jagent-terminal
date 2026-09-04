@@ -3,7 +3,7 @@
  * 实装后：virtual-list 消息 + 底 composer（布局契约 §5.2）。
  */
 
-import { COLORS, FONT } from '../plane/tokens'
+import { COLORS, FONT } from '../ui/tokens'
 import type { SurfaceProps } from './registry'
 
 export function ChatSurface({ thread }: SurfaceProps) {

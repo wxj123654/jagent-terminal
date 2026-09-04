@@ -12,20 +12,21 @@
  * - 双击标题（clickCount===2）→ 行内 rename → customTitle 冻结
  * - active 行左缘 2px accent 指示条（贴行外侧，不占文字宽）
  *
- * 事件冒泡注记：GPUIX/gpui 的 mouse 事件会命中祖先路径，点击行内关闭钮
- * 可能同时触发行的 onClick。JS 侧无 stopPropagation 面，用 mouseDown 抑制
- * 标志（ref，同步可变）挡一次：关闭钮在 mouseDown 即动作，行 onClick 若
- * 跟随到达则被标志吞掉（一次性，无条件重置——即使冒泡不发生也无残留危害）。
+ * 事件命中模型（2026-09-04 实测修正）：GPUIX/gpui 事件**不冒泡**——
+ * hit-test 命中 deepest 有 paint 的元素，handler 只在命中元素上找。
+ * 因此行内装饰（标题/bell 点/exited 标签/指示条）一律 pointerEvents
+ * 'none' 让命中穿透到行容器；行内关闭钮命中自身（不冒泡 → 不会
+ * 误触行 onClick，无需抑制标志）。
  */
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 
 import type { ThreadStore, Thread } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
 import { displayTitle } from '../threads/terminal'
 import { useActiveTarget } from '../router'
 import { Icon } from '../ui/Icon'
-import { COLORS, FONT, SIZES } from './tokens'
+import { COLORS, FONT, SIZES } from '../ui/tokens'
 
 /** 行标题：terminal 走 displayTitle 四级兜底；chat/acp 用 title */
 export function rowTitle(thread: Thread): string {
@@ -38,7 +39,6 @@ export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
   const [hovered, setHovered] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
-  const suppressClick = useRef(false)
 
   if (!thread) return null
   const isActive = active?.type === 'thread' && active.id === id
@@ -63,16 +63,14 @@ export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
 
   return (
     <div
+      testId={`row-${id}`}
       tabIndex={0}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocus={() => setHovered(true)}
       onBlur={() => setHovered(false)}
       onClick={(e) => {
-        // 一次性抑制（见文件头冒泡注记）
-        const suppressed = suppressClick.current
-        suppressClick.current = false
-        if (suppressed || editing) return
+        if (editing) return
         if (e.clickCount === 2) {
           startRename()
           return
@@ -101,7 +99,8 @@ export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
         userSelect: 'none',
       }}
     >
-      {/* active 指示条：贴行左缘外（布局契约 §3，绝对定位于 margin 区） */}
+      {/* active 指示条：贴行左缘外（布局契约 §3，绝对定位于 margin 区）。
+          装饰层：pe none 不挡命中（见文件头） */}
       {isActive ? (
         <div
           style={{
@@ -112,6 +111,7 @@ export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
             width: SIZES.activeBarWidth,
             backgroundColor: COLORS.accent,
             borderRadius: 1,
+            pointerEvents: 'none',
           }}
         />
       ) : null}
@@ -157,6 +157,7 @@ export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
             color: titleColor,
             whiteSpace: 'nowrap',
             textOverflow: 'ellipsis',
+            pointerEvents: 'none',
           }}
         >
           {rowTitle(thread)}
@@ -172,6 +173,7 @@ export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
             backgroundColor: COLORS.bell,
             flexShrink: 0,
             marginRight: showClose ? 2 : 4,
+            pointerEvents: 'none',
           }}
         />
       ) : null}
@@ -184,6 +186,7 @@ export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
             color: COLORS.exited,
             flexShrink: 0,
             marginRight: showClose ? 2 : 4,
+            pointerEvents: 'none',
           }}
         >
           exited
@@ -194,7 +197,6 @@ export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
         <div
           testId={`close-thread-${id}`}
           onMouseDown={() => {
-            suppressClick.current = true
             store.close(id)
           }}
           style={{

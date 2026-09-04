@@ -29,7 +29,7 @@
 | 3 settings-presets + chat | ⬜ 未开始 |
 | 3+ settings-acp-advanced + ACP + 键位编辑 | ⬜ 未开始 |
 
-**当前指针**：→ Phase 2 / T2.3（ui/ 原子 → SettingsView）
+**当前指针**：→ Phase 2 / T2.4（SettingsView：Nav 7 分区 + 搜索 + SettingRow 接真值 + 分区深链）
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -101,7 +101,7 @@
 
 - [x] **T2.1** ThreadStore 全规则 + bun test 全用例（§3.4）—— 补齐：exitCode 贯通 · cycle 无 active 基准（修正 n-2 怪分支）· activeThreadId 未注入回退 · spawn 传参 + cwd 兑底 · title 空串忽略；17 用例全绿
 - [x] **T2.2** settings 三切片：`schema.ts`（zod looseObject + 叶子 .catch + section prefault + SETTING_DEFS 11 defs + SECTIONS 7 分区）· `file.ts`（fsAdapter 原子写+自建目录 + memoryAdapter 失败注入）· `store.ts`（patch/reset/isModified/writeError 回滚时序 + gen 合并写 + init()装配期读盘）+ §6.3 测试面 17 用例
-- [ ] **T2.3** `ui/` 原子（Icon/Tooltip/SettingRow/Toggle/Select/NumberInput/RangeInput/TextInput/Textarea/Badge/PhaseBadge/IconButton）
+- [x] **T2.3** `ui/` 原子（Icon/Tooltip/SettingRow/Toggle/Select/NumberInput/RangeInput/TextInput/Textarea/Badge/PhaseBadge/IconButton）+ tokens 迁入 ui/ + 16 组件用例；附带修复 Phase 1 点击命中 bug（见结论区）
 - [ ] **T2.4** SettingsView（SettingsNav 7 分区 + 搜索 + SettingRow 声明式渲染 + 分区深链）——Term/Notify 分区接真值；Presets/ACP 显示 Phase 徽章
 - [ ] **T2.5** 桌面通知定型 + 接线（bell → 非激活 → notify；读 settings.desktop 在装配层）
 - [ ] **T2.6** 全局键位层（Ctrl-Tab/Ctrl-Shift-Tab → cycle；Ctrl-, toggle 设置；只吃修饰键组合）
@@ -111,6 +111,9 @@
 
 - **T2.1 行为修正**：① cycle 无 active 基准原为 `(idx+dir+n)%n`，idx=-1 且 dir=-1 会落到 n-2 怪分支——改为 dir=1→首个、dir=-1→末个；② spawnSession 的 cwd 未做 `?? process.cwd()` 兑底（thread.cwd 有）——同源化，两端保证一致。另抓到测试名字符串里 `'/'` 截断变除法的坑（bun 显示测试名 NaN，tsc 才报错）。
 - **T2.2 契约扩展与实现注记**：① `SettingsStore` 增加 `init(): Promise<void>`（装配期读盘+parse+首帧 set；契约接口是 UI 消费面，缺生命周期方法，main.tsx 需 await 后渲染——T2.4 接线）；② zod 4.5.4 `prefault` 类型面要求完整 output——用 `section()` helper（`{} as z.input<T>` 断言）保持默认值单点定义在叶子 .catch；③ 写盘合并：gen 计数器，旧快照排队中被新 patch 超越则跳过；写失败 gen++ 作废在途写 + 回滚到 persisted（最后确认落盘快照，非 patch 前快照——交错 patch 时正确），成功路径仅在有 writeError 时才 set 清除（省无效 notify）；④ fsAdapter 首次运行目录不存在会 ENOENT——write 前 mkdir recursive（真盘验证抓到，memoryAdapter 测不出）；⑤ ACP 默认 2 示例取自原型：codex --acp / claude-code-acp；⑥ SETTING_DEFS 11 defs（notifications 2 + terminal 6 + appearance 2 + advanced 1），plusDefault 随 Presets 分区手写（选项动态），Keybindings 只读、Presets/ACP 结构性不走 defs。
+- **T2.3 GPUIX 平台事实（决定控件实现形态）**：① 无 button/checkbox/select/range 原生元素——GPUIX ElementType 仅 div/text/img/svg/canvas/input/textarea/anchored/code/diff/markdown/virtual-list；Toggle/RangeInput/IconButton 自绘（div + tabIndex + 键盘 space/enter/方向键），Select 封装 @gpuix/react 自带的 shadcn 形态 Select 族（anchored 悬浮/外点关闭/↑↓enter esc 键盘导航内建），Tooltip 同理封装自带的 Tooltip 族（Tip：label 必填、asChild 合并进 trigger）。② input 是纯文本编辑器（无 type 语义）：NumberInput 自绘 stepper（↑↓钮 + ↑↓键）+ draft 状态（中间态/越界不回调，onBlur 回显生效值）。③ StyleDesc 无 :focus-visible、无 transition、无 inset box-shadow——focus 环 = onFocus/onBlur state + focusRing()（spread 2 外扩），toggle knob 用 left 定位直跳。④ 无 aria 面：契约 §11 的 aria-label 等价物 = IconButton 强制 label（Tooltip 文案）+ testId + 键盘可达；「toggle 用真 checkbox」降级为键盘可达 + props.checked 可读。⑤ RangeInput 定位两级降级：renderer 实例鸭子调 getElementBounds（GpuixRenderer/TestGpuixRenderer 都有，仅 NativeRenderer TS 接口未列）→ 比例定位；无 bounds → deltaX/startValue 增量拖拽；拖出轨道自然停（GPUIX mouseMove 只发 hover 元素，无窗口级捕获）。
+- **T2.3 重大发现：GPUIX 事件不冒泡（Phase 1 误解修正）**：hit-test 命中 deepest 有 paint 的元素，handler 只在命中元素上找，不向祖先传播（点击命中子 text/div 时父 onClick 不触发；svg 无 hitbox 不指；父显式 backgroundColor transparent 也救不了被子覆盖的区域）。Phase 1 的「事件冒泡注记」与 suppressClick 防御不成立，已删。**修复模式：装饰子元素 pointerEvents:'none' 让命中穿透到 handler 容器**（实测有效）。连带修复 Phase 1 遗留 bug：ThreadRow 点标题/bell 点不激活行、EmptyPresets 点卡片文字不 spawn、NewThreadButton/Sidebar 菌单点文字失效——全部加 pe:none，e2e 新增第 6 用例锁定（点行文字区 → activate）。ui/ 新原子（Toggle/RangeInput 轨道层）同模式。图标 svg 天然不指 hitbox，无需处理。
+- **T2.3 结构注记**：tokens.ts 迁 plane/ → ui/（架构 §1.2「ui 被所有人依赖不依赖任何人」，git mv 保留历史），新增 accentSoft/cyan 色；SettingRow 对 settings/schema 仅 type-only import（编译期擦除，运行时零耦合，D7 声明式渲染的展示原子）；SettingRow 的 reset 钮 modified 时常显半透明而非 hover-only（GPUIX 无 :focus-within，hover-only 伤键盘可达）；textarea/input 的文本在 native 编辑器内不进 getAllText（断言只能走回调面）。
 
 ---
 
@@ -153,3 +156,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-04 · **Phase 1 完成**：T1.5 plane/surfaces 全量（Sidebar/ThreadList/ThreadRow 行内 rename+红点+exited/NewThreadButton 预设菜单/Pane 整块替换/TerminalSurface 唯一 <terminal> 写点/EmptyPresets/tokens/Icon/useThreadStore 直桥）· T1.6 e2e 5 用例全绿（两个真 ConPTY 并存、retain+后台 bell、activate 清红点、exit 灰行+close、**焦点结论：无需降级**）· 重大修复：TSF 两参坑（事件自 T1.2 起全部被静默丢弃）· gpuix 补丁 #6/#7（run_on_test_app + host_ui_commands_ready）· napi 同步化（test 路径 thread_local）· 下一步：Phase 2 T2.1（ThreadStore 补测试面）→ T2.2 settings 三切片
 - 2026-09-04 · **架构审查修复（improve-codebase-architecture 五候选全部落地）**：① 删除 crates/jagent-terminal/src/element.rs 死模块（TerminalFactory 零引用，元素实现唯一住所 = packages/native/element.rs）· ② native 壳深化：TERM/COLORTERM 默认 env 下沉 pty.rs（壳回纯协议镜像）+ 新 host.rs（run_host<T> 一个 interface 两 adapter，serde_json 装箱收敛一处）+ set_style 幂等（PartialEq 比较，消除每帧无效 notify；element.rs 注释与实现对齐）· ③ tokens 收编全部裸 hex（COLORS +surface/surfaceHover/inputBg/closeHover，组件零裸 hex）· ④ 提取 threads/nativeDeps.ts 装配工厂（main/e2e 同一布线，差异项覆盖；§1.2 native 收口清单同步修订）· ⑤ threads/events.ts 判别联合窄化（narrowSessionEvent 边界映射，store 消费 switch 穷尽）+ **exit code 贯通**（alacritty ChildExit 带码：model 区分 ChildExit/Exit 先到先转发 → SessionEvent::Exit{code} → napi → store.exitCode，契约 §2.2 不再漂移）· 验证：cargo test 30 过 + bun test 13 过 + e2e 5 用例全绿（真 PTY）· 下一步：Phase 2 T2.1
 - 2026-09-04 · **T2.1 + T2.2 完成**：T2.1 补齐 ThreadStore 测试面（17 用例：exitCode/cycle 无 active/未注入回退/spawn 传参+cwd 同源/title 空串；含 cycle n-2 怪分支行为修正）· T2.2 settings 三切片落地（schema：looseObject+叶子 catch+section prefault+11 defs；file：fsAdapter 原子写+mkdir 自建+memoryAdapter；store：gen 合并写+persisted 回滚锚点+writeError 时序；17 用例含未知 key 往返/越界回默认/合并写/失败作废）· fsAdapter 真盘验证抓 ENOENT 缺陷并修 · tsc 干净 + 39 测试全绿（34 单测 + 5 e2e）· 下一步：T2.3（ui/ 原子）→ T2.4（SettingsView）
+- 2026-09-05 · **T2.3 完成**：12 个 ui/ 原子（Tooltip 封装 @gpuix/react Tooltip 族 / SelectField 封装其 Select 族 / Toggle+RangeInput+IconButton 自绘（GPUIX 无这些原生元素）/ NumberInput draft+stepper / TextInput / Textarea / Badge+PhaseBadge / SettingRow 声明式行 / style.ts focusRing / Icon 扩 reset/search/chevronUp）· tokens 迁 ui/（§1.2 ui 零依赖）· **重大发现：GPUIX 事件不冒泡**（hit-test 命中 deepest，父 handler 收不到子元素区的点击；Phase 1「冒泡注记」是误解，suppressClick 已删）；修复模式 = 装饰层 pointerEvents:'none'，连带修好 ThreadRow/EmptyPresets/NewThreadButton/Sidebar 的点文字失效 bug，e2e 第 6 用例锁定 · 50 单测 + 6 e2e 全绿 · 下一步：T2.4（SettingsView）

@@ -7,7 +7,7 @@
 
 import type { ThreadStore } from '../threads/store'
 import { Icon } from '../ui/Icon'
-import { COLORS, FONT, SIZES } from './tokens'
+import { COLORS, FONT, SIZES } from '../ui/tokens'
 import { ThreadList } from './ThreadList'
 import { NewThreadButton } from './NewThreadButton'
 
@@ -83,10 +83,24 @@ export function Sidebar({ store }: { store: ThreadStore }) {
           }}
         >
           <Icon name="gear" size={13} color={COLORS.muted} />
-          <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted }}>
+          <text
+            style={{
+              fontSize: 12,
+              fontFamily: FONT.ui,
+              color: COLORS.muted,
+              pointerEvents: 'none',
+            }}
+          >
             设置
           </text>
-          <text style={{ fontSize: 10, fontFamily: FONT.mono, color: COLORS.muted }}>
+          <text
+            style={{
+              fontSize: 10,
+              fontFamily: FONT.mono,
+              color: COLORS.muted,
+              pointerEvents: 'none',
+            }}
+          >
             Ctrl-,
           </text>
         </div>

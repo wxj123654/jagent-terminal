@@ -1,8 +1,9 @@
 /**
- * plane/tokens.ts — 颜色 / 尺寸 tokens（agent-plane-layout.md §3，TS 常量形态）。
+ * ui/tokens.ts — 颜色 / 尺寸 tokens（agent-plane-layout.md §3，TS 常量形态）。
  *
  * Zed One Dark 语义色 + 布局尺寸。Phase 1 定稿（architecture.md §5）；
  * Phase 2 的 settings appearance 分区若引入主题，再考虑升级为 store 注入。
+ * 位置：ui/ 原子层（architecture §1.2「ui 被所有人依赖，不依赖任何人」）。
  */
 
 export const COLORS = {
@@ -22,6 +23,10 @@ export const COLORS = {
   textBright: '#d7dae0',
   muted: '#5c6370',
   accent: '#61afef',
+  /** accent 低透明度底（toggle 开启轨道 / 焦点环，原型 --accent-soft） */
+  accentSoft: 'rgba(97, 175, 239, 0.15)',
+  /** 自定义徽章青（原型 --cyan） */
+  cyan: '#56b6c2',
   terminalKind: '#98c379',
   acpKind: '#c678dd',
   bell: '#e06c75',

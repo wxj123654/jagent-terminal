@@ -14,7 +14,7 @@ import { useThreadStore } from '../threads/useThreadStore'
 import type { ThreadStore } from '../threads/store'
 import { getSurface } from '../surfaces/registry'
 import { EmptyPresets } from '../surfaces/EmptyPresets'
-import { COLORS, FONT } from './tokens'
+import { COLORS, FONT } from '../ui/tokens'
 
 function SettingsPlaceholder() {
   return (

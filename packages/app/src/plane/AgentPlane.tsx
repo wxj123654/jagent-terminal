@@ -6,7 +6,7 @@
  */
 
 import type { ThreadStore } from '../threads/store'
-import { COLORS, FONT } from './tokens'
+import { COLORS, FONT } from '../ui/tokens'
 import { Sidebar } from './Sidebar'
 import { Pane } from './Pane'
 

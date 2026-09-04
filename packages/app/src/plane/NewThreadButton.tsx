@@ -12,7 +12,7 @@ import type { ThreadStore } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
 import { BUILTIN_PRESETS } from '../threads/presets'
 import { Icon } from '../ui/Icon'
-import { COLORS, FONT, SIZES } from './tokens'
+import { COLORS, FONT, SIZES } from '../ui/tokens'
 
 export function NewThreadButton({ store }: { store: ThreadStore }) {
   const lastPreset = useThreadStore(store, (s) => s.lastUsedPreset)
@@ -44,7 +44,14 @@ export function NewThreadButton({ store }: { store: ThreadStore }) {
         }}
       >
         <Icon name="plus" size={12} color={COLORS.textBright} />
-        <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.textBright }}>
+        <text
+          style={{
+            fontSize: 12,
+            fontFamily: FONT.ui,
+            color: COLORS.textBright,
+            pointerEvents: 'none',
+          }}
+        >
           {last.label}
         </text>
       </div>
@@ -107,10 +114,24 @@ export function NewThreadButton({ store }: { store: ThreadStore }) {
                 hover: { backgroundColor: COLORS.surface },
               }}
             >
-              <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.text }}>
+              <text
+                style={{
+                  fontSize: 12,
+                  fontFamily: FONT.ui,
+                  color: COLORS.text,
+                  pointerEvents: 'none',
+                }}
+              >
                 {p.label}
               </text>
-              <text style={{ fontSize: 10, fontFamily: FONT.mono, color: COLORS.muted }}>
+              <text
+                style={{
+                  fontSize: 10,
+                  fontFamily: FONT.mono,
+                  color: COLORS.muted,
+                  pointerEvents: 'none',
+                }}
+              >
                 {p.initCommand ?? p.program ?? 'shell'}
               </text>
             </div>

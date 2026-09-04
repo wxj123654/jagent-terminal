@@ -236,4 +236,29 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
     },
     TEST_TIMEOUT,
   )
+
+  test(
+    '行点击命中模型：点行文字区 → activate（装饰层 pe:none 穿透）',
+    async () => {
+      // 上一个用例留下 1 个 shell 行；再 spawn 一个作切换目标
+      await store.spawnFromPreset('shell')
+      const rows = store.getState().threads
+      const target = rows[0]!
+      await until('two rows rendered', () =>
+        t.renderer.findByTestId(`row-${target.id}`) !== undefined,
+      )
+
+      // 点击 target 行中心（标题文字区——GPUIX 不冒泡，装饰 text 必须
+      // pe:none 让命中穿透到行容器；无此修复点击会被文字吞掉）
+      const el = t.renderer.findByTestId(`row-${target.id}`)!
+      const b = t.renderer.getElementBounds(el.id)!
+      expect(currentActiveThreadId()).not.toBe(target.id)
+      t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2)
+
+      await until('click on row text activates thread', () =>
+        currentActiveThreadId() === target.id,
+      )
+    },
+    TEST_TIMEOUT,
+  )
 })
