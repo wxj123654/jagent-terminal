@@ -19,11 +19,14 @@ import { createTerminalSession, destroyTerminalSession, notifyDesktop } from '@j
 
 import { navigateTarget, currentActiveThreadId } from '../router'
 import type { SettingsStore } from '../settings/store'
+import { createEchoAgent } from './chat'
 import type { ThreadDeps } from './store'
 import { displayTitle } from './terminal'
 
-/** 可覆盖项：装配层差异点（e2e：notify 静默、注入测试预设） */
-export type NativeDepsOverrides = Partial<Pick<ThreadDeps, 'notify' | 'closeOnExit' | 'presetOf'>>
+/** 可覆盖项：装配层差异点（e2e：notify 静默、注入测试预设、chatAgent 零延迟） */
+export type NativeDepsOverrides = Partial<
+  Pick<ThreadDeps, 'notify' | 'closeOnExit' | 'presetOf' | 'chatAgent'>
+>
 
 export function createNativeThreadDeps(
   settings: SettingsStore,
@@ -47,6 +50,8 @@ export function createNativeThreadDeps(
       notifyDesktop(`j-agent · ${displayTitle(t)}`, '终端铃（BEL）', n.sound)
     },
     closeOnExit: () => settings.get().terminal.closeOnExit,
+    // chat 后端 seam（T3.2）：默认 EchoAgent 本地模拟——ACP/LLM 接入时换 adapter
+    chatAgent: createEchoAgent(),
     ...overrides,
   }
 }

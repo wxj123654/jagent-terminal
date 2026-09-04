@@ -37,6 +37,7 @@ import {
 import { memoryAdapter } from '../packages/app/src/settings/file'
 import { createSettingsStore } from '../packages/app/src/settings/store'
 import { settingsKeyboard } from '../packages/app/src/surfaces/SettingsView'
+import { createEchoAgent } from '../packages/app/src/threads/chat'
 import { narrowSessionEvent, type TerminalSessionEvent } from '../packages/app/src/threads/events'
 import { createNativeThreadDeps } from '../packages/app/src/threads/nativeDeps'
 import { type TerminalPreset } from '../packages/app/src/threads/presets'
@@ -98,6 +99,8 @@ beforeAll(() => {
   // 语义，T3.1 自定义预设全链依赖），BELL_PRESET 作为额外项
   store = createThreadStore(
     createNativeThreadDeps(settings, {
+      // T3.2：echo 后端零延迟（产品默认 600ms 模拟思考；e2e 不等）
+      chatAgent: createEchoAgent(0),
       notify: () => {},
       presetOf: (id) =>
         settings.get().presets.items.find((p) => p.id === id) ??
@@ -427,6 +430,71 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       store.close(row.id)
       await until('closed', () => !store.getState().threads.some((x) => x.id === row.id))
       settings.deletePreset(nid)
+    },
+    TEST_TIMEOUT,
+  )
+})
+
+describe('T3.2 e2e: chat 全链（菜单入口 → ChatSurface → echo 回复 → close）', () => {
+  test(
+    'New Chat 菜单入口 → 消息往返 → 混排列表 → close',
+    async () => {
+      const threadsBefore = store.getState().threads.length
+
+      // ① + 菜单展开：预设项 + 固定 New Chat（分隔线下）
+      const menuBtn = t.renderer.findByTestId('open-preset-menu')!
+      const mb = t.renderer.getElementBounds(menuBtn.id)!
+      t.renderer.nativeSimulateClick(mb[0] + mb[2] / 2, mb[1] + mb[3] / 2)
+      await until('preset menu open with New Chat item', () => {
+        const item = t.renderer.findByTestId('new-chat')
+        return item !== undefined && t.renderer.getElementBounds(item.id) != null
+      })
+
+      // ② 点击 New Chat → ChatSurface 挂载（CHAT pill + composer autoFocus）
+      const item = t.renderer.findByTestId('new-chat')!
+      const ib = t.renderer.getElementBounds(item.id)!
+      t.renderer.nativeSimulateClick(ib[0] + ib[2] / 2, ib[1] + ib[3] / 2)
+      const chatId = currentActiveThreadId()
+      expect(chatId).toMatch(/^c/)
+      await until('chat surface mounted', () => {
+        const texts = t.renderer.getAllText()
+        return texts.includes('CHAT') && t.renderer.findByTestId('chat-composer') !== undefined
+      })
+
+      // ③ 混排：chat 行与既有 terminal 行同列表（图标/标题渲染面）
+      await until('chat row in mixed list', () => {
+        const row = t.renderer.findByTestId(`row-${chatId}`)
+        return row !== undefined
+      })
+
+      // ④ composer 打字 + enter → user 落列 + thinking → echo 回复落列
+      //    （e2e 装配 chatAgent=echo 零延迟；真 setTimeout 异步链）
+      t.renderer.simulateKeystrokes('helloe2e')
+      await until('draft committed', () => {
+        const c = t.renderer.findByTestId('chat-composer')
+        return t.renderer.getElement(c!.id)?.customProps?.value === 'helloe2e'
+      })
+      t.renderer.simulateKeystrokes('enter')
+      await until('user message + thinking', () => {
+        const texts = t.renderer.getAllText()
+        return texts.includes('helloe2e') && texts.includes('thinking…')
+      })
+      await until('echo reply rendered', () =>
+        t.renderer
+          .findByType('markdown')
+          .some((el) =>
+            String(t.renderer.getElement(el.id)?.customProps?.source ?? '').includes('收到'),
+          ),
+      )
+      // 首条消息改写标题：列表行标题 = helloe2e
+      await until('row title rewritten', () =>
+        t.renderer.getAllText().some((s) => s === 'helloe2e'),
+      )
+
+      // ⑤ close chat（无 session 销毁）：行移除，不误伤 terminal 行
+      store.close(chatId!)
+      await until('chat row removed', () => !store.getState().threads.some((x) => x.id === chatId))
+      expect(store.getState().threads.length).toBe(threadsBefore)
     },
     TEST_TIMEOUT,
   )

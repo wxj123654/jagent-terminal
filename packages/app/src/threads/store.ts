@@ -15,6 +15,7 @@ import { createStore } from 'zustand/vanilla'
 import type { SpawnOptionsJs } from '@jagent/native'
 
 import type { ActiveTarget } from '../router'
+import type { ChatAgent, ChatMessage } from './chat'
 import type { TerminalSessionEvent } from './events'
 import type { TerminalPreset } from './presets'
 
@@ -41,8 +42,18 @@ export type TerminalThread = {
   createdAt: number
 }
 
-/** Phase 2 骨架（无行为） */
-export type ChatThread = { kind: 'chat'; id: string; title: string; createdAt: number }
+/** chat thread（T3.2 实装：消息 + pendingReply 状态机在 store 一处） */
+export type ChatThread = {
+  kind: 'chat'
+  /** `c${uuid}`（R4） */
+  id: string
+  /** 默认 'Chat'；首条 user 消息截断改写（rename 手改后冻结——title !== 默认值即不再改） */
+  title: string
+  createdAt: number
+  messages: ChatMessage[]
+  /** agent 回复进行中：composer 发送钮禁用 + 消息尾 thinking 占位 */
+  pendingReply: boolean
+}
 /** Phase 3 骨架（无行为） */
 export type AcpThread = { kind: 'acp'; id: string; title: string; createdAt: number }
 
@@ -67,6 +78,8 @@ export type ThreadDeps = {
   /** 读 settings 终端区（装配层桥接） */
   closeOnExit: () => boolean
   presetOf: (id: string) => TerminalPreset | undefined
+  /** chat 后端 seam（T3.2；装配层默认 EchoAgent，ACP/LLM 未来换 adapter） */
+  chatAgent: ChatAgent
   /** 路由读侧（active 判定：bell 红点只打非 active、cycle 基准、close 先导航离开）。
    *  装配层注入（直接读 history）。未注入时：bell 视为非 active，close 保守先导航。 */
   activeThreadId?: () => string | null
@@ -76,6 +89,10 @@ export interface ThreadStore {
   getState(): ThreadState
   subscribe(fn: () => void): () => void
   spawnFromPreset(presetId: string): Promise<void>
+  /** 新建空 chat thread + activate（入口：+ 菜单固定项，T3.2） */
+  createChat(): void
+  /** chat 发送状态机：空串/pending 中忽略；user 落列 → agent.send → assistant/error 落列 */
+  sendChatMessage(threadId: string, text: string): void
   activate(target: ActiveTarget): void
   close(id: string): void
   rename(id: string, title: string): void
@@ -86,11 +103,16 @@ export interface ThreadStore {
 
 // ── 实现 ─────────────────────────────────────────────────────────────
 
+/** chat 消息 id 自增（仅需 thread 内唯一 + 测试可预测） */
+let msgSeq = 0
+
+/** chat 默认标题（首条消息改写的哨兵值；rename 手改后不再改写） */
+export const CHAT_DEFAULT_TITLE = 'Chat'
+
 export function createThreadStore(deps: ThreadDeps): ThreadStore {
   const store = createStore<ThreadState>(() => ({ threads: [], lastUsedPreset: null }))
   const set = (recipe: (s: ThreadState) => void) => store.setState(produce(recipe))
   const state = () => store.getState()
-
   const activate = (target: ActiveTarget) => {
     // 契约 §7：聚焦即清 bell 红点
     if (target?.type === 'thread') {
@@ -135,6 +157,72 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
       activate({ type: 'thread', id: thread.id })
     },
 
+    createChat() {
+      const thread: ChatThread = {
+        kind: 'chat',
+        id: `c${crypto.randomUUID()}`,
+        title: CHAT_DEFAULT_TITLE,
+        createdAt: Date.now(),
+        messages: [],
+        pendingReply: false,
+      }
+      set((s) => {
+        s.threads.push(thread)
+      })
+      activate({ type: 'thread', id: thread.id })
+    },
+
+    sendChatMessage(threadId, text) {
+      const trimmed = text.trim()
+      if (!trimmed) return // 空串忽略（同 rename）
+      const thread = state().threads.find((t) => t.id === threadId)
+      if (!thread || thread.kind !== 'chat' || thread.pendingReply) return
+      const userMsg: ChatMessage = {
+        id: `m${++msgSeq}`,
+        role: 'user',
+        text: trimmed,
+        at: Date.now(),
+      }
+      set((s) => {
+        const t = s.threads.find((x) => x.id === threadId)
+        if (!t || t.kind !== 'chat' || t.pendingReply) return
+        t.messages.push(userMsg)
+        t.pendingReply = true
+        // 首条 user 消息定标题（title 仍为默认值时；手改后冻结）
+        if (
+          t.title === CHAT_DEFAULT_TITLE &&
+          t.messages.every((m) => m.role !== 'user' || m.id === userMsg.id)
+        ) {
+          t.title = trimmed.length > 32 ? `${trimmed.slice(0, 32)}…` : trimmed
+        }
+      })
+      // 回复异步落列；thread 已 close（找不到行）则丢弃（不变量：不复活已删行）
+      deps.chatAgent
+        .send(trimmed)
+        .then((reply) => {
+          set((s) => {
+            const t = s.threads.find((x) => x.id === threadId)
+            if (!t || t.kind !== 'chat') return
+            t.messages.push({ id: `m${++msgSeq}`, role: 'assistant', text: reply, at: Date.now() })
+            t.pendingReply = false
+          })
+        })
+        .catch((err: unknown) => {
+          set((s) => {
+            const t = s.threads.find((x) => x.id === threadId)
+            if (!t || t.kind !== 'chat') return
+            t.messages.push({
+              id: `m${++msgSeq}`,
+              role: 'assistant',
+              text: `发送失败：${err instanceof Error ? err.message : String(err)}`,
+              at: Date.now(),
+              error: true,
+            })
+            t.pendingReply = false
+          })
+        })
+    },
+
     activate,
 
     close(id) {
@@ -149,11 +237,14 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
     },
 
     rename(id, title) {
-      // 空串忽略；写 customTitle → 冻结（不变量 2）
+      // 空串忽略；terminal 写 customTitle → 冻结（不变量 2）；chat 直接改 title
+      //（首条消息改写同样只在 title===默认值时发生——手改后冻结）
       if (!title.trim()) return
       set((s) => {
         const t = s.threads.find((x) => x.id === id)
-        if (t && t.kind === 'terminal') t.customTitle = title
+        if (!t) return
+        if (t.kind === 'terminal') t.customTitle = title
+        else t.title = title
       })
     },
 

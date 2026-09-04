@@ -81,7 +81,8 @@ j-agent/
 │       │   ├── plane/                 #   AgentPlane / Sidebar / ThreadList /
 │       │   │                          #   ThreadRow / NewThreadButton / Pane
 │       │   ├── threads/               #   store.ts + terminal.ts + presets.ts +
-│       │   │                          #   events.ts（SessionEvent 窄化）+
+│       │   │                          #   events.ts（SessionEvent 窄化）+ chat.ts
+│       │   │                          #   （ChatAgent seam + EchoAgent，T3.2）+
 │       │   │                          #   nativeDeps.ts（装配工厂）
 │       │   ├── surfaces/              #   registry.ts + Terminal/Chat/Acp/Empty
 │       │   │   └── settings/          #   SettingsView + 7 分区
@@ -281,8 +282,15 @@ export type TerminalThread = {
   hasBell: boolean                  // activate 该 thread 时清除
   createdAt: number
 }
-export type ChatThread  = { kind:'chat'; id:string; title:string; createdAt:number }   // Phase 2 骨架
-export type AcpThread   = { kind:'acp';  id:string; title:string; createdAt:number }   // Phase 3 骨架
+export type ChatThread  = {   // T3.2 实装（消息 + pending 状态机在 store 一处）
+  kind:'chat'
+  id:string                    // `c${uuid}`（R4）
+  title:string                 // 默认 'Chat'；首条 user 消息截断改写，手改后冻结
+  createdAt:number
+  messages:ChatMessage[]       // threads/chat.ts 判别联合
+  pendingReply:boolean         // composer 禁发 + thinking 占位
+}
+export type AcpThread   = { kind:'acp';  id:string; title:string; createdAt:number }   // Phase 3+ 骨架
 export type Thread = TerminalThread | ChatThread | AcpThread
 
 export type ActiveTarget =             // 派生视图类型：从路由状态算出（§3.5）
@@ -312,6 +320,8 @@ type ThreadDeps = {
                                                //  Rust 侧 win32 toast——后者要扩 napi 面）
   closeOnExit: () => boolean                   // 读 settings 终端区（装配层桥接）
   presetOf: (id: string) => TerminalPreset | undefined
+  chatAgent: ChatAgent                          // chat 后端 seam（T3.2；默认 EchoAgent，
+                                                //  ACP/LLM 接入时换 adapter，UI 不动）
 }
 ```
 
@@ -328,6 +338,10 @@ interface ThreadStore {
   getState(): ThreadState                      // 快照（不可变；zustand vanilla）
   subscribe(fn: () => void): () => void
   spawnFromPreset(presetId: string): Promise<void>
+  createChat(): void                             // 新建空 chat thread + activate（T3.2）
+  sendChatMessage(threadId: string, text: string): void  // chat 状态机（T3.2）：
+                                                 // 空串/pending 忽略；user 落列 → chatAgent.send
+                                                 // → assistant/error 落列；thread 已删则弃回复
   activate(target: ActiveTarget): void         // 内部 = deps.navigate（§3.5）
   close(id: string): void
   rename(id: string, title: string): void      // 写 customTitle → 冻结
@@ -346,7 +360,9 @@ interface ThreadStore {
 | `onSessionEvent(title)` | `customTitle` 存在则忽略（冻结）；否则写 `oscTitle` |
 | `onSessionEvent(bell)` | 该 thread 非 active 时 `hasBell = true` + `deps.notify(t)` |
 | `onSessionEvent(exit)` | `status='exited'` + exitCode；若 `deps.closeOnExit()` → 同 `close` |
-| `close` | terminal → `destroySession` + 移除行；当前路由指向它 → 先 `deps.navigate(null)` 再移除；chat/acp → 仅移除（Phase 2/3 补归档） |
+| `createChat` | push 空 ChatThread（title='Chat'）+ activate（T3.2；入口：+ 菜单固定项） |
+| `sendChatMessage` | 空串/pendingReply 忽略；user 落列 + pendingReply=true → `deps.chatAgent.send` → 回复 assistant 落列（reject → error 行）+ 复位；thread 已 close → 弃回复。首条 user 消息截断改写 title（title===默认值时，手改后冻结） |
+| `close` | terminal → `destroySession` + 移除行；当前路由指向它 → 先 `deps.navigate(null)` 再移除；chat/acp → 仅移除（无 session 可销毁；归档待后续） |
 | `rename` | 空串忽略；写 `customTitle` |
 | `cycle` | threads 数组环形移动 → `activate`（路由跳转覆盖 settings 表面，契约 §4 生命周期） |
 
@@ -400,8 +416,9 @@ type SurfaceProps = { thread: Thread; store: ThreadStore; settings: SettingsStor
 type Surface = ComponentType<SurfaceProps>
 const SURFACES: Record<Thread['kind'], Surface> = {
   terminal: TerminalSurface,
-  chat: ChatSurface,          // Phase 2 前为占位（居中 "chat — Phase 2"）
-  acp: AcpSurface,            // Phase 3 前同上
+  chat: ChatSurface,          // T3.2 实装：薄顶栏 + virtual-list（followTail）消息 +
+                              //  composer（enter=Submit）；后端经 ThreadDeps.chatAgent
+  acp: AcpSurface,            // Phase 3+ 前为占位
 }
 export const getSurface = (kind) => SURFACES[kind]
 ```

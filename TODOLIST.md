@@ -26,10 +26,10 @@
 | 0 Rust 终端骨架 + window.rs 验证 | ✅ 完成（结论见 Phase 0 结论区） |
 | 1 双 workspace + napi 壳 + app 最小集 | ✅ 完成（结论见 Phase 1 结论区） |
 | 2 ThreadStore 全规则 + settings-core/controls + SettingsView | ✅ 完成（T2.1–T2.7） |
-| 3 settings-presets + chat | ◐ 进行中（T3.1 完成） |
+| 3 settings-presets + chat | ✅ 完成（T3.1+T3.2） |
 | 3+ settings-acp-advanced + ACP + 键位编辑 | ⬜ 未开始 |
 
-**当前指针**：→ Phase 3 / T3.2（ChatSurface 实装：chat thread 骨架 → 最小可用）
+**当前指针**：→ Phase 3+ / T3+.1（ACP Agents 分区 + AcpSurface）
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -127,11 +127,10 @@
 ## Phase 3 —— settings-presets + chat
 
 - [x] **T3.1** Presets 分区 CRUD（自定义预设：id + builtin:false + cwd?；lastUsedPreset 运行时态不进 JSON）——详见 Phase 3 结论区
-- [ ] **T3.2** ChatSurface 实装（chat thread 骨架 → 最小可用）
-- [ ] **T3.3** 验收锚点（§15 第 7–8 条）+ commit "Phase 3"
+- [x] **T3.2** ChatSurface 实装（chat thread 骨架 → 最小可用；后端拍板 EchoAgent + seam）——详见 Phase 3 结论区
+- [x] **T3.3** 验收锚点（§15 第 7–8 条，T3.1 已达成；本块核对）+ commit "Phase 3"
 
 ### Phase 3 结论区（T3.1）
-
 - **store CRUD 面（settings-ui.md §12 回调面 → SettingsStore 五方法）**：addPreset（id=`custom-${Date.now().toString(36)}` 唯一化 + builtin:false，返回 id）/ updatePreset（PresetPatch 类型面锁 id+builtin 不可改；normalizePreset 归一：program/initCommand/cwd 空串、args 空数组、env 空对象 → undefined，**args 空串行过滤**——编辑中间态空行不进 JSON）/ deletePreset（内置 no-op；plusDefault===id → null；lastUsedPreset 是 ThreadStore 运行态，settings 不碰，消费侧兑底——NewThreadButton target 链 plusDefault??lastUsedPreset??首项天然兜底）/ duplicatePreset（id `-{src}-copy` 递增后缀 + label 「 副本」+ builtin:false）/ resetPreset（仅内置回 BUILTIN 出厂）。全部走同一 commit()/enqueueWrite 写链（写失败回滚/writeError/合并写免费复用）。提取 commit() 后 patch 也走它。
 - **PresetsSection 组件面**：plusDefault Select（''=跟随上次使用 → patch null）+ 列表卡（head 命中容器显式 backgroundColor + 装饰 pe:none；内置/自定义 Badge + 行级/字段级 mod-dot = presetModified/presetFieldModified（threads/presets.ts，dequal vs BUILTIN）+ 复制/重置（仅内置且 modified）/删除（仅自定义）IconButton）+ 展开编辑器六字段（label/program/initCommand/cwd 即时 TextInput；args/env LinesField）+ 底部新增（label=`自定义 ${n+1}`，新增/复制后自动展开）+ writeError 分区顶部红条。LinesField 见下条。
 - **重大平台发现 ①：GPUIX click 在子元素自带 listener 时会冒泡到父 listener**（T2.3「不冒泡」结论修正：仅纯 paint 装饰（无 listener）不冒泡；子有 onClick → 事件沿 hitbox 链 bubble，实测 log=[child,parent]）。ThreadRow 关闭钮没踩坑纯靠 onMouseDown+同步移除元素逃逸。JS 无 stopPropagation 面 → 修复模式 = **抑制 ref**：按钮 handler 先置位（冒泡 deepest-first），head onClick 消费后跳过。React 状态同步提交保证同批可靠。
@@ -141,6 +140,15 @@
 - **接线面（BUILTIN_PRESETS 硬编码 → settings 快照）**：NewThreadButton（+settings props，Sidebar/AgentPlane 传递；target = plusDefault ?? lastUsedPreset ?? 首项）· EmptyPresets（Pane 传 settings，卡片摘要 presetCommandSummary）· nativeDeps.presetOf（查 settings items，含自定义；e2e override 改为 settings 优先 + BELL_PRESET 叠加，不再替换真语义）· SettingsView.hitsBySection（预设命中吃动态 items，presetMatches）。threads/presets.ts 新增 presetCommandSummary/presetMatches/presetModified/presetFieldModified（数据中心单点，UI 零逻辑）。
 - **e2e 第 9 用例**（T3.1 全链）：settings.addPreset → spawnFromPreset 走真 nativeDeps.presetOf → 真 ConPTY spawn → NewThreadButton label 跟随 → 进程 exit → exited 灰行 → close 清理 + deletePreset。
 - **测试总量**：settings 37（+10 CRUD）· PresetsSection 9（新）· SettingsView 调整（真分区断言）· 单测 87 + e2e 9 + cargo 33 全绿 · tsc 干净 · 真窗口 mount 冒烟 ✓。附：Phase 2 收官提交误入的 mona-lisa.html/mona-shot.png（T2.5 通知调试产物）工作区已删，随下次 commit 清理。
+
+### Phase 3 结论区（T3.2，chat 实装）
+
+- **后端拍板（2026-09-05 用户确认）**：chat「最小可用」= **EchoAgent stub + ChatAgent seam**——composer 输入的唯一去处是 `threads/chat.ts` 的 `ChatAgent` 接口（`send(text) → Promise<string>`），默认 EchoAgent（600ms 模拟思考），ACP/LLM 接入时只换 adapter，UI/状态机不动；新建入口 = **+ 预设菜单底部固定「New Chat」项**（分隔线下；EmptyPresets 保持纯预设语义）。直连 LLM API（流式/错误面工作量 + 与「凭证走 shell 环境」哲学冲突）与纯骨架（无 seam 可换）均否。
+- **store 面**：ChatThread 扩展 messages + pendingReply；接口增 createChat（push+activate）/ sendChatMessage（状态机单点：空串与 pendingReply 双忽略；user 落列 → chatAgent.send → 回复/错误落列；close 后迟到的回复丢弃——不复活已删行）；rename 扩展 chat（直接写 title）；首条 user 消息截断 32 字符改写 title（title===默认值哨兵，手改后冻结）。ThreadDeps 增 chatAgent（必填；nativeDeps 默认 EchoAgent，e2e override 零延迟）。
+- **ChatSurface 面**：薄顶栏（CHAT pill + 标题，36px）+ `<virtual-list alignment="bottom" followTail>` 消息区 + composer（textarea autoFocus + enter=Submit 发送 / shift-enter 换行 + Send 钮，pendingReply 禁发）。user 消息右对齐气泡（accentSoft）；assistant 走 GPUIX `<markdown source>`（GFM，未来 ACP/LLM 富文本免费）+ role 标签（ASSISTANT/ERROR）。thinking… 占位跟 pendingReply。
+- **平台发现（记忆 #29 增补）**：① simulateKeystrokes 的**空格不仅首字符被吞，中间空格也吞**（e2e 'hello e2e' 打不进去，改 'helloe2e' 通过）——测试数据一律无空格。② **markdown 是 native 元素：内容不进 getAllText**（getPaintedText 也不可靠）——断言走 `findByType('markdown')` 的 `customProps.source`。③ **点击可聚焦元素会把键盘焦点从 textarea 抢走**（Send 钮点击后 simulateKeystrokes 进 void）——后续打字用例先 `renderer.focusElement(composer.id)` 拉回。
+- **测试数据流纪律**：ChatSurface 是纯 props 组件（同 TerminalSurface），组件测试必须经订阅壳渲染（useThreadStore selector = Pane 同构）——直接 render 死 props 测不到消息更新链。
+- **测试总量**：单测 92（store +7 chat · ChatSurface.test 6 新）+ e2e 10（chat 全链新）全绿 · tsc 干净 · fmt/lint 清零 · 真窗口 mount 冒烟 ✓。architecture.md 已同步（§1.1 目录树 chat.ts / §3.1 ChatThread / §3.2 deps+接口 / §3.3 规则表 / §4 registry）。
 
 ## Phase 3+ —— acp/advanced/键位
 
@@ -180,3 +188,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-05 · **T2.5 完成**：桌面通知定型为 Rust 自研 WinRT toast（notify.rs：AUMID+开始菜单 .lnk+手拼 XML，零新增 crate；notify-rust/node-notifier 均借 PowerShell 身份被否）· 真机冒烟：toast×3+快捷方式落盘 ✓ · 接线：nativeDeps(settings) 签名扩展（notify/closeOnExit/scrollback 真值）· SurfaceProps+settings · TerminalSurface 读 useSettings 四项（palette/cursorBlink/fontFamily/fontSize）· Rust：TerminalStyle 增 palette/cursor_blink、colors by_name（one-dark 色板）、view blink 定时器、element TODO 清偿 · e2e 第 7 用例（设置→props 联动+sessionId 不变）· 66 单测+7 e2e+cargo 33 全绿 · 下一步：T2.6（全局键位层）
 - 2026-09-05 · **T2.6 + T2.7 完成（Phase 2 收官）**：键位层提取 keybindings.ts（DI 形态 main/e2e 共用）· Esc 双跳时序实测（React 同步提交→「已消费」标记方案）· 关闭设置回 lastNonSettings（router 桥维护）· `/` 聚焦走 ref 取 id（autoFocus 不发 JS focus 事件）+ renderer.focusElement · ui/keyboard.ts 输入焦点登记 · main.tsx 自持 renderer 实例 · e2e 第 8 用例（全量跑 threads 遗留污染→数组序断言）· §15 锚点 1/2/3/4/5/9/10/11 逐条核对达成 · 67 单测+8 e2e+tsc+cargo 全绿+真窗口冒烟 · architecture.md 契约同步（SurfaceProps/keybindings/键位层修订）· commit "Phase 2" · 下一步：Phase 3 T3.1（Presets 分区 CRUD）
 - 2026-09-05 · **T3.1 完成（settings-presets 切片）**：SettingsStore 预设 CRUD 五方法（规则单点：plusDefault 删除回退/内置不可删/副本后缀/空字段归一+args 空行过滤，同一写链回滚面）· PresetsSection 实装（plusDefault Select + 列表卡 CRUD + 六字段编辑器 + 搜索过滤，占位卡换下岗）· LinesField 即时提交模式（提交不依赖 blur）· **三大平台发现回写记忆 #29**：listener 冒泡（抑制 ref 模式）/ TestRenderer 不派发 focus/blur / textarea enter=Submit shift-enter=换行 · 接线面全换 settings 快照（NewThreadButton/EmptyPresets/presetOf/hitsBySection）· e2e 第 9 用例（自定义预设真 PTY 全链）· 87 单测+9 e2e+cargo 33 全绿 · 下一步：T3.2（ChatSurface）
+- 2026-09-05 · **T3.2 + T3.3 完成（Phase 3 收官）**：chat 后端拍板（EchoAgent + ChatAgent seam；入口 = + 菜单固定 New Chat 项）· threads/chat.ts（接口 + EchoAgent 600ms）· store 扩展（createChat/sendChatMessage 状态机/首条消息改标题/rename 兼 chat/close 弃迟到回复；ThreadDeps.chatAgent）· ChatSurface 实装（顶栏 pill + virtual-list followTail + markdown assistant + composer enter=Submit）· 平台发现回写记忆 #29（keystroke 中间空格也吞/markdown 不进 getAllText/点击抢焦点）· 单测 92 + e2e 10 全绿 · architecture.md 同步 · commit "Phase 3" · 下一步：Phase 3+ T3+.1（ACP Agents 分区 + AcpSurface）

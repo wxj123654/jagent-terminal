@@ -5,6 +5,7 @@
  * 单击 + 的目标 = plusDefault ?? lastUsedPreset ?? 首个预设（plusDefault 固定
  * 优先；null 跟随上次使用；lastUsedPreset 悬空——指向被删预设——时兜底首项）。
  * 菜单项 → spawn 该预设（store 内部更新 lastUsedPreset）。
+ * T3.2：菜单底部固定「New Chat」项（分隔线下；chat 不是预设，不占预设槽）。
  */
 
 import { useState } from 'react'
@@ -163,6 +164,47 @@ export function NewThreadButton({
               </text>
             </div>
           ))}
+          {/* 分隔线 + 固定 New Chat（chat 非预设；入口拍板 2026-09-05） */}
+          <div
+            style={{
+              height: 1,
+              backgroundColor: COLORS.borderSubtle,
+              marginTop: 4,
+              marginBottom: 4,
+            }}
+          />
+          <div
+            tabIndex={0}
+            testId="new-chat"
+            onClick={() => {
+              setOpen(false)
+              store.createChat()
+            }}
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              height: 26,
+              paddingLeft: 8,
+              paddingRight: 8,
+              borderRadius: 4,
+              cursor: 'pointer',
+              hover: { backgroundColor: COLORS.surface },
+            }}
+          >
+            <Icon name="chat" size={12} color={COLORS.accent} />
+            <text
+              style={{
+                fontSize: 12,
+                fontFamily: FONT.ui,
+                color: COLORS.textBright,
+                pointerEvents: 'none',
+              }}
+            >
+              New Chat
+            </text>
+          </div>
         </div>
       ) : null}
     </div>

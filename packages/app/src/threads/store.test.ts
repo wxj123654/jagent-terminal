@@ -9,9 +9,23 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { activeTargetFromLocation, currentActiveThreadId, navigateTarget, router } from '../router'
+import type { ChatAgent } from './chat'
 import { builtinPresetOf, type TerminalPreset } from './presets'
 import { createThreadStore, type ThreadDeps, type ThreadStore, type TerminalThread } from './store'
 import { displayTitle } from './terminal'
+
+/** 可控 fake ChatAgent：调用入队，测试手动 resolve/reject */
+function makeChatAgent() {
+  const calls: Array<{ text: string; resolve: (s: string) => void; reject: (e: unknown) => void }> =
+    []
+  const agent: ChatAgent = {
+    send: (text) =>
+      new Promise((resolve, reject) => {
+        calls.push({ text, resolve, reject })
+      }),
+  }
+  return { agent, calls }
+}
 
 function makeDeps(overrides: Partial<ThreadDeps> = {}) {
   let nextSession = 1
@@ -19,6 +33,7 @@ function makeDeps(overrides: Partial<ThreadDeps> = {}) {
   const notified: string[] = []
   const spawned: import('@jagent/native').SpawnOptionsJs[] = []
   let closeOnExit = false
+  const chat = makeChatAgent()
   const deps: ThreadDeps = {
     spawnSession: async (o) => {
       spawned.push(o)
@@ -32,6 +47,7 @@ function makeDeps(overrides: Partial<ThreadDeps> = {}) {
     closeOnExit: () => closeOnExit,
     presetOf: (id) => builtinPresetOf(id),
     activeThreadId: currentActiveThreadId,
+    chatAgent: chat.agent,
     ...overrides,
   }
   return {
@@ -39,6 +55,7 @@ function makeDeps(overrides: Partial<ThreadDeps> = {}) {
     destroyed,
     notified,
     spawned,
+    chat,
     setCloseOnExit: (v: boolean) => (closeOnExit = v),
   }
 }
@@ -283,5 +300,129 @@ describe('displayTitle 四级兜底（契约 §4）', () => {
     expect(displayTitle({ oscTitle: 'o', initCommand: 'i' })).toBe('o')
     expect(displayTitle({ initCommand: 'i' })).toBe('i')
     expect(displayTitle({})).toBe('Terminal')
+  })
+})
+
+// ── T3.2 chat（createChat / sendChatMessage / rename）────────────────
+
+describe('chat: createChat', () => {
+  test('push 空 chat thread + activate；默认标题', async () => {
+    void router.navigate({ to: '/' })
+    const store = createThreadStore(makeDeps().deps)
+    store.createChat()
+    await flush()
+    const s = store.getState()
+    expect(s.threads).toHaveLength(1)
+    expect(s.threads[0]).toMatchObject({
+      kind: 'chat',
+      title: 'Chat',
+      messages: [],
+      pendingReply: false,
+    })
+    expect(currentActiveThreadId()).toBe(s.threads[0].id)
+  })
+})
+
+describe('chat: sendChatMessage 状态机', () => {
+  let store: ThreadStore
+  let ctx: ReturnType<typeof makeDeps>
+  beforeEach(() => {
+    void router.navigate({ to: '/' })
+    ctx = makeDeps()
+    store = createThreadStore(ctx.deps)
+    store.createChat()
+    store.createChat()
+  })
+  const chat = (i: number) => {
+    const t = store.getState().threads[i]
+    if (t?.kind !== 'chat') throw new Error('not chat')
+    return t
+  }
+
+  test('user 落列 + pendingReply；resolve → assistant 落列 + 复位', async () => {
+    const id = chat(0).id
+    store.sendChatMessage(id, '第一条')
+    let t = chat(0)
+    expect(t.messages).toHaveLength(1)
+    expect(t.messages[0]).toMatchObject({ role: 'user', text: '第一条' })
+    expect(t.pendingReply).toBe(true)
+
+    ctx.chat.calls[0].resolve('回复 A')
+    await flush()
+    t = chat(0)
+    expect(t.messages).toHaveLength(2)
+    expect(t.messages[1]).toMatchObject({ role: 'assistant', text: '回复 A' })
+    expect(t.pendingReply).toBe(false)
+  })
+
+  test('首条消息改标题（>32 截断）；第二条不再改', async () => {
+    const long = '这段话特别长需要被截断处理因为它超过了三十二个字符的长度限制还要再长一点'
+    const id = chat(0).id
+    store.sendChatMessage(id, long)
+    expect(chat(0).title).toBe(`${long.slice(0, 32)}…`)
+    ctx.chat.calls[0].resolve('r')
+    await flush()
+    store.sendChatMessage(id, '第二条')
+    expect(chat(0).title).toBe(`${long.slice(0, 32)}…`)
+  })
+
+  test('空串/纯空白忽略；pendingReply 中再发忽略；非 chat id 忽略', async () => {
+    const id = chat(0).id
+    store.sendChatMessage(id, '   ')
+    expect(chat(0).messages).toHaveLength(0)
+    store.sendChatMessage(id, 'x')
+    store.sendChatMessage(id, 'y') // pending 中
+    expect(chat(0).messages).toHaveLength(1)
+    expect(ctx.chat.calls).toHaveLength(1)
+    store.sendChatMessage('t999', 'z') // 不存在的 thread
+    expect(ctx.chat.calls).toHaveLength(1)
+  })
+
+  test('reject → error assistant 行 + 复位', async () => {
+    const id = chat(0).id
+    store.sendChatMessage(id, 'hi')
+    ctx.chat.calls[0].reject(new Error('boom'))
+    await flush()
+    const t = chat(0)
+    expect(t.messages).toHaveLength(2)
+    expect(t.messages[1]).toMatchObject({ role: 'assistant', error: true })
+    expect(t.messages[1].text).toContain('boom')
+    expect(t.pendingReply).toBe(false)
+  })
+
+  test('close 后回复到达 → 丢弃（不复活已删行）', async () => {
+    const id = chat(0).id
+    store.sendChatMessage(id, 'hi')
+    store.close(id)
+    await flush()
+    ctx.chat.calls[0].resolve('迟到的回复')
+    await flush()
+    expect(store.getState().threads.some((t) => t.id === id)).toBe(false)
+  })
+
+  test('close chat：先导航离开再移除（不变量 1）；非 active 行不导航', async () => {
+    // active = 第二个 chat（createChat 后 activate）；close 非 active 的第一个：路由不动
+    store.close(chat(0).id)
+    await flush()
+    expect(router.history.location.pathname).not.toBe('/')
+    expect(store.getState().threads).toHaveLength(1)
+    // close active 行：先导航离开再移除
+    const activeId = currentActiveThreadId()
+    expect(activeId).toBeTruthy()
+    store.close(activeId!)
+    await flush()
+    expect(router.history.location.pathname).toBe('/')
+    expect(store.getState().threads).toHaveLength(0)
+  })
+
+  test('rename：chat 直接改 title；手改后首条消息不再改写（冻结）', async () => {
+    const id = chat(0).id
+    store.rename(id, '我的会话')
+    expect(chat(0).title).toBe('我的会话')
+    store.sendChatMessage(id, '首条消息')
+    expect(chat(0).title).toBe('我的会话') // 不被首条消息覆盖
+    // 空串忽略（同 terminal 语义）
+    store.rename(id, '  ')
+    expect(chat(0).title).toBe('我的会话')
   })
 })
