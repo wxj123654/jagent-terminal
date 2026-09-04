@@ -11,9 +11,9 @@ import { useState } from 'react'
 import type { ReactElement } from 'react'
 
 import { Icon, type IconName } from './Icon'
-import { Tip } from './Tooltip'
 import { focusRing } from './style'
 import { COLORS } from './tokens'
+import { Tip } from './Tooltip'
 
 export function IconButton({
   name,

@@ -7,12 +7,8 @@
  * `<Tip label="…">{trigger}</Tip>`，trigger 必须是单个可挂事件的元素。
  */
 
+import { Tooltip as GpuixTooltip, TooltipContent, TooltipTrigger } from '@gpuix/react'
 import type { ReactElement, ReactNode } from 'react'
-import {
-  Tooltip as GpuixTooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@gpuix/react'
 
 import { COLORS, FONT } from './tokens'
 
@@ -44,9 +40,7 @@ export function Tip({
           maxWidth: 260,
         }}
       >
-        <text style={{ fontSize: 11, fontFamily: FONT.ui, color: COLORS.textBright }}>
-          {label}
-        </text>
+        <text style={{ fontSize: 11, fontFamily: FONT.ui, color: COLORS.textBright }}>{label}</text>
       </TooltipContent>
     </GpuixTooltip>
   )

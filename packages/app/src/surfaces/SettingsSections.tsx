@@ -14,10 +14,10 @@
 
 import type { ReactElement } from 'react'
 
-import type { SettingsStore } from '../settings/store'
-import { getByPath } from '../settings/store'
 import type { SettingDef, SettingSectionId } from '../settings/schema'
 import { SETTING_DEFS } from '../settings/schema'
+import type { SettingsStore } from '../settings/store'
+import { getByPath } from '../settings/store'
 import { PhaseBadge } from '../ui/PhaseBadge'
 import { SettingRow } from '../ui/SettingRow'
 import { COLORS, FONT } from '../ui/tokens'
@@ -90,15 +90,22 @@ export function CliConventionsCard(): ReactElement {
         borderRadius: 6,
       }}
     >
-      <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.textBright, marginBottom: 8 }}>
+      <text
+        style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.textBright, marginBottom: 8 }}
+      >
         CLI 侧 BEL / OSC 约定（j-agent 只信任这两个信号；到各自 CLI 侧配置，此处不代管）
       </text>
       {CONVENTIONS.map(([name, desc]) => (
-        <div
-          key={name}
-          style={{ display: 'flex', flexDirection: 'row', gap: 10, marginBottom: 4 }}
-        >
-          <text style={{ width: 64, fontSize: 11, fontFamily: FONT.ui, color: COLORS.text, flexShrink: 0 }}>
+        <div key={name} style={{ display: 'flex', flexDirection: 'row', gap: 10, marginBottom: 4 }}>
+          <text
+            style={{
+              width: 64,
+              fontSize: 11,
+              fontFamily: FONT.ui,
+              color: COLORS.text,
+              flexShrink: 0,
+            }}
+          >
             {name}
           </text>
           <text
@@ -159,12 +166,8 @@ export function KeybindingsSection({ query }: { query: string | null }): ReactEl
             borderColor: COLORS.border,
           }}
         >
-          <text style={{ fontSize: 12.5, fontFamily: FONT.ui, color: COLORS.text }}>
-            {action}
-          </text>
-          <text style={{ fontSize: 11.5, fontFamily: FONT.mono, color: COLORS.muted }}>
-            {key}
-          </text>
+          <text style={{ fontSize: 12.5, fontFamily: FONT.ui, color: COLORS.text }}>{action}</text>
+          <text style={{ fontSize: 11.5, fontFamily: FONT.mono, color: COLORS.muted }}>{key}</text>
         </div>
       ))}
     </div>
@@ -216,7 +219,10 @@ export function PlaceholderSection({
 /** 搜索无命中空态（§9：空态 + 清除按钮由 SettingsView 提供 query 清空） */
 export function EmptyHits(): ReactElement {
   return (
-    <text testId="settings-empty-hits" style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted, padding: 8 }}>
+    <text
+      testId="settings-empty-hits"
+      style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted, padding: 8 }}
+    >
       无匹配设置项
     </text>
   )
@@ -263,7 +269,11 @@ export function renderSectionContent(
     case 'notifications':
       return (
         <div>
-          <DefsSection settings={settings} query={query} defs={DEFS_BY_SECTION.notifications ?? []} />
+          <DefsSection
+            settings={settings}
+            query={query}
+            defs={DEFS_BY_SECTION.notifications ?? []}
+          />
           <CliConventionsCard />
         </div>
       )
@@ -281,7 +291,9 @@ export function renderSectionContent(
           testId="placeholder-acp"
           title="ACP Agents"
           phase={3}
-          note={'ACP JSON-RPC 子进程（codex --acp / claude-code-acp）接入后在此管理（Phase 3+ 解锁）。'}
+          note={
+            'ACP JSON-RPC 子进程（codex --acp / claude-code-acp）接入后在此管理（Phase 3+ 解锁）。'
+          }
         />
       )
   }

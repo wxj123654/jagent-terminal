@@ -5,12 +5,12 @@
  * Footer(齿轮 → settings 表面)。
  */
 
-import type { ThreadStore } from '../threads/store'
 import type { SettingsStore } from '../settings/store'
+import type { ThreadStore } from '../threads/store'
 import { Icon } from '../ui/Icon'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
-import { ThreadList } from './ThreadList'
 import { NewThreadButton } from './NewThreadButton'
+import { ThreadList } from './ThreadList'
 
 export function Sidebar({ store, settings }: { store: ThreadStore; settings: SettingsStore }) {
   return (
@@ -42,9 +42,7 @@ export function Sidebar({ store, settings }: { store: ThreadStore; settings: Set
         <text style={{ fontSize: 11, fontFamily: FONT.ui, fontWeight: '600', color: COLORS.muted }}>
           AGENT
         </text>
-        <text style={{ fontSize: 10, fontFamily: FONT.mono, color: COLORS.muted }}>
-          ⌃⇥
-        </text>
+        <text style={{ fontSize: 10, fontFamily: FONT.mono, color: COLORS.muted }}>⌃⇥</text>
       </div>
 
       <NewThreadButton store={store} settings={settings} />

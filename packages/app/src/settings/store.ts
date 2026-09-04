@@ -10,13 +10,19 @@
  * 运行时态（lastUsedPreset / hasBell 等）物理上不出现在本目录任何文件。
  */
 
-import { createStore } from 'zustand/vanilla'
-import { produce } from 'immer'
 import { dequal } from 'dequal'
+import { produce } from 'immer'
+import { createStore } from 'zustand/vanilla'
 
-import { DEFAULTS, RawSettingsSchema, SettingsSchema, type Settings, type SettingsPath } from './schema'
-import type { FileAdapter } from './file'
 import { BUILTIN_PRESETS, type TerminalPreset } from '../threads/presets'
+import type { FileAdapter } from './file'
+import {
+  DEFAULTS,
+  RawSettingsSchema,
+  SettingsSchema,
+  type Settings,
+  type SettingsPath,
+} from './schema'
 
 export type SettingsWriteError = { path: string; message: string }
 
@@ -55,10 +61,12 @@ export interface SettingsStore {
 
 /** 深取值（dot-path；不存在返回 undefined） */
 export function getByPath(obj: unknown, path: string): unknown {
-  return path.split('.').reduce<unknown>(
-    (acc, k) => (acc == null ? undefined : (acc as Record<string, unknown>)[k]),
-    obj,
-  )
+  return path
+    .split('.')
+    .reduce<unknown>(
+      (acc, k) => (acc == null ? undefined : (acc as Record<string, unknown>)[k]),
+      obj,
+    )
 }
 
 function serialize(s: Settings): string {

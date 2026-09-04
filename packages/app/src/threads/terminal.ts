@@ -9,6 +9,8 @@ import type { TerminalThread } from './store'
  * customTitle ?? oscTitle ?? initCommand ?? "Terminal"
  * customTitle 手改后冻结——不再被 OSC 覆盖（规则在 store 的 onSessionEvent）。
  */
-export function displayTitle(t: Pick<TerminalThread, 'customTitle' | 'oscTitle' | 'initCommand'>): string {
+export function displayTitle(
+  t: Pick<TerminalThread, 'customTitle' | 'oscTitle' | 'initCommand'>,
+): string {
   return t.customTitle ?? t.oscTitle ?? t.initCommand ?? 'Terminal'
 }

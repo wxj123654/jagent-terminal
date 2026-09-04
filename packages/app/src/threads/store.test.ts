@@ -8,12 +8,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import {
-  activeTargetFromLocation,
-  currentActiveThreadId,
-  navigateTarget,
-  router,
-} from '../router'
+import { activeTargetFromLocation, currentActiveThreadId, navigateTarget, router } from '../router'
 import { builtinPresetOf, type TerminalPreset } from './presets'
 import { createThreadStore, type ThreadDeps, type ThreadStore, type TerminalThread } from './store'
 import { displayTitle } from './terminal'
@@ -245,7 +240,7 @@ describe('cycle 环形', () => {
     expect(currentActiveThreadId()).toBe('t1')
   })
 
-  test("无 active（settings 表面或根路由）：dir=1 → 首个，dir=-1 → 末个", async () => {
+  test('无 active（settings 表面或根路由）：dir=1 → 首个，dir=-1 → 末个', async () => {
     const store = createThreadStore(makeDeps().deps)
     await store.spawnFromPreset('shell') // t1
     await store.spawnFromPreset('shell') // t2

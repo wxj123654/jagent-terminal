@@ -8,8 +8,6 @@
  * 选中项 accent 色。
  */
 
-import { useState } from 'react'
-import type { ReactElement } from 'react'
 import {
   Select as GpuixSelect,
   SelectContent,
@@ -17,10 +15,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@gpuix/react'
+import { useState } from 'react'
+import type { ReactElement } from 'react'
 
 import { Icon } from './Icon'
-import { controlText, focusRing } from './style'
 import { inputFocus } from './keyboard'
+import { controlText, focusRing } from './style'
 import { COLORS } from './tokens'
 
 export type SelectOption = { value: string; label: string }

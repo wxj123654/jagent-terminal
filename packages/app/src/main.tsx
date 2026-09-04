@@ -12,22 +12,22 @@
  *    到达则 Ctrl-Tab 全局可用；否则降级「列表/UI 聚焦时生效」并记录。
  */
 
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { render, createRenderer } from '@gpuix/react'
 import { installTerminalElement, onSessionEvent } from '@jagent/native'
 import type { GpuixRenderer } from '@jagent/native'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 
-import { router, activeTargetFromLocation, lastNonSettings } from './router'
-import { createThreadStore } from './threads/store'
-import { createNativeThreadDeps } from './threads/nativeDeps'
-import { narrowSessionEvent } from './threads/events'
-import { createSettingsStore } from './settings/store'
-import { fsAdapter } from './settings/file'
-import { settingsKeyboard } from './surfaces/SettingsView'
-import { inputFocus } from './ui/keyboard'
 import { createGlobalKeydown } from './keybindings'
 import { App } from './plane/AgentPlane'
+import { router, activeTargetFromLocation, lastNonSettings } from './router'
+import { fsAdapter } from './settings/file'
+import { createSettingsStore } from './settings/store'
+import { settingsKeyboard } from './surfaces/SettingsView'
+import { narrowSessionEvent } from './threads/events'
+import { createNativeThreadDeps } from './threads/nativeDeps'
+import { createThreadStore } from './threads/store'
+import { inputFocus } from './ui/keyboard'
 
 // ── seam 装配（顺序敏感：先注册元素，再开窗）──────────────────────────
 installTerminalElement()
@@ -62,8 +62,7 @@ renderer.init({
 // ── 全局键位层（keybindings.ts：main/e2e 共用语义；布线在此）──
 const handleKeyDown = createGlobalKeydown({
   store: threadStore,
-  inSettings: () =>
-    activeTargetFromLocation(router.history.location.pathname)?.type === 'settings',
+  inSettings: () => activeTargetFromLocation(router.history.location.pathname)?.type === 'settings',
   closeSettings: () => threadStore.activate(lastNonSettings()),
   focusSearch: () => {
     const id = settingsKeyboard.searchInputId()

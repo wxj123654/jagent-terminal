@@ -11,5 +11,12 @@
     "isolatedModules": true,
     "types": ["react", "bun"]
   },
-  "include": ["*.tsx", "*.ts", "../packages/app/src/**/*.ts", "../packages/app/src/**/*.tsx", "../gpuix-native-alias/index.d.ts", "../packages/native/index.d.ts"]
+  "include": [
+    "*.tsx",
+    "*.ts",
+    "../packages/app/src/**/*.ts",
+    "../packages/app/src/**/*.tsx",
+    "../gpuix-native-alias/index.d.ts",
+    "../packages/native/index.d.ts"
+  ]
 }

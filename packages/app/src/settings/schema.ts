@@ -51,36 +51,50 @@ function section<T extends z.ZodObject<any>>(s: T) {
  * 时整体回默认，UI 永不炸。
  */
 export const RawSettingsSchema = z.looseObject({
-  presets: section(z.object({
-    /** "+" 按钮默认预设；null = 跟随 lastUsedPreset */
-    plusDefault: z.string().nullable().catch(null),
-    items: z.array(TerminalPresetSchema).catch(BUILTIN_PRESETS),
-  })),
-  notifications: section(z.object({
-    desktop: z.boolean().catch(true),
-    sound: z.boolean().catch(false),
-  })),
-  terminal: section(z.object({
-    fontFamily: z.string().catch('JetBrains Mono'),
-    fontSize: z.number().int().min(10).max(22).catch(13),
-    cursorBlink: z.boolean().catch(true),
-    scrollbackLines: z.number().int().min(1000).max(100000).catch(10000),
-    palette: z.string().catch('one-dark'),
-    closeOnExit: z.boolean().catch(false),
-  })),
-  appearance: section(z.object({
-    theme: z.string().catch('one-dark'),
-    sidebarWidth: z.number().int().min(200).max(400).catch(248),
-  })),
-  acpAgents: z.array(z.object({
-    id: z.string(),
-    label: z.string(),
-    command: z.string(),
-    args: z.array(z.string()).catch([]),
-  })).catch(DEFAULT_ACP_AGENTS),
-  advanced: section(z.object({
-    gpuBackend: z.enum(['auto', 'metal', 'dx12', 'vulkan']).catch('auto'),
-  })),
+  presets: section(
+    z.object({
+      /** "+" 按钮默认预设；null = 跟随 lastUsedPreset */
+      plusDefault: z.string().nullable().catch(null),
+      items: z.array(TerminalPresetSchema).catch(BUILTIN_PRESETS),
+    }),
+  ),
+  notifications: section(
+    z.object({
+      desktop: z.boolean().catch(true),
+      sound: z.boolean().catch(false),
+    }),
+  ),
+  terminal: section(
+    z.object({
+      fontFamily: z.string().catch('JetBrains Mono'),
+      fontSize: z.number().int().min(10).max(22).catch(13),
+      cursorBlink: z.boolean().catch(true),
+      scrollbackLines: z.number().int().min(1000).max(100000).catch(10000),
+      palette: z.string().catch('one-dark'),
+      closeOnExit: z.boolean().catch(false),
+    }),
+  ),
+  appearance: section(
+    z.object({
+      theme: z.string().catch('one-dark'),
+      sidebarWidth: z.number().int().min(200).max(400).catch(248),
+    }),
+  ),
+  acpAgents: z
+    .array(
+      z.object({
+        id: z.string(),
+        label: z.string(),
+        command: z.string(),
+        args: z.array(z.string()).catch([]),
+      }),
+    )
+    .catch(DEFAULT_ACP_AGENTS),
+  advanced: section(
+    z.object({
+      gpuBackend: z.enum(['auto', 'metal', 'dx12', 'vulkan']).catch('auto'),
+    }),
+  ),
 })
 
 export type Settings = z.infer<typeof RawSettingsSchema>
@@ -93,14 +107,13 @@ export const SettingsSchema = RawSettingsSchema.catch(DEFAULTS)
 
 // ── SettingsPath：递归 dot-path（数组值整体视为叶子，不递归元素）──────
 
-type PathOf<T, P extends string = ''> =
-  T extends readonly unknown[]
-    ? P
-    : T extends object
-      ? {
-          [K in keyof T]-?: PathOf<T[K], P extends '' ? K & string : `${P}.${K & string}`>
-        }[keyof T]
-      : P
+type PathOf<T, P extends string = ''> = T extends readonly unknown[]
+  ? P
+  : T extends object
+    ? {
+        [K in keyof T]-?: PathOf<T[K], P extends '' ? K & string : `${P}.${K & string}`>
+      }[keyof T]
+    : P
 
 export type SettingsPath = PathOf<Settings>
 
@@ -152,40 +165,99 @@ export const SECTIONS: { id: SettingSectionId; label: string }[] = [
  */
 export const SETTING_DEFS: SettingDef[] = [
   // Notifications
-  { path: 'notifications.desktop', section: 'notifications', label: '桌面通知',
-    description: 'BEL 且未聚焦时弹出系统通知；聚焦该 thread 即清除', control: { type: 'toggle' } },
-  { path: 'notifications.sound', section: 'notifications', label: '通知声音',
-    description: '通知附带提示音（依赖桌面通知开启）', control: { type: 'toggle' } },
+  {
+    path: 'notifications.desktop',
+    section: 'notifications',
+    label: '桌面通知',
+    description: 'BEL 且未聚焦时弹出系统通知；聚焦该 thread 即清除',
+    control: { type: 'toggle' },
+  },
+  {
+    path: 'notifications.sound',
+    section: 'notifications',
+    label: '通知声音',
+    description: '通知附带提示音（依赖桌面通知开启）',
+    control: { type: 'toggle' },
+  },
   // Terminal
-  { path: 'terminal.fontFamily', section: 'terminal', label: '字体',
-    description: '终端专用 mono 字体，不继承 UI 字体', control: { type: 'text', mono: true } },
-  { path: 'terminal.fontSize', section: 'terminal', label: '字号',
-    description: '行高与 cell 尺寸由 TerminalView 自管', control: { type: 'number', min: 10, max: 22, step: 1 } },
-  { path: 'terminal.cursorBlink', section: 'terminal', label: '光标闪烁',
-    description: '系统 reduced-motion 开启时自动关闭', control: { type: 'toggle' } },
-  { path: 'terminal.scrollbackLines', section: 'terminal', label: '回滚行数',
-    description: 'scrollback 缓冲区大小', control: { type: 'number', min: 1000, max: 100000, step: 500 } },
-  { path: 'terminal.palette', section: 'terminal', label: '调色板',
-    description: '终端背景与 16 色独立于父容器', control: { type: 'select',
-      options: [{ value: 'one-dark', label: 'One Dark' }] } },
-  { path: 'terminal.closeOnExit', section: 'terminal', label: '退出后直接关闭',
+  {
+    path: 'terminal.fontFamily',
+    section: 'terminal',
+    label: '字体',
+    description: '终端专用 mono 字体，不继承 UI 字体',
+    control: { type: 'text', mono: true },
+  },
+  {
+    path: 'terminal.fontSize',
+    section: 'terminal',
+    label: '字号',
+    description: '行高与 cell 尺寸由 TerminalView 自管',
+    control: { type: 'number', min: 10, max: 22, step: 1 },
+  },
+  {
+    path: 'terminal.cursorBlink',
+    section: 'terminal',
+    label: '光标闪烁',
+    description: '系统 reduced-motion 开启时自动关闭',
+    control: { type: 'toggle' },
+  },
+  {
+    path: 'terminal.scrollbackLines',
+    section: 'terminal',
+    label: '回滚行数',
+    description: 'scrollback 缓冲区大小',
+    control: { type: 'number', min: 1000, max: 100000, step: 500 },
+  },
+  {
+    path: 'terminal.palette',
+    section: 'terminal',
+    label: '调色板',
+    description: '终端背景与 16 色独立于父容器',
+    control: { type: 'select', options: [{ value: 'one-dark', label: 'One Dark' }] },
+  },
+  {
+    path: 'terminal.closeOnExit',
+    section: 'terminal',
+    label: '退出后直接关闭',
     description: '进程 exit 后：开=直接销毁该行；关=保留 exited 灰行查看残留（默认保留）',
-    control: { type: 'toggle' } },
+    control: { type: 'toggle' },
+  },
   // Appearance
-  { path: 'appearance.theme', section: 'appearance', label: '主题',
-    description: '第一期仅 One Dark', control: { type: 'select', options: [
-      { value: 'one-dark', label: 'One Dark（默认）' },
-      { value: 'one-dark-pro', label: 'One Dark Pro · Phase 2' },
-      { value: 'light', label: 'Light · Phase 2' },
-    ] } },
-  { path: 'appearance.sidebarWidth', section: 'appearance', label: '侧栏宽度',
-    description: 'thread 列表宽度，拖拽时实时写回', control: { type: 'range', min: 200, max: 400, step: 2 } },
+  {
+    path: 'appearance.theme',
+    section: 'appearance',
+    label: '主题',
+    description: '第一期仅 One Dark',
+    control: {
+      type: 'select',
+      options: [
+        { value: 'one-dark', label: 'One Dark（默认）' },
+        { value: 'one-dark-pro', label: 'One Dark Pro · Phase 2' },
+        { value: 'light', label: 'Light · Phase 2' },
+      ],
+    },
+  },
+  {
+    path: 'appearance.sidebarWidth',
+    section: 'appearance',
+    label: '侧栏宽度',
+    description: 'thread 列表宽度，拖拽时实时写回',
+    control: { type: 'range', min: 200, max: 400, step: 2 },
+  },
   // Advanced
-  { path: 'advanced.gpuBackend', section: 'advanced', label: 'GPU 后端',
-    description: 'GPUIX（pinned GPUI fork）渲染后端', control: { type: 'select', options: [
-      { value: 'auto', label: 'Auto（推荐）' },
-      { value: 'dx12', label: 'DirectX 12' },
-      { value: 'vulkan', label: 'Vulkan' },
-      { value: 'metal', label: 'Metal' },
-    ] } },
+  {
+    path: 'advanced.gpuBackend',
+    section: 'advanced',
+    label: 'GPU 后端',
+    description: 'GPUIX（pinned GPUI fork）渲染后端',
+    control: {
+      type: 'select',
+      options: [
+        { value: 'auto', label: 'Auto（推荐）' },
+        { value: 'dx12', label: 'DirectX 12' },
+        { value: 'vulkan', label: 'Vulkan' },
+        { value: 'metal', label: 'Metal' },
+      ],
+    },
+  },
 ]

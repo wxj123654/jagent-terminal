@@ -5,11 +5,11 @@
  * 组件树内部零全局单例——与 threads/store.ts 的依赖注入纪律一致。
  */
 
-import type { ThreadStore } from '../threads/store'
 import type { SettingsStore } from '../settings/store'
+import type { ThreadStore } from '../threads/store'
 import { COLORS, FONT } from '../ui/tokens'
-import { Sidebar } from './Sidebar'
 import { Pane } from './Pane'
+import { Sidebar } from './Sidebar'
 
 export function App({ store, settings }: { store: ThreadStore; settings: SettingsStore }) {
   return (

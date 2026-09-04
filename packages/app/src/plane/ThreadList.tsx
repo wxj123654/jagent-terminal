@@ -5,8 +5,8 @@
  * 可滚动（列表超 sidebar 高时）。
  */
 
-import { useThreadStore } from '../threads/useThreadStore'
 import type { ThreadStore } from '../threads/store'
+import { useThreadStore } from '../threads/useThreadStore'
 import { ThreadRow } from './ThreadRow'
 
 export function ThreadList({ store }: { store: ThreadStore }) {
@@ -14,9 +14,7 @@ export function ThreadList({ store }: { store: ThreadStore }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, overflowY: 'scroll' }}>
-      {ids === '' ? null : ids.split(',').map((id) => (
-        <ThreadRow key={id} id={id} store={store} />
-      ))}
+      {ids === '' ? null : ids.split(',').map((id) => <ThreadRow key={id} id={id} store={store} />)}
     </div>
   )
 }

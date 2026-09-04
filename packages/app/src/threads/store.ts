@@ -9,8 +9,8 @@
  * 规则（T2.1 补测试面）。
  */
 
-import { createStore } from 'zustand/vanilla'
 import { produce } from 'immer'
+import { createStore } from 'zustand/vanilla'
 
 import type { SpawnOptionsJs } from '@jagent/native'
 
@@ -68,7 +68,7 @@ export type ThreadDeps = {
   closeOnExit: () => boolean
   presetOf: (id: string) => TerminalPreset | undefined
   /** 路由读侧（active 判定：bell 红点只打非 active、cycle 基准、close 先导航离开）。
-  *  装配层注入（直接读 history）。未注入时：bell 视为非 active，close 保守先导航。 */
+   *  装配层注入（直接读 history）。未注入时：bell 视为非 active，close 保守先导航。 */
   activeThreadId?: () => string | null
 }
 
@@ -165,7 +165,11 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
       // （不能直接 (idx+dir+n)%n——idx=-1 且 dir=-1 会落到 n-2 的怪分支）
       const idx = threads.findIndex((t) => t.id === activeThreadId())
       const nextIdx =
-        idx === -1 ? (dir === 1 ? 0 : threads.length - 1) : (idx + dir + threads.length) % threads.length
+        idx === -1
+          ? dir === 1
+            ? 0
+            : threads.length - 1
+          : (idx + dir + threads.length) % threads.length
       activate({ type: 'thread', id: threads[nextIdx].id })
     },
 

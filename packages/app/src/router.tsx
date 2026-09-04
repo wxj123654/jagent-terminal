@@ -12,8 +12,6 @@
  * `useActiveTarget()`、`router.navigate(...)` 接口不变。
  */
 
-import { createElement } from 'react'
-import { useSyncExternalStore } from 'react'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -21,6 +19,8 @@ import {
   createRouter,
   Outlet,
 } from '@tanstack/react-router'
+import { createElement } from 'react'
+import { useSyncExternalStore } from 'react'
 
 /**
  * 手动桥的快照版本号：router.state 每次访问组装新对象，直接当
@@ -53,10 +53,7 @@ export function lastNonSettings(): ActiveTarget {
   return lastNonSettingsTarget
 }
 
-export type ActiveTarget =
-  | { type: 'thread'; id: string }
-  | { type: 'settings' }
-  | null
+export type ActiveTarget = { type: 'thread'; id: string } | { type: 'settings' } | null
 
 /** 路由占位组件——手动桥下路由树只是 URL 形状 + search 校验，不渲染。 */
 function RouteSlot() {
@@ -101,7 +98,11 @@ declare module '@tanstack/react-router' {
 
 /** 从路由状态派生 ActiveTarget（手动桥：版本号快照 + 渲染期读 pathname）。 */
 export function useActiveTarget(): ActiveTarget {
-  useSyncExternalStore(subscribeRouter, () => snapshotVersion, () => snapshotVersion)
+  useSyncExternalStore(
+    subscribeRouter,
+    () => snapshotVersion,
+    () => snapshotVersion,
+  )
   return activeTargetFromLocation(router.history.location.pathname)
 }
 
@@ -109,7 +110,11 @@ export function useActiveTarget(): ActiveTarget {
 
 /** 当前设置分区（无/未知 → 默认首个 presets；渲染期现读 search） */
 export function useSettingsSection(): string {
-  useSyncExternalStore(subscribeRouter, () => snapshotVersion, () => snapshotVersion)
+  useSyncExternalStore(
+    subscribeRouter,
+    () => snapshotVersion,
+    () => snapshotVersion,
+  )
   return currentSettingsSection()
 }
 

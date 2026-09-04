@@ -6,8 +6,8 @@
 
 import { useSyncExternalStore } from 'react'
 
-import type { SettingsStore } from './store'
 import type { Settings } from './schema'
+import type { SettingsStore } from './store'
 
 /** 订阅整个 Settings 快照（设置面行数少，整树重渲染粒度足够） */
 export function useSettings(store: SettingsStore): Settings {

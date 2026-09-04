@@ -1,1 +1,1 @@
-export * from "@jagent/native";
+export * from '@jagent/native'

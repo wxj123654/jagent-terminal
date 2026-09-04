@@ -7,8 +7,8 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
 
-import { controlBox, controlText } from './style'
 import { inputFocus } from './keyboard'
+import { controlBox, controlText } from './style'
 
 export function TextInput({
   value,

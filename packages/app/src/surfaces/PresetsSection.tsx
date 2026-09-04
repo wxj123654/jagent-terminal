@@ -36,8 +36,8 @@ import { Badge } from '../ui/Badge'
 import { Icon } from '../ui/Icon'
 import { IconButton } from '../ui/IconButton'
 import { SelectField } from '../ui/Select'
-import { TextInput } from '../ui/TextInput'
 import { Textarea } from '../ui/Textarea'
+import { TextInput } from '../ui/TextInput'
 import { COLORS, FONT } from '../ui/tokens'
 
 export function PresetsSection({
@@ -56,11 +56,18 @@ export function PresetsSection({
   const visible = query ? items.filter((p) => presetMatches(p, query)) : items
   const customCount = items.filter((p) => !p.builtin).length
 
-
   return (
     <div>
       {/* + 按钮默认（§7 顶部一行） */}
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          marginBottom: 6,
+        }}
+      >
         <text style={{ fontSize: 12.5, fontFamily: FONT.ui, color: COLORS.text, flexShrink: 0 }}>
           「+」按钮默认预设
         </text>
@@ -75,18 +82,32 @@ export function PresetsSection({
         />
       </div>
 
-      <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted, marginTop: 10, marginBottom: 4 }}>
+      <text
+        style={{
+          fontSize: 12,
+          fontFamily: FONT.ui,
+          color: COLORS.muted,
+          marginTop: 10,
+          marginBottom: 4,
+        }}
+      >
         预设列表
       </text>
 
       {err && err.path.startsWith('presets.') ? (
-        <text testId="writeerror" style={{ fontSize: 11, fontFamily: FONT.mono, color: COLORS.bell, marginBottom: 6 }}>
+        <text
+          testId="writeerror"
+          style={{ fontSize: 11, fontFamily: FONT.mono, color: COLORS.bell, marginBottom: 6 }}
+        >
           {`写入失败：${err.message}`}
         </text>
       ) : null}
 
       {visible.length === 0 && query ? (
-        <text testId="settings-empty-hits" style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted, padding: 8 }}>
+        <text
+          testId="settings-empty-hits"
+          style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted, padding: 8 }}
+        >
           无匹配预设
         </text>
       ) : (
@@ -130,7 +151,14 @@ export function PresetsSection({
         }}
       >
         <Icon name="plus" size={12} color={COLORS.muted} />
-        <text style={{ fontSize: 12.5, fontFamily: FONT.ui, color: COLORS.muted, pointerEvents: 'none' }}>
+        <text
+          style={{
+            fontSize: 12.5,
+            fontFamily: FONT.ui,
+            color: COLORS.muted,
+            pointerEvents: 'none',
+          }}
+        >
           新增预设
         </text>
       </div>
@@ -206,11 +234,7 @@ function PresetCard({
           hover: { backgroundColor: COLORS.surfaceHover },
         }}
       >
-        <Icon
-          name={expanded ? 'chevronDown' : 'chevronRight'}
-          size={12}
-          color={COLORS.muted}
-        />
+        <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={12} color={COLORS.muted} />
         <text
           style={{
             fontSize: 13,
@@ -239,7 +263,15 @@ function PresetCard({
         </text>
         {modified ? <ModDot testId={`mod-dot-${p.id}`} /> : null}
         <Badge variant={p.builtin ? 'builtin' : 'custom'}>{p.builtin ? '内置' : '自定义'}</Badge>
-        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 2,
+            flexShrink: 0,
+          }}
+        >
           <IconButton
             name="copy"
             label={`复制预设 ${p.label} 为自定义副本`}
@@ -292,8 +324,15 @@ function ModDot({ testId }: { testId?: string }): ReactElement {
 
 // ── 展开态编辑器（§7 字段表）───────────────────────────────────────
 
-function PresetEditor({ p, settings }: { p: TerminalPreset; settings: SettingsStore }): ReactElement {
-  const update = (patch: Parameters<SettingsStore['updatePreset']>[1]) => settings.updatePreset(p.id, patch)
+function PresetEditor({
+  p,
+  settings,
+}: {
+  p: TerminalPreset
+  settings: SettingsStore
+}): ReactElement {
+  const update = (patch: Parameters<SettingsStore['updatePreset']>[1]) =>
+    settings.updatePreset(p.id, patch)
 
   return (
     <div
@@ -356,7 +395,11 @@ function PresetEditor({ p, settings }: { p: TerminalPreset; settings: SettingsSt
           commit={(v) => update({ env: v as Record<string, string> })}
         />
       </FieldRow>
-      <FieldRow label="InitCommand" name="initCommand" modified={presetFieldModified(p, 'initCommand')}>
+      <FieldRow
+        label="InitCommand"
+        name="initCommand"
+        modified={presetFieldModified(p, 'initCommand')}
+      >
         <TextInput
           testId={`field-initCommand-${p.id}`}
           mono
@@ -377,8 +420,8 @@ function PresetEditor({ p, settings }: { p: TerminalPreset; settings: SettingsSt
 
       <div style={{ display: 'flex', flexDirection: 'row', gap: 6, marginTop: 10 }}>
         <text style={{ fontSize: 11.5, fontFamily: FONT.ui, color: COLORS.muted, lineHeight: 16 }}>
-          凭证走 shell 环境——设置里不出现 API key 输入框。initCommand 作为普通键入打进
-          shell，不是 exec 替换进程。
+          凭证走 shell 环境——设置里不出现 API key 输入框。initCommand 作为普通键入打进 shell，不是
+          exec 替换进程。
         </text>
       </div>
     </div>
@@ -410,10 +453,19 @@ function FieldRow({
           flexShrink: 0,
         }}
       >
-        <text style={{ fontSize: 12.5, fontFamily: FONT.ui, color: COLORS.text, pointerEvents: 'none' }}>
+        <text
+          style={{ fontSize: 12.5, fontFamily: FONT.ui, color: COLORS.text, pointerEvents: 'none' }}
+        >
           {label}
         </text>
-        <text style={{ fontSize: 10.5, fontFamily: FONT.mono, color: COLORS.muted, pointerEvents: 'none' }}>
+        <text
+          style={{
+            fontSize: 10.5,
+            fontFamily: FONT.mono,
+            color: COLORS.muted,
+            pointerEvents: 'none',
+          }}
+        >
           {name}
         </text>
         {modified ? <ModDot /> : null}

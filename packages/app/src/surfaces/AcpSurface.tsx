@@ -18,9 +18,7 @@ export function AcpSurface({ thread }: SurfaceProps) {
         backgroundColor: COLORS.pane,
       }}
     >
-      <text style={{ color: COLORS.muted, fontSize: 13, fontFamily: FONT.ui }}>
-        acp — Phase 3
-      </text>
+      <text style={{ color: COLORS.muted, fontSize: 13, fontFamily: FONT.ui }}>acp — Phase 3</text>
       {title ? (
         <text style={{ color: COLORS.text, fontSize: 13, fontFamily: FONT.ui, marginTop: 4 }}>
           {title}

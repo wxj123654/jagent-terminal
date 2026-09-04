@@ -12,9 +12,9 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
-import { PresetsSection } from './PresetsSection'
-import { createSettingsStore } from '../settings/store'
 import { memoryAdapter, type MemoryAdapter } from '../settings/file'
+import { createSettingsStore } from '../settings/store'
+import { PresetsSection } from './PresetsSection'
 
 let t: TestRoot
 let file: MemoryAdapter
@@ -107,8 +107,9 @@ describe('PresetsSection · 展开编辑与即时生效', () => {
 
     const label = t.renderer.findByTestId('field-label-claude')!
     t.renderer.nativeSimulateKeystrokes(label.id, 'space X')
-    await until('label updated in store', () =>
-      store.get().presets.items.find((p) => p.id === 'claude')?.label === 'Claude Code X',
+    await until(
+      'label updated in store',
+      () => store.get().presets.items.find((p) => p.id === 'claude')?.label === 'Claude Code X',
     )
     await until('row label rerender', () => texts().includes('Claude Code X'))
     expect(exists('mod-dot-claude')).toBe(true)
@@ -125,8 +126,9 @@ describe('PresetsSection · 展开编辑与即时生效', () => {
   test('重置内置 → 出厂值 + 蓝点消失（§7 仅 modified 时显示 reset）', async () => {
     expect(exists('preset-reset-claude')).toBe(true) // modified → reset 可见
     click('preset-reset-claude')
-    await until('reset to factory', () =>
-      store.get().presets.items.find((p) => p.id === 'claude')?.label === 'Claude Code',
+    await until(
+      'reset to factory',
+      () => store.get().presets.items.find((p) => p.id === 'claude')?.label === 'Claude Code',
     )
     await until('mod dot gone', () => !exists('mod-dot-claude'))
     // 未改过 → reset 钮不再渲染
@@ -160,7 +162,10 @@ describe('PresetsSection · 复制 / 删除 / 新增', () => {
   test('新增预设 → 新行展开 + store +1；改 program/env 即时生效（空串归一）', async () => {
     click('add-preset')
     await until('new preset editor', () => {
-      const ids = store.get().presets.items.filter((p) => !p.builtin).map((p) => p.id)
+      const ids = store
+        .get()
+        .presets.items.filter((p) => !p.builtin)
+        .map((p) => p.id)
       return ids.length === 1 && exists(`preset-editor-${ids[0]}`)
     })
     const nid = store.get().presets.items.find((p) => !p.builtin)!.id
@@ -170,8 +175,9 @@ describe('PresetsSection · 复制 / 删除 / 新增', () => {
     // program 即时输入
     const prog = t.renderer.findByTestId(`field-program-${nid}`)!
     t.renderer.nativeSimulateKeystrokes(prog.id, 'pwsh')
-    await until('program set', () =>
-      store.get().presets.items.find((p) => p.id === nid)?.program === 'pwsh',
+    await until(
+      'program set',
+      () => store.get().presets.items.find((p) => p.id === nid)?.program === 'pwsh',
     )
 
     // args 行式即时提交：enter 换行，空串行在 store 层过滤（提交不依赖 blur
@@ -189,13 +195,17 @@ describe('PresetsSection · 复制 / 删除 / 新增', () => {
     // cwd 即时输入
     const cwd = t.renderer.findByTestId(`field-cwd-${nid}`)!
     t.renderer.nativeSimulateKeystrokes(cwd.id, 'D : / t m p')
-    await until('cwd set', () => store.get().presets.items.find((x) => x.id === nid)?.cwd === 'D:/tmp')
+    await until(
+      'cwd set',
+      () => store.get().presets.items.find((x) => x.id === nid)?.cwd === 'D:/tmp',
+    )
 
     // env 行式：KEY=VALUE（无 = 的行忽略）
     const env = t.renderer.findByTestId(`field-env-${nid}`)!
     t.renderer.nativeSimulateKeystrokes(env.id, 'A M P = 1 shift-enter b r o k e n')
-    await until('env committed', () =>
-      store.get().presets.items.find((x) => x.id === nid)?.env?.AMP === '1',
+    await until(
+      'env committed',
+      () => store.get().presets.items.find((x) => x.id === nid)?.env?.AMP === '1',
     )
     const after = store.get().presets.items.find((x) => x.id === nid)!
     expect(after.env).toEqual({ AMP: '1' }) // 'broken' 无 = 被忽略

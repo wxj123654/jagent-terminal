@@ -18,9 +18,9 @@
 import { createTerminalSession, destroyTerminalSession, notifyDesktop } from '@jagent/native'
 
 import { navigateTarget, currentActiveThreadId } from '../router'
-import { displayTitle } from './terminal'
-import type { ThreadDeps } from './store'
 import type { SettingsStore } from '../settings/store'
+import type { ThreadDeps } from './store'
+import { displayTitle } from './terminal'
 
 /** 可覆盖项：装配层差异点（e2e：notify 静默、注入测试预设） */
 export type NativeDepsOverrides = Partial<Pick<ThreadDeps, 'notify' | 'closeOnExit' | 'presetOf'>>

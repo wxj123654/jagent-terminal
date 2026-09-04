@@ -11,10 +11,10 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
-import { SettingsView } from './SettingsView'
-import { createSettingsStore } from '../settings/store'
-import { memoryAdapter, type MemoryAdapter } from '../settings/file'
 import { navigateSettingsSection } from '../router'
+import { memoryAdapter, type MemoryAdapter } from '../settings/file'
+import { createSettingsStore } from '../settings/store'
+import { SettingsView } from './SettingsView'
 
 let t: TestRoot
 let file: MemoryAdapter
@@ -62,7 +62,15 @@ async function navigateSection(section: string): Promise<void> {
 
 describe('SettingsView · core（§15 1/2/4 部分）', () => {
   test('7 分区导航可见；默认分区 presets 真分区（预设列表 + plusDefault）', () => {
-    for (const id of ['presets', 'notifications', 'terminal', 'appearance', 'keybindings', 'acp', 'advanced']) {
+    for (const id of [
+      'presets',
+      'notifications',
+      'terminal',
+      'appearance',
+      'keybindings',
+      'acp',
+      'advanced',
+    ]) {
       expect(t.renderer.findByTestId(`nav-${id}`)).toBeDefined()
     }
     // T3.1：Presets 不再占位——真 CRUD 分区（内置 5 行 + 新增按钮）
@@ -81,7 +89,14 @@ describe('SettingsView · core（§15 1/2/4 部分）', () => {
     expect(t.renderer.findByTestId('row-terminal.fontFamily')).toBeDefined()
     expect(t.renderer.findByTestId('row-terminal.closeOnExit')).toBeDefined()
     // Term 分区 6 行全在
-    for (const p of ['terminal.fontFamily', 'terminal.fontSize', 'terminal.cursorBlink', 'terminal.scrollbackLines', 'terminal.palette', 'terminal.closeOnExit']) {
+    for (const p of [
+      'terminal.fontFamily',
+      'terminal.fontSize',
+      'terminal.cursorBlink',
+      'terminal.scrollbackLines',
+      'terminal.palette',
+      'terminal.closeOnExit',
+    ]) {
       expect(t.renderer.findByTestId(`row-${p}`)).toBeDefined()
     }
   })
@@ -168,8 +183,9 @@ describe('SettingsView · 真值（§15 4/5 部分）', () => {
     t.renderer.flush()
 
     // 修改后:modified → reset 钮出现（订阅桥重渲染）
-    await until('reset button appears', () =>
-      t.renderer.findByTestId('reset-notifications.desktop') !== undefined,
+    await until(
+      'reset button appears',
+      () => t.renderer.findByTestId('reset-notifications.desktop') !== undefined,
     )
 
     await until('settings.json written', () => file.snapshot() !== null)
@@ -178,8 +194,9 @@ describe('SettingsView · 真值（§15 4/5 部分）', () => {
 
     // reset → 回默认（默认值 + 蓝点消失）
     click('reset-notifications.desktop')
-    await until('reset removes button', () =>
-      t.renderer.findByTestId('reset-notifications.desktop') === undefined,
+    await until(
+      'reset removes button',
+      () => t.renderer.findByTestId('reset-notifications.desktop') === undefined,
     )
   })
 
@@ -191,8 +208,9 @@ describe('SettingsView · 真值（§15 4/5 部分）', () => {
 
     file.setFailWrite(null)
     click('setting-notifications.sound')
-    await until('error cleared on success', () =>
-      t.renderer.findByTestId('writeerror') === undefined,
+    await until(
+      'error cleared on success',
+      () => t.renderer.findByTestId('writeerror') === undefined,
     )
   })
 })

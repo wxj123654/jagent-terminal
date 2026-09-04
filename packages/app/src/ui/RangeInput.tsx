@@ -13,9 +13,9 @@
  * 拖出轨道自然停在最后值（GPUIX mouseMove 只发给 hover 元素，无窗口级捕获）。
  */
 
+import { useGpuix, type PublicInstance } from '@gpuix/react'
 import { useRef, useState } from 'react'
 import type { ReactElement } from 'react'
-import { useGpuix, type PublicInstance } from '@gpuix/react'
 
 import { focusRing } from './style'
 import { COLORS, FONT } from './tokens'
@@ -25,8 +25,7 @@ type Bounds = { left: number; width: number }
 /** 鸭子调用 renderer.getElementBounds（NativeRenderer 接口未列，两个实现都有） */
 function trackBounds(renderer: unknown, id: number | undefined): Bounds | null {
   if (!renderer || id == null) return null
-  const get = (renderer as { getElementBounds?: (id: number) => number[] | null })
-    .getElementBounds
+  const get = (renderer as { getElementBounds?: (id: number) => number[] | null }).getElementBounds
   if (typeof get !== 'function') return null
   const b = get.call(renderer, id)
   if (!Array.isArray(b) || b.length < 4 || b[2] <= 0) return null

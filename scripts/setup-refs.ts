@@ -46,11 +46,15 @@ async function main() {
       const { out: headOut } = await git(['rev-parse', 'HEAD'], { cwd: GPUIX_DIR })
       const head = headOut.trim()
       if (head === GPUIX_PIN && (await isPatchedApplied())) {
-        console.log(`[setup-refs] .refs/gpuix 已就位（pin ${head.slice(0, 7)}，补丁已应用），跳过。`)
+        console.log(
+          `[setup-refs] .refs/gpuix 已就位（pin ${head.slice(0, 7)}，补丁已应用），跳过。`,
+        )
         console.log('[setup-refs] 如需重建：bun run setup-refs -- --force')
         return
       }
-      console.log(`[setup-refs] .refs/gpuix 存在但状态不符（HEAD ${head.slice(0, 7)}），请先手动处理或用 --force 重建。`)
+      console.log(
+        `[setup-refs] .refs/gpuix 存在但状态不符（HEAD ${head.slice(0, 7)}），请先手动处理或用 --force 重建。`,
+      )
       process.exit(1)
     }
   }
@@ -74,7 +78,9 @@ async function main() {
   console.log('[setup-refs] ⑤ 应用 zed 子仓补丁…')
   for (const p of patchFiles('gpuix-zed')) {
     console.log(`        ${p}`)
-    await git(['apply', '--ignore-whitespace', `${ZED_PATCHES_DIR}/${p}`], { cwd: `${GPUIX_DIR}/zed` })
+    await git(['apply', '--ignore-whitespace', `${ZED_PATCHES_DIR}/${p}`], {
+      cwd: `${GPUIX_DIR}/zed`,
+    })
   }
 
   console.log('[setup-refs] ⑥ 构建 @gpuix/react dist（bun install + build:react）…')

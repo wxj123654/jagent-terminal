@@ -26,17 +26,22 @@ import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { installTerminalElement, destroyTerminalSession, onSessionEvent } from '@jagent/native'
 
 import { createElement } from 'react'
-import { App } from '../packages/app/src/plane/AgentPlane'
-import { createThreadStore, type ThreadStore } from '../packages/app/src/threads/store'
-import { createSettingsStore } from '../packages/app/src/settings/store'
-import { memoryAdapter } from '../packages/app/src/settings/file'
-import { createNativeThreadDeps } from '../packages/app/src/threads/nativeDeps'
-import { narrowSessionEvent, type TerminalSessionEvent } from '../packages/app/src/threads/events'
-import { type TerminalPreset } from '../packages/app/src/threads/presets'
-import { currentActiveThreadId, router, activeTargetFromLocation, lastNonSettings } from '../packages/app/src/router'
-import { settingsKeyboard } from '../packages/app/src/surfaces/SettingsView'
-import { inputFocus } from '../packages/app/src/ui/keyboard'
 import { createGlobalKeydown, type GlobalKeydown } from '../packages/app/src/keybindings'
+import { App } from '../packages/app/src/plane/AgentPlane'
+import {
+  currentActiveThreadId,
+  router,
+  activeTargetFromLocation,
+  lastNonSettings,
+} from '../packages/app/src/router'
+import { memoryAdapter } from '../packages/app/src/settings/file'
+import { createSettingsStore } from '../packages/app/src/settings/store'
+import { settingsKeyboard } from '../packages/app/src/surfaces/SettingsView'
+import { narrowSessionEvent, type TerminalSessionEvent } from '../packages/app/src/threads/events'
+import { createNativeThreadDeps } from '../packages/app/src/threads/nativeDeps'
+import { type TerminalPreset } from '../packages/app/src/threads/presets'
+import { createThreadStore, type ThreadStore } from '../packages/app/src/threads/store'
+import { inputFocus } from '../packages/app/src/ui/keyboard'
 
 /** 轮询直到谓词为真：advanceTime 驱动 fake clock（4ms 批处理），setTimeout 让出主线程（React 提交 + TSF 回调） */
 async function until(desc: string, pred: () => boolean, timeoutMs = 15000): Promise<void> {
@@ -55,7 +60,7 @@ const BELL_PRESET: TerminalPreset = {
   label: 'E2E Bell',
   builtin: false,
   program: 'powershell',
-  args: ['-NoProfile', '-Command', "[Console]::Write([char]7 + [char]7); Start-Sleep 3"],
+  args: ['-NoProfile', '-Command', '[Console]::Write([char]7 + [char]7); Start-Sleep 3'],
 }
 
 const TEST_TIMEOUT = 30_000
@@ -121,8 +126,8 @@ beforeAll(() => {
     },
     inputFocused: () => inputFocus.any,
     settingsQuery: settingsKeyboard.query,
-  escConsumed: settingsKeyboard.escConsumed,
-  clearEscConsumed: settingsKeyboard.clearEscConsumed,
+    escConsumed: settingsKeyboard.escConsumed,
+    clearEscConsumed: settingsKeyboard.clearEscConsumed,
   })
 
   t.render(createElement(App, { store, settings }))
@@ -186,23 +191,23 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       expect(currentActiveThreadId()).toBe(shellRow.id)
 
       // 后台 bell 送达：hasBell=true（全局通道，不依赖元素存活）
-      await until(
-        'bell event → hasBell on background row',
-        () => {
-          const row = store.getState().threads.find((x) => x.id === bellRow.id)
-          return row?.kind === 'terminal' && row.hasBell
-        },
-      ).catch((err) => {
+      await until('bell event → hasBell on background row', () => {
+        const row = store.getState().threads.find((x) => x.id === bellRow.id)
+        return row?.kind === 'terminal' && row.hasBell
+      }).catch((err) => {
         console.log(
-          '[debug] sessionEvents:', JSON.stringify(sessionEvents),
-          '\n[debug] threads:', JSON.stringify(store.getState().threads),
-          '\n[debug] active:', currentActiveThreadId(),
+          '[debug] sessionEvents:',
+          JSON.stringify(sessionEvents),
+          '\n[debug] threads:',
+          JSON.stringify(store.getState().threads),
+          '\n[debug] active:',
+          currentActiveThreadId(),
         )
         throw err
       })
-      expect(
-        sessionEvents.some((e) => e.type === 'bell' && `t${e.sessionId}` === bellRow.id),
-      ).toBe(true)
+      expect(sessionEvents.some((e) => e.type === 'bell' && `t${e.sessionId}` === bellRow.id)).toBe(
+        true,
+      )
 
       // activate 清红点（契约 §7：聚焦即清）
       store.activate({ type: 'thread', id: bellRow.id })
@@ -227,9 +232,7 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       expect(store.getState().threads).toHaveLength(2)
 
       // exited 微标签渲染在列表里（React 提交轮询）
-      await until('exited badge visible', () =>
-        t.renderer.getAllText().some((x) => x === 'exited'),
-      )
+      await until('exited badge visible', () => t.renderer.getAllText().some((x) => x === 'exited'))
 
       // close 后台行（当前 active 在它上 → 先导航离开再移除，不变量 1）
       store.close(bellRowId)
@@ -279,8 +282,9 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       await store.spawnFromPreset('shell')
       const rows = store.getState().threads
       const target = rows[0]!
-      await until('two rows rendered', () =>
-        t.renderer.findByTestId(`row-${target.id}`) !== undefined,
+      await until(
+        'two rows rendered',
+        () => t.renderer.findByTestId(`row-${target.id}`) !== undefined,
       )
 
       // 点击 target 行中心（标题文字区——GPUIX 不冒泡，装饰 text 必须
@@ -290,9 +294,7 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       expect(currentActiveThreadId()).not.toBe(target.id)
       t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2)
 
-      await until('click on row text activates thread', () =>
-        currentActiveThreadId() === target.id,
-      )
+      await until('click on row text activates thread', () => currentActiveThreadId() === target.id)
     },
     TEST_TIMEOUT,
   )
@@ -318,8 +320,7 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       settings.patch('terminal.cursorBlink', false)
       await until(
         'terminal props follow settings',
-        () =>
-          (props().fontSize as number) === 18 && props().cursorBlink === false,
+        () => (props().fontSize as number) === 18 && props().cursorBlink === false,
       )
 
       // 会话未重建（sessionId 不变——「样式调和而非重建」的不变量）
@@ -339,7 +340,10 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       // ① Ctrl-, 开设置：窗口 root 键位层（与 main.tsx 同构的 handleKeyDown
       // 已在 createTestRoot 挂点里）——键盘事件走真 GPUI 输入管线
       t.renderer.simulateKeystrokes('ctrl-,')
-      await until('settings view open', () => t.renderer.findByTestId('settings-view') !== undefined)
+      await until(
+        'settings view open',
+        () => t.renderer.findByTestId('settings-view') !== undefined,
+      )
 
       // ② 搜索框 autoFocus（§4 打开设置时焦点进搜索框）：打字 → query 更新
       //    （键盘事件到焦点元素；nativeSimulateKeystrokes 定向搜索框）
@@ -408,27 +412,20 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       const row = store.getState().threads.at(-1)!
       expect(row.kind === 'terminal' && row.preset === nid).toBe(true)
       expect(store.getState().lastUsedPreset).toBe(nid)
-      await until(
-        'custom preset label on + button',
-        () => t.renderer.getAllText().some((s) => s.includes('E2E 自定义')),
+      await until('custom preset label on + button', () =>
+        t.renderer.getAllText().some((s) => s.includes('E2E 自定义')),
       )
 
       // ③ 真 PTY 整链：echo 完进程退出 → exited 灰行保留（closeOnExit=false）
-      await until(
-        'custom preset process exits',
-        () => {
-          const r = store.getState().threads.find((x) => x.id === row.id)
-          return r?.kind === 'terminal' && r.status === 'exited'
-        },
-      )
+      await until('custom preset process exits', () => {
+        const r = store.getState().threads.find((x) => x.id === row.id)
+        return r?.kind === 'terminal' && r.status === 'exited'
+      })
       expect(currentActiveThreadId()).toBe(row.id)
 
       // ④ 清理：close 销毁会话 + 行移除（避免污染后续用例）
       store.close(row.id)
-      await until(
-        'closed',
-        () => !store.getState().threads.some((x) => x.id === row.id),
-      )
+      await until('closed', () => !store.getState().threads.some((x) => x.id === row.id))
       settings.deletePreset(nid)
     },
     TEST_TIMEOUT,

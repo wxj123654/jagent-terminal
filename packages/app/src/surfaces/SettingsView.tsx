@@ -16,17 +16,17 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 
-import type { SettingsStore } from '../settings/store'
-import { useSettings } from '../settings/useSettings'
+import { useSettingsSection, navigateSettingsSection } from '../router'
 import { SECTIONS, SETTING_DEFS, DEFAULT_ACP_AGENTS } from '../settings/schema'
 import type { SettingSectionId } from '../settings/schema'
+import type { SettingsStore } from '../settings/store'
+import { useSettings } from '../settings/useSettings'
 import type { TerminalPreset } from '../threads/presets'
 import { presetMatches } from '../threads/presets'
-import { useSettingsSection, navigateSettingsSection } from '../router'
 import { Icon } from '../ui/Icon'
 import { inputFocus } from '../ui/keyboard'
-import { matchDef, renderSectionContent, SectionHeading, keybindingHits } from './SettingsSections'
 import { COLORS, FONT } from '../ui/tokens'
+import { matchDef, renderSectionContent, SectionHeading, keybindingHits } from './SettingsSections'
 
 // ── 设置面键盘生命周期（模块单例，T2.6）────────────────────────────
 // main.tsx 全局键位层需要两件组件内状态：Esc 判据（query 是否已空：非空
@@ -84,7 +84,10 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
   const totalHits = Object.values(hits).reduce((a, b) => a + b, 0)
 
   return (
-    <div testId="settings-view" style={{ flexGrow: 1, display: 'flex', flexDirection: 'row', backgroundColor: COLORS.pane }}>
+    <div
+      testId="settings-view"
+      style={{ flexGrow: 1, display: 'flex', flexDirection: 'row', backgroundColor: COLORS.pane }}
+    >
       {/* ── 左列：SettingsNav ── */}
       <div
         style={{
@@ -146,7 +149,13 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
                 escConsumedBySearch = true
               }
             }}
-            style={{ flexGrow: 1, minWidth: 0, fontSize: 12, fontFamily: FONT.ui, color: COLORS.textBright }}
+            style={{
+              flexGrow: 1,
+              minWidth: 0,
+              fontSize: 12,
+              fontFamily: FONT.ui,
+              color: COLORS.textBright,
+            }}
           />
         </div>
 
@@ -231,8 +240,18 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
       >
         {searching ? (
           totalHits === 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-start' }}>
-              <text testId="settings-empty" style={{ fontSize: 13, fontFamily: FONT.ui, color: COLORS.muted }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+                alignItems: 'flex-start',
+              }}
+            >
+              <text
+                testId="settings-empty"
+                style={{ fontSize: 13, fontFamily: FONT.ui, color: COLORS.muted }}
+              >
                 {`无匹配“${query.trim()}”的设置项`}
               </text>
               <div
@@ -254,7 +273,14 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
                   hover: { backgroundColor: COLORS.surfaceHover },
                 }}
               >
-                <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.textBright, pointerEvents: 'none' }}>
+                <text
+                  style={{
+                    fontSize: 12,
+                    fontFamily: FONT.ui,
+                    color: COLORS.textBright,
+                    pointerEvents: 'none',
+                  }}
+                >
                   清除搜索
                 </text>
               </div>
@@ -280,7 +306,10 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
 }
 
 /** 各分区命中数（搜索过滤面：defs + 键位动作 + 预设名（动态 items）+ ACP 名） */
-export function hitsBySection(q: string | null, presetItems: TerminalPreset[]): Record<string, number> {
+export function hitsBySection(
+  q: string | null,
+  presetItems: TerminalPreset[],
+): Record<string, number> {
   if (!q) return {}
   const hits: Record<string, number> = {}
   for (const d of SETTING_DEFS) {
@@ -289,7 +318,9 @@ export function hitsBySection(q: string | null, presetItems: TerminalPreset[]): 
   hits.keybindings = (hits.keybindings ?? 0) + keybindingHits(q)
   const presetHits = presetItems.filter((p) => presetMatches(p, q)).length
   if (presetHits > 0) hits.presets = (hits.presets ?? 0) + presetHits
-  const acpHits = DEFAULT_ACP_AGENTS.filter((a) => a.label.toLowerCase().includes(q.toLowerCase())).length
+  const acpHits = DEFAULT_ACP_AGENTS.filter((a) =>
+    a.label.toLowerCase().includes(q.toLowerCase()),
+  ).length
   if (acpHits > 0) hits.acp = (hits.acp ?? 0) + acpHits
   return hits
 }

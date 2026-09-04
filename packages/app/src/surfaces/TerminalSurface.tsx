@@ -11,9 +11,9 @@
  * （nativeDeps 兑底），不在这里。focused prop：挂载即请求焦点（T1.6）。
  */
 
+import { useSettings } from '../settings/useSettings'
 import type { TerminalThread } from '../threads/store'
 import type { SurfaceProps } from './registry'
-import { useSettings } from '../settings/useSettings'
 
 // ── `<terminal>` JSX 类型声明（GPUIX jsx-runtime 的 augmentation）──────
 
@@ -44,7 +44,9 @@ export function TerminalSurface({ thread, settings }: SurfaceProps) {
   const t = thread as TerminalThread
   const term = useSettings(settings).terminal
   return (
-    <div style={{ display: 'flex', flexDirection: 'row', flexGrow: 1, width: '100%', height: '100%' }}>
+    <div
+      style={{ display: 'flex', flexDirection: 'row', flexGrow: 1, width: '100%', height: '100%' }}
+    >
       <terminal
         sessionId={t.sessionId}
         fontFamily={term.fontFamily}

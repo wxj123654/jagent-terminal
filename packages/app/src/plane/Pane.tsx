@@ -11,12 +11,12 @@
  */
 
 import { useActiveTarget } from '../router'
-import { useThreadStore } from '../threads/useThreadStore'
-import type { ThreadStore } from '../threads/store'
 import type { SettingsStore } from '../settings/store'
-import { getSurface } from '../surfaces/registry'
 import { EmptyPresets } from '../surfaces/EmptyPresets'
+import { getSurface } from '../surfaces/registry'
 import { SettingsView } from '../surfaces/SettingsView'
+import type { ThreadStore } from '../threads/store'
+import { useThreadStore } from '../threads/useThreadStore'
 
 export function Pane({ store, settings }: { store: ThreadStore; settings: SettingsStore }) {
   const active = useActiveTarget()
@@ -25,7 +25,8 @@ export function Pane({ store, settings }: { store: ThreadStore; settings: Settin
   )
 
   if (active?.type === 'settings') return <SettingsView settings={settings} />
-  if (!thread) return <EmptyPresets onPick={(id) => void store.spawnFromPreset(id)} settings={settings} />
+  if (!thread)
+    return <EmptyPresets onPick={(id) => void store.spawnFromPreset(id)} settings={settings} />
   const S = getSurface(thread.kind)
   return <S thread={thread} store={store} settings={settings} />
 }

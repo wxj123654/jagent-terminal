@@ -12,8 +12,8 @@ import { useState } from 'react'
 import type { ReactElement } from 'react'
 
 import { Icon } from './Icon'
-import { controlText } from './style'
 import { inputFocus } from './keyboard'
+import { controlText } from './style'
 import { COLORS } from './tokens'
 
 export function NumberInput({
@@ -95,8 +95,18 @@ export function NumberInput({
       />
       {/* 步进钮列：↑/↓，各 22×~13 */}
       <div style={{ display: 'flex', flexDirection: 'column', width: 22, flexShrink: 0 }}>
-        <StepperButton testId={`${testId}-inc`} icon="chevronUp" disabled={disabled} onClick={() => nudge(1)} />
-        <StepperButton testId={`${testId}-dec`} icon="chevronDown" disabled={disabled} onClick={() => nudge(-1)} />
+        <StepperButton
+          testId={`${testId}-inc`}
+          icon="chevronUp"
+          disabled={disabled}
+          onClick={() => nudge(1)}
+        />
+        <StepperButton
+          testId={`${testId}-dec`}
+          icon="chevronDown"
+          disabled={disabled}
+          onClick={() => nudge(-1)}
+        />
       </div>
     </div>
   )

@@ -9,13 +9,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { memoryAdapter } from './file'
-import {
-  DEFAULTS,
-  SECTIONS,
-  SETTING_DEFS,
-  type Settings,
-  type SettingsPath,
-} from './schema'
+import { DEFAULTS, SECTIONS, SETTING_DEFS, type Settings, type SettingsPath } from './schema'
 import { createSettingsStore, getByPath } from './store'
 
 /** 等异步写盘链走完 */
@@ -108,7 +102,11 @@ describe('读盘容错（zod catch / prefault / 顶层兜底）', () => {
     const raw = JSON.stringify({ presets: { items: [{ id: 'x' }] } }) // 缺 label/builtin
     const { store } = await makeStore(raw)
     expect(store.get().presets.items.map((p) => p.id)).toEqual([
-      'claude', 'pi', 'codex', 'amp', 'shell',
+      'claude',
+      'pi',
+      'codex',
+      'amp',
+      'shell',
     ])
   })
 
@@ -180,13 +178,21 @@ describe('schema 一致性（§6.3）', () => {
     for (const def of SETTING_DEFS) {
       expect(getByPath(DEFAULTS, def.path), `path 不存在: ${def.path}`).not.toBeUndefined()
       // section 前缀匹配
-      expect(def.path.startsWith(`${def.section}.`), `${def.path} 前缀应为 ${def.section}.`).toBe(true)
+      expect(def.path.startsWith(`${def.section}.`), `${def.path} 前缀应为 ${def.section}.`).toBe(
+        true,
+      )
     }
   })
 
   test('SECTIONS 7 分区齐全且 def.section 都在 SECTIONS 中', () => {
     expect(SECTIONS.map((s) => s.id)).toEqual([
-      'presets', 'notifications', 'terminal', 'appearance', 'keybindings', 'acp', 'advanced',
+      'presets',
+      'notifications',
+      'terminal',
+      'appearance',
+      'keybindings',
+      'acp',
+      'advanced',
     ])
     const sectionIds = new Set(SECTIONS.map((s) => s.id))
     for (const def of SETTING_DEFS) expect(sectionIds.has(def.section)).toBe(true)
@@ -194,8 +200,13 @@ describe('schema 一致性（§6.3）', () => {
 
   test('SettingsPath 类型抽样：合法路径编译期可表达（运行时存在）', () => {
     const paths: SettingsPath[] = [
-      'presets.plusDefault', 'presets.items', 'notifications.desktop', 'terminal.fontSize',
-      'appearance.sidebarWidth', 'acpAgents', 'advanced.gpuBackend',
+      'presets.plusDefault',
+      'presets.items',
+      'notifications.desktop',
+      'terminal.fontSize',
+      'appearance.sidebarWidth',
+      'acpAgents',
+      'advanced.gpuBackend',
     ]
     for (const p of paths) expect(getByPath(DEFAULTS, p)).not.toBeUndefined()
   })
@@ -206,8 +217,12 @@ describe('schema 一致性（§6.3）', () => {
     expect(d.presets.items).toHaveLength(5)
     expect(d.notifications).toEqual({ desktop: true, sound: false })
     expect(d.terminal).toEqual({
-      fontFamily: 'JetBrains Mono', fontSize: 13, cursorBlink: true,
-      scrollbackLines: 10000, palette: 'one-dark', closeOnExit: false,
+      fontFamily: 'JetBrains Mono',
+      fontSize: 13,
+      cursorBlink: true,
+      scrollbackLines: 10000,
+      palette: 'one-dark',
+      closeOnExit: false,
     })
     expect(d.appearance).toEqual({ theme: 'one-dark', sidebarWidth: 248 })
     expect(d.acpAgents).toHaveLength(2)
@@ -255,7 +270,14 @@ describe('preset CRUD：add / update', () => {
 
   test('updatePreset 改字段；空串/空集合归一 undefined（JSON 不留 "" / []）；args 空串行过滤', async () => {
     const { store, file } = await makeStore()
-    const id = store.addPreset({ label: 'X', program: 'pwsh', args: ['-l'], env: { A: '1' }, initCommand: 'vim', cwd: 'D:/' })
+    const id = store.addPreset({
+      label: 'X',
+      program: 'pwsh',
+      args: ['-l'],
+      env: { A: '1' },
+      initCommand: 'vim',
+      cwd: 'D:/',
+    })
     store.updatePreset(id, { program: '', args: [], env: {}, initCommand: '', label: 'Y' })
     const p = store.get().presets.items.find((x) => x.id === id)!
     expect(p.label).toBe('Y')
@@ -280,7 +302,9 @@ describe('preset CRUD：add / update', () => {
   test('updatePreset 内置预设可改字段（id 不可改在类型面）；未知 id no-op', async () => {
     const { store } = await makeStore()
     store.updatePreset('claude', { initCommand: 'claude --dangerously' })
-    expect(store.get().presets.items.find((p) => p.id === 'claude')!.initCommand).toBe('claude --dangerously')
+    expect(store.get().presets.items.find((p) => p.id === 'claude')!.initCommand).toBe(
+      'claude --dangerously',
+    )
     const before = store.get().presets.items
     store.updatePreset('nope', { label: '?' })
     expect(store.get().presets.items).toBe(before) // 引用未变 = no-op
@@ -374,7 +398,7 @@ describe('运行时态纪律（§15 第 8 条后半）', () => {
     store.patch('terminal.fontSize', 15)
     store.addPreset({ label: 'X' })
     await flush()
-    const raw = file.snapshot()! 
+    const raw = file.snapshot()!
     expect(raw.includes('lastUsedPreset')).toBe(false)
     expect('lastUsedPreset' in store.get()).toBe(false)
     expect(JSON.stringify(DEFAULTS).includes('lastUsedPreset')).toBe(false)

@@ -9,27 +9,44 @@
 
 import { useState } from 'react'
 
-import type { ThreadStore } from '../threads/store'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
-import { useThreadStore } from '../threads/useThreadStore'
 import { presetCommandSummary } from '../threads/presets'
+import type { ThreadStore } from '../threads/store'
+import { useThreadStore } from '../threads/useThreadStore'
 import { Icon } from '../ui/Icon'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
 
-export function NewThreadButton({ store, settings }: { store: ThreadStore; settings: SettingsStore }) {
+export function NewThreadButton({
+  store,
+  settings,
+}: {
+  store: ThreadStore
+  settings: SettingsStore
+}) {
   const lastPreset = useThreadStore(store, (s) => s.lastUsedPreset)
   const presets = useSettings(settings).presets.items
   const [open, setOpen] = useState(false)
 
   // + 的目标：plusDefault 固定 → 上次使用 → 首项兜底（列表至少含 5 内置）
-  const targetId = presets.find((p) => p.id === (settings.get().presets.plusDefault ?? lastPreset))?.id
-    ?? presets[0]?.id
+  const targetId =
+    presets.find((p) => p.id === (settings.get().presets.plusDefault ?? lastPreset))?.id ??
+    presets[0]?.id
   const target = presets.find((p) => p.id === targetId) ?? presets[0]
   if (!target) return null
 
   return (
-    <div style={{ position: 'relative', display: 'flex', flexDirection: 'row', marginTop: 4, marginBottom: 6, marginLeft: SIZES.rowMarginX, marginRight: SIZES.rowMarginX }}>
+    <div
+      style={{
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'row',
+        marginTop: 4,
+        marginBottom: 6,
+        marginLeft: SIZES.rowMarginX,
+        marginRight: SIZES.rowMarginX,
+      }}
+    >
       {/* 主按钮：+ target */}
       <div
         tabIndex={0}

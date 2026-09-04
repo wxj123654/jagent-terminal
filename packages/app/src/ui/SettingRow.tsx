@@ -16,9 +16,9 @@
 import type { ReactElement } from 'react'
 
 import type { SettingDef } from '../settings/schema'
-import { PhaseBadge } from './PhaseBadge'
 import { IconButton } from './IconButton'
 import { NumberInput } from './NumberInput'
+import { PhaseBadge } from './PhaseBadge'
 import { RangeInput } from './RangeInput'
 import { SelectField } from './Select'
 import { Textarea } from './Textarea'
@@ -158,14 +158,14 @@ export function SettingRow({
               textOverflow: 'ellipsis',
             }}
             highlight={
-              highlightQuery
-                ? { query: highlightQuery, color: 'rgba(229, 192, 123, 0.28)' }
-                : null
+              highlightQuery ? { query: highlightQuery, color: 'rgba(229, 192, 123, 0.28)' } : null
             }
           >
             {def.label}
           </text>
-          {def.phase !== undefined ? <PhaseBadge phase={def.phase} testId={`phase-${def.path}`} /> : null}
+          {def.phase !== undefined ? (
+            <PhaseBadge phase={def.phase} testId={`phase-${def.path}`} />
+          ) : null}
         </div>
         {def.description ? (
           <text
@@ -178,9 +178,7 @@ export function SettingRow({
               lineHeight: 17,
             }}
             highlight={
-              highlightQuery
-                ? { query: highlightQuery, color: 'rgba(229, 192, 123, 0.28)' }
-                : null
+              highlightQuery ? { query: highlightQuery, color: 'rgba(229, 192, 123, 0.28)' } : null
             }
           >
             {def.description}
@@ -189,7 +187,15 @@ export function SettingRow({
       </div>
 
       {/* 右列：控件 + reset（modified 时） */}
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          flexShrink: 0,
+        }}
+      >
         {control()}
         {modified ? (
           <IconButton

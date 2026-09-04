@@ -7,11 +7,11 @@
 
 import type { ComponentType } from 'react'
 
-import type { Thread, ThreadStore } from '../threads/store'
 import type { SettingsStore } from '../settings/store'
-import { TerminalSurface } from './TerminalSurface'
-import { ChatSurface } from './ChatSurface'
+import type { Thread, ThreadStore } from '../threads/store'
 import { AcpSurface } from './AcpSurface'
+import { ChatSurface } from './ChatSurface'
+import { TerminalSurface } from './TerminalSurface'
 
 export type SurfaceProps = {
   thread: Thread

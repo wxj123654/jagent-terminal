@@ -38,8 +38,16 @@ export function createGlobalKeydown(opts: {
   /** 重置 Esc 消费标记（root 层读取后调） */
   clearEscConsumed: () => void
 }): GlobalKeydown {
-  const { store, inSettings, focusSearch, inputFocused, settingsQuery, escConsumed, clearEscConsumed, closeSettings } =
-    opts
+  const {
+    store,
+    inSettings,
+    focusSearch,
+    inputFocused,
+    settingsQuery,
+    escConsumed,
+    clearEscConsumed,
+    closeSettings,
+  } = opts
   return (key, ctrl, shift) => {
     // 设置面生命周期键（无修饰键；仅设置面打开时吃）
     if (!ctrl && inSettings()) {

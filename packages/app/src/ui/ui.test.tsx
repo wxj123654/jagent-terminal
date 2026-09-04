@@ -10,16 +10,16 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
+import { SETTING_DEFS } from '../settings/schema'
 import { Badge } from './Badge'
 import { IconButton } from './IconButton'
 import { NumberInput } from './NumberInput'
 import { RangeInput } from './RangeInput'
-import { SettingRow } from './SettingRow'
 import { SelectField } from './Select'
+import { SettingRow } from './SettingRow'
 import { Textarea } from './Textarea'
 import { TextInput } from './TextInput'
 import { Toggle } from './Toggle'
-import { SETTING_DEFS } from '../settings/schema'
 
 let t: TestRoot
 
@@ -63,12 +63,16 @@ function texts(): string {
 describe('Toggle', () => {
   test('点击切换 + space 键切换', () => {
     const calls: boolean[] = []
-    t.render(createElement(Toggle, { checked: false, onChange: (v) => calls.push(v), testId: 'tg' }))
+    t.render(
+      createElement(Toggle, { checked: false, onChange: (v) => calls.push(v), testId: 'tg' }),
+    )
 
     click('tg')
     expect(calls).toEqual([true])
 
-    t.render(createElement(Toggle, { checked: false, onChange: (v) => calls.push(v), testId: 'tg' }))
+    t.render(
+      createElement(Toggle, { checked: false, onChange: (v) => calls.push(v), testId: 'tg' }),
+    )
     keyDown('tg', 'space')
     expect(calls).toEqual([true, true])
   })
@@ -76,7 +80,12 @@ describe('Toggle', () => {
   test('disabled 不响应点击', () => {
     const calls: boolean[] = []
     t.render(
-      createElement(Toggle, { checked: true, disabled: true, onChange: (v) => calls.push(v), testId: 'tg' }),
+      createElement(Toggle, {
+        checked: true,
+        disabled: true,
+        onChange: (v) => calls.push(v),
+        testId: 'tg',
+      }),
     )
     click('tg')
     expect(calls).toEqual([])
@@ -95,7 +104,12 @@ describe('SelectField', () => {
   test('开菜单 → 点项回调', () => {
     const calls: string[] = []
     t.render(
-      createElement(SelectField, { value: 'auto', options: OPTIONS, onChange: (v) => calls.push(v), testId: 'sel' }),
+      createElement(SelectField, {
+        value: 'auto',
+        options: OPTIONS,
+        onChange: (v) => calls.push(v),
+        testId: 'sel',
+      }),
     )
 
     // 未开菜单：选项不在树上
@@ -130,7 +144,16 @@ describe('NumberInput', () => {
   test('stepper 点击 + up/down 键步进', () => {
     const calls: number[] = []
     const render = (value: number) =>
-      t.render(createElement(NumberInput, { value, min: 0, max: 100, step: 5, onChange: (v) => calls.push(v), testId: 'num' }))
+      t.render(
+        createElement(NumberInput, {
+          value,
+          min: 0,
+          max: 100,
+          step: 5,
+          onChange: (v) => calls.push(v),
+          testId: 'num',
+        }),
+      )
 
     render(10)
     click('num-inc')
@@ -151,14 +174,32 @@ describe('NumberInput', () => {
 
   test('越界 clamp：max 边界 stepper 不再增', () => {
     const calls: number[] = []
-    t.render(createElement(NumberInput, { value: 100, min: 0, max: 100, step: 5, onChange: (v) => calls.push(v), testId: 'num' }))
+    t.render(
+      createElement(NumberInput, {
+        value: 100,
+        min: 0,
+        max: 100,
+        step: 5,
+        onChange: (v) => calls.push(v),
+        testId: 'num',
+      }),
+    )
     click('num-inc')
     expect(calls).toEqual([])
   })
 
   test('键入合法值即时回调；越界值不回调', () => {
     const calls: number[] = []
-    t.render(createElement(NumberInput, { value: 1, min: 0, max: 100, step: 1, onChange: (v) => calls.push(v), testId: 'num' }))
+    t.render(
+      createElement(NumberInput, {
+        value: 1,
+        min: 0,
+        max: 100,
+        step: 1,
+        onChange: (v) => calls.push(v),
+        testId: 'num',
+      }),
+    )
 
     const input = t.renderer.findByTestId('num-input')!
     t.renderer.nativeSimulateKeystrokes(input.id, '5')
@@ -178,7 +219,12 @@ describe('RangeInput', () => {
     const render = (value: number) =>
       t.render(
         createElement(RangeInput, {
-          value, min: 200, max: 400, step: 2, onChange: (v) => calls.push(v), testId: 'rng',
+          value,
+          min: 200,
+          max: 400,
+          step: 2,
+          onChange: (v) => calls.push(v),
+          testId: 'rng',
         }),
       )
 
@@ -202,7 +248,14 @@ describe('RangeInput', () => {
   test('mouseDown 比例定位 + 拖拽（getElementBounds 路径）', () => {
     const calls: number[] = []
     t.render(
-      createElement(RangeInput, { value: 200, min: 200, max: 400, step: 2, onChange: (v) => calls.push(v), testId: 'rng' }),
+      createElement(RangeInput, {
+        value: 200,
+        min: 200,
+        max: 400,
+        step: 2,
+        onChange: (v) => calls.push(v),
+        testId: 'rng',
+      }),
     )
 
     const [x, y, w, h] = boundsOf('rng')
@@ -255,7 +308,12 @@ describe('IconButton', () => {
   test('点击回调 + hover 出 Tooltip 文案', () => {
     let clicked = 0
     t.render(
-      createElement(IconButton, { name: 'reset', label: '恢复默认', onClick: () => clicked++, testId: 'btn' }),
+      createElement(IconButton, {
+        name: 'reset',
+        label: '恢复默认',
+        onClick: () => clicked++,
+        testId: 'btn',
+      }),
     )
 
     click('btn')
@@ -283,7 +341,9 @@ describe('SettingRow', () => {
     const def = defOf('notifications.desktop')
     t.render(
       createElement(SettingRow, {
-        def, value: true, modified: true,
+        def,
+        value: true,
+        modified: true,
         onChange: (v) => changes.push(v),
         onReset: () => resets++,
       }),
@@ -303,7 +363,13 @@ describe('SettingRow', () => {
   test('未修改行无 reset 钮；label/description 渲染', () => {
     const def = defOf('terminal.scrollbackLines')
     t.render(
-      createElement(SettingRow, { def, value: 10000, modified: false, onChange: () => {}, onReset: () => {} }),
+      createElement(SettingRow, {
+        def,
+        value: 10000,
+        modified: false,
+        onChange: () => {},
+        onReset: () => {},
+      }),
     )
     expect(t.renderer.findByTestId('reset-terminal.scrollbackLines')).toBeUndefined()
     expect(t.renderer.getAllText().some((s) => s.includes('回滚行数'))).toBe(true)
@@ -314,7 +380,13 @@ describe('SettingRow', () => {
     const def = { ...defOf('notifications.desktop'), phase: 2 as const }
     const changes: (boolean | string | number)[] = []
     t.render(
-      createElement(SettingRow, { def, value: true, modified: false, onChange: (v) => changes.push(v), onReset: () => {} }),
+      createElement(SettingRow, {
+        def,
+        value: true,
+        modified: false,
+        onChange: (v) => changes.push(v),
+        onReset: () => {},
+      }),
     )
 
     expect(t.renderer.findByTestId('phase-notifications.desktop')).toBeDefined()

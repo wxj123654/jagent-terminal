@@ -21,10 +21,10 @@
 
 import { useState } from 'react'
 
-import type { ThreadStore, Thread } from '../threads/store'
-import { useThreadStore } from '../threads/useThreadStore'
-import { displayTitle } from '../threads/terminal'
 import { useActiveTarget } from '../router'
+import type { ThreadStore, Thread } from '../threads/store'
+import { displayTitle } from '../threads/terminal'
+import { useThreadStore } from '../threads/useThreadStore'
 import { Icon } from '../ui/Icon'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
 
@@ -48,11 +48,17 @@ export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
   const showClose = hovered || isActive || editing
 
   const kindColor =
-    thread.kind === 'terminal' ? COLORS.terminalKind : thread.kind === 'acp' ? COLORS.acpKind : COLORS.accent
+    thread.kind === 'terminal'
+      ? COLORS.terminalKind
+      : thread.kind === 'acp'
+        ? COLORS.acpKind
+        : COLORS.accent
   const titleColor = exited ? COLORS.exited : isActive ? COLORS.textBright : COLORS.text
 
   const startRename = () => {
-    setDraft(thread.kind === 'terminal' ? (thread.customTitle ?? thread.oscTitle ?? '') : thread.title)
+    setDraft(
+      thread.kind === 'terminal' ? (thread.customTitle ?? thread.oscTitle ?? '') : thread.title,
+    )
     setEditing(true)
   }
 
