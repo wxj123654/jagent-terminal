@@ -28,6 +28,8 @@ import { installTerminalElement, destroyTerminalSession, onSessionEvent } from '
 import { createElement } from 'react'
 import { App } from '../packages/app/src/plane/AgentPlane'
 import { createThreadStore, type ThreadStore } from '../packages/app/src/threads/store'
+import { createSettingsStore } from '../packages/app/src/settings/store'
+import { memoryAdapter } from '../packages/app/src/settings/file'
 import { createNativeThreadDeps } from '../packages/app/src/threads/nativeDeps'
 import { narrowSessionEvent, type TerminalSessionEvent } from '../packages/app/src/threads/events'
 import { builtinPresetOf, type TerminalPreset } from '../packages/app/src/threads/presets'
@@ -90,7 +92,10 @@ beforeAll(() => {
     store.onSessionEvent(n)
   })
 
-  t.render(createElement(App, { store }))
+  // 设置面：memoryAdapter（隔离真盘 ~/.j-agent/settings.json）
+  const settings = createSettingsStore(memoryAdapter())
+
+  t.render(createElement(App, { store, settings }))
 })
 
 afterAll(() => {

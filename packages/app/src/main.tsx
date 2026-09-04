@@ -14,11 +14,15 @@
 
 import { render } from '@gpuix/react'
 import { installTerminalElement, onSessionEvent } from '@jagent/native'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 
 import { router, activeTargetFromLocation } from './router'
 import { createThreadStore } from './threads/store'
 import { createNativeThreadDeps } from './threads/nativeDeps'
 import { narrowSessionEvent } from './threads/events'
+import { createSettingsStore } from './settings/store'
+import { fsAdapter } from './settings/file'
 import { App } from './plane/AgentPlane'
 
 // ── seam 装配（顺序敏感：先注册元素，再开窗）──────────────────────────
@@ -30,6 +34,11 @@ const threadStore = createThreadStore(
     // Phase 2（T2.5）接线处：notify 桌面通知 / closeOnExit 读 settings 终端区
   }),
 )
+
+// ── SettingsStore（~/.j-agent/settings.json；S3 事实源）──
+// 装配期读盘 await 后再渲染（T2.2 结论：init 是生命周期一部分）
+const settingsStore = createSettingsStore(fsAdapter(join(homedir(), '.j-agent', 'settings.json')))
+await settingsStore.init()
 
 onSessionEvent((_err, e) => {
   // seam 边界窄化：未知 type 拒绝（events.ts）
@@ -51,7 +60,7 @@ function handleKeyDown(key: string, ctrl: boolean, shift: boolean): void {
 }
 
 // ── 窗口 ────────────────────────────────────────────────────────────
-render(<App store={threadStore} />, {
+render(<App store={threadStore} settings={settingsStore} />, {
   title: 'j-agent',
   appName: 'j-agent',
   width: 1180,

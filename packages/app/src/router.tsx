@@ -96,6 +96,30 @@ export function useActiveTarget(): ActiveTarget {
   return activeTargetFromLocation(router.history.location.pathname)
 }
 
+// ── settings 分区深链（settings-ui.md §3 /settings?section=$s）──────
+
+/** 当前设置分区（无/未知 → 默认首个 presets；渲染期现读 search） */
+export function useSettingsSection(): string {
+  useSyncExternalStore(subscribeRouter, () => snapshotVersion, () => snapshotVersion)
+  return currentSettingsSection()
+}
+
+export function currentSettingsSection(): string {
+  const search = router.history.location.search
+  let raw: unknown
+  if (typeof search === 'string') {
+    raw = new URLSearchParams(search).get('section')
+  } else if (search !== null && typeof search === 'object') {
+    raw = (search as Record<string, unknown>).section
+  }
+  return typeof raw === 'string' && raw ? raw : 'presets'
+}
+
+/** 分区深链导航（fire-and-forget，同手动桥纪律） */
+export function navigateSettingsSection(section: string): void {
+  void router.navigate({ to: '/settings', search: { section } })
+}
+
 /** 纯函数：pathname → ActiveTarget（bun test 可直接测）。 */
 export function activeTargetFromLocation(pathname: string): ActiveTarget {
   const m = /^\/thread\/(.+)$/.exec(pathname)

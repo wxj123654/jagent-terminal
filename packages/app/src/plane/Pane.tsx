@@ -6,41 +6,25 @@
  * 会话在 Rust TerminalPool（元素 destroy 只解绑视图）。
  *
  * 路由（§3.5）：/ → EmptyPresets · /thread/$id → 按 kind 查 registry ·
- * /settings → SettingsView（Phase 2；先占位）。
+ * /settings → SettingsView（settings-ui.md §3：Pane 特殊表面，非 thread
+ * kind——不进混排列表、不进 History）。
  */
 
 import { useActiveTarget } from '../router'
 import { useThreadStore } from '../threads/useThreadStore'
 import type { ThreadStore } from '../threads/store'
+import type { SettingsStore } from '../settings/store'
 import { getSurface } from '../surfaces/registry'
 import { EmptyPresets } from '../surfaces/EmptyPresets'
-import { COLORS, FONT } from '../ui/tokens'
+import { SettingsView } from '../surfaces/SettingsView'
 
-function SettingsPlaceholder() {
-  return (
-    <div
-      style={{
-        flexGrow: 1,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: COLORS.pane,
-      }}
-    >
-      <text style={{ color: COLORS.muted, fontSize: 13, fontFamily: FONT.ui }}>
-        settings — Phase 2（T2.4 SettingsView）
-      </text>
-    </div>
-  )
-}
-
-export function Pane({ store }: { store: ThreadStore }) {
+export function Pane({ store, settings }: { store: ThreadStore; settings: SettingsStore }) {
   const active = useActiveTarget()
   const thread = useThreadStore(store, (s) =>
     active?.type === 'thread' ? s.threads.find((t) => t.id === active.id) : undefined,
   )
 
-  if (active?.type === 'settings') return <SettingsPlaceholder />
+  if (active?.type === 'settings') return <SettingsView settings={settings} />
   if (!thread) return <EmptyPresets onPick={(id) => void store.spawnFromPreset(id)} />
   const S = getSurface(thread.kind)
   return <S thread={thread} store={store} />

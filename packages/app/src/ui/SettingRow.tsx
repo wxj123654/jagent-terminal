@@ -34,12 +34,16 @@ export function SettingRow({
   modified,
   onChange,
   onReset,
+  highlightQuery,
 }: {
   def: SettingDef
   value: SettingValue
   modified: boolean
   onChange: (next: SettingValue) => void
   onReset: () => void
+  /** 搜索子串：label/description 高亮（settings-ui.md §9；GPUIX 无 <mark>，
+   * 用 highlight wash，原型 amber 底） */
+  highlightQuery?: string | null
 }): ReactElement {
   const disabled = def.phase !== undefined
   const c = def.control
@@ -153,6 +157,11 @@ export function SettingRow({
               whiteSpace: 'nowrap',
               textOverflow: 'ellipsis',
             }}
+            highlight={
+              highlightQuery
+                ? { query: highlightQuery, color: 'rgba(229, 192, 123, 0.28)' }
+                : null
+            }
           >
             {def.label}
           </text>
@@ -168,6 +177,11 @@ export function SettingRow({
               whiteSpace: 'normal',
               lineHeight: 17,
             }}
+            highlight={
+              highlightQuery
+                ? { query: highlightQuery, color: 'rgba(229, 192, 123, 0.28)' }
+                : null
+            }
           >
             {def.description}
           </text>

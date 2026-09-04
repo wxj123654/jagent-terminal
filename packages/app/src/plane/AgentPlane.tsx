@@ -6,11 +6,12 @@
  */
 
 import type { ThreadStore } from '../threads/store'
+import type { SettingsStore } from '../settings/store'
 import { COLORS, FONT } from '../ui/tokens'
 import { Sidebar } from './Sidebar'
 import { Pane } from './Pane'
 
-export function App({ store }: { store: ThreadStore }) {
+export function App({ store, settings }: { store: ThreadStore; settings: SettingsStore }) {
   return (
     <div
       style={{
@@ -24,7 +25,7 @@ export function App({ store }: { store: ThreadStore }) {
       }}
     >
       <Sidebar store={store} />
-      <Pane store={store} />
+      <Pane store={store} settings={settings} />
     </div>
   )
 }
