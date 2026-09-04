@@ -27,9 +27,9 @@
 | 1 双 workspace + napi 壳 + app 最小集 | ✅ 完成（结论见 Phase 1 结论区） |
 | 2 ThreadStore 全规则 + settings-core/controls + SettingsView | ✅ 完成（T2.1–T2.7） |
 | 3 settings-presets + chat | ✅ 完成（T3.1+T3.2） |
-| 3+ settings-acp-advanced + ACP + 键位编辑 | ◐ T3+.1 完成；T3+.2/.3 未开始 |
+| 3+ settings-acp-advanced + ACP + 键位编辑 | ◑ T3+.1/.2 完成；T3+.3 验收锚点未做 |
 
-**当前指针**：→ Phase 3+ / T3+.2（Advanced 分区 + 键位编辑解锁）
+**当前指针**：→ Phase 3+ / T3+.3（验收锚点 §15 第 6 条 + commit）
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -153,8 +153,18 @@
 ## Phase 3+ —— acp/advanced/键位
 
 - [x] **T3+.1** ACP Agents 分区 + AcpSurface（ACP JSON-RPC 子进程）——详见下方结论区
-- [ ] **T3+.2** Advanced 分区 + 键位编辑解锁（第一期只读 → 可编辑）
+- [x] **T3+.2** Advanced 分区 + 键位编辑解锁（S5 只读 → 可编辑）——详见下方结论区
 - [ ] **T3+.3** 验收锚点（§15 第 6 条）+ commit
+
+### Phase 3+ 结论区（T3+.2，键位可编辑 + Advanced）
+
+- **键位数据面**：settings.json 新增 `keybindings` section（四动作：cycleNext/cyclePrev/toggleSettings/focusSearch，叶子 string.catch 默认 'ctrl-tab'/'ctrl-shift-tab'/'ctrl-,','/'）。键位串语法同 GPUIX keystroke（modifier '-' 连接）；单字符 '-' 键不可表达（split 退化，编辑面拒绝，已知限制）；含 alt 的绑定永不命中（事件面只有 ctrl/shift）。
+- **keybindings.ts 参数化**：createGlobalKeydown 增 opts.keys getter（默认 DEFAULT_KEYBINDINGS 常量兜底）——每次 keyDown 查 settings 快照，修改即时生效无需重启。keystrokeMatches(ks, key, ctrl, shift) 匹配器导出。语义约束在编辑面保证（运行时只按层归属匹配）：cycle*/toggleSettings 必含 ctrl（全局修饰键层，硬约束 2 不吃裸键）；focusSearch 必无修饰（设置面裸键层）。Esc（清空/返回）与 +/Shift+ 菜单是平台语义，不参与配置（只读行）。
+- **settingsKeyboard 提取**（surfaces/settingsKeyboard.ts 模块单例，从 SettingsView.tsx 提出）：query/searchInputId/escConsumed 三态 + markEscConsumed 公开——搜索框与键位捕获格两个 Esc 消费源统一面；提取动机 = KeybindingsSection（SettingsSections.tsx）要消费它，避免 SettingsView ↔ SettingsSections 循环 import。
+- **捕获格（KeyCap）**：点击/enter 进入编辑态（高亮「按下新组合…」）；修饰键单独按忽略；无效组合拒绝并提示（裸键→「需含 Ctrl」/focusSearch 带修饰→「需无修饰键」/不支持的键/'-' 语法限制）；有效即 settings.patch 即时写入；Esc 取消（markEscConsumed 防 root 层连坐关设置——双跳时序）；键白名单 = 单字符 || tab/enter/方向/home/end/pgup/pgdn/backspace/delete/f1-f12。冲突检测：两动作同串 → 双方 amber 警示行（运行时按声明序取首命中，不阻止保存）。modified 蓝点 + ↺ reset（settings.reset 通用面）。
+- **Advanced 分区**：gpuBackend（defs）+ 诊断卡（版本/GPUIX pin/平台只读）+ settings.json 实时视图（serializeSettings 与写盘同源；markdown fenced code block 渲染 + maxHeight 280 overflowY scroll；订阅快照修改即时反映）+ 「在编辑器中打开」（file.ts openInSystemApp：win32 cmd /c start、darwin open、其余 xdg-open，fire-and-forget 失败仅 warn；仅真盘 adapter 有 path——fsAdapter 携带 FileAdapter.path，memory 无 → 按钮不渲染，测试面零注入）。store 接口增 filePath()/serializeSettings 导出。
+- **平台发现（e2e 实测）**：GPUIX simulateKeystrokes 的 ctrl-. 组合键不产生文本输入（input 不进字符）；'tab' 是焦点移动键也不进文本——搜索断言用普通字符子串（'esc' 命中 'Esc（平台语义）'）。Esc 关设置前需先清 query（T2.6 同语义，收尾 Esc×2）。
+- **测试面**：SettingsView.test 12 用例（+3：改键写入/reset 恢复、冲突双方警示、Esc 取消编辑不连坐）；单测 117 + e2e 12 全绿；tsc/fmt/lint 干净；真窗口冒烟 mount complete。
 
 ### Phase 3+ 结论区（T3+.1，ACP）
 
@@ -200,3 +210,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-05 · **T3.1 完成（settings-presets 切片）**：SettingsStore 预设 CRUD 五方法（规则单点：plusDefault 删除回退/内置不可删/副本后缀/空字段归一+args 空行过滤，同一写链回滚面）· PresetsSection 实装（plusDefault Select + 列表卡 CRUD + 六字段编辑器 + 搜索过滤，占位卡换下岗）· LinesField 即时提交模式（提交不依赖 blur）· **三大平台发现回写记忆 #29**：listener 冒泡（抑制 ref 模式）/ TestRenderer 不派发 focus/blur / textarea enter=Submit shift-enter=换行 · 接线面全换 settings 快照（NewThreadButton/EmptyPresets/presetOf/hitsBySection）· e2e 第 9 用例（自定义预设真 PTY 全链）· 87 单测+9 e2e+cargo 33 全绿 · 下一步：T3.2（ChatSurface）
 - 2026-09-05 · **T3.2 + T3.3 完成（Phase 3 收官）**：chat 后端拍板（EchoAgent + ChatAgent seam；入口 = + 菜单固定 New Chat 项）· threads/chat.ts（接口 + EchoAgent 600ms）· store 扩展（createChat/sendChatMessage 状态机/首条消息改标题/rename 兼 chat/close 弃迟到回复；ThreadDeps.chatAgent）· ChatSurface 实装（顶栏 pill + virtual-list followTail + markdown assistant + composer enter=Submit）· 平台发现回写记忆 #29（keystroke 中间空格也吞/markdown 不进 getAllText/点击抢焦点）· 单测 92 + e2e 10 全绿 · architecture.md 同步 · commit "Phase 3" · 下一步：Phase 3+ T3+.1（ACP Agents 分区 + AcpSurface）
 - 2026-09-05 · **T3+.1 完成（ACP 接入）**：ACP v1 协议调研（稳定版 v1；stdio 行分隔 JSON-RPC；initialize→session/new→session/prompt + session/update 流式；request_permission 自动应答）· threads/acp.ts 自研零依赖客户端（AcpConnection=ChatAgent+dispose；情建握手/收集器拼装/进程错误带 stderr 尾/Windows .cmd shim 需 shell:true）· store chat/acp 同构状态机单点（AcpThread 完整化 + autoTitle 哨兵 + 连接情建/close dispose）· SettingsStore ACP CRUD 三方法 + AcpAgentsSection（占位卡下岗）+ 搜索动态化 · ConversationView 提取（chat/acp 共享）· NewThreadButton agent 项 · fake-acp-agent.ts 七模式假 agent 真子进程测试 · 单测 114 + e2e 11 + cargo 33 全绿 · 下一步：T3+.2（Advanced 分区 + 键位编辑解锁）
+- 2026-09-05 · **T3+.2 完成（键位可编辑 + Advanced 分区）**：schema 增 keybindings section（四动作叶子 catch 默认）· keybindings.ts 键位参数化（keys getter 注入即时生效 + keystrokeMatches 导出；Esc/菜单键为平台语义不参与配置）· settingsKeyboard 提取独立模块（搜索框与键位捕获格双 Esc 消费源，避免循环 import）· KeybindingsSection 捕获式改键（点击/enter 进入 → 组合即时写入；语义约束校验 cycle*/toggle 必含 ctrl、focusSearch 必无修饰；冲突双方警示；蓝点+reset）· AdvancedSection（诊断卡[版本/GPUIX pin/平台] + settings.json 实时视图 markdown code block + 「在编辑器中打开」openInSystemApp 仅真盘 adapter）· file.ts FileAdapter.path + openInSystemApp · store filePath()/serializeSettings · 搜索键位命中动态化（keybindingHits 吃快照）· e2e 第 12 用例（改键 ctrl-. 即时生效 + JSON 视图 + 动态命中；Esc×2 收尾）· 平台发现：GPUIX 组合键不产生文本输入/tab 是焦点移动键（测试搜索断言避开）· 单测 117 + e2e 12 全绿 · 仓库推 github.com/wxj123654/jagent-terminal

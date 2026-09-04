@@ -90,6 +90,18 @@ export const RawSettingsSchema = z.looseObject({
       }),
     )
     .catch(DEFAULT_ACP_AGENTS),
+  keybindings: section(
+    z.object({
+      /** 键位串语法同 GPUIX keystroke：'ctrl-tab' / 'ctrl-,' / '/'（modifier '-' 连接，
+       *  单字符 '-' 键不可表达——已知限制）。语义约束在编辑面校验（见
+       *  KeybindingsSection）：cycleNext/cyclePrev/toggleSettings 必须含 ctrl（全局修饰键层，
+       *  硬约束 2 不吃裸键）；focusSearch 必须无修饰（设置面裸键层） */
+      cycleNext: z.string().catch('ctrl-tab'),
+      cyclePrev: z.string().catch('ctrl-shift-tab'),
+      toggleSettings: z.string().catch('ctrl-,'),
+      focusSearch: z.string().catch('/'),
+    }),
+  ),
   advanced: section(
     z.object({
       gpuBackend: z.enum(['auto', 'metal', 'dx12', 'vulkan']).catch('auto'),

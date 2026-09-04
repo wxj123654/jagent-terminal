@@ -16,6 +16,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 
+import type { Keybindings } from '../keybindings'
 import { useSettingsSection, navigateSettingsSection } from '../router'
 import { SECTIONS, SETTING_DEFS } from '../settings/schema'
 import type { AcpAgent, SettingSectionId } from '../settings/schema'
@@ -27,36 +28,8 @@ import { Icon } from '../ui/Icon'
 import { inputFocus } from '../ui/keyboard'
 import { COLORS, FONT } from '../ui/tokens'
 import { acpAgentMatches } from './AcpAgentsSection'
+import { settingsKeyboard } from './settingsKeyboard'
 import { matchDef, renderSectionContent, SectionHeading, keybindingHits } from './SettingsSections'
-
-// ── 设置面键盘生命周期（模块单例，T2.6）────────────────────────────
-// main.tsx 全局键位层需要两件组件内状态：Esc 判据（query 是否已空：非空
-// 时组件层已清空、root 层不连坐关闭）与 `/` 聚焦目标（搜索框元素 id）。
-// 纯 UI 态不进 store/router；Esc 时序依赖「React 状态让出后提交」：root
-// 层读到的永远是本次按键前的 query，两层天然不打架（时序三律同源）。
-let searchQuery = ''
-let searchInputId: number | null = null
-let escConsumedBySearch = false
-
-/** 全局键位层消费面（main.tsx）：设置面键盘态只读访问 */
-export const settingsKeyboard = {
-  /** 搜索框当前 query（'' = Esc 可关设置） */
-  query(): string {
-    return searchQuery
-  },
-  /** 搜索框元素 id（`/` 全局聚焦目标；未聚焦过为 null） */
-  searchInputId(): number | null {
-    return searchInputId
-  },
-  /** 搜索框已消费本次 Esc（清空 query）：root 层不连坐关闭 */
-  escConsumed(): boolean {
-    return escConsumedBySearch
-  },
-  /** root 层读取后重置（消费一次性） */
-  clearEscConsumed(): void {
-    escConsumedBySearch = false
-  },
-}
 
 export function SettingsView({ settings }: { settings: SettingsStore }): ReactElement {
   const section = useSettingsSection()
@@ -67,20 +40,20 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
   // 模块态同步（root 键位层读）：query 提交后更新。与卸载清理分开两个
   // effect——query 变化时不能重置 searchInputId（那是 onFocus 记的）
   useEffect(() => {
-    searchQuery = query
+    settingsKeyboard.setQuery(query)
   }, [query])
   // 卸载：设置面不在时 settingsKeyboard 的值无意义
   useEffect(() => {
     return () => {
-      searchQuery = ''
-      searchInputId = null
+      settingsKeyboard.setQuery('')
+      settingsKeyboard.setSearchInput(null)
     }
   }, [])
   // 订阅设置快照：patch/reset/writeError 后整树重渲染（行数少，粒度足够）
   const snap = useSettings(settings)
 
   const q: string | null = query.trim() || null
-  const hits = hitsBySection(q, snap.presets.items, snap.acpAgents)
+  const hits = hitsBySection(q, snap.presets.items, snap.acpAgents, snap.keybindings)
   const searching = q !== null
   const totalHits = Object.values(hits).reduce((a, b) => a + b, 0)
 
@@ -125,7 +98,7 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
           <input
             ref={(r) => {
               searchRef.current = r
-              searchInputId = r?.id ?? null
+              settingsKeyboard.setSearchInput(r?.id ?? null)
             }}
             testId="settings-search"
             autoFocus
@@ -146,8 +119,8 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
               // 清空后的 query（时序实测：useEffect 先于 root handler 跑完）
               if (e.key === 'escape' && query) {
                 setQuery('')
-                searchQuery = ''
-                escConsumedBySearch = true
+                settingsKeyboard.setQuery('')
+                settingsKeyboard.markEscConsumed()
               }
             }}
             style={{
@@ -306,18 +279,19 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
   )
 }
 
-/** 各分区命中数（搜索过滤面：defs + 键位动作 + 预设名（动态 items）+ ACP agent 名（动态列表）） */
+/** 各分区命中数（搜索过滤面：defs + 键位动作（动态键位值）+ 预设名（动态 items）+ ACP agent 名（动态列表）） */
 export function hitsBySection(
   q: string | null,
   presetItems: TerminalPreset[],
   acpAgents: AcpAgent[],
+  keybindings?: Keybindings,
 ): Record<string, number> {
   if (!q) return {}
   const hits: Record<string, number> = {}
   for (const d of SETTING_DEFS) {
     if (matchDef(d, q)) hits[d.section] = (hits[d.section] ?? 0) + 1
   }
-  hits.keybindings = (hits.keybindings ?? 0) + keybindingHits(q)
+  hits.keybindings = (hits.keybindings ?? 0) + keybindingHits(q, keybindings)
   const presetHits = presetItems.filter((p) => presetMatches(p, q)).length
   if (presetHits > 0) hits.presets = (hits.presets ?? 0) + presetHits
   const acpHits = acpAgents.filter((a) => acpAgentMatches(a, q)).length

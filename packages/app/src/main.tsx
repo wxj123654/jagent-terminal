@@ -23,7 +23,7 @@ import { App } from './plane/AgentPlane'
 import { router, activeTargetFromLocation, lastNonSettings } from './router'
 import { fsAdapter } from './settings/file'
 import { createSettingsStore } from './settings/store'
-import { settingsKeyboard } from './surfaces/SettingsView'
+import { settingsKeyboard } from './surfaces/settingsKeyboard'
 import { narrowSessionEvent } from './threads/events'
 import { createNativeThreadDeps } from './threads/nativeDeps'
 import { createThreadStore } from './threads/store'
@@ -72,6 +72,8 @@ const handleKeyDown = createGlobalKeydown({
   settingsQuery: settingsKeyboard.query,
   escConsumed: settingsKeyboard.escConsumed,
   clearEscConsumed: settingsKeyboard.clearEscConsumed,
+  // 键位真值 = settings 快照（修改即时生效，无需重启；T3+.2）
+  keys: () => settingsStore.get().keybindings,
 })
 
 render(<App store={threadStore} settings={settingsStore} />, {

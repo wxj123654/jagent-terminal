@@ -37,7 +37,7 @@ import {
 } from '../packages/app/src/router'
 import { memoryAdapter } from '../packages/app/src/settings/file'
 import { createSettingsStore } from '../packages/app/src/settings/store'
-import { settingsKeyboard } from '../packages/app/src/surfaces/SettingsView'
+import { settingsKeyboard } from '../packages/app/src/surfaces/settingsKeyboard'
 import { createEchoAgent } from '../packages/app/src/threads/chat'
 import { narrowSessionEvent, type TerminalSessionEvent } from '../packages/app/src/threads/events'
 import { createNativeThreadDeps } from '../packages/app/src/threads/nativeDeps'
@@ -132,6 +132,8 @@ beforeAll(() => {
     settingsQuery: settingsKeyboard.query,
     escConsumed: settingsKeyboard.escConsumed,
     clearEscConsumed: settingsKeyboard.clearEscConsumed,
+    // 键位真值 = settings 快照（与 main.tsx 同——修改即时生效，T3+.2）
+    keys: () => settings.get().keybindings,
   })
 
   t.render(createElement(App, { store, settings }))
@@ -576,6 +578,77 @@ describe('T3+.1 e2e: ACP 全链（菜单入口 → AcpSurface → 真子进程 J
       store.close(acpId!)
       await until('acp row removed', () => !store.getState().threads.some((x) => x.id === acpId))
       expect(store.getState().threads.length).toBe(threadsBefore)
+    },
+    TEST_TIMEOUT,
+  )
+})
+
+describe('T3+.2 e2e: 键位可编辑（捕获格 → 即时生效 → Advanced JSON 视图）', () => {
+  test(
+    '改键即时生效 + Advanced 分区 JSON 实时视图 + 键位表动态命中',
+    async () => {
+      // 前置：设置面打开（Ctrl-, 默认键位）
+      t.renderer.simulateKeystrokes('ctrl-,')
+      await until(
+        'settings view open',
+        () => t.renderer.findByTestId('settings-view') !== undefined,
+      )
+
+      // ① 改键：toggleSettings → ctrl-.（设置层直改；键位层 getter 即时读）
+      settings.patch('keybindings.toggleSettings', 'ctrl-.')
+      expect(settings.get().keybindings.toggleSettings).toBe('ctrl-.')
+
+      // ② 新键位生效：ctrl-. 关设置（旧 ctrl-, 不再响应）
+      t.renderer.simulateKeystrokes('ctrl-.')
+      await until(
+        'settings closed by new binding',
+        () => t.renderer.findByTestId('settings-view') === undefined,
+      )
+      t.renderer.simulateKeystrokes('ctrl-,')
+      await new Promise((r) => setTimeout(r, 150))
+      expect(t.renderer.findByTestId('settings-view')).toBeUndefined()
+
+      // ③ 重开设置 → Advanced 分区：JSON 实时视图 + 诊断卡 + 打开钮（memory 无 path）
+      t.renderer.simulateKeystrokes('ctrl-.')
+      await until(
+        'settings reopened by new binding',
+        () => t.renderer.findByTestId('settings-view') !== undefined,
+      )
+      const adv = () => t.renderer.findByTestId('nav-advanced')
+      const a = adv()!
+      const b = t.renderer.getElementBounds(a.id)!
+      t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2)
+      await until(
+        'json view visible',
+        () => t.renderer.findByTestId('settings-json-view') !== undefined,
+      )
+      expect(t.renderer.findByTestId('diagnostics-card')).toBeDefined()
+      expect(t.renderer.findByTestId('open-settings-json')).toBeUndefined() // memory adapter 无 path
+      const json = String(
+        t.renderer.getElement(t.renderer.findByTestId('settings-json-view')!.id)?.customProps
+          ?.source ?? '',
+      )
+      expect(json).toContain('ctrl-.')
+      expect(json).toContain('"keybindings"')
+
+      // ④ 键位表搜索动态命中：搜 esc → 只读行 'Esc（平台语义）' 命中
+      //    （ctrl-. 组合键不产生文本；tab 是焦点移动键——都用普通字符）
+      const search = t.renderer.findByTestId('settings-search')!
+      t.renderer.focusElement(search.id)
+      t.renderer.nativeSimulateKeystrokes(search.id, 'esc')
+      await until('search query committed', () => settingsKeyboard.query() === 'esc')
+      // 跨分区命中列表出现 Keybindings 分区（键位值动态命中 ctrl-.）
+      await until('keybindings section listed in search results', () =>
+        t.renderer.getAllText().some((x) => x.includes('Keybindings · 键位')),
+      )
+
+      // ⑤ 收尾：Esc ×2（先清 query 再关设置——T2.6 同语义）+ 键位回默认
+      t.renderer.simulateKeystrokes('escape')
+      await until('query cleared', () => settingsKeyboard.query() === '')
+      t.renderer.simulateKeystrokes('escape')
+      await until('settings closed', () => t.renderer.findByTestId('settings-view') === undefined)
+      settings.reset('keybindings.toggleSettings')
+      expect(settings.get().keybindings.toggleSettings).toBe('ctrl-,')
     },
     TEST_TIMEOUT,
   )

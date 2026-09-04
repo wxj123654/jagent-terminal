@@ -18,11 +18,13 @@ import { SettingsView } from './SettingsView'
 
 let t: TestRoot
 let file: MemoryAdapter
+let settingsStore: ReturnType<typeof createSettingsStore>
 
 beforeAll(() => {
   t = createTestRoot({ width: 1000, height: 700 })
   file = memoryAdapter()
-  t.render(createElement(SettingsView, { settings: createSettingsStore(file) }))
+  settingsStore = createSettingsStore(file)
+  t.render(createElement(SettingsView, { settings: settingsStore }))
 })
 
 afterAll(() => {
@@ -112,10 +114,78 @@ describe('SettingsView · core（§15 1/2/4 部分）', () => {
     expect(texts().includes('AMP_FORCE_BEL=1')).toBe(true)
   })
 
-  test('keybindings 只读表（S5）', () => {
+  test('keybindings 分区：默认键位 + 平台语义只读行（S5 解锁后仍保留）', () => {
     click('nav-keybindings')
-    expect(texts().includes('Ctrl-Tab / Ctrl-Shift-Tab')).toBe(true)
-    expect(texts().includes('Ctrl-,')).toBe(true)
+    // 键帽显示 = settings.json 原串（JSON 是事实源）
+    expect(texts().includes('ctrl-tab')).toBe(true)
+    expect(texts().includes('ctrl-shift-tab')).toBe(true)
+    expect(texts().includes('ctrl-,')).toBe(true)
+    expect(texts().includes('Esc（平台语义）')).toBe(true)
+    // 四个可编辑捕获格
+    expect(t.renderer.findByTestId('kb-cap-cycleNext')).toBeDefined()
+    expect(t.renderer.findByTestId('kb-cap-focusSearch')).toBeDefined()
+  })
+
+  /** 点击捕获格中心进入编辑态（坐标 hit-test 路径） */
+  function clickCap(testId: string): void {
+    const el = t.renderer.findByTestId(testId)!
+    const b = t.renderer.getElementBounds(el.id)!
+    t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2)
+  }
+
+  test('改键：点击捕获格 → 按组合 → 即时写入 + 蓝点 + reset 恢复', async () => {
+    click('nav-keybindings')
+    clickCap('kb-cap-toggleSettings')
+    t.renderer.flush()
+    // 编辑态提示
+    expect(texts().includes('按下新组合…')).toBe(true)
+    // 无 ctrl 裸键 → 拒绝（全局层不吃裸键）
+    t.renderer.nativeSimulateKeyDown(t.renderer.findByTestId('kb-cap-toggleSettings')!.id, 'k')
+    t.renderer.flush()
+    expect(texts().includes('需含 Ctrl')).toBe(true)
+    // 有效组合 → 写入
+    t.renderer.nativeSimulateKeyDown(t.renderer.findByTestId('kb-cap-toggleSettings')!.id, 'ctrl-k')
+    t.renderer.flush()
+    expect(texts().includes('ctrl-k')).toBe(true)
+    expect(texts().includes('按下新组合…')).toBe(false)
+    // modified → reset 钮出现；点击回默认
+    expect(t.renderer.findByTestId('kb-reset-toggleSettings')).toBeDefined()
+    click('kb-reset-toggleSettings')
+    t.renderer.flush()
+    expect(texts().includes('ctrl-k')).toBe(false)
+    expect(t.renderer.findByTestId('kb-reset-toggleSettings')).toBeUndefined()
+    // 设置真值面
+    expect(settingsStore.get().keybindings.toggleSettings).toBe('ctrl-,')
+  })
+
+  test('改键冲突：同绑另一动作 → 警示行', async () => {
+    click('nav-keybindings')
+    clickCap('kb-cap-toggleSettings')
+    t.renderer.flush()
+    // 与 cycleNext 同绑 ctrl-tab → 双方警示
+    t.renderer.nativeSimulateKeyDown(
+      t.renderer.findByTestId('kb-cap-toggleSettings')!.id,
+      'ctrl-tab',
+    )
+    t.renderer.flush()
+    expect(t.renderer.findByTestId('kb-conflict-toggleSettings')).toBeDefined()
+    expect(t.renderer.findByTestId('kb-conflict-cycleNext')).toBeDefined()
+    settingsStore.reset('keybindings.toggleSettings')
+    // store 直调（非事件路径）→ React 订阅提交需 macrotask 让出
+    await new Promise((r) => setTimeout(r, 10))
+    t.renderer.flush()
+    expect(t.renderer.findByTestId('kb-conflict-cycleNext')).toBeUndefined()
+  })
+
+  test('Esc 取消编辑：不连坐关设置（消费标记）', async () => {
+    click('nav-keybindings')
+    clickCap('kb-cap-cycleNext')
+    t.renderer.flush()
+    expect(texts().includes('按下新组合…')).toBe(true)
+    t.renderer.nativeSimulateKeyDown(t.renderer.findByTestId('kb-cap-cycleNext')!.id, 'escape')
+    t.renderer.flush()
+    expect(texts().includes('按下新组合…')).toBe(false) // 退出编辑态
+    expect(t.renderer.findByTestId('settings-search')).toBeDefined() // 设置面还在
   })
 })
 
@@ -157,7 +227,7 @@ describe('SettingsView · 搜索（§15 3/5 部分）', () => {
     t.renderer.flush()
     expect(t.renderer.findByTestId('settings-empty')).toBeUndefined()
     // 清除后回到当前分区视图（keybindings——上一用例遗留的 section）
-    expect(texts().includes('Ctrl-Tab / Ctrl-Shift-Tab')).toBe(true)
+    expect(texts().includes('ctrl-tab')).toBe(true)
   })
 
   test('Esc 清空搜索 → 回分区视图', async () => {
@@ -169,7 +239,7 @@ describe('SettingsView · 搜索（§15 3/5 部分）', () => {
     t.renderer.nativeSimulateKeyDown(search.id, 'escape')
     t.renderer.flush()
     // 搜索退出 → 回 keybindings 分区（只读表）
-    expect(texts().includes('Ctrl-Tab / Ctrl-Shift-Tab')).toBe(true)
+    expect(texts().includes('ctrl-tab')).toBe(true)
   })
 })
 

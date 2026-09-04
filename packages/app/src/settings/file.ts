@@ -14,10 +14,13 @@ export type FileAdapter = {
   read(): Promise<string | null>
   /** 原子写（tmp + rename） */
   write(s: string): Promise<void>
+  /** 真盘 adapter 携带实际路径（「在编辑器中打开」用）；memory 无 */
+  readonly path?: string
 }
 
 export function fsAdapter(p: string): FileAdapter {
   return {
+    path: p,
     async read(): Promise<string | null> {
       const { readFile } = await import('node:fs/promises')
       try {
@@ -34,6 +37,27 @@ export function fsAdapter(p: string): FileAdapter {
       await writeFile(tmp, s, 'utf8')
       await rename(tmp, p) // 同目录 → 同卷 → 原子替换
     },
+  }
+}
+
+/**
+ * 用系统关联程序打开 settings.json（Advanced「在编辑器中打开」；win32 的
+ * `start` 走 .json 关联 = 默认编辑器）。异步 fire-and-forget，失败仅 warn
+ * （UI 不因外部程序问题报错弹窗）。
+ */
+export async function openInSystemApp(p: string): Promise<void> {
+  const { spawn } = await import('node:child_process')
+  try {
+    if (process.platform === 'win32') {
+      // cmd /c start "" "path"：空标题参防路径带空格被当标题
+      spawn('cmd', ['/c', 'start', '', p], { stdio: 'ignore', detached: true })?.unref()
+    } else if (process.platform === 'darwin') {
+      spawn('open', [p], { stdio: 'ignore', detached: true })?.unref()
+    } else {
+      spawn('xdg-open', [p], { stdio: 'ignore', detached: true })?.unref()
+    }
+  } catch (e) {
+    console.warn('openInSystemApp failed:', e)
   }
 }
 

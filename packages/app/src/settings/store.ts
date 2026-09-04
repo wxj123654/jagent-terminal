@@ -40,6 +40,8 @@ export type AcpAgentPatch = Partial<Omit<AcpAgent, 'id'>>
 export interface SettingsStore {
   /** 快照（zod parse 后的合法 Settings；字段级容错已在边界完成） */
   get(): Settings
+  /** 真盘路径（fsAdapter 携带；「在编辑器中打开」用）。memory adapter 无路径 */
+  filePath(): string | null
   /** 内存即时 + 异步原子写盘（越界值经 zod 字段级回默认） */
   patch(path: SettingsPath, value: unknown): void
   /** = patch(path, DEFAULTS 值) */
@@ -80,7 +82,8 @@ export function getByPath(obj: unknown, path: string): unknown {
     )
 }
 
-function serialize(s: Settings): string {
+/** 序列化形态（写盘与 Advanced JSON 实时视图同源） */
+export function serializeSettings(s: Settings): string {
   return `${JSON.stringify(s, null, 2)}\n`
 }
 
@@ -137,7 +140,7 @@ export function createSettingsStore(file: FileAdapter): SettingsStore {
       .then(async () => {
         // myGen 落后 = 已有更新全量快照排队（合并写）——跳过本次
         if (myGen !== gen) return
-        await file.write(serialize(snapshot))
+        await file.write(serializeSettings(snapshot))
         persisted = snapshot
         // 仅在确有错误时清除（避免每次成功写的无效 notify）
         if (store.getState().writeError) set({ writeError: null })
@@ -170,6 +173,7 @@ export function createSettingsStore(file: FileAdapter): SettingsStore {
 
   return {
     get: () => store.getState().settings,
+    filePath: () => file.path ?? null,
     subscribe: (fn) => store.subscribe(fn),
 
     async init() {
