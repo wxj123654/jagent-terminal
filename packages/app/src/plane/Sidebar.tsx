@@ -1,16 +1,60 @@
 /**
  * Sidebar — 左栏（布局契约 §2/§3：248px 固定宽）。
  *
- * Header("AGENT" + Ctrl-Tab hint) · ThreadList · NewThreadButton ·
- * Footer(齿轮 → settings 表面)。
+ * 顶部 Header 行已抽为 SidebarHeader：与 TitleBar 同处「顶栏行」
+ * （Zed 融合模式：红绿灯让位由 SidebarHeader 承担，见 plane/TitleBar.tsx）。
+ * 本体：NewThreadButton · ThreadList · Footer(齿轮 → settings 表面)。
  */
 
 import type { SettingsStore } from '../settings/store'
 import type { ThreadStore } from '../threads/store'
+import type { AppPlatform } from '../ui/platform'
+import { TRAFFIC_LIGHT_PADDING } from '../ui/platform'
 import { Icon } from '../ui/Icon'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
 import { NewThreadButton } from './NewThreadButton'
 import { ThreadList } from './ThreadList'
+import { useTitleBarDrag, type WindowControls } from './TitleBar'
+
+/**
+ * 顶栏左段：AGENT 标识 + 线程切换 hint。mac 上给红绿灯让位（Zed：
+ * sidebar 打开时 TRAFFIC_LIGHT_PADDING 在这一段，TitleBar 段不加）；
+ * mac 同样可拖窗口（TitleBar 同款 armed+move 模式）；win 标 drag 区。
+ */
+export function SidebarHeader({
+  platform,
+  windowControls,
+}: {
+  platform: AppPlatform
+  windowControls?: WindowControls
+}) {
+  const drag = useTitleBarDrag(windowControls)
+  return (
+    <div
+      testId="sidebar-header"
+      style={{
+        width: SIZES.sidebarWidth,
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        height: SIZES.titleBarHeight,
+        paddingLeft: TRAFFIC_LIGHT_PADDING + 12,
+        paddingRight: 10,
+        backgroundColor: COLORS.sidebar,
+        userSelect: 'none',
+        ...(platform === 'win' ? { windowControlArea: 'drag' as const } : {}),
+      }}
+      {...(platform === 'mac' ? drag : {})}
+    >
+      <text style={{ fontSize: 11, fontFamily: FONT.ui, fontWeight: '600', color: COLORS.muted }}>
+        AGENT
+      </text>
+      <text style={{ fontSize: 10, fontFamily: FONT.mono, color: COLORS.muted }}>⌃⇥</text>
+    </div>
+  )
+}
 
 export function Sidebar({ store, settings }: { store: ThreadStore; settings: SettingsStore }) {
   return (
@@ -26,25 +70,6 @@ export function Sidebar({ store, settings }: { store: ThreadStore; settings: Set
         borderColor: COLORS.border,
       }}
     >
-      {/* Header */}
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          height: 36,
-          paddingLeft: 12,
-          paddingRight: 10,
-          userSelect: 'none',
-        }}
-      >
-        <text style={{ fontSize: 11, fontFamily: FONT.ui, fontWeight: '600', color: COLORS.muted }}>
-          AGENT
-        </text>
-        <text style={{ fontSize: 10, fontFamily: FONT.mono, color: COLORS.muted }}>⌃⇥</text>
-      </div>
-
       <NewThreadButton store={store} settings={settings} />
 
       <ThreadList store={store} />

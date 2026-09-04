@@ -9,7 +9,14 @@
 import { describe, expect, test } from 'bun:test'
 
 import { memoryAdapter } from './file'
-import { DEFAULTS, SECTIONS, SETTING_DEFS, type Settings, type SettingsPath } from './schema'
+import {
+  DEFAULT_TERMINAL_FONT,
+  DEFAULTS,
+  SECTIONS,
+  SETTING_DEFS,
+  type Settings,
+  type SettingsPath,
+} from './schema'
 import { createSettingsStore, getByPath } from './store'
 
 /** 等异步写盘链走完 */
@@ -59,6 +66,16 @@ describe('patch / isModified / reset', () => {
 })
 
 describe('读盘容错（zod catch / prefault / 顶层兜底）', () => {
+  test('终端默认字体使用平台自带等宽字体', () => {
+    expect(DEFAULTS.terminal.fontFamily).toBe(DEFAULT_TERMINAL_FONT)
+  })
+
+  test('旧 JetBrains Mono 默认值迁移为平台字体', async () => {
+    const raw = JSON.stringify({ terminal: { fontFamily: 'JetBrains Mono' } })
+    const { store } = await makeStore(raw)
+    expect(store.get().terminal.fontFamily).toBe(DEFAULT_TERMINAL_FONT)
+  })
+
   test('坏 JSON → 整体默认', async () => {
     const { store } = await makeStore('{ this is not json')
     expect(store.get()).toEqual(DEFAULTS)
@@ -217,7 +234,7 @@ describe('schema 一致性（§6.3）', () => {
     expect(d.presets.items).toHaveLength(5)
     expect(d.notifications).toEqual({ desktop: true, sound: false })
     expect(d.terminal).toEqual({
-      fontFamily: 'JetBrains Mono',
+      fontFamily: DEFAULT_TERMINAL_FONT,
       fontSize: 13,
       cursorBlink: true,
       scrollbackLines: 10000,

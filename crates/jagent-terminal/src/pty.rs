@@ -90,8 +90,6 @@ fn pty_options(opts: &SpawnOptions) -> TtyOptions {
         working_directory: opts.cwd.clone(),
         drain_on_exit: true,
         env: env.into_iter().collect(),
-        #[cfg(not(windows))]
-        child_signal_mask: None,
         #[cfg(windows)]
         escape_args: true,
     }

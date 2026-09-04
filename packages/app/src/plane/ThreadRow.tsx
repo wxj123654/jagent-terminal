@@ -142,6 +142,7 @@ export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
             marginRight: 4,
             height: 20,
             fontSize: 12,
+            lineHeight: 16,
             fontFamily: FONT.ui,
             color: COLORS.textBright,
             backgroundColor: COLORS.inputBg,

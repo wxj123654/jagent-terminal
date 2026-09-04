@@ -40,12 +40,12 @@ fn dispatch(
         }))
     } else {
         // No threaded renderer: e2e under TestGpuixRenderer. Its host seam
-        // exists on Windows builds only (gpuix test_renderer cfg).
-        #[cfg(target_os = "windows")]
+        // exists on Windows and macOS builds (gpuix test_renderer cfg).
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
         {
             gpuix_native::run_on_test_app(f)
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
             let _ = f;
             Err(anyhow::anyhow!(
@@ -55,12 +55,34 @@ fn dispatch(
     }
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "freebsd")))]
+// macOS: no GPUI thread — tick() pumps AppKit on the JS main thread, and
+// napi sync commands run on that same thread, so host closures execute
+// inline through gpuix's thread-local ApplicationHandle (between ticks,
+// never re-entrant). Same fallback as Windows: e2e without a real renderer
+// lands on run_on_test_app (TestGpuixRenderer's VisualTestState).
+#[cfg(target_os = "macos")]
+fn dispatch(
+    f: Box<dyn FnOnce(&mut gpui::App) -> anyhow::Result<serde_json::Value> + Send>,
+) -> anyhow::Result<serde_json::Value> {
+    use gpuix_native::{host_ui_commands_ready, run_on_gpuix};
+    if host_ui_commands_ready() {
+        run_on_gpuix(f)
+    } else {
+        gpuix_native::run_on_test_app(f)
+    }
+}
+
+#[cfg(not(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "macos",
+)))]
 fn dispatch(
     f: Box<dyn FnOnce(&mut gpui::App) -> anyhow::Result<serde_json::Value> + Send>,
 ) -> anyhow::Result<serde_json::Value> {
     let _ = f;
     Err(anyhow::anyhow!(
-        "terminal sessions are Windows/Linux only for now",
+        "terminal sessions are unsupported on this platform",
     ))
 }

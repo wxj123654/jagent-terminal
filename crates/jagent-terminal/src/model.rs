@@ -101,10 +101,23 @@ pub struct TerminalStyle {
     pub cursor_blink: bool,
 }
 
+/// 平台默认等宽字体。Consolas 是 Windows 字体——在 macOS 上解析不到
+/// family，字形落到不可预测的 fallback（豆腐块/宽窄不一）；Menlo 是
+/// macOS 自带等宽字体；Linux 走 fontconfig 的通用 monospace。
+pub fn default_font_family() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "Menlo"
+    } else if cfg!(target_os = "windows") {
+        "Consolas"
+    } else {
+        "monospace"
+    }
+}
+
 impl Default for TerminalStyle {
     fn default() -> Self {
         Self {
-            font_family: "Consolas".into(),
+            font_family: default_font_family().into(),
             font_size: gpui::px(14.0),
             line_height_multiplier: 1.2,
             padding: gpui::Edges::all(gpui::px(8.0)),

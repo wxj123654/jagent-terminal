@@ -60,6 +60,19 @@ export declare class GpuixRenderer {
    */
   activateWindow(): void
   setWindowTitle(title: string): void
+  /**
+   * Begin a user-driven window move from the current pointer position —
+   * the custom title bar's drag gesture on macOS and Linux (call from a
+   * mouse-move handler after a mouse-down on the drag region). On Windows
+   * this is not needed: dragging is handled by the OS through
+   * `windowControlArea: "drag"` hit-testing.
+   */
+  startWindowMove(): void
+  /**
+   * Respond to a double click on the custom-drawn title bar: macOS zooms
+   * per the system preference, other platforms toggle maximize.
+   */
+  titlebarDoubleClick(): void
   focusElement(elementId: number): void
   /** Move focus to the next GPUI tab stop. */
   focusNext(): void

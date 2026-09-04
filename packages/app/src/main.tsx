@@ -20,6 +20,7 @@ import type { GpuixRenderer } from '@jagent/native'
 
 import { createGlobalKeydown } from './keybindings'
 import { App } from './plane/AgentPlane'
+import type { WindowControls } from './plane/TitleBar'
 import { router, activeTargetFromLocation, lastNonSettings } from './router'
 import { fsAdapter } from './settings/file'
 import { createSettingsStore } from './settings/store'
@@ -28,6 +29,7 @@ import { narrowSessionEvent } from './threads/events'
 import { createNativeThreadDeps } from './threads/nativeDeps'
 import { createThreadStore } from './threads/store'
 import { inputFocus } from './ui/keyboard'
+import { PLATFORM } from './ui/platform'
 
 // ── seam 装配（顺序敏感：先注册元素，再开窗）──────────────────────────
 installTerminalElement()
@@ -57,9 +59,17 @@ renderer.init({
   height: 760,
   minWidth: 720,
   minHeight: 480,
+  // 自绘顶栏（plane/TitleBar.tsx）：mac/win 隐系统条；linux 保持
+  // Server decorations（WM 标题栏在上，TitleBar 退化为内容导航条）
+  titlebarTransparent: PLATFORM !== 'linux',
 })
 
 // ── 全局键位层（keybindings.ts：main/e2e 共用语义；布线在此）──
+// ── 窗口控制 seam（TitleBar 注入；闭包 renderer）──
+const windowControls: WindowControls = {
+  startMove: () => void renderer.startWindowMove(),
+  doubleClick: () => void renderer.titlebarDoubleClick(),
+}
 const handleKeyDown = createGlobalKeydown({
   store: threadStore,
   inSettings: () => activeTargetFromLocation(router.history.location.pathname)?.type === 'settings',
@@ -76,12 +86,15 @@ const handleKeyDown = createGlobalKeydown({
   keys: () => settingsStore.get().keybindings,
 })
 
-render(<App store={threadStore} settings={settingsStore} />, {
-  renderer,
-  onEvent: (event) => {
-    if (event.eventType === 'keyDown') {
-      const m = event.modifiers
-      handleKeyDown(event.key ?? '', m?.ctrl ?? false, m?.shift ?? false)
-    }
+render(
+  <App store={threadStore} settings={settingsStore} windowControls={windowControls} />,
+  {
+    renderer,
+    onEvent: (event) => {
+      if (event.eventType === 'keyDown') {
+        const m = event.modifiers
+        handleKeyDown(event.key ?? '', m?.ctrl ?? false, m?.shift ?? false)
+      }
+    },
   },
-})
+)

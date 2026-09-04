@@ -109,14 +109,17 @@ export function NewThreadButton({
         <Icon name="chevronDown" size={12} color={COLORS.muted} />
       </div>
 
-      {/* 菜单：右对齐下拉（absolute，向下展开） */}
+      {/* 菜单：anchored 浮层（deferred 画在列表之上——GPUI 树序绘制无 CSS
+          stacking，普通 absolute 会被后画的 ThreadRow 盖住；架构 §5.3 原设计）。
+          trigger = 本行：side=bottom gap=4 展开于按钮组下 4px。 */}
       {open ? (
-        <div
+        <anchored
+          side="bottom"
+          align="start"
+          gap={4}
+          deferred
+          occlude
           style={{
-            position: 'absolute',
-            top: 32,
-            left: 0,
-            right: 0,
             display: 'flex',
             flexDirection: 'column',
             backgroundColor: COLORS.inputBg,
@@ -124,6 +127,9 @@ export function NewThreadButton({
             borderColor: COLORS.borderSubtle,
             borderRadius: 6,
             padding: 4,
+            /** anchored 不支持 inset 拉伸；固定为原 absolute 版的全宽（= 按钮组宽：侧栏 − 两侧 margin） */
+            width: SIZES.sidebarWidth - SIZES.rowMarginX * 2,
+            maxWidth: SIZES.sidebarWidth - SIZES.rowMarginX * 2,
           }}
         >
           {presets.map((p) => (
@@ -273,7 +279,7 @@ export function NewThreadButton({
               </text>
             </div>
           ))}
-        </div>
+        </anchored>
       ) : null}
     </div>
   )

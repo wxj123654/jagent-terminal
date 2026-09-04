@@ -1,3 +1,24 @@
+diff --git a/packages/native/src/custom_elements/input.rs b/packages/native/src/custom_elements/input.rs
+index 3f2ee7f..bfaeed4 100644
+--- a/packages/native/src/custom_elements/input.rs
++++ b/packages/native/src/custom_elements/input.rs
+@@ -1308,7 +1308,15 @@ impl TextEditorState {
+             (SharedString::from(self.content.clone()), false)
+         };
+         let font_size = style.font_size.to_pixels(window.rem_size());
+-        self.line_height = window.line_height();
++        // Use the *captured* text style's line height, not `window.line_height()`.
++        // The measured-layout closure runs during Taffy layout, outside the
++        // element tree's text-style stack, so `window.line_height()` always
++        // returned the default (rem(16) * phi ≈ 26px) regardless of any
++        // `lineHeight`/`fontSize` style on the element — a 26px caret in a
++        // 28px input. `style` here is the style captured at request_layout
++        // time (the element's own text style), which is what the text run
++        // below already uses for font/size/color.
++        self.line_height = style.line_height_in_pixels(window.rem_size());
+         let color = if is_placeholder {
+             gpui::rgba(0x8f8f8fff).into()
+         } else {
 diff --git a/packages/native/src/custom_elements/mod.rs b/packages/native/src/custom_elements/mod.rs
 index b3811c1..fd4d328 100644
 --- a/packages/native/src/custom_elements/mod.rs
@@ -74,10 +95,10 @@ index a69f0b9..a8fe81e 100644
      test,
      not(all(
 diff --git a/packages/native/src/renderer.rs b/packages/native/src/renderer.rs
-index b54cd68..1d43d06 100644
+index b54cd68..d66bad9 100644
 --- a/packages/native/src/renderer.rs
 +++ b/packages/native/src/renderer.rs
-@@ -357,6 +357,55 @@ enum KeyInput {
+@@ -357,6 +357,78 @@ enum KeyInput {
      Up(String),
  }
  
@@ -130,13 +151,42 @@ index b54cd68..1d43d06 100644
 +    }
 +}
 +
++// j-agent patch (macOS seam): same contract as the threaded-host functions
++// above, but macOS has no GPUI thread — tick() pumps AppKit on this (JS
++// main) thread, so the host closure runs inline through the thread-local
++// ApplicationHandle (published by init; the embedder re-entry point between
++// ticks, never re-entrant from inside an update).
++#[cfg(target_os = "macos")]
++pub fn host_ui_commands_ready() -> bool {
++    GPUI_APP.with(|app| app.borrow().is_some())
++}
++
++#[cfg(target_os = "macos")]
++pub fn run_on_gpuix(
++    f: Box<dyn FnOnce(&mut gpui::App) -> anyhow::Result<serde_json::Value> + Send>,
++) -> anyhow::Result<serde_json::Value> {
++    GPUI_APP.with(|app| {
++        let app = app.borrow();
++        let app = app
++            .as_ref()
++            .ok_or_else(|| anyhow::anyhow!("GPUI application is not initialized"))?;
++        app.update(|cx| f(cx))
++    })
++}
++
  #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
  enum ClockControl {
      Pause,
-@@ -434,6 +483,19 @@ enum UiCommand {
+@@ -434,6 +506,25 @@ enum UiCommand {
          path: String,
          response: SyncSender<std::result::Result<(), String>>,
      },
++    // j-agent patch (custom title bar): window move / double-click zoom.
++    // Windows dragging goes through WindowControlArea hit-testing (see
++    // StyleDesc::window_control_area), so StartWindowMove is the macOS/Linux
++    // gesture path (drag started from JS mouse events).
++    StartWindowMove,
++    TitlebarDoubleClick,
 +    // j-agent patch: generic host callback executed on the GPUI thread with
 +    // the renderer window + AsyncApp. Lets the host napi crate run terminal
 +    // pool operations (gpui Global access) without its own event-loop hook.
@@ -153,7 +203,25 @@ index b54cd68..1d43d06 100644
      Blur,
  }
  
-@@ -758,7 +820,17 @@ async fn run_ui_commands(
+@@ -461,6 +552,17 @@ async fn run_ui_commands(
+                 cx.activate(true);
+                 window.activate_window();
+             }),
++            UiCommand::StartWindowMove => window.update(cx, |_view, window, _cx| {
++                window.start_window_move();
++            }),
++            UiCommand::TitlebarDoubleClick => window.update(cx, |_view, window, _cx| {
++                // macOS respects the system "double-click title bar to zoom"
++                // preference; other platforms toggle maximize directly.
++                #[cfg(target_os = "macos")]
++                window.titlebar_double_click();
++                #[cfg(not(target_os = "macos"))]
++                window.zoom_window();
++            }),
+             UiCommand::SetWindowTitle(title) => window.update(cx, move |view, window, cx| {
+                 view.window_title = title;
+                 cx.notify();
+@@ -758,7 +860,17 @@ async fn run_ui_commands(
                  result
              }
              UiCommand::Blur => window.update(cx, |_view, window, _cx| window.blur()),
@@ -172,7 +240,7 @@ index b54cd68..1d43d06 100644
          if let Err(error) = result {
              if cx.update(|cx| cx.windows().is_empty()) {
                  break;
-@@ -1101,6 +1173,13 @@ impl GpuixRenderer {
+@@ -1101,6 +1213,13 @@ impl GpuixRenderer {
          let selection = self.selection.clone();
          let callback = self.event_callback_for_view();
          let (command_sender, command_receiver) = mpsc::unbounded();
@@ -186,7 +254,59 @@ index b54cd68..1d43d06 100644
          let (startup_sender, startup_receiver) = sync_channel(1);
          let exit_startup_sender = startup_sender.clone();
          let ui_running = self.ui_running.clone();
-@@ -2828,7 +2907,9 @@ impl Drop for GpuixRenderer {
+@@ -1490,6 +1609,51 @@ impl GpuixRenderer {
+         ))
+     }
+ 
++    /// Begin a user-driven window move from the current pointer position —
++    /// the custom title bar's drag gesture on macOS and Linux (call from a
++    /// mouse-move handler after a mouse-down on the drag region). On Windows
++    /// this is not needed: dragging is handled by the OS through
++    /// `windowControlArea: "drag"` hit-testing.
++    #[napi]
++    pub fn start_window_move(&self) -> Result<()> {
++        #[cfg(target_os = "macos")]
++        return update_window(|_view, window, _cx| window.start_window_move());
++
++        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
++        return self.send_ui_command(UiCommand::StartWindowMove);
++
++        #[cfg(not(any(
++            target_os = "macos",
++            target_os = "windows",
++            target_os = "linux",
++            target_os = "freebsd"
++        )))]
++        Err(Error::from_reason(
++            "The production GPUIX renderer does not support this operating system",
++        ))
++    }
++
++    /// Respond to a double click on the custom-drawn title bar: macOS zooms
++    /// per the system preference, other platforms toggle maximize.
++    #[napi]
++    pub fn titlebar_double_click(&self) -> Result<()> {
++        #[cfg(target_os = "macos")]
++        return update_window(|_view, window, _cx| window.titlebar_double_click());
++
++        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
++        return self.send_ui_command(UiCommand::TitlebarDoubleClick);
++
++        #[cfg(not(any(
++            target_os = "macos",
++            target_os = "windows",
++            target_os = "linux",
++            target_os = "freebsd"
++        )))]
++        Err(Error::from_reason(
++            "The production GPUIX renderer does not support this operating system",
++        ))
++    }
++
+     #[napi]
+     pub fn focus_element(&self, element_id: f64) -> Result<()> {
+         let id = to_element_id(element_id)?;
+@@ -2828,7 +2992,9 @@ impl Drop for GpuixRenderer {
  
  // ── GPUI View ────────────────────────────────────────────────────────
  
@@ -197,6 +317,66 @@ index b54cd68..1d43d06 100644
      pub(crate) tree: Arc<Mutex<RetainedTree>>,
      pub(crate) event_callback: Option<EventCallback>,
      pub(crate) window_title: String,
+@@ -4253,6 +4419,19 @@ fn virtual_row_ancestor(tree: &RetainedTree, list_id: u64, element_id: u64) -> O
+ /// Both get the same stable GPUI id, so gpui keeps their interactive element
+ /// state (hover, active, pointer capture, scroll, accessibility node) across
+ /// frames, and both wire the whole shared `Props` surface.
++/// j-agent patch (custom title bar): parse the `windowControlArea` style
++/// value. Mirrors gpui's `WindowControlArea` variants; see the style
++/// application in `build_host_container` for the platform behavior.
++fn parse_window_control_area(value: &str) -> Option<gpui::WindowControlArea> {
++    match value {
++        "drag" => Some(gpui::WindowControlArea::Drag),
++        "close" => Some(gpui::WindowControlArea::Close),
++        "min" => Some(gpui::WindowControlArea::Min),
++        "max" => Some(gpui::WindowControlArea::Max),
++        _ => None,
++    }
++}
++
+ pub(crate) fn build_host_container(
+     element: &crate::retained_tree::RetainedElement,
+     style: Option<&StyleDesc>,
+@@ -4271,6 +4450,20 @@ pub(crate) fn build_host_container(
+     if let Some(style) = style {
+         el = apply_interactive_styles(el, style);
+ 
++        // j-agent patch (custom title bar): native window-control marker.
++        // Windows resolves WM_NCHITTEST through the recorded hitbox —
++        // "drag" → HTCAPTION (system move), "close"/"min"/"max" → the
++        // matching system caption button, all without JS click handlers.
++        // Other platforms record the area too, but the title bar drives
++        // moves through `startWindowMove()` instead.
++        if let Some(area) = style
++            .window_control_area
++            .as_deref()
++            .and_then(parse_window_control_area)
++        {
++            el = el.window_control_area(area);
++        }
++
+         if crate::style::should_occlude(style) {
+             // BlockMouse (occlude) stops the hit test, so the parent scroller
+             // never sees the wheel. HTML does not work that way: a wheel over
+diff --git a/packages/native/src/style.rs b/packages/native/src/style.rs
+index 39205de..6c89739 100644
+--- a/packages/native/src/style.rs
++++ b/packages/native/src/style.rs
+@@ -220,6 +220,14 @@ pub struct StyleDesc {
+     /// Unset: block when this element paints a fill or is absolutely positioned.
+     pub pointer_events: Option<String>,
+ 
++    /// Native window-control marker for custom title bars. `"drag"` makes
++    /// the platform treat hits here as the caption (Windows WM_NCHITTEST →
++    /// HTCAPTION, the system handles the move); `"close"`/`"min"`/`"max"`
++    /// behave like the matching caption button. Not a visual style: consumed
++    /// by `build_host_container`, which records the element's hitbox as a
++    /// window control area for the platform window.
++    pub window_control_area: Option<String>,
++
+     // Text selection. "none" opts an element and its subtree out of the
+     // selection registry, so buttons and toolbars never start a drag.
+     // Inherited down the tree like the CSS property of the same name.
 diff --git a/packages/native/src/test_renderer.rs b/packages/native/src/test_renderer.rs
 index f083a40..89644da 100644
 --- a/packages/native/src/test_renderer.rs

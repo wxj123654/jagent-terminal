@@ -173,6 +173,7 @@ export function ConversationView({
             flexGrow: 1,
             fontFamily: FONT.ui,
             fontSize: 13,
+            lineHeight: 18,
             color: COLORS.textBright,
             backgroundColor: COLORS.inputBg,
             borderWidth: 1,

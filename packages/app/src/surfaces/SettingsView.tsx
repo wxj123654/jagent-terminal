@@ -127,6 +127,7 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
               flexGrow: 1,
               minWidth: 0,
               fontSize: 12,
+              lineHeight: 16,
               fontFamily: FONT.ui,
               color: COLORS.textBright,
             }}
@@ -202,16 +203,15 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
         })}
       </div>
 
-      {/* ── 右列：SettingsContent ── */}
+      {/* ── 右列：SettingsContent ──
+          padding 在内层包裹 div：gpuix/gpui 的 overflow scroll 容器
+          若同时带 padding，内容不满时 padding 上下和会被计入 scroll_max
+          （空滚 40px + 内容滚出顶部）——已用 TestRenderer 复现锁定 */}
       <div
-        style={{
-          flexGrow: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          overflowY: 'scroll',
-          padding: 20,
-        }}
+        testId="settings-content-scroll"
+        style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflowY: 'scroll' }}
       >
+        <div style={{ display: 'flex', flexDirection: 'column', padding: 20 }}>
         {searching ? (
           totalHits === 0 ? (
             <div
@@ -274,6 +274,7 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
             {renderSectionContent(section as SettingSectionId, settings, null)}
           </>
         )}
+        </div>
       </div>
     </div>
   )

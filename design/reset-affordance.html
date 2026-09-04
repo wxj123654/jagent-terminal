@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>j-agent · 行级「恢复默认」设计对比</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* ── Tokens: Zed One Dark（与 settings-ui.html 同一套）── */
+  :root {
+    --bg-app: #1e2127;
+    --bg-sidebar: #21252b;
+    --bg-pane: #282c34;
+    --bg-hover: #2c313a;
+    --bg-active: #2f343e;
+    --bg-elevated: #333842;
+    --bg-input: #1b1d23;
+    --border: #181a1f;
+    --border-subtle: #3e4451;
+    --text: #abb2bf;
+    --text-bright: #d7dae0;
+    --text-muted: #5c6370;
+    --text-dim: #4b5263;
+    --accent: #61afef;
+    --accent-soft: rgba(97, 175, 239, 0.15);
+    --green: #98c379;
+    --red: #e06c75;
+    --amber: #e5c07b;
+    --radius: 4px;
+    --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", Consolas, monospace;
+    --ease: 150ms ease;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-ui);
+    background: #0d0f12;
+    color: var(--text);
+    font-size: 13px;
+    padding: 28px 20px 60px;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh;
+  }
+  button { font-family: inherit; font-size: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  input, select { font-family: inherit; font-size: inherit; color: var(--text-bright); }
+  :focus-visible { outline: none; }
+
+  /* ── 页首说明 ── */
+  .doc { width: 760px; max-width: 100%; margin-bottom: 24px; }
+  .doc h1 { font-size: 16px; color: var(--text-bright); font-weight: 600; margin-bottom: 6px; }
+  .doc p { font-size: 12px; color: var(--text-muted); line-height: 1.6; margin-bottom: 8px; }
+  .doc table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+  .doc th, .doc td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .doc th { color: var(--text-muted); font-weight: 600; font-size: 11px; letter-spacing: .04em; }
+  .doc td { color: var(--text); }
+  .doc .good { color: var(--green); }
+  .doc .bad { color: var(--red); }
+  .doc .mid { color: var(--amber); }
+
+  /* ── 方案面板 ── */
+  .panel {
+    width: 760px; max-width: 100%;
+    background: var(--bg-pane);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 28px;
+    overflow: hidden;
+  }
+  .panel-head {
+    padding: 12px 16px;
+    background: var(--bg-sidebar);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  }
+  .panel-head h2 { font-size: 13px; font-weight: 600; color: var(--text-bright); }
+  .panel-head .verdict { font-size: 12px; color: var(--text-muted); }
+  .panel-body { padding: 4px 16px 12px; }
+  .hint {
+    font-size: 11px; color: var(--text-dim); padding: 8px 2px 0; line-height: 1.5;
+  }
+
+  /* ── 设置行（grid：label 列 + 控件列 [+ 方案C 尾槽]）── */
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;   /* 方案 A/B */
+    gap: 20px;
+    align-items: center;
+    padding: 11px 2px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+  .row.tall { align-items: start; }                 /* textarea 高行：顶对齐 */
+  .panel-c .row {
+    grid-template-columns: minmax(0, 1fr) auto 24px; /* 方案 C：固定尾槽 */
+    gap: 8px;
+  }
+  .panel-c .row > .cell-label { margin-right: 12px; }
+  .cell-label { min-width: 0; }
+  .row-label {
+    font-size: 13px; color: var(--text-bright);
+    display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  }
+  .mod-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: transparent; border: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .row.modified .mod-dot { background: var(--accent); border-color: var(--accent); }
+  .row-desc { font-size: 12px; color: var(--text-muted); margin-top: 3px; line-height: 17px; }
+
+  /* Zed 式「— 已修改」文字（仅方案 B 用） */
+  .mod-text { font-size: 11px; color: var(--text-muted); }
+
+  /* ── 控件 ── */
+  .cell-control { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .row.tall .cell-control { margin-top: 2px; }
+
+  .toggle {
+    width: 34px; height: 19px; border-radius: 10px;
+    background: var(--bg-input); border: 1px solid var(--border-subtle);
+    position: relative; cursor: pointer; transition: background var(--ease), border-color var(--ease);
+    flex-shrink: 0;
+  }
+  .toggle::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 13px; height: 13px; border-radius: 50%;
+    background: var(--text-muted); transition: all var(--ease);
+  }
+  .toggle.on { background: var(--accent-soft); border-color: var(--accent); }
+  .toggle.on::after { left: 17px; background: var(--accent); }
+
+  .select-wrap {
+    background: var(--bg-input); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius); height: 24px; display: flex; align-items: center;
+  }
+  .select-wrap select {
+    background: transparent; border: none; padding: 0 6px 0 8px; width: 128px;
+    color: var(--text-bright); appearance: none; cursor: pointer;
+  }
+  .select-wrap .chev { color: var(--text-muted); padding-right: 7px; font-size: 10px; }
+
+  .num {
+    width: 64px; height: 24px; background: var(--bg-input);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius);
+    color: var(--text-bright); padding: 0 8px; text-align: right;
+    font-family: var(--font-mono); font-size: 12px;
+  }
+  .range-wrap { display: flex; align-items: center; gap: 8px; }
+  .range-wrap input[type="range"] { width: 150px; accent-color: var(--accent); }
+  .range-val { font-family: var(--font-mono); font-size: 12px; color: var(--text); width: 32px; text-align: right; }
+  .text {
+    width: 220px; height: 24px; background: var(--bg-input);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius);
+    color: var(--text-bright); padding: 0 8px;
+    font-family: var(--font-mono); font-size: 12px;
+  }
+  textarea.text { width: 320px; height: 58px; padding: 6px 8px; line-height: 1.5; resize: none; }
+
+  /* ── reset 按钮 ── */
+  .reset {
+    width: 24px; height: 24px; border-radius: var(--radius);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-muted); flex-shrink: 0;
+    cursor: pointer; position: relative;
+    transition: background var(--ease), color var(--ease);
+  }
+  .reset:hover { background: var(--bg-hover); color: var(--text-bright); }
+  .reset:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .reset svg { width: 13px; height: 13px; }
+
+  /* 方案 A/B：仅 modified 渲染（JS 控制 display） */
+  .row:not(.modified) .reset.live { display: none; }
+
+  /* 方案 C 尾槽：空槽常在；ghost 仅行 hover 浮现 */
+  .slot { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .row.tall .slot { margin-top: 2px; }
+  .reset.ghost {
+    opacity: 0; color: var(--text-dim); cursor: default;
+    transition: opacity var(--ease);
+  }
+  .row:hover .reset.ghost { opacity: .45; }
+  .reset.ghost:hover { background: transparent; color: var(--text-dim); }
+
+  /* ── CSS tooltip（演示 tooltip 文案设计）── */
+  [data-tip] { position: relative; }
+  [data-tip]::after {
+    content: attr(data-tip);
+    position: absolute; bottom: calc(100% + 6px); right: 0;
+    background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+    color: var(--text); font-size: 11px; line-height: 1.4;
+    padding: 4px 8px; border-radius: var(--radius);
+    white-space: nowrap; pointer-events: none;
+    opacity: 0; transition: opacity 80ms ease 300ms;
+    z-index: 5;
+  }
+  [data-tip]:hover::after { opacity: 1; }
+
+  .kbd {
+    font-family: var(--font-mono); font-size: 11px;
+    background: var(--bg-input); border: 1px solid var(--border-subtle);
+    border-radius: 3px; padding: 0 5px; color: var(--text);
+  }
+  .note-nonproduct {
+    margin-top: 4px; font-size: 11px; color: var(--text-dim); font-style: italic;
+  }
+</style>
+</head>
+<body>
+
+<div class="doc">
+  <h1>行级「恢复默认」— 放置与形态设计</h1>
+  <p>
+    需求：设置里<b>每一行</b>都能恢复默认值。三个候选：A 行尾随控件（当前实现）、
+    B label 旁（Zed Settings Editor 真实做法）、C 行尾固定槽 + 状态分级（推荐）。
+    下方三个面板用同一组行（含宽窄不一的控件 + textarea 高行）演示差异；行内控件可操作，
+    改动后行变 modified，reset 出现，点击即恢复。
+  </p>
+  <table>
+    <tr><th></th><th>A 行尾随控件（现状）</th><th>B label 旁（Zed）</th><th>C 行尾固定槽（推荐）</th></tr>
+    <tr><td>位置稳定性</td><td class="bad">✗ 随控件宽度漂移</td><td class="bad">✗ 随 label 长短漂移</td><td class="good">✓ 恒定最右 24px 列</td></tr>
+    <tr><td>常态噪音</td><td class="good">低（modified 才有）</td><td class="mid">中（多一截文字）</td><td class="good">零（ghost 仅行 hover）</td></tr>
+    <tr><td>键盘可达</td><td class="good">✓ 常显可 Tab</td><td class="good">✓ 常显可 Tab</td><td class="good">✓ modified 常显可 Tab</td></tr>
+    <tr><td>功能可发现</td><td class="mid">弱（默认行无暗示）</td><td class="good">强（文字自解释）</td><td class="good">强（hover ghost + 蓝点）</td></tr>
+    <tr><td>每行都有</td><td class="bad">✗ 默认行无</td><td class="bad">✗ 默认行无</td><td class="good">✓ 位置常在，modified 激活</td></tr>
+  </table>
+  <p class="note-nonproduct">本页为设计对比原型，非产品 UI。</p>
+</div>
+
+<!-- ══════════ 方案 A：行尾随控件（当前实现） ══════════ -->
+<div class="panel">
+  <div class="panel-head">
+    <h2>A · 行尾随控件</h2>
+    <span class="verdict">现状。reset 紧贴控件右侧 —— 注意不同控件宽度下 ↺ 的水平位置各不相同，且行在 modified / 默认间切换时按钮突然出现会推动整行布局。</span>
+  </div>
+  <div class="panel-body" id="panelA"></div>
+</div>
+
+<!-- ══════════ 方案 B：label 旁（Zed） ══════════ -->
+<div class="panel">
+  <div class="panel-head">
+    <h2>B · label 旁 + 文字标注（Zed Settings Editor）</h2>
+    <span class="verdict">↺ 紧贴 label，后跟 muted 文字「— 已修改」。语义聚在左列，但位置随 label 长短漂移；文字常驻占宽；单文件场景（j-agent 只有 settings.json）文字信息量低。</span>
+  </div>
+  <div class="panel-body" id="panelB"></div>
+</div>
+
+<!-- ══════════ 方案 C：行尾固定槽（推荐） ══════════ -->
+<div class="panel panel-c">
+  <div class="panel-head">
+    <h2>C · 行尾固定槽 + 状态分级（推荐）</h2>
+    <span class="verdict">每行最右恒定 24px 槽。默认行：空槽，行 hover 时浮现 ghost ↺（tooltip「已是默认值」）——零常态噪音、功能可发现；modified 行：↺ 常显可 Tab（hover 抬底，tooltip 显示「当前值 → 默认值」）。↺ 永远在同一垂直线上。</span>
+  </div>
+  <div class="panel-body" id="panelC"></div>
+</div>
+
+<script>
+/* ── 图标 ── */
+const RESET_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.3L3 8"/><path d="M3 3v5h5"/></svg>';
+const CHEV = '▾';
+
+/* ── 演示行定义（控件宽窄 + 高行覆盖全类型）── */
+const DEFS = [
+  { key: 'sound',    label: '通知音效',    desc: '依赖桌面通知开启。播放提示音。',
+    type: 'toggle', def: false },
+  { key: 'palette',  label: '配色方案',    desc: '终端调色板。',
+    type: 'select', def: 'one-dark', options: ['one-dark', 'one-light', 'dracula'] },
+  { key: 'fontSize', label: '字号',        desc: '10–22。',
+    type: 'number', def: 13, min: 10, max: 22 },
+  { key: 'sideW',    label: '侧栏宽度',    desc: '200–400，拖拽实时写回。',
+    type: 'range',  def: 248, min: 200, max: 400 },
+  { key: 'font',     label: '终端字体',    desc: 'mono 字体，不继承 UI 字体。',
+    type: 'text',   def: 'JetBrains Mono', mono: true, wide: true },
+];
+
+const state = {
+  A: { sound: false, palette: 'one-dark', fontSize: 15, sideW: 248, font: 'JetBrains Mono' },
+  B: { sound: false, palette: 'one-dark', fontSize: 15, sideW: 248, font: 'Fira Code' },
+  C: { sound: false, palette: 'one-dark', fontSize: 15, sideW: 248, font: 'Fira Code' },
+};
+
+function isModified(d, v) {
+  if (d.type === 'toggle') return v !== d.def;
+  return String(v) !== String(d.def);
+}
+
+/* 值的 tooltip 摘要：toggle → 开/关；其他 → 截断 20 字符 */
+function tipVal(d, v) {
+  if (d.type === 'toggle') return v ? '开' : '关';
+  const s = String(v);
+  return s.length > 20 ? s.slice(0, 18) + '…' : s;
+}
+
+/* ── 控件工厂 ── */
+function buildControl(d, v, onChange, panel) {
+  const wrap = document.createElement('div');
+  wrap.className = 'cell-control';
+  if (d.type === 'toggle') {
+    const t = document.createElement('button');
+    t.className = 'toggle' + (v ? ' on' : '');
+    t.setAttribute('aria-label', d.label);
+    t.addEventListener('click', () => onChange(!v));
+    wrap.appendChild(t);
+  } else if (d.type === 'select') {
+    const s = document.createElement('div'); s.className = 'select-wrap';
+    const sel = document.createElement('select');
+    d.options.forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = o; opt.textContent = o;
+      sel.appendChild(opt);
+    });
+    sel.value = v;
+    sel.addEventListener('change', () => onChange(sel.value));
+    const c = document.createElement('span'); c.className = 'chev'; c.textContent = CHEV;
+    s.appendChild(sel); s.appendChild(c); wrap.appendChild(s);
+  } else if (d.type === 'number') {
+    const n = document.createElement('input');
+    n.className = 'num'; n.type = 'number'; n.min = d.min; n.max = d.max; n.value = v;
+    n.addEventListener('change', () => onChange(Number(n.value)));
+    wrap.appendChild(n);
+  } else if (d.type === 'range') {
+    const r = document.createElement('div'); r.className = 'range-wrap';
+    const inp = document.createElement('input');
+    inp.type = 'range'; inp.min = d.min; inp.max = d.max; inp.value = v;
+    const val = document.createElement('span'); val.className = 'range-val'; val.textContent = v;
+    inp.addEventListener('input', () => { val.textContent = inp.value; onChange(Number(inp.value)); });
+    r.appendChild(inp); r.appendChild(val); wrap.appendChild(r);
+  } else { /* text */
+    const t = document.createElement('input');
+    t.className = 'text'; t.value = v;
+    t.addEventListener('change', () => onChange(t.value));
+    wrap.appendChild(t);
+  }
+  return wrap;
+}
+
+/* ── 行工厂：panel = 'A' | 'B' | 'C' ── */
+function buildRow(d, panel) {
+  const v = state[panel][d.key];
+  const mod = isModified(d, v);
+  const row = document.createElement('div');
+  row.className = 'row' + (mod ? ' modified' : '');
+
+  /* 左列 */
+  const left = document.createElement('div');
+  left.className = 'cell-label';
+  const labelRow = document.createElement('div');
+  labelRow.className = 'row-label';
+  const dot = document.createElement('span'); dot.className = 'mod-dot';
+  const labelText = document.createElement('span'); labelText.textContent = d.label;
+  labelRow.appendChild(dot); labelRow.appendChild(labelText);
+
+  /* 方案 B：label 后紧跟 ↺ + 「— 已修改」 */
+  if (panel === 'B') {
+    if (mod) {
+      labelRow.appendChild(resetBtn(d, panel));
+      const mt = document.createElement('span');
+      mt.className = 'mod-text'; mt.textContent = '— 已修改';
+      labelRow.appendChild(mt);
+    }
+  }
+  const desc = document.createElement('div');
+  desc.className = 'row-desc'; desc.textContent = d.desc;
+  left.appendChild(labelRow); left.appendChild(desc);
+  row.appendChild(left);
+
+  /* 控件 */
+  row.appendChild(buildControl(d, v, next => {
+    state[panel][d.key] = next;
+    render();
+  }, panel));
+
+  /* reset 放置 */
+  if (panel === 'A') {
+    /* 紧贴控件右侧（行 grid 的 auto 列内）—— 漂移问题由此而来 */
+    if (mod) {
+      const ctl = row.querySelector('.cell-control');
+      ctl.appendChild(resetBtn(d, panel));
+    }
+  } else if (panel === 'C') {
+    /* 恒定尾槽 */
+    const slot = document.createElement('div');
+    slot.className = 'slot';
+    if (mod) slot.appendChild(resetBtn(d, panel, 'live'));
+    else {
+      const g = resetBtn(d, panel, 'ghost');
+      g.setAttribute('data-tip', '已是默认值');
+      g.tabIndex = -1;
+      slot.appendChild(g);
+    }
+    row.appendChild(slot);
+  }
+  return row;
+}
+
+/* reset 按钮（带 tooltip：当前值 → 默认值） */
+function resetBtn(d, panel, kind) {
+  const b = document.createElement('button');
+  b.className = 'reset ' + (kind || 'live');
+  b.innerHTML = RESET_SVG;
+  b.setAttribute('data-tip', `恢复默认：${tipVal(d, state[panel][d.key])} → ${tipVal(d, d.def)}`);
+  b.setAttribute('aria-label', `恢复默认：${d.label}`);
+  b.addEventListener('click', () => {
+    state[panel][d.key] = d.def;
+    render();
+  });
+  return b;
+}
+
+/* ── 渲染 ── */
+function render() {
+  ['A', 'B', 'C'].forEach(p => {
+    const host = document.getElementById('panel' + p);
+    host.innerHTML = '';
+    DEFS.forEach(d => host.appendChild(buildRow(d, p)));
+    const hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.innerHTML = p === 'A'
+      ? '↺ 只在 modified 行出现、位置随控件浮动 —— 悬停各行观察水平位置不齐。'
+      : p === 'B'
+        ? '↺ 与「— 已修改」都在左列 —— 语义聚集，但不同行 label 长短不同，↺ 不对齐。'
+        : '默认行悬停 → ghost ↺ 浮现（不可点）；modified 行 ↺ 常显、<span class="kbd">Tab</span> 可达、悬停看 tooltip「当前值 → 默认值」。';
+    host.appendChild(hint);
+  });
+}
+render();
+</script>
+</body>
+</html>

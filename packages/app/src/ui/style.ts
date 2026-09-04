@@ -33,9 +33,14 @@ export function controlBox(focused: boolean, disabled: boolean = false): StyleDe
   }
 }
 
-/** 表单控件通用文字 */
+/** 表单控件通用文字。
+ *  lineHeight 必须显式：gpuix input/textarea 的 caret 与行高取元素自身
+ *  text style 的 line_height（修复后随捕获 style 计算），不设则继承
+ *  phi 比例——对 12.5px 字约 20px，在 28px 控件里 caret 视觉上几乎占满。
+ *  取 1.36×字号 ≈ web normal 的紧凑行高，caret 与文字视觉等高。 */
 export const controlText = (mono: boolean = false): StyleDesc => ({
   fontSize: 12.5,
+  lineHeight: 17,
   fontFamily: mono ? FONT.mono : FONT.ui,
   color: COLORS.textBright,
 })

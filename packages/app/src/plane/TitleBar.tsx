@@ -1,0 +1,182 @@
+/**
+ * TitleBar — 自绘顶栏（Zed platform_title_bar 模式的 j-agent 版；
+ * 2026-09 调研 .refs/gpuix/zed 源码定稿）。
+ *
+ * 三平台策略：
+ * - mac：titlebarTransparent，红绿灯由系统画在左上；本条拖拽 =
+ *   mousedown 置 armed + 首次按住移动 → windowControls.startMove()
+ *   （Zed 的 should_move 模式：等一次 move 才启动，单击/双击语义
+ *   不被拖拽吃掉）；双击 → windowControls.doubleClick()（尊重系统
+ *   「双击标题栏缩放」偏好）。
+ * - win：无系统条；整条标 windowControlArea:"drag"，Windows 由
+ *   WM_NCHITTEST → HTCAPTION 接管拖拽；右侧三键（Segoe Fluent
+ *   Icons 字形）同样只标 min/max/close 区域，点击由系统 NC 消息
+ *   处理——零 JS 点击回调。按钮必须 pointerEvents:"auto"：
+ *   BlockMouse 命中盒把外层 drag 区从命中链切断，否则 HTCAPTION
+ *   抢在按钮前（gpui hit_test 倒序遇 BlockMouse 即停；Zed 的
+ *   WindowsCaptionButton 同款 .occlude()）。
+ * - linux：默认 Server decorations（系统标题栏在上），本行是纯内容
+ *   导航条——无 drag 标记、无窗口按钮。
+ *
+ * title 由 AgentPlane 注入（当前线程 displayTitle / 设置 / 'j-agent'），
+ * 本组件零 store 依赖，测试直接传字符串。
+ */
+
+import { useState } from 'react'
+
+import type { AppPlatform } from '../ui/platform'
+import { TRAFFIC_LIGHT_PADDING } from '../ui/platform'
+import { COLORS, FONT, SIZES } from '../ui/tokens'
+
+/** 窗口控制 seam（main.tsx 装配：闭包 renderer；测试注入 spy） */
+export type WindowControls = {
+  startMove(): void
+  doubleClick(): void
+}
+
+type DragProps = {
+  onMouseDown?: (e: { button?: number }) => void
+  onMouseUp?: () => void
+  onMouseLeave?: () => void
+  onMouseMove?: (e: { pressedButton?: number }) => void
+  onClick?: (e: { clickCount?: number }) => void
+}
+
+/**
+ * mac/linux 拖拽事件集（win 不用：命中测试驱动）。
+ * armed + pressedButton===0 双保险；mouseleave 解除（Zed 用
+ * on_mouse_down_out 同义）。
+ */
+export function useTitleBarDrag(wc: WindowControls | undefined): DragProps {
+  const [armed, setArmed] = useState(false)
+  if (!wc) return {}
+  return {
+    onMouseDown: (e) => {
+      if (e.button === 0) setArmed(true)
+    },
+    onMouseUp: () => setArmed(false),
+    onMouseLeave: () => setArmed(false),
+    onMouseMove: (e) => {
+      if (armed && e.pressedButton === 0) {
+        setArmed(false)
+        wc.startMove()
+      }
+    },
+    onClick: (e) => {
+      if (e.clickCount === 2) wc.doubleClick()
+    },
+  }
+}
+
+/** Windows 右上三键（Zed WindowsWindowControls：36px 宽全高，系统处理点击） */
+const WIN_CAPTION_FONT = '"Segoe Fluent Icons", "Segoe MDL2 Assets"'
+
+function WindowsCaptionButton({
+  area,
+  glyph,
+  close,
+}: {
+  area: 'min' | 'max' | 'close'
+  glyph: string
+  close?: boolean
+}) {
+  return (
+    <div
+      testId={`titlebar-${area}`}
+      style={{
+        width: 36,
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        // BlockMouse：切断外层 drag 区命中链（否则 HTCAPTION 抢先），
+        // 同时也是按钮自身命中盒（系统 NC 处理点击）
+        pointerEvents: 'auto',
+        windowControlArea: area,
+        color: COLORS.text,
+        hover: close
+          ? { backgroundColor: '#E81120', color: '#ffffff' }
+          : { backgroundColor: COLORS.surface, color: COLORS.textBright },
+        active: close
+          ? { backgroundColor: '#c50f1d', color: 'rgba(255,255,255,0.85)' }
+          : { backgroundColor: COLORS.surfaceHover },
+      }}
+    >
+      <text
+        style={{
+          pointerEvents: 'none',
+          fontFamily: WIN_CAPTION_FONT,
+          fontSize: 10,
+          // color 不写：继承 div 的 color / hover 伪类变色（gpuix 文本样式栈）
+        }}
+      >
+        {glyph}
+      </text>
+    </div>
+  )
+}
+
+function WindowsWindowControls() {
+  // max 图标固定 e922（restore e923 需要 isMaximized 查询，gpuix 未暴露；
+  // 系统点击行为不受影响，仅图标不随最大化态切换）
+  return (
+    <div style={{ display: 'flex', flexDirection: 'row', height: '100%' }}>
+      <WindowsCaptionButton area="min" glyph={'\uE921'} />
+      <WindowsCaptionButton area="max" glyph={'\uE922'} />
+      <WindowsCaptionButton area="close" glyph={'\uE8BB'} close />
+    </div>
+  )
+}
+
+export function TitleBar({
+  title,
+  platform,
+  windowControls,
+}: {
+  title: string
+  platform: AppPlatform
+  windowControls?: WindowControls
+}) {
+  const drag = useTitleBarDrag(windowControls)
+  return (
+    <div
+      testId="titlebar"
+      style={{
+        flexGrow: 1,
+        flexShrink: 1,
+        minWidth: 0,
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: SIZES.titleBarHeight,
+        backgroundColor: COLORS.titlebar,
+        // mac 红绿灯只在 SidebarHeader 段让位（Zed：sidebar 打开时本段不加
+        // TRAFFIC_LIGHT_PADDING）；win drag 标记让系统接管；linux 纯内容
+        paddingLeft: platform === 'win' ? 12 : TRAFFIC_LIGHT_PADDING + 12,
+        paddingRight: platform === 'win' ? 0 : 12,
+        userSelect: 'none',
+        ...(platform === 'win'
+          ? { windowControlArea: 'drag' as const, justifyContent: 'space-between' }
+          : {}),
+      }}
+      {...(platform === 'mac' ? drag : {})}
+    >
+      <text
+        style={{
+          pointerEvents: 'none',
+          fontSize: 12,
+          fontFamily: FONT.ui,
+          fontWeight: '500',
+          color: COLORS.text,
+          whiteSpace: 'nowrap',
+          textOverflow: 'ellipsis',
+          overflow: 'hidden',
+        }}
+      >
+        {title}
+      </text>
+      {/* win：三键靠右（space-between：title 左、按钮右） */}
+      {platform === 'win' && <WindowsWindowControls />}
+    </div>
+  )
+}

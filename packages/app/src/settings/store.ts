@@ -19,6 +19,7 @@ import type { FileAdapter } from './file'
 import type { AcpAgent } from './schema'
 import {
   DEFAULTS,
+  migrateLegacySettings,
   RawSettingsSchema,
   SettingsSchema,
   type Settings,
@@ -181,7 +182,7 @@ export function createSettingsStore(file: FileAdapter): SettingsStore {
       if (raw == null) return // 首次运行：内存默认即可，首次 patch 自然落盘
       let parsed: Settings
       try {
-        parsed = SettingsSchema.parse(JSON.parse(raw))
+        parsed = SettingsSchema.parse(migrateLegacySettings(JSON.parse(raw)))
       } catch {
         parsed = DEFAULTS // JSON.parse 炸（坏 JSON）→ 整体默认
       }

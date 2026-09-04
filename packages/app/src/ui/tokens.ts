@@ -10,6 +10,8 @@ export const COLORS = {
   app: '#282c34',
   pane: '#1e2127',
   sidebar: '#21252b',
+  /** 自绘顶栏底（与 sidebar 同色：整条顶栏与左栏连成一体，Zed 同款） */
+  titlebar: '#21252b',
   terminal: '#1a1d23',
   /** 抬升表面：active 行底 / 按钮底 / 通用 hover（One Dark selection） */
   surface: '#2c313a',
@@ -43,6 +45,8 @@ export const SIZES = {
   rowPaddingX: 8,
   rowRadius: 4,
   activeBarWidth: 2,
+  /** 自绘顶栏高度（Zed platform_title_bar_height：非 Windows 为 max(1.75rem, 34px)） */
+  titleBarHeight: 34,
 } as const
 
 export const FONT = {

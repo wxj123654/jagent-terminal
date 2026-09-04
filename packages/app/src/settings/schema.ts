@@ -13,6 +13,27 @@ import { z } from 'zod'
 
 import { BUILTIN_PRESETS } from '../threads/presets'
 
+/** 终端必须默认到平台自带的等宽字体；不可用字体会让 GPUI 回退到比例 UI 字体。 */
+export const DEFAULT_TERMINAL_FONT =
+  process.platform === 'darwin' ? 'Menlo' : process.platform === 'win32' ? 'Consolas' : 'monospace'
+
+/**
+ * 旧版把未随应用分发的 JetBrains Mono 写成默认值。已落盘用户并没有主动
+ * 选择它，却会永久覆盖新默认；在 schema 边界迁移成平台字体。未知字段保持。
+ */
+export function migrateLegacySettings(input: unknown): unknown {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) return input
+  const root = input as Record<string, unknown>
+  const terminal = root.terminal
+  if (typeof terminal !== 'object' || terminal === null || Array.isArray(terminal)) return input
+  const terminalObject = terminal as Record<string, unknown>
+  if (terminalObject.fontFamily !== 'JetBrains Mono') return input
+  return {
+    ...root,
+    terminal: { ...terminalObject, fontFamily: DEFAULT_TERMINAL_FONT },
+  }
+}
+
 // ── 子 schema ────────────────────────────────────────────────────────
 
 const TerminalPresetSchema = z.object({
@@ -66,7 +87,7 @@ export const RawSettingsSchema = z.looseObject({
   ),
   terminal: section(
     z.object({
-      fontFamily: z.string().catch('JetBrains Mono'),
+      fontFamily: z.string().catch(DEFAULT_TERMINAL_FONT),
       fontSize: z.number().int().min(10).max(22).catch(13),
       cursorBlink: z.boolean().catch(true),
       scrollbackLines: z.number().int().min(1000).max(100000).catch(10000),

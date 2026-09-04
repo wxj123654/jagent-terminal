@@ -20,7 +20,8 @@ bun run export-patches -- --check  # 只校验一致（CI/提交前用）
 | patch | 内容 | 对应 TODOLIST 记录 |
 |---|---|---|
 | `0001-shallow-submodule.patch` | `.gitmodules` zed `shallow = true` | 杂项 |
-| `0002-jagent-native-seam.patch` | ① `custom_elements/mod.rs`：`GLOBAL_FACTORIES` 进程级工厂表 + `register_global_factory`，宿主 napi crate 装载期注册、`with_defaults` drain；② `lib.rs`：`pub mod custom_elements` + `run_on_test_app` 条件 re-export；③ `renderer.rs`：`host_ui_commands_ready()`（探测线程化通道存活）；④ `test_renderer.rs`：`run_on_test_app()`（host 闭包直跑本线程 VisualTestState，bun test 单线程 = GPUI 线程往返） | 补丁 #6/#7（e2e seam）+ Phase 1 元素注册 seam |
+| `0002-jagent-native-seam.patch` | ① `custom_elements/mod.rs`：`GLOBAL_FACTORIES` 进程级工厂表 + `register_global_factory`，宿主 napi crate 装载期注册、`with_defaults` drain；② `lib.rs`：`pub mod custom_elements` + `run_on_test_app` 条件 re-export；③ `renderer.rs`：`host_ui_commands_ready()`/`run_on_gpuix()`——Win/Linux 走线程化 channel 往返；macOS 无 GPUI 线程（tick() 在 JS 主线程泵 AppKit），闭包经 thread-local `ApplicationHandle::update` 同线程直跑；④ `test_renderer.rs`：`run_on_test_app()`（host 闭包直跑本线程 VisualTestState，bun test 单线程 = GPUI 线程往返） | 补丁 #6/#7（e2e seam）+ Phase 1 元素注册 seam；macOS host seam（2026-09-04，terminal 会话 dispatch） |
+| `0003-macos-injected-renderer-frame-loop.patch` | `react/src/reconciler/renderer.ts`：render() 的帧循环启动条件去掉 `!injected` —— 显式传 renderer 的调用方（main.tsx 为闭包引用 focusElement）在 macOS 上也需要 tick() 泵 AppKit，否则窗口创建但永不上屏（Windows 不受影响：GPUI 在 Rust 线程自跑）。e2e 注入的 TestRenderer 非 GpuixRenderer 实例，被 instanceof 天然排除 | 2026-09-04 macOS 适配（窗口不上屏根因） |
 
 ### gpuix-zed/（zed 子模块 pin `8b94def` @ remorses/zed @gpuix 分支，由 gpuix 仓库记录）
 
