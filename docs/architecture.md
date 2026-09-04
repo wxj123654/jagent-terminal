@@ -83,9 +83,13 @@ j-agent/
 │       │   ├── threads/               #   store.ts + terminal.ts + presets.ts +
 │       │   │                          #   events.ts（SessionEvent 窄化）+ chat.ts
 │       │   │                          #   （ChatAgent seam + EchoAgent，T3.2）+
+│       │   │                          #   acp.ts（ACP v1 JSON-RPC 子进程客户端，
+│       │   │                          #   ChatAgent adapter，T3+.1）+
 │       │   │                          #   nativeDeps.ts（装配工厂）
-│       │   ├── surfaces/              #   registry.ts + Terminal/Chat/Acp/Empty
-│       │   │   └── settings/          #   SettingsView + 7 分区
+│       │   ├── surfaces/              #   registry + Terminal/Chat/Acp/Empty +
+│       │   │                          #   ConversationView（chat/acp 共享消息面）+
+│       │   │                          #   listEditorParts（列表分区共享编辑器件）+
+│       │   │                          #   PresetsSection/AcpAgentsSection/SettingsView
 │       │   ├── settings/              #   schema.ts / store.ts / file.ts
 │       │   └── ui/                    #   Icon / Tooltip / SettingRow / 控件
 │       └── package.json               #   依赖 @gpuix/react + @jagent/native
@@ -290,7 +294,11 @@ export type ChatThread  = {   // T3.2 实装（消息 + pending 状态机在 sto
   messages:ChatMessage[]       // threads/chat.ts 判别联合
   pendingReply:boolean         // composer 禁发 + thinking 占位
 }
-export type AcpThread   = { kind:'acp';  id:string; title:string; createdAt:number }   // Phase 3+ 骨架
+export type AcpThread   = { kind:'acp';  id:string; title:string; createdAt:number;
+                         agentId:string; messages:ChatMessage[]; pendingReply:boolean;
+                         autoTitle:boolean }   // T3+.1 实装：消息面同 chat；
+                         //  agentId → settings.acpAgents；autoTitle = 首条消息
+                         //  自动改写 title 的哨兵（rename 置 false）
 export type Thread = TerminalThread | ChatThread | AcpThread
 
 export type ActiveTarget =             // 派生视图类型：从路由状态算出（§3.5）
@@ -322,6 +330,11 @@ type ThreadDeps = {
   presetOf: (id: string) => TerminalPreset | undefined
   chatAgent: ChatAgent                          // chat 后端 seam（T3.2；默认 EchoAgent，
                                                 //  ACP/LLM 接入时换 adapter，UI 不动）
+  createAcpAgent: (agentId: string) => ChatAgent // ACP 后端工厂（T3+.1）：每 acp thread
+                                                //  首次发送时调一次；默认实现 =
+                                                //  threads/acp.ts JSON-RPC 子进程连接
+                                                //  （读 settings.acpAgents；dispose 归
+                                                //  store close 调）
 }
 ```
 
@@ -361,8 +374,9 @@ interface ThreadStore {
 | `onSessionEvent(bell)` | 该 thread 非 active 时 `hasBell = true` + `deps.notify(t)` |
 | `onSessionEvent(exit)` | `status='exited'` + exitCode；若 `deps.closeOnExit()` → 同 `close` |
 | `createChat` | push 空 ChatThread（title='Chat'）+ activate（T3.2；入口：+ 菜单固定项） |
-| `sendChatMessage` | 空串/pendingReply 忽略；user 落列 + pendingReply=true → `deps.chatAgent.send` → 回复 assistant 落列（reject → error 行）+ 复位；thread 已 close → 弃回复。首条 user 消息截断改写 title（title===默认值时，手改后冻结） |
-| `close` | terminal → `destroySession` + 移除行；当前路由指向它 → 先 `deps.navigate(null)` 再移除；chat/acp → 仅移除（无 session 可销毁；归档待后续） |
+| `createAcpThread` | push AcpThread（title=label，autoTitle=true）+ activate（T3+.1；入口：+ 菜单 agent 项；label 由调用方从 settings 快照传入——store 不读 settings） |
+| `sendChatMessage` / `sendAcpMessage` | 同构状态机单点（sendConversationMessage）：空串/pendingReply 忽略；user 落列 + pendingReply=true → agent.send → 回复 assistant 落列（reject → error 行）+ 复位；thread 已 close → 弃回复。首条 user 消息截断改写 title（chat：title===默认值哨兵；acp：autoTitle 哨兵；手改后冻结）。acp 连接情建（每 thread 一次；createAcpAgent 同步 throw → error 行） |
+| `close` | terminal → `destroySession` + 移除行；当前路由指向它 → 先 `deps.navigate(null)` 再移除；acp → 连接 dispose（子进程 kill）+ 移除；chat → 仅移除（归档待后续） |
 | `rename` | 空串忽略；写 `customTitle` |
 | `cycle` | threads 数组环形移动 → `activate`（路由跳转覆盖 settings 表面，契约 §4 生命周期） |
 
@@ -416,9 +430,10 @@ type SurfaceProps = { thread: Thread; store: ThreadStore; settings: SettingsStor
 type Surface = ComponentType<SurfaceProps>
 const SURFACES: Record<Thread['kind'], Surface> = {
   terminal: TerminalSurface,
-  chat: ChatSurface,          // T3.2 实装：薄顶栏 + virtual-list（followTail）消息 +
-                              //  composer（enter=Submit）；后端经 ThreadDeps.chatAgent
-  acp: AcpSurface,            // Phase 3+ 前为占位
+  chat: ChatSurface,          // T3.2 实装：ConversationView 共享消息面 + composer；
+                              //  后端经 ThreadDeps.chatAgent
+  acp: AcpSurface,            // T3+.1 实装：ConversationView + ACP pill；后端经
+                              //  ThreadDeps.createAcpAgent（threads/acp.ts JSON-RPC）
 }
 export const getSurface = (kind) => SURFACES[kind]
 ```
@@ -473,7 +488,7 @@ function TerminalSurface({ thread, settings }: SurfaceProps) {
 
 ### SettingsView（settings-ui.md §12 的对齐）
 
-结构照契约：`SettingsNav`（7 分区 + 搜索）+ `SettingsContent`。分区组件消费 `SETTING_DEFS`（见 §6）渲染 `SettingRow`；Presets 已实装（T3.1，PresetsSection 列表 CRUD）；ACP 分区手写列表 CRUD 待 Phase 3+。当前分区 = `/settings` 的类型化 search param `section`（分区深链免费；Esc / Ctrl-, 退出即返回）。生命周期（Ctrl-, / Esc / 切 thread 关闭）由路由与 `cycle` 天然实现，SettingsView 自身只管表单。
+结构照契约：`SettingsNav`（7 分区 + 搜索）+ `SettingsContent`。分区组件消费 `SETTING_DEFS`（见 §6）渲染 `SettingRow`；Presets 已实装（T3.1，PresetsSection 列表 CRUD）；ACP 分区已实装（T3+.1，AcpAgentsSection 列表 CRUD——无 builtin/modified 概念，默认 2 项也是可删改示例）。当前分区 = `/settings` 的类型化 search param `section`（分区深链免费；Esc / Ctrl-, 退出即返回）。生命周期（Ctrl-, / Esc / 切 thread 关闭）由路由与 `cycle` 天然实现，SettingsView 自身只管表单。
 
 ---
 
@@ -574,6 +589,12 @@ interface SettingsStore {
   deletePreset(id: string): void             // 仅自定义；plusDefault 指向它 → 回退 null（lastUsedPreset 是运行时态，消费侧兑底）
   duplicatePreset(id: string): string        // 副本 builtin:false + label 副本后缀 + id -copy 后缀，返回新 id
   resetPreset(id: string): void              // 仅内置，回 BUILTIN 出厂值
+  // ── ACP agent CRUD（T3+.1；同一写链/回滚面；无 builtin/modified 概念——
+  //    默认 2 项也只是可删改的示例）──
+  addAcpAgent(input: AcpAgentInput): string       // 唯一 id（acp-*），command 缺省 ''，返回 id
+  updateAcpAgent(id, patch: AcpAgentPatch): void  // id 不可改（类型面）；args 空串行过滤
+  deleteAcpAgent(id: string): void               // 直接删（存量 acp thread 连接不受影响：
+                                                 //  store 情建已兑底 unknown agentId）
 }
 ```
 
@@ -583,7 +604,7 @@ interface SettingsStore {
 
 ### 6.3 测试面
 
-内存 adapter：patch/isModified/reset · 坏 JSON / 越界值字段级回默认（zod catch）· 未知 key 往返保真 · 写失败回滚 + writeError · 合并写 · SETTING_DEFS 的 path 全部真实存在于 Settings（schema 一致性测试）。预设 CRUD（T3.1）：add 唯一 id+builtin:false · update 空字段归一+args 空行过滤 · delete plusDefault 回退 · duplicate 副本语义 · reset 出厂值 · CRUD 写失败同一回滚面。
+内存 adapter：patch/isModified/reset · 坏 JSON / 越界值字段级回默认（zod catch）· 未知 key 往返保真 · 写失败回滚 + writeError · 合并写 · SETTING_DEFS 的 path 全部真实存在于 Settings（schema 一致性测试）。预设 CRUD（T3.1）：add 唯一 id+builtin:false · update 空字段归一+args 空行过滤 · delete plusDefault 回退 · duplicate 副本语义 · reset 出厂值 · CRUD 写失败同一回滚面。ACP agent CRUD（T3+.1）：add 缺省/唯一 id · update args 空行过滤 · delete 落盘 + 写失败回滚（path=acpAgents）。threads/acp.test.ts：真子进程 JSON-RPC 链（__fixtures__/fake-acp-agent.ts，FAKE_ACP_MODE 选行为：echo/tools/permission/refusal/crash/badline/version2）。
 
 ---
 

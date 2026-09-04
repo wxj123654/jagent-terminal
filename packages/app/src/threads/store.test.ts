@@ -27,6 +27,27 @@ function makeChatAgent() {
   return { agent, calls }
 }
 
+/** 可控 fake ACP 工厂（T3+.1）：记录建连/dispose；send 同 makeChatAgent */
+function makeAcpFactory() {
+  const created: string[] = []
+  const disposed: string[] = []
+  const calls: Array<{ text: string; resolve: (s: string) => void; reject: (e: unknown) => void }> =
+    []
+  const factory = (agentId: string): ChatAgent => {
+    created.push(agentId)
+    return {
+      send: (text) =>
+        new Promise((resolve, reject) => {
+          calls.push({ text, resolve, reject })
+        }),
+      dispose: () => {
+        disposed.push(agentId)
+      },
+    }
+  }
+  return { factory, created, disposed, calls }
+}
+
 function makeDeps(overrides: Partial<ThreadDeps> = {}) {
   let nextSession = 1
   const destroyed: number[] = []
@@ -34,6 +55,7 @@ function makeDeps(overrides: Partial<ThreadDeps> = {}) {
   const spawned: import('@jagent/native').SpawnOptionsJs[] = []
   let closeOnExit = false
   const chat = makeChatAgent()
+  const acp = makeAcpFactory()
   const deps: ThreadDeps = {
     spawnSession: async (o) => {
       spawned.push(o)
@@ -48,6 +70,7 @@ function makeDeps(overrides: Partial<ThreadDeps> = {}) {
     presetOf: (id) => builtinPresetOf(id),
     activeThreadId: currentActiveThreadId,
     chatAgent: chat.agent,
+    createAcpAgent: acp.factory,
     ...overrides,
   }
   return {
@@ -56,6 +79,7 @@ function makeDeps(overrides: Partial<ThreadDeps> = {}) {
     notified,
     spawned,
     chat,
+    acp,
     setCloseOnExit: (v: boolean) => (closeOnExit = v),
   }
 }
@@ -424,5 +448,129 @@ describe('chat: sendChatMessage 状态机', () => {
     // 空串忽略（同 terminal 语义）
     store.rename(id, '  ')
     expect(chat(0).title).toBe('我的会话')
+  })
+})
+
+describe('acp: createAcpThread / sendAcpMessage（T3+.1）', () => {
+  let store: ThreadStore
+  let ctx: ReturnType<typeof makeDeps>
+  beforeEach(() => {
+    void router.navigate({ to: '/' })
+    ctx = makeDeps()
+    store = createThreadStore(ctx.deps)
+  })
+  const acpThread = (store: ThreadStore, i = 0) => {
+    const t = store.getState().threads[i]
+    if (t?.kind !== 'acp') throw new Error('not acp')
+    return t
+  }
+
+  test('createAcpThread：push + activate；title=传入 label；autoTitle', async () => {
+    store.createAcpThread('acp-codex', 'Codex (ACP)')
+    await flush()
+    const t = acpThread(store)
+    expect(t).toMatchObject({
+      kind: 'acp',
+      agentId: 'acp-codex',
+      title: 'Codex (ACP)',
+      messages: [],
+      pendingReply: false,
+      autoTitle: true,
+    })
+    expect(currentActiveThreadId()).toBe(t.id)
+  })
+
+  test('sendAcpMessage：情建连接（每 thread 一次）+ 状态机同 chat', async () => {
+    store.createAcpThread('acp-codex', 'Codex (ACP)')
+    const id = acpThread(store).id
+    store.sendAcpMessage(id, '看下这个 bug')
+    // 同步部分：user 落列 + pending + 工厂已按 agentId 建连
+    const t = acpThread(store)
+    expect(t.messages[0]).toMatchObject({ role: 'user', text: '看下这个 bug' })
+    expect(t.pendingReply).toBe(true)
+    expect(ctx.acp.created).toEqual(['acp-codex'])
+    // 首条消息改写 title（从 label）
+    expect(t.title).toBe('看下这个 bug')
+
+    ctx.acp.calls[0].resolve('修好了')
+    await flush()
+    expect(acpThread(store).messages[1]).toMatchObject({ role: 'assistant', text: '修好了' })
+    expect(acpThread(store).pendingReply).toBe(false)
+
+    // 第二条消息：连接复用（不重建）
+    store.sendAcpMessage(id, '再来')
+    expect(ctx.acp.created).toEqual(['acp-codex'])
+    ctx.acp.calls[1].resolve('ok')
+    await flush()
+    expect(acpThread(store).messages).toHaveLength(4)
+  })
+
+  test('rename 冻结：手改后首条消息不改写；空串忽略', async () => {
+    store.createAcpThread('acp-codex', 'Codex (ACP)')
+    const id = acpThread(store).id
+    store.rename(id, '调参专用')
+    expect(acpThread(store).title).toBe('调参专用')
+    store.sendAcpMessage(id, '首条')
+    expect(acpThread(store).title).toBe('调参专用') // 不改写
+    store.rename(id, '  ')
+    expect(acpThread(store).title).toBe('调参专用')
+  })
+
+  test('createAcpAgent throw（配置被删）→ error 行，不置 pending', async () => {
+    const ctx2 = makeDeps({
+      createAcpAgent: () => {
+        throw new Error('unknown ACP agent: gone')
+      },
+    })
+    const store2 = createThreadStore(ctx2.deps)
+    store2.createAcpThread('gone', 'Gone')
+    const id = store2.getState().threads[0]!.id
+    store2.sendAcpMessage(id, 'hello')
+    const t = store2.getState().threads[0]!
+    expect(t.kind).toBe('acp')
+    if (t.kind !== 'acp') return
+    expect(t.messages).toHaveLength(1)
+    expect(t.messages[0]).toMatchObject({ role: 'assistant', error: true })
+    expect(t.messages[0].text).toContain('unknown ACP agent')
+    expect(t.pendingReply).toBe(false)
+  })
+
+  test('close：连接 dispose + 行移除 + 先导航离开；建连前 close 无 dispose', async () => {
+    store.createAcpThread('acp-codex', 'Codex (ACP)')
+    store.createAcpThread('acp-claude', 'Claude (ACP)')
+    const a = acpThread(store, 0).id
+    const b = acpThread(store, 1).id
+    // a 建连后 close；b 未建连直接 close
+    store.sendAcpMessage(a, 'hi')
+    store.close(a)
+    await flush()
+    expect(ctx.acp.disposed).toEqual(['acp-codex'])
+    expect(store.getState().threads.some((t) => t.id === a)).toBe(false)
+    store.close(b)
+    await flush()
+    expect(ctx.acp.disposed).toEqual(['acp-codex']) // b 无连接不 dispose
+    expect(store.getState().threads).toHaveLength(0)
+    expect(router.history.location.pathname).toBe('/')
+  })
+
+  test('close 后迟到回复丢弃；reject → error 行（同 chat 语义）', async () => {
+    store.createAcpThread('acp-codex', 'Codex (ACP)')
+    const id = acpThread(store).id
+    store.sendAcpMessage(id, 'x')
+    store.close(id)
+    await flush()
+    ctx.acp.calls[0].resolve('迟到')
+    await flush()
+    expect(store.getState().threads).toHaveLength(0) // 不复活
+
+    store.createAcpThread('acp-codex', 'Codex (ACP)')
+    const id2 = acpThread(store).id
+    store.sendAcpMessage(id2, 'y')
+    ctx.acp.calls[1].reject(new Error('ACP 进程退出'))
+    await flush()
+    const t = acpThread(store)
+    expect(t.messages[1]).toMatchObject({ role: 'assistant', error: true })
+    expect(t.pendingReply).toBe(false)
+    store.close(id2)
   })
 })

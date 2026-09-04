@@ -78,10 +78,13 @@ describe('SettingsView · core（§15 1/2/4 部分）', () => {
     expect(t.renderer.findByTestId('plus-default')).toBeDefined()
     expect(t.renderer.findByTestId('preset-card-claude')).toBeDefined()
     expect(t.renderer.findByTestId('add-preset')).toBeDefined()
-    // ACP 仍占位（Phase 3+；懒渲染——切到该分区才出现）
+    // T3+.1：ACP 分区实装（默认 2 示例 + 新增按钮；占位卡下岗）
     click('nav-acp')
     t.renderer.flush()
-    expect(t.renderer.findByTestId('placeholder-acp')).toBeDefined()
+    expect(t.renderer.findByTestId('placeholder-acp')).toBeUndefined()
+    expect(t.renderer.findByTestId('agent-card-acp-codex')).toBeDefined()
+    expect(t.renderer.findByTestId('agent-card-acp-claude')).toBeDefined()
+    expect(t.renderer.findByTestId('add-acp-agent')).toBeDefined()
   })
 
   test('nav 点击切分区 → terminal 行出现（SettingRow 真值渲染）', () => {

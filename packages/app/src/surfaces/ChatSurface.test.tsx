@@ -50,6 +50,7 @@ beforeAll(() => {
     closeOnExit: () => false,
     presetOf: () => undefined,
     chatAgent: agent,
+    createAcpAgent: () => agent, // 本文件不驱动 acp 路径；同 agent 即可
   })
 })
 

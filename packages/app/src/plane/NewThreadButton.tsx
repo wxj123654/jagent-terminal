@@ -10,6 +10,7 @@
 
 import { useState } from 'react'
 
+import type { AcpAgent } from '../settings/schema'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
 import { presetCommandSummary } from '../threads/presets'
@@ -17,6 +18,11 @@ import type { ThreadStore } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
 import { Icon } from '../ui/Icon'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
+
+/** mono 命令摘要（agent 卡/菜单共用语义：命令 + 参数） */
+function agentCommandSummary(a: AcpAgent): string {
+  return [a.command, ...a.args].filter(Boolean).join(' ')
+}
 
 export function NewThreadButton({
   store,
@@ -26,7 +32,9 @@ export function NewThreadButton({
   settings: SettingsStore
 }) {
   const lastPreset = useThreadStore(store, (s) => s.lastUsedPreset)
-  const presets = useSettings(settings).presets.items
+  const snap = useSettings(settings)
+  const presets = snap.presets.items
+  const acpAgents = snap.acpAgents
   const [open, setOpen] = useState(false)
 
   // + 的目标：plusDefault 固定 → 上次使用 → 首项兜底（列表至少含 5 内置）
@@ -205,6 +213,66 @@ export function NewThreadButton({
               New Chat
             </text>
           </div>
+          {/* T3+.1：ACP agents（settings.acpAgents 动态；每项一个入口） */}
+          {acpAgents.length > 0 ? (
+            <div
+              style={{
+                height: 1,
+                backgroundColor: COLORS.borderSubtle,
+                marginTop: 4,
+                marginBottom: 4,
+              }}
+            />
+          ) : null}
+          {acpAgents.map((a) => (
+            <div
+              key={a.id}
+              tabIndex={0}
+              testId={`new-acp-${a.id}`}
+              onClick={() => {
+                setOpen(false)
+                store.createAcpThread(a.id, a.label)
+              }}
+              style={{
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                height: 26,
+                paddingLeft: 8,
+                paddingRight: 8,
+                borderRadius: 4,
+                cursor: 'pointer',
+                hover: { backgroundColor: COLORS.surface },
+              }}
+            >
+              <Icon name="acp" size={12} color={COLORS.acpKind} />
+              <text
+                style={{
+                  fontSize: 12,
+                  fontFamily: FONT.ui,
+                  color: COLORS.text,
+                  flexShrink: 0,
+                  pointerEvents: 'none',
+                }}
+              >
+                {a.label}
+              </text>
+              <text
+                style={{
+                  fontSize: 10,
+                  fontFamily: FONT.mono,
+                  color: COLORS.muted,
+                  whiteSpace: 'nowrap',
+                  textOverflow: 'ellipsis',
+                  overflow: 'hidden',
+                  pointerEvents: 'none',
+                }}
+              >
+                {agentCommandSummary(a)}
+              </text>
+            </div>
+          ))}
         </div>
       ) : null}
     </div>

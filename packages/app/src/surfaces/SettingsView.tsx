@@ -17,8 +17,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 
 import { useSettingsSection, navigateSettingsSection } from '../router'
-import { SECTIONS, SETTING_DEFS, DEFAULT_ACP_AGENTS } from '../settings/schema'
-import type { SettingSectionId } from '../settings/schema'
+import { SECTIONS, SETTING_DEFS } from '../settings/schema'
+import type { AcpAgent, SettingSectionId } from '../settings/schema'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
 import type { TerminalPreset } from '../threads/presets'
@@ -26,6 +26,7 @@ import { presetMatches } from '../threads/presets'
 import { Icon } from '../ui/Icon'
 import { inputFocus } from '../ui/keyboard'
 import { COLORS, FONT } from '../ui/tokens'
+import { acpAgentMatches } from './AcpAgentsSection'
 import { matchDef, renderSectionContent, SectionHeading, keybindingHits } from './SettingsSections'
 
 // ── 设置面键盘生命周期（模块单例，T2.6）────────────────────────────
@@ -79,7 +80,7 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
   const snap = useSettings(settings)
 
   const q: string | null = query.trim() || null
-  const hits = hitsBySection(q, snap.presets.items)
+  const hits = hitsBySection(q, snap.presets.items, snap.acpAgents)
   const searching = q !== null
   const totalHits = Object.values(hits).reduce((a, b) => a + b, 0)
 
@@ -305,10 +306,11 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
   )
 }
 
-/** 各分区命中数（搜索过滤面：defs + 键位动作 + 预设名（动态 items）+ ACP 名） */
+/** 各分区命中数（搜索过滤面：defs + 键位动作 + 预设名（动态 items）+ ACP agent 名（动态列表）） */
 export function hitsBySection(
   q: string | null,
   presetItems: TerminalPreset[],
+  acpAgents: AcpAgent[],
 ): Record<string, number> {
   if (!q) return {}
   const hits: Record<string, number> = {}
@@ -318,9 +320,7 @@ export function hitsBySection(
   hits.keybindings = (hits.keybindings ?? 0) + keybindingHits(q)
   const presetHits = presetItems.filter((p) => presetMatches(p, q)).length
   if (presetHits > 0) hits.presets = (hits.presets ?? 0) + presetHits
-  const acpHits = DEFAULT_ACP_AGENTS.filter((a) =>
-    a.label.toLowerCase().includes(q.toLowerCase()),
-  ).length
+  const acpHits = acpAgents.filter((a) => acpAgentMatches(a, q)).length
   if (acpHits > 0) hits.acp = (hits.acp ?? 0) + acpHits
   return hits
 }

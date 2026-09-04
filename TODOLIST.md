@@ -27,9 +27,9 @@
 | 1 双 workspace + napi 壳 + app 最小集 | ✅ 完成（结论见 Phase 1 结论区） |
 | 2 ThreadStore 全规则 + settings-core/controls + SettingsView | ✅ 完成（T2.1–T2.7） |
 | 3 settings-presets + chat | ✅ 完成（T3.1+T3.2） |
-| 3+ settings-acp-advanced + ACP + 键位编辑 | ⬜ 未开始 |
+| 3+ settings-acp-advanced + ACP + 键位编辑 | ◐ T3+.1 完成；T3+.2/.3 未开始 |
 
-**当前指针**：→ Phase 3+ / T3+.1（ACP Agents 分区 + AcpSurface）
+**当前指针**：→ Phase 3+ / T3+.2（Advanced 分区 + 键位编辑解锁）
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -152,9 +152,19 @@
 
 ## Phase 3+ —— acp/advanced/键位
 
-- [ ] **T3+.1** ACP Agents 分区 + AcpSurface（ACP JSON-RPC 子进程）
+- [x] **T3+.1** ACP Agents 分区 + AcpSurface（ACP JSON-RPC 子进程）——详见下方结论区
 - [ ] **T3+.2** Advanced 分区 + 键位编辑解锁（第一期只读 → 可编辑）
 - [ ] **T3+.3** 验收锚点（§15 第 6 条）+ commit
+
+### Phase 3+ 结论区（T3+.1，ACP）
+
+- **ACP 协议调研（2026-09-05，agentclientprotocol.com + GitHub schema 源）**：稳定版 = **v1**（v2 是 draft，codex --acp / claude-code-acp 实现 v1）。传输 = stdio + 行分隔 JSON-RPC 2.0（非 LSP 的 Content-Length 帧）。握手链 = initialize（protocolVersion:1 + clientCapabilities）→ session/new（cwd 绝对路径 + mcpServers）→ sessionId；对话 = session/prompt（prompt: ContentBlock[]）→ 期间 session/update 通知流式汇报（sessionUpdate: agent_message_chunk / tool_call / tool_call_update / agent_thought_chunk / plan / usage_update…；ContentChunk 带 messageId，变 messageId = 新消息）→ 响应 {stopReason: end_turn|max_tokens|max_turn_requests|refusal|cancelled}。agent→client 请求：session/request_permission（options: allow_once/allow_always/reject_once/reject_always）；fs/*、terminal/* 仅在 client 声明对应 capability 后才会来——我们全不声明（{}）故不会收到。自研客户端零依赖（与 notify.rs/Rust toast 同款纪律，官方 TS SDK 引入成本高于手写 ~300 行）。
+- **threads/acp.ts（AcpConnection = ChatAgent + dispose）**：惰性握手（首次 send 才 initialize+session/new，失败置空可重试）；send = prompt + 收集器（文本块拼接、messageId 变化分段落、tool_call/tool_call_update 汇总为 markdown bullet 行、非 end_turn 附「> 停止：xxx」注记、全空回「（turn 结束，无输出）」）；权限自动应答 allow_once > allow_always > 首项（无 UI，后续接权限面时替换）；进程退出/spawn 失败 reject 全部在途请求并附 stderr 尾部（codex 未装时首条消息直接看到原因）；dispose kill 子进程。**Windows 坑：npm 全局 CLI 是 .cmd shim，node spawn 不带 shell 解析不到 → win32 走 shell:true + 自拼引号**（args 含 %/引号的极端转义是已知限制）。
+- **store 面（chat/acp 同构状态机单点 sendConversationMessage）**：AcpThread 完整化（agentId + messages + pendingReply + autoTitle 哨兵）；createAcpThread(agentId, label)——label 由调用方从 settings 快照传入（store 不读 settings，DI 纪律不变）；连接情建（每 thread 一次，createAcpAgent 同步 throw → error 行不置 pending）；close → 连接 dispose；ChatAgent 接口增可选 dispose（EchoAgent 无资源不实现）。store 测试 31 用例（+7 acp）。
+- **设置面**：SettingsStore 增 addAcpAgent/updateAcpAgent/deleteAcpAgent（同一写链/回滚面；无 builtin/modified 概念——默认 2 项也只是可删改示例；args 空串行过滤同 presets）；AcpAgentsSection（列表卡 + 三字段编辑器 label/command/args，占位卡下岗；PlaceholderSection 死代码已删）；搜索 hitsBySection 改吃动态 acpAgents（原来用 DEFAULT_ACP_AGENTS 常量，改配置后搜索命中会漂移）。FieldRow/LinesField/ModDot 提取到 surfaces/listEditorParts.tsx（Presets/AcpAgents 共享）。
+- **UI 面**：ConversationView 提取（chat/acp 共享消息面：pill+标题+virtual-list followTail+composer；差异全参数化 testId/pill/placeholder/onSend）；ChatSurface 变薄壳（6 用例不改动全绿）；AcpSurface = ACP pill（acpKind 紫）+ sendAcpMessage。NewThreadButton 菜单：预设 → 分隔线 → New Chat → 分隔线（有 agent 时）→ agent 项（testId=new-acp-$id，Icon acp + label + mono 命令摘要）。nativeDeps.createAcpAgent 默认实现读 settings.acpAgents（e2e 不覆盖即可测真链）。
+- **测试面**：__fixtures__/fake-acp-agent.ts（bun 脚本假 agent，FAKE_ACP_MODE 七种行为：echo/tools/permission/refusal/crash/badline/version2）经 process.execPath 真 spawn——acp.test.ts 10 用例覆盖协议面（含 dispose 后进程终止断言 kill(pid,0)）；AcpSurface.test 3 用例；settings CRUD +3；e2e 第 11 用例全链（settings 注入 fake 配置 → 菜单 → 真子进程 JSON-RPC → 回复 markdown → close）。测试总量：单测 114 + e2e 11 + cargo 33 全绿 · tsc/fmt/lint 干净 · 真窗口冒烟（mount complete）。
+- **归档注记**：存量 acp thread 不追配置变更（删配置/改命令只影响新 thread——store 情建 + unknown agentId 错误行兑底）；权限 UI/工具卡/thought 块/流式增量/turn 取消都是后续升级面（ChatAgent seam 形态不变，换 adapter 即可）。
 
 ---
 
@@ -189,3 +199,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-05 · **T2.6 + T2.7 完成（Phase 2 收官）**：键位层提取 keybindings.ts（DI 形态 main/e2e 共用）· Esc 双跳时序实测（React 同步提交→「已消费」标记方案）· 关闭设置回 lastNonSettings（router 桥维护）· `/` 聚焦走 ref 取 id（autoFocus 不发 JS focus 事件）+ renderer.focusElement · ui/keyboard.ts 输入焦点登记 · main.tsx 自持 renderer 实例 · e2e 第 8 用例（全量跑 threads 遗留污染→数组序断言）· §15 锚点 1/2/3/4/5/9/10/11 逐条核对达成 · 67 单测+8 e2e+tsc+cargo 全绿+真窗口冒烟 · architecture.md 契约同步（SurfaceProps/keybindings/键位层修订）· commit "Phase 2" · 下一步：Phase 3 T3.1（Presets 分区 CRUD）
 - 2026-09-05 · **T3.1 完成（settings-presets 切片）**：SettingsStore 预设 CRUD 五方法（规则单点：plusDefault 删除回退/内置不可删/副本后缀/空字段归一+args 空行过滤，同一写链回滚面）· PresetsSection 实装（plusDefault Select + 列表卡 CRUD + 六字段编辑器 + 搜索过滤，占位卡换下岗）· LinesField 即时提交模式（提交不依赖 blur）· **三大平台发现回写记忆 #29**：listener 冒泡（抑制 ref 模式）/ TestRenderer 不派发 focus/blur / textarea enter=Submit shift-enter=换行 · 接线面全换 settings 快照（NewThreadButton/EmptyPresets/presetOf/hitsBySection）· e2e 第 9 用例（自定义预设真 PTY 全链）· 87 单测+9 e2e+cargo 33 全绿 · 下一步：T3.2（ChatSurface）
 - 2026-09-05 · **T3.2 + T3.3 完成（Phase 3 收官）**：chat 后端拍板（EchoAgent + ChatAgent seam；入口 = + 菜单固定 New Chat 项）· threads/chat.ts（接口 + EchoAgent 600ms）· store 扩展（createChat/sendChatMessage 状态机/首条消息改标题/rename 兼 chat/close 弃迟到回复；ThreadDeps.chatAgent）· ChatSurface 实装（顶栏 pill + virtual-list followTail + markdown assistant + composer enter=Submit）· 平台发现回写记忆 #29（keystroke 中间空格也吞/markdown 不进 getAllText/点击抢焦点）· 单测 92 + e2e 10 全绿 · architecture.md 同步 · commit "Phase 3" · 下一步：Phase 3+ T3+.1（ACP Agents 分区 + AcpSurface）
+- 2026-09-05 · **T3+.1 完成（ACP 接入）**：ACP v1 协议调研（稳定版 v1；stdio 行分隔 JSON-RPC；initialize→session/new→session/prompt + session/update 流式；request_permission 自动应答）· threads/acp.ts 自研零依赖客户端（AcpConnection=ChatAgent+dispose；情建握手/收集器拼装/进程错误带 stderr 尾/Windows .cmd shim 需 shell:true）· store chat/acp 同构状态机单点（AcpThread 完整化 + autoTitle 哨兵 + 连接情建/close dispose）· SettingsStore ACP CRUD 三方法 + AcpAgentsSection（占位卡下岗）+ 搜索动态化 · ConversationView 提取（chat/acp 共享）· NewThreadButton agent 项 · fake-acp-agent.ts 七模式假 agent 真子进程测试 · 单测 114 + e2e 11 + cargo 33 全绿 · 下一步：T3+.2（Advanced 分区 + 键位编辑解锁）

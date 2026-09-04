@@ -404,3 +404,44 @@ describe('运行时态纪律（§15 第 8 条后半）', () => {
     expect(JSON.stringify(DEFAULTS).includes('lastUsedPreset')).toBe(false)
   })
 })
+
+describe('acpAgents CRUD（T3+.1）', () => {
+  test('addAcpAgent → 新 agent + 唯一 id + 落盘；默认 2 示例可删（无 builtin）', async () => {
+    const { store, file } = await makeStore()
+    expect(store.get().acpAgents).toHaveLength(2) // DEFAULT_ACP_AGENTS
+    const id = store.addAcpAgent({ label: 'Gemini', command: 'gemini', args: ['--acp'] })
+    const added = store.get().acpAgents.find((a) => a.id === id)
+    expect(added).toMatchObject({ label: 'Gemini', command: 'gemini', args: ['--acp'] })
+    await flush()
+    const onDisk = JSON.parse(file.snapshot()!)
+    expect(onDisk.acpAgents).toHaveLength(3)
+
+    // 默认示例也是普通条目：可删
+    store.deleteAcpAgent(store.get().acpAgents[0].id)
+    await flush()
+    expect(store.get().acpAgents).toHaveLength(2)
+  })
+
+  test('addAcpAgent 缺省：command 空、args []（占位编辑中间态）；updateAcpAgent 改字段 + args 空串行过滤；未知 id no-op', async () => {
+    const { store } = await makeStore()
+    const id = store.addAcpAgent({ label: 'X' })
+    expect(store.get().acpAgents.find((a) => a.id === id)).toMatchObject({
+      command: '',
+      args: [],
+    })
+    store.updateAcpAgent(id, { command: 'codex', args: ['--acp', ''] })
+    expect(store.get().acpAgents.find((a) => a.id === id)!.args).toEqual(['--acp'])
+    store.updateAcpAgent('nope', { label: 'Y' })
+    expect(store.get().acpAgents.find((a) => a.id === 'nope')).toBeUndefined()
+  })
+
+  test('deleteAcpAgent 落盘；CRUD 写失败同链回滚（path=acpAgents）', async () => {
+    const { store, file } = await makeStore()
+    const persisted = store.get()
+    file.setFailWrite(new Error('EACCES'))
+    store.deleteAcpAgent(persisted.acpAgents[0].id)
+    await flush()
+    expect(store.get()).toEqual(persisted) // 回滚
+    expect(store.writeError()?.path).toBe('acpAgents')
+  })
+})

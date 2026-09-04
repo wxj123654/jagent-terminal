@@ -18,9 +18,9 @@ import type { SettingDef, SettingSectionId } from '../settings/schema'
 import { SETTING_DEFS } from '../settings/schema'
 import type { SettingsStore } from '../settings/store'
 import { getByPath } from '../settings/store'
-import { PhaseBadge } from '../ui/PhaseBadge'
 import { SettingRow } from '../ui/SettingRow'
 import { COLORS, FONT } from '../ui/tokens'
+import { AcpAgentsSection } from './AcpAgentsSection'
 import { PresetsSection } from './PresetsSection'
 
 export type SectionProps = {
@@ -174,46 +174,6 @@ export function KeybindingsSection({ query }: { query: string | null }): ReactEl
   )
 }
 
-// ── Presets / ACP 占位（Phase 3 / 3+；§5.3 可见但不可用）────────────
-
-export function PlaceholderSection({
-  title,
-  phase,
-  note,
-  testId,
-}: {
-  title: string
-  phase: 2 | 3
-  note: string
-  testId: string
-}): ReactElement {
-  return (
-    <div
-      testId={testId}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'flex-start',
-        gap: 10,
-        padding: 16,
-        marginTop: 4,
-        backgroundColor: COLORS.sidebar,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        borderRadius: 6,
-      }}
-    >
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <text style={{ fontSize: 13, fontFamily: FONT.ui, color: COLORS.textBright }}>{title}</text>
-        <PhaseBadge phase={phase} />
-      </div>
-      <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted, lineHeight: 17 }}>
-        {note}
-      </text>
-    </div>
-  )
-}
-
 // ── 共享小件 ─────────────────────────────────────────────────────────
 
 /** 搜索无命中空态（§9：空态 + 清除按钮由 SettingsView 提供 query 清空） */
@@ -286,15 +246,6 @@ export function renderSectionContent(
     case 'presets':
       return <PresetsSection settings={settings} query={query} />
     case 'acp':
-      return (
-        <PlaceholderSection
-          testId="placeholder-acp"
-          title="ACP Agents"
-          phase={3}
-          note={
-            'ACP JSON-RPC 子进程（codex --acp / claude-code-acp）接入后在此管理（Phase 3+ 解锁）。'
-          }
-        />
-      )
+      return <AcpAgentsSection settings={settings} query={query} />
   }
 }

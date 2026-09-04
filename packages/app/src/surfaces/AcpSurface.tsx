@@ -1,29 +1,31 @@
 /**
- * AcpSurface — Phase 3 前占位（architecture.md §4 registry）。
- * 实装后：ACP transcript + composer，顶部 ACP pill（布局契约 §5.3）。
+ * surfaces/AcpSurface.tsx — ACP thread 表面（布局契约 §5.3；T3+.1 实装）。
+ *
+ * 外部 agent（ACP JSON-RPC 子进程，threads/acp.ts）的会话面：ACP pill
+ * （acpKind 紫）+ agent 标题 + ConversationView 消息/composer。发送走
+ * store.sendAcpMessage → ChatAgent seam（连接惰性建立；agent 侧工具调用/
+ * 权限以 markdown bullet/文本摘要随回复呈现，权限自动应答见 acp.ts 注记）。
  */
 
-import { COLORS, FONT } from '../ui/tokens'
+import type { AcpThread } from '../threads/store'
+import { COLORS } from '../ui/tokens'
+import { ConversationView } from './ConversationView'
 import type { SurfaceProps } from './registry'
 
-export function AcpSurface({ thread }: SurfaceProps) {
-  const title = thread.kind === 'acp' ? thread.title : ''
+export function AcpSurface({ thread, store }: SurfaceProps) {
+  const t = thread as AcpThread // registry 保证 kind==='acp' 进此表面
   return (
-    <div
-      style={{
-        flexGrow: 1,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: COLORS.pane,
-      }}
-    >
-      <text style={{ color: COLORS.muted, fontSize: 13, fontFamily: FONT.ui }}>acp — Phase 3</text>
-      {title ? (
-        <text style={{ color: COLORS.text, fontSize: 13, fontFamily: FONT.ui, marginTop: 4 }}>
-          {title}
-        </text>
-      ) : null}
-    </div>
+    <ConversationView
+      pill="ACP"
+      pillColor={COLORS.acpKind}
+      title={t.title}
+      titleTestId="acp-title"
+      composerTestId="acp-composer"
+      sendTestId="acp-send"
+      placeholder="Ask agent…"
+      messages={t.messages}
+      pendingReply={t.pendingReply}
+      onSend={(text) => store.sendAcpMessage(t.id, text)}
+    />
   )
 }

@@ -16,6 +16,7 @@ import { createStore } from 'zustand/vanilla'
 
 import { BUILTIN_PRESETS, type TerminalPreset } from '../threads/presets'
 import type { FileAdapter } from './file'
+import type { AcpAgent } from './schema'
 import {
   DEFAULTS,
   RawSettingsSchema,
@@ -31,6 +32,10 @@ export type PresetInput = Pick<TerminalPreset, 'label'> &
   Partial<Pick<TerminalPreset, 'program' | 'args' | 'env' | 'initCommand' | 'cwd'>>
 /** 预设字段补丁（id / builtin 不可改——类型面即规则） */
 export type PresetPatch = Partial<Omit<TerminalPreset, 'id' | 'builtin'>>
+/** 新 ACP agent 输入（id 由 store 生成；无 builtin 概念——默认 2 项也只是示例） */
+export type AcpAgentInput = Pick<AcpAgent, 'label'> & Partial<Pick<AcpAgent, 'command' | 'args'>>
+/** ACP agent 字段补丁（id 不可改） */
+export type AcpAgentPatch = Partial<Omit<AcpAgent, 'id'>>
 
 export interface SettingsStore {
   /** 快照（zod parse 后的合法 Settings；字段级容错已在边界完成） */
@@ -57,6 +62,12 @@ export interface SettingsStore {
   duplicatePreset(id: string): string
   /** 内置预设重置回出厂值（自定义 no-op） */
   resetPreset(id: string): void
+  // ── ACP agent CRUD（T3+.1；同写链/回滚面；无 builtin/modified 概念）──
+  /** 新增 agent（默认 2 项也只是可删改的示例），返回生成的唯一 id */
+  addAcpAgent(input: AcpAgentInput): string
+  /** 按 id 改字段（未知 id no-op；args 空串行过滤） */
+  updateAcpAgent(id: string, patch: AcpAgentPatch): void
+  deleteAcpAgent(id: string): void
 }
 
 /** 深取值（dot-path；不存在返回 undefined） */
@@ -90,7 +101,7 @@ function normalizePreset(p: TerminalPreset): TerminalPreset {
 }
 
 /** 递增后缀保证 id 唯一（原型语义：base → base2 → base3 …） */
-function uniquePresetId(base: string, items: TerminalPreset[]): string {
+function uniqueId(base: string, items: { id: string }[]): string {
   let id = base
   let n = 2
   while (items.some((p) => p.id === id)) {
@@ -98,6 +109,13 @@ function uniquePresetId(base: string, items: TerminalPreset[]): string {
     n++
   }
   return id
+}
+
+/** ACP agent 归一：args 空串行过滤（编辑中间态空行不进 JSON）；command 空串保留
+ *  （保存后 spawn 会在首条消息时报错行——可见可修，不阻断编辑） */
+function normalizeAcpAgent(a: AcpAgent): AcpAgent {
+  const args = a.args.filter((s) => s !== '')
+  return { ...a, args }
 }
 
 export function createSettingsStore(file: FileAdapter): SettingsStore {
@@ -193,7 +211,7 @@ export function createSettingsStore(file: FileAdapter): SettingsStore {
 
     addPreset(input) {
       const cur = store.getState().settings
-      const id = uniquePresetId(`custom-${Date.now().toString(36)}`, cur.presets.items)
+      const id = uniqueId(`custom-${Date.now().toString(36)}`, cur.presets.items)
       const preset = normalizePreset({ id, builtin: false, ...input })
       withItems(cur, [...cur.presets.items, preset])
       return id
@@ -225,7 +243,7 @@ export function createSettingsStore(file: FileAdapter): SettingsStore {
       const cur = store.getState().settings
       const p = cur.presets.items.find((x) => x.id === id)
       if (!p) return ''
-      const nid = uniquePresetId(`${id}-copy`, cur.presets.items)
+      const nid = uniqueId(`${id}-copy`, cur.presets.items)
       const copy = normalizePreset({ ...p, id: nid, label: `${p.label} 副本`, builtin: false })
       withItems(cur, [...cur.presets.items, copy])
       return nid
@@ -240,6 +258,30 @@ export function createSettingsStore(file: FileAdapter): SettingsStore {
       const items = cur.presets.items.slice()
       items[idx] = factory
       withItems(cur, items)
+    },
+
+    addAcpAgent(input) {
+      const cur = store.getState().settings
+      const id = uniqueId(`acp-${Date.now().toString(36)}`, cur.acpAgents)
+      const agent = normalizeAcpAgent({ command: '', args: [], ...input, id })
+      commit({ ...cur, acpAgents: [...cur.acpAgents, agent] }, 'acpAgents')
+      return id
+    },
+
+    updateAcpAgent(id, patch) {
+      const cur = store.getState().settings
+      const idx = cur.acpAgents.findIndex((a) => a.id === id)
+      if (idx === -1) return
+      const agents = cur.acpAgents.slice()
+      agents[idx] = normalizeAcpAgent({ ...agents[idx]!, ...patch })
+      commit({ ...cur, acpAgents: agents }, 'acpAgents')
+    },
+
+    deleteAcpAgent(id) {
+      const cur = store.getState().settings
+      // 存量 acp thread 持 agentId 引用：删配置不影响已建连接（store 侧情建已
+      // 兜底 unknown agentId → 错误行）；新 thread 只看新列表
+      commit({ ...cur, acpAgents: cur.acpAgents.filter((a) => a.id !== id) }, 'acpAgents')
     },
   }
 }

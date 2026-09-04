@@ -15,10 +15,12 @@ export type ChatMessage =
   | { id: string; role: 'assistant'; text: string; at: number; error?: boolean }
 
 /** ChatAgent seam：composer 输入的唯一去处。send resolve 回复全文；reject =
- *  回复失败（store 落一条 error assistant 行）。流式回复（ACP chunk）Phase 3+
- *  再扩接口，当前形态对 Promise 足够。 */
+ *  回复失败（store 落一条 error assistant 行）。流式回复（ACP chunk）后续
+ *  再扩接口，当前形态对 Promise 足够。dispose：释放底层资源（ACP 子进程
+ *  连接持有进程；EchoAgent 无资源不实现）——store close acp thread 时调。 */
 export type ChatAgent = {
   send(text: string): Promise<string>
+  dispose?(): void
 }
 
 /** EchoAgent — 本地模拟回复。delayMs 模拟「思考」延迟（测试/e2e 注入 0） */

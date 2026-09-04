@@ -19,13 +19,14 @@ import { createTerminalSession, destroyTerminalSession, notifyDesktop } from '@j
 
 import { navigateTarget, currentActiveThreadId } from '../router'
 import type { SettingsStore } from '../settings/store'
+import { createAcpConnection } from './acp'
 import { createEchoAgent } from './chat'
 import type { ThreadDeps } from './store'
 import { displayTitle } from './terminal'
 
 /** 可覆盖项：装配层差异点（e2e：notify 静默、注入测试预设、chatAgent 零延迟） */
 export type NativeDepsOverrides = Partial<
-  Pick<ThreadDeps, 'notify' | 'closeOnExit' | 'presetOf' | 'chatAgent'>
+  Pick<ThreadDeps, 'notify' | 'closeOnExit' | 'presetOf' | 'chatAgent' | 'createAcpAgent'>
 >
 
 export function createNativeThreadDeps(
@@ -52,6 +53,13 @@ export function createNativeThreadDeps(
     closeOnExit: () => settings.get().terminal.closeOnExit,
     // chat 后端 seam（T3.2）：默认 EchoAgent 本地模拟——ACP/LLM 接入时换 adapter
     chatAgent: createEchoAgent(),
+    // ACP 后端（T3+.1）：读 settings.acpAgents 配置 → JSON-RPC 子进程连接。
+    // cwd = 项目根（session/new 要求绝对路径）；连接由 store 按 thread 情建/释放
+    createAcpAgent: (agentId) => {
+      const a = settings.get().acpAgents.find((x) => x.id === agentId)
+      if (!a) throw new Error(`unknown ACP agent: ${agentId}`)
+      return createAcpConnection({ command: a.command, args: a.args, cwd: process.cwd() })
+    },
     ...overrides,
   }
 }

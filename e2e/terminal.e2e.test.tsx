@@ -22,6 +22,7 @@
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
+import { join } from 'node:path'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { installTerminalElement, destroyTerminalSession, onSessionEvent } from '@jagent/native'
 
@@ -494,6 +495,86 @@ describe('T3.2 e2e: chat 全链（菜单入口 → ChatSurface → echo 回复 �
       // ⑤ close chat（无 session 销毁）：行移除，不误伤 terminal 行
       store.close(chatId!)
       await until('chat row removed', () => !store.getState().threads.some((x) => x.id === chatId))
+      expect(store.getState().threads.length).toBe(threadsBefore)
+    },
+    TEST_TIMEOUT,
+  )
+})
+
+describe('T3+.1 e2e: ACP 全链（菜单入口 → AcpSurface → 真子进程 JSON-RPC → close）', () => {
+  test(
+    'agent 菜单入口 → fake agent 子进程会话 → echo 回复 → close 释放',
+    async () => {
+      // ① 注入 fake agent 配置（真 nativeDeps.createAcpAgent 读 settings →
+      //    process.execPath 真 spawn fake-acp-agent.ts——完整 stdio JSON-RPC 链）
+      const fixture = join(
+        import.meta.dir,
+        '..',
+        'packages',
+        'app',
+        'src',
+        'threads',
+        '__fixtures__',
+        'fake-acp-agent.ts',
+      )
+      settings.patch('acpAgents', [
+        { id: 'e2e-fake', label: 'FakeACP', command: process.execPath, args: [fixture] },
+      ])
+      const threadsBefore = store.getState().threads.length
+
+      // ② 菜单展开 → agent 项（分隔线下，New Chat 之后）
+      const menuBtn = t.renderer.findByTestId('open-preset-menu')!
+      const mb = t.renderer.getElementBounds(menuBtn.id)!
+      t.renderer.nativeSimulateClick(mb[0] + mb[2] / 2, mb[1] + mb[3] / 2)
+      await until('agent entry in menu', () => {
+        const item = t.renderer.findByTestId('new-acp-e2e-fake')
+        return item !== undefined && t.renderer.getElementBounds(item.id) != null
+      })
+
+      // ③ 点击 → AcpSurface 挂载（ACP pill + 标题 = label）
+      const item = t.renderer.findByTestId('new-acp-e2e-fake')!
+      const ib = t.renderer.getElementBounds(item.id)!
+      t.renderer.nativeSimulateClick(ib[0] + ib[2] / 2, ib[1] + ib[3] / 2)
+      const acpId = currentActiveThreadId()
+      expect(acpId).toMatch(/^a/)
+      await until('acp surface mounted', () => {
+        const texts = t.renderer.getAllText()
+        return texts.includes('ACP') && t.renderer.findByTestId('acp-composer') !== undefined
+      })
+      await until(
+        'acp row in mixed list',
+        () => t.renderer.findByTestId(`row-${acpId}`) !== undefined,
+      )
+
+      // ④ 打字 + enter → 子进程 initialize/session/new/prompt → echo 回复
+      //    （连接情建：首条消息才 spawn——UI 无感）
+      t.renderer.simulateKeystrokes('pingacp')
+      await until('draft committed', () => {
+        const c = t.renderer.findByTestId('acp-composer')
+        return t.renderer.getElement(c!.id)?.customProps?.value === 'pingacp'
+      })
+      t.renderer.simulateKeystrokes('enter')
+      await until('user message + thinking', () => {
+        const texts = t.renderer.getAllText()
+        return texts.includes('pingacp') && texts.includes('thinking…')
+      })
+      await until('fake agent reply rendered', () =>
+        t.renderer
+          .findByType('markdown')
+          .some((el) =>
+            String(t.renderer.getElement(el.id)?.customProps?.source ?? '').includes(
+              'echo: pingacp',
+            ),
+          ),
+      )
+      // 首条消息改写标题（autoTitle → pingacp）
+      await until('row title rewritten', () =>
+        store.getState().threads.some((x) => x.id === acpId && x.title === 'pingacp'),
+      )
+
+      // ⑤ close → 连接 dispose（子进程 kill）+ 行移除
+      store.close(acpId!)
+      await until('acp row removed', () => !store.getState().threads.some((x) => x.id === acpId))
       expect(store.getState().threads.length).toBe(threadsBefore)
     },
     TEST_TIMEOUT,

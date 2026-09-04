@@ -54,8 +54,21 @@ export type ChatThread = {
   /** agent 回复进行中：composer 发送钮禁用 + 消息尾 thinking 占位 */
   pendingReply: boolean
 }
-/** Phase 3 骨架（无行为） */
-export type AcpThread = { kind: 'acp'; id: string; title: string; createdAt: number }
+/** Phase 3+ 实装：外部 agent JSON-RPC 会话；消息面与 chat 同构（ConversationView 复用） */
+export type AcpThread = {
+  kind: 'acp'
+  /** `a${uuid}`（R4） */
+  id: string
+  /** 初始 = agent label（调用方传入，store 不读 settings）；首条 user 消息截断改写 */
+  title: string
+  createdAt: number
+  /** settings.acpAgents 的配置 id（连接按 thread 惰性建立，配置变更不追旧 thread） */
+  agentId: string
+  messages: ChatMessage[]
+  pendingReply: boolean
+  /** title 未被手改/首条消息改写（首条 user 消息自动改写的哨兵；rename 置 false） */
+  autoTitle: boolean
+}
 
 export type Thread = TerminalThread | ChatThread | AcpThread
 
@@ -80,6 +93,9 @@ export type ThreadDeps = {
   presetOf: (id: string) => TerminalPreset | undefined
   /** chat 后端 seam（T3.2；装配层默认 EchoAgent，ACP/LLM 未来换 adapter） */
   chatAgent: ChatAgent
+  /** ACP 后端工厂（T3+.1）：每 acp thread 首次发送时调一次，返回的连接实例
+   *  自持子进程（close thread 时 dispose）；未知 agentId 应 throw（store 落错误行） */
+  createAcpAgent: (agentId: string) => ChatAgent
   /** 路由读侧（active 判定：bell 红点只打非 active、cycle 基准、close 先导航离开）。
    *  装配层注入（直接读 history）。未注入时：bell 视为非 active，close 保守先导航。 */
   activeThreadId?: () => string | null
@@ -91,8 +107,13 @@ export interface ThreadStore {
   spawnFromPreset(presetId: string): Promise<void>
   /** 新建空 chat thread + activate（入口：+ 菜单固定项，T3.2） */
   createChat(): void
+  /** 新建 ACP thread + activate（入口：+ 菜单 agent 项，T3+.1；label 来自
+   *  调用方的 settings 快照——store 不读 settings） */
+  createAcpThread(agentId: string, label: string): void
   /** chat 发送状态机：空串/pending 中忽略；user 落列 → agent.send → assistant/error 落列 */
   sendChatMessage(threadId: string, text: string): void
+  /** acp 发送状态机（与 chat 同构；连接惰性建立，agent 进程错误 → error 行） */
+  sendAcpMessage(threadId: string, text: string): void
   activate(target: ActiveTarget): void
   close(id: string): void
   rename(id: string, title: string): void
@@ -113,6 +134,8 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
   const store = createStore<ThreadState>(() => ({ threads: [], lastUsedPreset: null }))
   const set = (recipe: (s: ThreadState) => void) => store.setState(produce(recipe))
   const state = () => store.getState()
+  /** acp thread → 连接实例（情建；close 时 dispose。不进 state——纯运行时资源） */
+  const acpAgents = new Map<string, ChatAgent>()
   const activate = (target: ActiveTarget) => {
     // 契约 §7：聚焦即清 bell 红点
     if (target?.type === 'thread') {
@@ -172,55 +195,29 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
       activate({ type: 'thread', id: thread.id })
     },
 
-    sendChatMessage(threadId, text) {
-      const trimmed = text.trim()
-      if (!trimmed) return // 空串忽略（同 rename）
-      const thread = state().threads.find((t) => t.id === threadId)
-      if (!thread || thread.kind !== 'chat' || thread.pendingReply) return
-      const userMsg: ChatMessage = {
-        id: `m${++msgSeq}`,
-        role: 'user',
-        text: trimmed,
-        at: Date.now(),
+    createAcpThread(agentId, label) {
+      const thread: AcpThread = {
+        kind: 'acp',
+        id: `a${crypto.randomUUID()}`,
+        title: label,
+        createdAt: Date.now(),
+        agentId,
+        messages: [],
+        pendingReply: false,
+        autoTitle: true,
       }
       set((s) => {
-        const t = s.threads.find((x) => x.id === threadId)
-        if (!t || t.kind !== 'chat' || t.pendingReply) return
-        t.messages.push(userMsg)
-        t.pendingReply = true
-        // 首条 user 消息定标题（title 仍为默认值时；手改后冻结）
-        if (
-          t.title === CHAT_DEFAULT_TITLE &&
-          t.messages.every((m) => m.role !== 'user' || m.id === userMsg.id)
-        ) {
-          t.title = trimmed.length > 32 ? `${trimmed.slice(0, 32)}…` : trimmed
-        }
+        s.threads.push(thread)
       })
-      // 回复异步落列；thread 已 close（找不到行）则丢弃（不变量：不复活已删行）
-      deps.chatAgent
-        .send(trimmed)
-        .then((reply) => {
-          set((s) => {
-            const t = s.threads.find((x) => x.id === threadId)
-            if (!t || t.kind !== 'chat') return
-            t.messages.push({ id: `m${++msgSeq}`, role: 'assistant', text: reply, at: Date.now() })
-            t.pendingReply = false
-          })
-        })
-        .catch((err: unknown) => {
-          set((s) => {
-            const t = s.threads.find((x) => x.id === threadId)
-            if (!t || t.kind !== 'chat') return
-            t.messages.push({
-              id: `m${++msgSeq}`,
-              role: 'assistant',
-              text: `发送失败：${err instanceof Error ? err.message : String(err)}`,
-              at: Date.now(),
-              error: true,
-            })
-            t.pendingReply = false
-          })
-        })
+      activate({ type: 'thread', id: thread.id })
+    },
+
+    sendChatMessage(threadId, text) {
+      void sendConversationMessage(threadId, text, 'chat')
+    },
+
+    sendAcpMessage(threadId, text) {
+      void sendConversationMessage(threadId, text, 'acp')
     },
 
     activate,
@@ -231,20 +228,33 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
       // 不变量 1：close 前先导航离开（路由不得指向将移除的行）
       if (routerPointsAt(id)) activate(null)
       if (thread.kind === 'terminal') void deps.destroySession(thread.sessionId)
+      if (thread.kind === 'acp') {
+        // 连接随行销毁（子进程 kill；释放失败不阻塞移除）
+        const agent = acpAgents.get(id)
+        acpAgents.delete(id)
+        try {
+          agent?.dispose?.()
+        } catch {
+          // 忽略：行移除是主路径
+        }
+      }
       set((s) => {
         s.threads = s.threads.filter((t) => t.id !== id)
       })
     },
 
     rename(id, title) {
-      // 空串忽略；terminal 写 customTitle → 冻结（不变量 2）；chat 直接改 title
-      //（首条消息改写同样只在 title===默认值时发生——手改后冻结）
+      // 空串忽略；terminal 写 customTitle → 冻结（不变量 2）；chat/acp 直接改
+      // title（首条消息改写只在上哨兵期间发生——手改后冻结）
       if (!title.trim()) return
       set((s) => {
         const t = s.threads.find((x) => x.id === id)
         if (!t) return
         if (t.kind === 'terminal') t.customTitle = title
-        else t.title = title
+        else {
+          t.title = title
+          if (t.kind === 'acp') t.autoTitle = false
+        }
       })
     },
 
@@ -321,5 +331,85 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
   /** 路由是否指向该 thread（close 的先导航离开判定；未注入时保守视为指向） */
   function routerPointsAt(id: string): boolean {
     return deps.activeThreadId ? deps.activeThreadId() === id : true
+  }
+
+  /**
+   * 会话消息状态机（chat/acp 同构，单点）：空串/pending 忽略；user 落列 +
+   * pendingReply → agent.send → assistant/error 落列 + 复位；thread 已 close
+   * 则丢弃回复（不变量：不复活已删行）。首条 user 消息截断改写 title
+   * （chat：title===CHAT_DEFAULT_TITLE 哨兵；acp：autoTitle 哨兵）。
+   * acp 连接情建：首查 acpAgents map，未建则 deps.createAcpAgent（同步 throw
+   * → error 行，如配置被删）。
+   */
+  async function sendConversationMessage(threadId: string, raw: string, kind: 'chat' | 'acp') {
+    const text = raw.trim()
+    if (!text) return // 空串忽略（同 rename）
+    const thread = state().threads.find((t) => t.id === threadId)
+    if (!thread || thread.kind !== kind || thread.pendingReply) return
+
+    let agent: ChatAgent
+    if (kind === 'chat') agent = deps.chatAgent
+    else {
+      const existing = acpAgents.get(threadId)
+      if (existing) agent = existing
+      else {
+        try {
+          agent = deps.createAcpAgent((thread as AcpThread).agentId)
+        } catch (err) {
+          pushReply(threadId, kind, {
+            id: `m${++msgSeq}`,
+            role: 'assistant',
+            text: `无法建立 ACP 连接：${err instanceof Error ? err.message : String(err)}`,
+            at: Date.now(),
+            error: true,
+          })
+          return
+        }
+        acpAgents.set(threadId, agent)
+      }
+    }
+
+    const userMsg: ChatMessage = { id: `m${++msgSeq}`, role: 'user', text, at: Date.now() }
+    set((s) => {
+      const t = s.threads.find((x) => x.id === threadId)
+      if (!t || t.kind !== kind || t.pendingReply) return
+      t.messages.push(userMsg)
+      t.pendingReply = true
+      // 首条 user 消息定标题（仅哨兵期间；手改后冻结）
+      const isFirstUser = t.messages.every((m) => m.role !== 'user' || m.id === userMsg.id)
+      const auto = t.kind === 'chat' ? t.title === CHAT_DEFAULT_TITLE : t.autoTitle
+      if (isFirstUser && auto) {
+        t.title = text.length > 32 ? `${text.slice(0, 32)}…` : text
+        if (t.kind === 'acp') t.autoTitle = false
+      }
+    })
+
+    try {
+      const reply = await agent.send(text)
+      pushReply(threadId, kind, {
+        id: `m${++msgSeq}`,
+        role: 'assistant',
+        text: reply,
+        at: Date.now(),
+      })
+    } catch (err) {
+      pushReply(threadId, kind, {
+        id: `m${++msgSeq}`,
+        role: 'assistant',
+        text: `发送失败：${err instanceof Error ? err.message : String(err)}`,
+        at: Date.now(),
+        error: true,
+      })
+    }
+  }
+
+  /** 回复落列（thread 已 close 则丢弃；pendingReply 复位） */
+  function pushReply(threadId: string, kind: 'chat' | 'acp', msg: ChatMessage) {
+    set((s) => {
+      const t = s.threads.find((x) => x.id === threadId)
+      if (!t || t.kind !== kind) return
+      t.messages.push(msg)
+      t.pendingReply = false
+    })
   }
 }

@@ -36,9 +36,9 @@ import { Badge } from '../ui/Badge'
 import { Icon } from '../ui/Icon'
 import { IconButton } from '../ui/IconButton'
 import { SelectField } from '../ui/Select'
-import { Textarea } from '../ui/Textarea'
 import { TextInput } from '../ui/TextInput'
 import { COLORS, FONT } from '../ui/tokens'
+import { FieldRow, LinesField, ModDot } from './listEditorParts'
 
 export function PresetsSection({
   settings,
@@ -306,23 +306,7 @@ function PresetCard({
   )
 }
 
-/** modified 蓝点（原型 .mod-dot；形状区别于颜色——行级徽章旁 + 字段行尾） */
-function ModDot({ testId }: { testId?: string }): ReactElement {
-  return (
-    <div
-      testId={testId}
-      style={{
-        width: 6,
-        height: 6,
-        borderRadius: 999,
-        backgroundColor: COLORS.accent,
-        flexShrink: 0,
-      }}
-    />
-  )
-}
-
-// ── 展开态编辑器（§7 字段表）───────────────────────────────────────
+// ── 展开态编辑器（§7 字段表）─────────────────────────────────────────
 
 function PresetEditor({
   p,
@@ -425,93 +409,5 @@ function PresetEditor({
         </text>
       </div>
     </div>
-  )
-}
-
-/** 编辑器字段行：label 列（名称 + key + 字段级蓝点）+ 控件 */
-function FieldRow({
-  label,
-  name,
-  modified,
-  children,
-}: {
-  label: string
-  /** 字段名 mono 小字（原型 .f-key） */
-  name: string
-  modified: boolean
-  children: ReactElement
-}): ReactElement {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: 9 }}>
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 6,
-          width: 130,
-          flexShrink: 0,
-        }}
-      >
-        <text
-          style={{ fontSize: 12.5, fontFamily: FONT.ui, color: COLORS.text, pointerEvents: 'none' }}
-        >
-          {label}
-        </text>
-        <text
-          style={{
-            fontSize: 10.5,
-            fontFamily: FONT.mono,
-            color: COLORS.muted,
-            pointerEvents: 'none',
-          }}
-        >
-          {name}
-        </text>
-        {modified ? <ModDot /> : null}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-/**
- * 行式字段（args / env）：**即时提交**（onChange → parse → store，行级归一在
- * store 层：空串行过滤）+ draft 只管显示（编辑中间态的尾随换行/空行不回写
- * 受控值，无光标跳动）；onBlur 仅归一显示（draft → committed）。
- * blur 不可依赖的背景：TestGpuixRenderer 路径点击/焦点转移均不派发 React
- * focus/blur 事件（T2.6 autoFocus 同源限制，实测），提交面必须不依赖 blur。
- */
-function LinesField({
-  testId,
-  placeholder,
-  serialize,
-  parse,
-  commit,
-}: {
-  testId: string
-  placeholder: string
-  /** 当前 store 值 → 规范文本 */
-  serialize: () => string
-  /** 提交文本 → store 值（行级过滤在 store 层） */
-  parse: (text: string) => string[] | Record<string, string>
-  /** 即时提交 */
-  commit: (parsed: string[] | Record<string, string>) => void
-}): ReactElement {
-  const [draft, setDraft] = useState<string | null>(null)
-  const committed = serialize()
-
-  return (
-    <Textarea
-      testId={testId}
-      value={draft ?? committed}
-      placeholder={placeholder}
-      minRows={2}
-      onChange={(v) => {
-        setDraft(v)
-        commit(parse(v))
-      }}
-      onBlur={() => setDraft(null)}
-    />
   )
 }
