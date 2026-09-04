@@ -24,12 +24,12 @@
 | Phase | 状态 |
 |---|---|
 | 0 Rust 终端骨架 + window.rs 验证 | ✅ 完成（结论见 Phase 0 结论区） |
-| 1 双 workspace + napi 壳 + app 最小集 | ⬜ 未开始 |
+| 1 双 workspace + napi 壳 + app 最小集 | ✅ 完成（结论见 Phase 1 结论区） |
 | 2 ThreadStore 全规则 + settings-core/controls + SettingsView | ⬜ 未开始 |
 | 3 settings-presets + chat | ⬜ 未开始 |
 | 3+ settings-acp-advanced + ACP + 键位编辑 | ⬜ 未开始 |
 
-**当前指针**：→ Phase 1 / T1.1（前置：`.refs/` 已就绪；新环境需先克隆，见 Phase 0 结论区的 workspace exclude 说明）
+**当前指针**：→ Phase 2 / T2.1（ThreadStore 补测试面 → settings 三切片）
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -65,9 +65,9 @@
 - [x] **T1.2** `packages/native`：napi 壳（lib.rs：installTerminalElement + createTerminalSession / destroyTerminalSession / onSessionEvent）；lib.rs 174 行（其中 seam 镜像类型 ~60 行，见结论区），index.d.ts 生成，导出合并实测通过
 - [x] **T1.3** app 骨架：`main.tsx`（装配 + renderer 事件桥）· `router.tsx`（memory history；/ · /thread/$id · /settings?section=$s；useActiveTarget）· R-V1 验证并记录结论
 - [x] **T1.4** `threads/store.ts` 最小集（spawnFromPreset / activate / close + 依赖注入类型 ThreadDeps）+ bun test（fake deps，§3.4 用例集的最小子集）——实际已实现全规则（rename/cycle/onSessionEvent 全量），13 用例全过，T2.1 只补测试面
-- [ ] **T1.5** `plane/`（AgentPlane/Sidebar/ThreadList/ThreadRow/Pane）+ `surfaces/registry.ts` + TerminalSurface（全项目唯一 `<terminal>` 写点）
-- [ ] **T1.6** 端到端：两个 PTY 并存、切 thread 不销毁后台会话（retain 语义）、焦点模型结论（GPUIX 焦点事件到达顺序 → Ctrl-Tab 可用性，记录降级与否）
-- [ ] **T1.7** git commit "Phase 1"
+- [x] **T1.5** `plane/`（AgentPlane/Sidebar/ThreadList/ThreadRow/Pane + tokens + NewThreadButton）+ `surfaces/registry.ts` + TerminalSurface（全项目唯一 `<terminal>` 写点）+ Chat/Acp 占位 + EmptyPresets + `ui/Icon.tsx` + `threads/useThreadStore.ts`
+- [x] **T1.6** 端到端：`e2e/terminal.e2e.test.tsx` 5 用例全绿（两个 PTY 并存、retain + 后台 bell 红点、activate 清红点、exit 灰行 + close 全清、焦点模型）；真窗口冒烟通过
+- [x] **T1.7** git commit "Phase 1"
 
 ### Phase 1 结论区
 
@@ -84,7 +84,14 @@
 - **已声明未接线（Phase 2 补）**：`palette` / `cursorBlink` props（view 需加 set_palette / blink 支持）；元素事件 focus/blur（待 R-V2 焦点验证后发）。
 - **@gpuix/react 引用方式**：`file:../../.refs/gpuix/packages/react`（需先在 .refs/gpuix 里 `bun install && bun run build:react` 产出 dist，与 pin 的 Rust 同 rev）；npm 版 0.7.0 存在但 JS↔Rust 协议不保证与 8b94def 匹配，不用。
 - R-V1（RouterProvider@GPUIX）：**不可用，保底手动桥生效并验证**。三个坑与解法：(a) RouterProvider 崩在 MatchesInner `router._rendered[0]`（GPUIX reconciler 渲染时序下 ack 未就绪）；(b) `router.state` 每次组装新对象 → uSES getSnapshot 不稳定（无限循环）→ 订阅回调里递增版本号、getSnapshot 返回原始值、渲染期现读 `history.location.pathname`；(c) **Transitioner 契约**：router-core 在 `history.subscribers` 非空时不自行 `load()`（core router.js `if (!this.history.subscribers.size) this.load(...)`）→ 桥的订阅回调必须 `void router.load()`，否则第二次导航起挂起（实测 settings→'/' 永不生效；连空函数订阅者都能触发）。另：`router.subscribe(fn)` 是事件级 API（需 eventType 首参，单参静默无效）——订阅源用 `router.history.subscribe`。最终形态见 router.tsx 注释；navigate 一律 fire-and-forget（promise resolve 依赖 Matches acknowledgment，手动桥下不触发，无人 await）。全导航序列（/→settings→/→thread/$id→/）实测通过；依赖版本：@tanstack/react-router 1.170.32（latest）+ router-core 1.171.27（官方配对，resolutions 锁回 1.170.32 无必要已移除）
-- 焦点模型（Ctrl-Tab 生效条件 / 是否降级）：_未填写_
+- 焦点模型（Ctrl-Tab 生效条件 / 是否降级）：**全局可用，无需降级**。TerminalView 聚焦时窗口级 keyDown（gpui `on_root_key_event`，Bubble 阶段）仍到达——vendored view 的 `on_key_down` 不调 `stop_propagation`（只写 PTY 后放行）。e2e 第 5 用例固定验证（simulateKeystrokes('ctrl-tab') → 窗口回调收到）。已知副作用：ctrl-tab 被 `keystroke_to_bytes` 的 `tab` 分支（无 ctrl 判断）映射成 `\t` 写进 PTY——shell 忽略，无害；要消除可在 input.rs 给 ctrl+tab 加忽略分支（待真用例出现再做）。
+- **gpuix 补丁 #6/#7（e2e seam）**：#6 `test_renderer.rs::run_on_test_app()`（host 闭包直接跑在本线程 VisualTestState，bun test 单线程等价于 GPUI 线程往返）+ `renderer.rs::host_ui_commands_ready()`（探测线程化通道是否存活）+ `lib.rs` 条件 re-export。存在原因：TestGpuixRenderer 不跑 `init_threaded`，HOST_UI_COMMANDS 不发布。
+- **napi 命令同步化**：create/destroy_terminal_session 从 `async fn` 改同步。原因：napi async 体跑 tokio 线程，而 test 路径的 `run_on_test_app` 依赖主线程 `thread_local TEST_STATE`——同步化后在 JS 调用线程执行，两条路径统一。JS 侧注入点包 `async (o) => createTerminalSession(o)` 保 Promise 形态；副作用：真窗口 spawn 短暂阻塞帧循环（ConPTY 冷启动 ~1s，用户显式操作，可接受；Phase 2 若在意可回 async + 主线程泵）。napi features 的 "async"（tokio_rt）随之移除。
+- **TSF 两参坑（T1.2 起潜伏，e2e 暴露）**：`onSessionEvent` 的 ThreadsafeFunction 回调签名是 `(err, e)`——payload 在第二参。旧代码 `(e) => ...` 里 e 恒为 null，所有 session 事件被静默丢弃（T1.3 只验了路由序列，从未真验事件到达）。已修：lib.rs ts_args_type 改双参 + main.tsx/e2e 消费处 `(_err, e) => ...`。
+- **e2e 面落成**：`e2e/terminal.e2e.test.tsx`（bun workspace 新成员 `e2e`）5 用例：① EmptyPresets 卡片 ② spawn shell+bell 两行并存 + terminal 元素进树 ③ retain：切走后后台 bell → hasBell + activate 清除 ④ exit → 灰行保留 + exited 标签 + close 全清回 EmptyPresets ⑤ 焦点模型。**时序三律**：PTY 事件消费 task 的 4ms 定时器挂 test dispatcher fake clock——轮询必须 `advanceTime()` 驱动；React 对 store/router 更新的提交需 macrotask 让出；TSF 回调也靠让出后调度。断言一律 `until()` 轮询，禁止固定 sleep（首版固定 sleep flaky 实证）。bell 会话用注入的自定义预设（短命 PowerShell 双 BEL，BELL_PRESET）——ThreadDeps.presetOf 注入设计的首次兑现。
+- **zustand useStore 类型坑**：ThreadStore 接口（getState/subscribe，无 getInitialState）不满足 zustand React 包 useStore 的 StoreApi 约束 → 新增 `threads/useThreadStore.ts`（useSyncExternalStore 直桥；selector 必须返回原始值或稳定引用——immer 结构共享保证）。
+- **GPUIX 事件冒泡注记**：JS 侧无 stopPropagation 面（EventPayload.elementId 是注册者自身，非深层目标）。行内按钮 vs 父行点击冲突用 mouseDown 抑制 ref 挡一次（ThreadRow 关闭钮，见文件头注释）。
+- **杂项**：根 package.json resolutions 残留清除（@tanstack/router-core 1.170.32 不存在——T1.3 结论本已移除，本次清干净）；Sidebar/EmptyPresets 边框只能用 borderWidth+全局 borderColor（StyleDesc 无单边色）；SVG 图标走 `<svg source={svgString}>`（gpui 叶子元素，tint 取 style.color，lucide 同系 24×24 stroke 风格）。
 
 ---
 
@@ -138,3 +145,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-02 · Phase 0 探索（T0.1 git init / T0.2 克隆与对版实验 / vendoring 起步）后应用户要求**整体回滚清空**，项目重头开始（实验结论已存项目记忆 #13）· 下一步：Phase 0 T0.1 重做
 - 2026-09-02 · **Phase 0 完成**：T0.1 workspace（exclude .refs）· T0.2 对版确认（fork 8b94def 未漂移；同号 0.2.2 不同 API）· T0.3 crate 骨架（pool=gpui Global 修订 R5 / model 4ms 批处理 / pty=tty+EventLoop）· view vendoring（4 文件 + 2 处 fork API 适配）· T0.4-0.5 window.rs 实测 ConPTY/BEL/OSC/Exit 全过（EXIT 去重修复）· cargo test 30 过 · 下一步：Phase 1 T1.1（bun workspace + 依赖白名单）
 - 2026-09-04 · **T1.1–T1.3 完成**：bun workspace（app/native/gpuix-native-alias 三包 + file: 引用 .refs 的 @gpuix/react）· napi 壳（导出合并进单一 .node 实测 ✓；gpuix 5 处本地补丁：pub mod custom_elements / GLOBAL_FACTORIES / RunHost+HOST_UI_COMMANDS / run_on_gpuix / pub GpuixView；installTerminalElement 替代 createRenderer）· app 骨架（main/router/AgentPlane 最小形态）· **R-V1 结论：RouterProvider 不可用**，手动桥（版本号快照 + history 订阅 + router.load() Transitioner 契约）全导航序列实测通过 · 下一步：T1.5 plane/surfaces + T1.6 端到端 + commit Phase 1
+- 2026-09-04 · **Phase 1 完成**：T1.5 plane/surfaces 全量（Sidebar/ThreadList/ThreadRow 行内 rename+红点+exited/NewThreadButton 预设菜单/Pane 整块替换/TerminalSurface 唯一 <terminal> 写点/EmptyPresets/tokens/Icon/useThreadStore 直桥）· T1.6 e2e 5 用例全绿（两个真 ConPTY 并存、retain+后台 bell、activate 清红点、exit 灰行+close、**焦点结论：无需降级**）· 重大修复：TSF 两参坑（事件自 T1.2 起全部被静默丢弃）· gpuix 补丁 #6/#7（run_on_test_app + host_ui_commands_ready）· napi 同步化（test 路径 thread_local）· 下一步：Phase 2 T2.1（ThreadStore 补测试面）→ T2.2 settings 三切片

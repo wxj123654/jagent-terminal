@@ -1,29 +1,16 @@
 /**
- * AgentPlane — 根组件（architecture.md §5 组件树的最小 Phase 1 形态）。
+ * AgentPlane — 根组件（architecture.md §5 组件树；布局契约 §12 验收面）。
  *
- * flex：sidebar 248px + pane 剩余（布局契约 §12）。本文件 T1.5 扩成
- * Sidebar/ThreadList/ThreadRow/Pane；现在只搭最小 pane 调度，作为
- * R-V1 手动桥的验证载体（无 RouterProvider，见 router.tsx 结论注）。
+ * flex：sidebar 248px + pane 剩余。store 经 props 注入（main.tsx 装配），
+ * 组件树内部零全局单例——与 threads/store.ts 的依赖注入纪律一致。
  */
 
-import { router, useActiveTarget } from '../router'
+import type { ThreadStore } from '../threads/store'
+import { COLORS, FONT } from './tokens'
+import { Sidebar } from './Sidebar'
+import { Pane } from './Pane'
 
-function PaneSlot() {
-  const active = useActiveTarget()
-  const label =
-    active === null
-      ? 'no thread (EmptyPresets → T1.5)'
-      : active.type === 'settings'
-        ? 'settings (SettingsView → Phase 2)'
-        : `thread ${active.id}`
-  return (
-    <div style={{ flexGrow: 1, display: 'flex', padding: 16 }}>
-      <text style={{ color: '#c5c8cc', fontSize: 14 }}>{label}</text>
-    </div>
-  )
-}
-
-export function App() {
+export function App({ store }: { store: ThreadStore }) {
   return (
     <div
       style={{
@@ -31,10 +18,13 @@ export function App() {
         height: '100%',
         display: 'flex',
         flexDirection: 'row',
-        backgroundColor: '#17181a',
+        backgroundColor: COLORS.app,
+        fontFamily: FONT.ui,
+        color: COLORS.text,
       }}
     >
-      <PaneSlot />
+      <Sidebar store={store} />
+      <Pane store={store} />
     </div>
   )
 }

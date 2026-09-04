@@ -5,6 +5,16 @@
     "": {
       "name": "jagent",
     },
+    "e2e": {
+      "name": "@jagent/e2e",
+      "version": "0.1.0",
+      "dependencies": {
+        "@gpuix/react": "file:../.refs/gpuix/packages/react",
+        "@jagent/app": "workspace:*",
+        "@jagent/native": "workspace:*",
+        "react": "19.2.8",
+      },
+    },
     "packages/app": {
       "name": "@jagent/app",
       "version": "0.1.0",
@@ -87,6 +97,8 @@
     "@inquirer/type": ["@inquirer/type@4.1.1", "https://registry.npmmirror.com/@inquirer/type/-/type-4.1.1.tgz", { "peerDependencies": { "@types/node": ">=18" }, "optionalPeers": ["@types/node"] }, "sha512-yJoHYrMnxIsJZCY+0Vb66Dy3he3kL3e2wOBKhoSwWWAzZAY82emlxwgprCtp6yRixvNRNq9ztfRWQYPNr3Go7A=="],
 
     "@jagent/app": ["@jagent/app@workspace:packages/app"],
+
+    "@jagent/e2e": ["@jagent/e2e@workspace:e2e"],
 
     "@jagent/native": ["@jagent/native@workspace:packages/native"],
 
@@ -483,6 +495,8 @@
     "zustand": ["zustand@5.0.15", "https://registry.npmmirror.com/zustand/-/zustand-5.0.15.tgz", { "peerDependencies": { "@types/react": ">=18.0.0", "immer": ">=9.0.6", "react": ">=18.0.0", "use-sync-external-store": ">=1.2.0" }, "optionalPeers": ["@types/react", "immer", "react", "use-sync-external-store"] }, "sha512-MpSEjRiBkA9crSYeOUH32rJC7SVqAbm0Fqcqge/bUi2PPoLcBWKOsG+C8mevmpr8TwXHBVkChbbJiyvkE+i/3A=="],
 
     "@jagent/app/@gpuix/react": ["@gpuix/react@file:.refs/gpuix/packages/react", { "dependencies": { "@gpuix/native": "workspace:^", "eventsource-parser": "^4.1.0", "react-reconciler": "^0.31.0", "zod": "^4.4.3" }, "devDependencies": { "@testing-library/react": "^16.3.2", "@types/node": "^25.3.3", "@types/react": "^19.2.0", "@types/react-reconciler": "^0.28.0", "react-refresh": "^0.18.0", "typescript": "^5.3.0", "vitest": "^4.0.18" }, "peerDependencies": { "react": "^18.0.0 || ^19.0.0" } }],
+
+    "@jagent/e2e/@gpuix/react": ["@gpuix/react@file:.refs/gpuix/packages/react", { "dependencies": { "@gpuix/native": "workspace:^", "eventsource-parser": "^4.1.0", "react-reconciler": "^0.31.0", "zod": "^4.4.3" }, "devDependencies": { "@testing-library/react": "^16.3.2", "@types/node": "^25.3.3", "@types/react": "^19.2.0", "@types/react-reconciler": "^0.28.0", "react-refresh": "^0.18.0", "typescript": "^5.3.0", "vitest": "^4.0.18" }, "peerDependencies": { "react": "^18.0.0 || ^19.0.0" } }],
 
     "@napi-rs/cli/typescript": ["typescript@6.0.3", "https://registry.npmmirror.com/typescript/-/typescript-6.0.3.tgz", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 

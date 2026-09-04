@@ -1,0 +1,14 @@
+{
+  "name": "@jagent/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@gpuix/react": "file:../.refs/gpuix/packages/react",
+    "@jagent/app": "workspace:*",
+    "@jagent/native": "workspace:*",
+    "react": "19.2.8"
+  }
+}

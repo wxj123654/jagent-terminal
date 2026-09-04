@@ -543,14 +543,19 @@ export interface WindowSize {
 /**
  * Spawn a terminal session: PTY + model + pool registration. Resolves with
  * the sessionId that `<terminal sessionId>` binds to.
+ *
+ * Synchronous on purpose: the test path (run_on_test_app) needs this-thread
+ * access to VisualTestState (thread_local), and napi async fns run on the
+ * tokio runtime — a different thread. The JS seam keeps its Promise shape
+ * via a thin async wrapper at the injection site (main.tsx / e2e).
  */
-export declare function createTerminalSession(opts?: SpawnOptionsJs | undefined | null): Promise<number>
+export declare function createTerminalSession(opts?: SpawnOptionsJs | undefined | null): number
 
 /**
  * Destroy a session: kill the PTY child, drop the model, remove from the
  * pool. Views still bound to it render the placeholder afterwards.
  */
-export declare function destroyTerminalSession(sessionId: number): Promise<void>
+export declare function destroyTerminalSession(sessionId: number): void
 
 /**
  * Register the `<terminal>` element factory with GPUIX. Must run before the
@@ -561,9 +566,10 @@ export declare function installTerminalElement(): void
 
 /**
  * Register the global session-event callback (once, at app startup).
- * `cb: (e: {type:'title'|'bell'|'exit', sessionId, title?, code?}) => void`
+ * TSF protocol: `cb(null, e)` — the payload is the SECOND argument
+ * (first is the error slot). In JS: `onSessionEvent((_err, e) => ...)`.
  */
-export declare function onSessionEvent(cb: (e: import('./index').SessionEvent) => void): void
+export declare function onSessionEvent(cb: (err: null, e: import('./index').SessionEvent) => void): void
 
 /**
  * Global session event payload (R2): one channel for title/bell/exit,

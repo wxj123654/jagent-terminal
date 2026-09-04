@@ -2,9 +2,7 @@
   "name": "jagent",
   "private": true,
   "workspaces": [
-    "packages/*"
-  ],
-  "resolutions": {
-    "@tanstack/router-core": "1.170.32"
-  }
+    "packages/*",
+    "e2e"
+  ]
 }
