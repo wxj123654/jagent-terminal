@@ -59,10 +59,9 @@ j-agent/
 │       ├── src/
 │       │   ├── lib.rs                 #   mod 声明 + pub use
 │       │   ├── pool.rs                #   TerminalPool：会话表 + 事件转发
-│       │   ├── pty.rs                 #   PTY 生命周期（Zed tty/alacritty 模式）
+│       │   ├── pty.rs                 #   PTY 生命周期（Zed tty/alacritty 模式；TERM/COLORTERM 默认在此）
 │       │   ├── model.rs               #   TerminalModel：Term + 设置 + 向上事件
-│       │   ├── view.rs                #   终端绘制（依赖 gpui-terminal 或 vendored）
-│       │   └── element.rs             #   TerminalElement / TerminalFactory
+│       │   └── view.rs                #   终端绘制（依赖 gpui-terminal 或 vendored）
 │       ├── examples/
 │       │   └── window.rs              #   ★ Phase 0：独立 gpui 窗口验证
 │       └── Cargo.toml
@@ -77,11 +76,13 @@ j-agent/
 │   └── app/                           # React 应用（唯一前端包）
 │       ├── src/
 │       │   ├── main.tsx               #   装配 + 全局键位 + renderer 事件桥
-│       │   ├── router.ts              #   路由树（/ · /thread/$id · /settings）+
-│       │   │                          #   memory history + useActiveTarget
+│       │   ├── router.tsx             #   路由树（/ · /thread/$id · /settings）+
+│       │   │                          #   memory history + useActiveTarget + 手动桥（R-V1）
 │       │   ├── plane/                 #   AgentPlane / Sidebar / ThreadList /
 │       │   │                          #   ThreadRow / NewThreadButton / Pane
-│       │   ├── threads/               #   store.ts + terminal.ts (+ chat/acp Phase 2/3)
+│       │   ├── threads/               #   store.ts + terminal.ts + presets.ts +
+│       │   │                          #   events.ts（SessionEvent 窄化）+
+│       │   │                          #   nativeDeps.ts（装配工厂）
 │       │   ├── surfaces/              #   registry.ts + Terminal/Chat/Acp/Empty
 │       │   │   └── settings/          #   SettingsView + 7 分区
 │       │   ├── settings/              #   schema.ts / store.ts / file.ts
@@ -106,7 +107,7 @@ main.tsx ──> router.ts（路由树装配，不依赖任何业务模块）
 - `threads` **不依赖** `surfaces`、`plane`（store 不知道谁在渲染它）；导航经注入的 `deps.navigate`（§3.2）
 - `router.ts` 只描述 URL 形状，不 import threads / surfaces / settings
 - `settings` 不依赖 `threads`（两个 store 平行；装配层桥接 `closeOnExit` 等）
-- `native` 的导入只允许出现在 `main.tsx` 和 `threads/store.ts` 的依赖注入参数类型里——跨语言 seam 的 JS 侧收口
+- `native` 的导入只允许出现在 `main.tsx`、`threads/nativeDeps.ts`（装配工厂，main 与 e2e 共用）与 `threads/store.ts` 的依赖注入参数类型里，及 `e2e/`（TestGpuixRenderer 环境）——跨语言 seam 的 JS 侧收口
 - `ui` 被所有人依赖，不依赖任何人
 
 ---
@@ -172,6 +173,9 @@ pub enum SessionEvent {          // → JS payload
     Exit  { id: u64, code: Option<i32> }// {type:'exit',  sessionId, code}
 }
 ```
+
+（`code` 已贯通：alacritty `ChildExit(ExitStatus)` 携带退出码，model 区分
+`ChildExit`（带码）与裸 `Exit`（无码）两分支、先到先转发，2026-09-04 审查后实现。）
 
 ### 2.3 napi 命令面（packages/native/src/lib.rs）
 
@@ -572,9 +576,19 @@ interface SettingsStore {
 | `view.rs` + `view/` | 绘制 | `TerminalView::new(Entity<TerminalModel>)` | **已 vendoring（R6）**：view/render/input/colors/box_drawing 四文件来自 gpui-terminal（MIT/Apache 双证随拷）；view 重写为绑 model（订阅 Wakeup 重绘、resize 在 paint 检测、输入走 model）；fork API 适配仅两处（ShapedLine::paint 补参、focus 三参） |
 | `element.rs` | TerminalElement | `TerminalFactory`（注册用，占位） | §2.4：props 5+1、事件 focus/blur、destroy 不动会话；Phase 1 在 native 里接 GPUIX CustomElement |
 
-### 8.2 packages/native（napi 壳，<150 行目标）
+### 8.2 packages/native（napi 壳）
 
-`lib.rs` 只做四件事：`create_renderer()`（gpuix 装配 + `registry.register(TerminalFactory)` + `init_zed_subsystems`）、`create_terminal_session`、`destroy_terminal_session`、`on_session_event`。**修改它的理由只允许是 seam 协议变化**——它没有第二个存在理由。
+三个文件各司其职（2026-09-04 审查后定型）：
+
+- `lib.rs` —— 纯协议镜像（SpawnOptionsJs / SessionEvent）+ 四个 napi 命令
+  （`install_terminal_element` / `create_terminal_session` / `destroy_terminal_session` /
+  `on_session_event`）。**修改它的理由只允许是 seam 协议变化**。
+- `host.rs` —— host 分发 module：`run_host<T>(f) → Result<T>` 一个 interface，
+  两个 adapter（线程化通道 `run_on_gpuix` / 测试 `run_on_test_app`）；两条通道签名
+  被 gpuix 锁在 serde_json::Value，typed↔JSON 装箱只发生在这里一处。
+- `element.rs` —— GPUIX `CustomElement` 实现（`<terminal>` 元素，§2.4；曾同时在
+  crates/jagent-terminal 留有占位 TerminalFactory，2026-09-04 审查后删除——元素实现的
+  唯一住所就是这里）。
 
 ### 8.3 examples/window.rs（Phase 0，已完成）
 

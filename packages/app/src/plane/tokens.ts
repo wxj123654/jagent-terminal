@@ -10,6 +10,14 @@ export const COLORS = {
   pane: '#1e2127',
   sidebar: '#21252b',
   terminal: '#1a1d23',
+  /** 抬升表面：active 行底 / 按钮底 / 通用 hover（One Dark selection） */
+  surface: '#2c313a',
+  /** 抬升表面的 hover（按钮加深） */
+  surfaceHover: '#333845',
+  /** 凹陷表面：rename 输入框 / 菜单底 */
+  inputBg: '#1b1d23',
+  /** 行内关闭钮 hover */
+  closeHover: '#3a3f4b',
   text: '#abb2bf',
   textBright: '#d7dae0',
   muted: '#5c6370',

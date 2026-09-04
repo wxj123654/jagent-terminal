@@ -79,7 +79,7 @@ export function Sidebar({ store }: { store: ThreadStore }) {
             paddingRight: 6,
             borderRadius: 4,
             cursor: 'pointer',
-            hover: { backgroundColor: '#2c313a' },
+            hover: { backgroundColor: COLORS.surface },
           }}
         >
           <Icon name="gear" size={13} color={COLORS.muted} />

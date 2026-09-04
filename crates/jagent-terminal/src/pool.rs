@@ -32,7 +32,9 @@ use crate::pty::SpawnOptions;
 pub enum SessionEvent {
     Title { id: u64, title: String },
     Bell { id: u64 },
-    Exit { id: u64 },
+    /// `code` is the child's exit status when known (`ChildExit`); `None`
+    /// when only the stream-end `Exit` was observed.
+    Exit { id: u64, code: Option<i32> },
 }
 
 /// Global sink for session events. Set once at startup; called from the

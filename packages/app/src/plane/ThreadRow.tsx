@@ -96,7 +96,7 @@ export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
         paddingLeft: SIZES.rowPaddingX,
         paddingRight: SIZES.rowPaddingX - 2,
         borderRadius: SIZES.rowRadius,
-        backgroundColor: isActive ? '#2c313a' : 'transparent',
+        backgroundColor: isActive ? COLORS.surface : 'transparent',
         cursor: 'pointer',
         userSelect: 'none',
       }}
@@ -138,7 +138,7 @@ export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
             fontSize: 12,
             fontFamily: FONT.ui,
             color: COLORS.textBright,
-            backgroundColor: '#1b1d23',
+            backgroundColor: COLORS.inputBg,
             borderWidth: 1,
             borderColor: COLORS.accent,
             borderRadius: 3,
@@ -205,7 +205,7 @@ export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
             height: 18,
             borderRadius: 3,
             flexShrink: 0,
-            hover: { backgroundColor: '#3a3f4b' },
+            hover: { backgroundColor: COLORS.closeHover },
           }}
         >
           <Icon name="close" size={11} color={COLORS.muted} />

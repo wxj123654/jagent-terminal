@@ -1,17 +1,20 @@
 //! @jagent/native — the ONLY cross-language seam (architecture.md §2.3).
 //!
-//! Exports exactly four things (changes here require a seam-protocol reason):
+//! Exports exactly four napi commands (changes here require a seam-protocol
+//! reason):
+//! - `installTerminalElement()` — register the `<terminal>` element factory
+//!   with GPUIX (must run before the renderer is initialized)
 //! - `createTerminalSession(opts) → sessionId`
 //! - `destroyTerminalSession(sessionId)`
 //! - `onSessionEvent(cb)` — global session events (title/bell/exit)
-//! - element registration happens at module load (`#[module_exports]`):
-//!   `terminal` becomes available to JSX from any GPUIX renderer.
 //!
-//! Renderer assembly itself stays JS-side (`@gpuix/react` `createRenderer` +
-//! `renderer.init()`); Rust sees it only through the process-global UI
-//! command channel published by gpuix on init (see gpuix `run_on_gpuix`).
+//! Everything else is protocol mirroring (SpawnOptionsJs / SessionEvent) and
+//! host dispatch ([`host`]). Renderer assembly itself stays JS-side
+//! (`@gpuix/react` `createRenderer` + `renderer.init()`); Rust sees it only
+//! through the process-global UI command channel (see gpuix `run_on_gpuix`).
 
 mod element;
+mod host;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -21,12 +24,12 @@ use napi::bindgen_prelude::*;
 use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi_derive::napi;
 
+use gpui::BorrowAppContext;
+
 use element::TerminalElementFactory;
 use gpuix_native::custom_elements::register_global_factory;
 use jagent_terminal::pool::{set_session_event_fn, SessionEvent as RustSessionEvent};
 use jagent_terminal::{SpawnOptions, TerminalPool};
-
-use gpui::BorrowAppContext;
 
 /// Register the `<terminal>` element factory with GPUIX. Must run before the
 /// renderer is initialized (`main.tsx` calls it at startup, before
@@ -51,18 +54,11 @@ pub struct SpawnOptionsJs {
 
 fn to_spawn_options(opts: Option<SpawnOptionsJs>) -> SpawnOptions {
     let o = opts.unwrap_or_default();
-    let mut env: Vec<(String, String)> = o
-        .env
-        .map(|m| m.into_iter().collect())
-        .unwrap_or_default();
-    // Terminal defaults, mirroring examples/window.rs.
-    env.push(("TERM".into(), "xterm-256color".into()));
-    env.push(("COLORTERM".into(), "truecolor".into()));
     SpawnOptions {
         cwd: o.cwd.map(PathBuf::from),
         program: o.program,
         args: o.args.unwrap_or_default(),
-        env,
+        env: o.env.map(|m| m.into_iter().collect()).unwrap_or_default(),
         init_command: o.init_command,
         scrollback_lines: o.scrollback_lines.map(|v| v as usize),
     }
@@ -92,11 +88,11 @@ fn session_event_to_js(e: &RustSessionEvent) -> SessionEvent {
             title: None,
             code: None,
         },
-        RustSessionEvent::Exit { id } => SessionEvent {
+        RustSessionEvent::Exit { id, code } => SessionEvent {
             r#type: "exit".into(),
             session_id: *id as f64,
             title: None,
-            code: None,
+            code: code.map(|c| c as f64),
         },
     }
 }
@@ -117,45 +113,6 @@ fn host_error(e: anyhow::Error) -> Error {
     Error::from_reason(format!("{e:#}"))
 }
 
-/// Run `f` with GPUI app access: via the threaded host channel when the real
-/// renderer is live, or directly on the test renderer's VisualTestState under
-/// e2e (bun test + TestGpuixRenderer, single-threaded). gpuix patch #6 seam.
-fn on_app(
-    f: Box<dyn FnOnce(&mut gpui::App) -> anyhow::Result<serde_json::Value> + Send>,
-) -> anyhow::Result<serde_json::Value> {
-    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
-    {
-        use gpuix_native::{host_ui_commands_ready, run_on_gpuix};
-        if host_ui_commands_ready() {
-            run_on_gpuix(Box::new(move |cx, _window| {
-                cx.update(|cx: &mut gpui::App| f(cx))
-                    .map_err(|e: anyhow::Error| anyhow::anyhow!("{e:#}"))
-            }))
-        } else {
-            // No threaded renderer: e2e under TestGpuixRenderer. Its host seam
-            // exists on Windows/macOS builds only (gpuix test_renderer cfg).
-            #[cfg(target_os = "windows")]
-            {
-                gpuix_native::run_on_test_app(f)
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                let _ = f;
-                Err(anyhow::anyhow!(
-                    "no GPUI host available (no threaded renderer, no test renderer)",
-                ))
-            }
-        }
-    }
-    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "freebsd")))]
-    {
-        let _ = f;
-        Err(anyhow::anyhow!(
-            "terminal sessions are Windows/Linux only for now",
-        ))
-    }
-}
-
 /// Spawn a terminal session: PTY + model + pool registration. Resolves with
 /// the sessionId that `<terminal sessionId>` binds to.
 ///
@@ -166,14 +123,13 @@ fn on_app(
 #[napi]
 pub fn create_terminal_session(opts: Option<SpawnOptionsJs>) -> Result<f64> {
     let spawn = to_spawn_options(opts);
-    let value = on_app(Box::new(move |cx: &mut gpui::App| {
+    let id = host::run_host(move |cx: &mut gpui::App| {
         TerminalPool::init_global(cx);
         cx.update_global::<TerminalPool, _>(|pool, cx| pool.create(spawn, cx))
             .map_err(|e| anyhow::anyhow!("{e:#}"))
-            .map(|id| serde_json::json!({ "sessionId": id as f64 }))
-    }))
+    })
     .map_err(host_error)?;
-    Ok(value["sessionId"].as_f64().unwrap_or_default())
+    Ok(id as f64)
 }
 
 /// Destroy a session: kill the PTY child, drop the model, remove from the
@@ -181,11 +137,10 @@ pub fn create_terminal_session(opts: Option<SpawnOptionsJs>) -> Result<f64> {
 #[napi]
 pub fn destroy_terminal_session(session_id: f64) -> Result<()> {
     let id = session_id as u64;
-    on_app(Box::new(move |cx: &mut gpui::App| {
+    host::run_host(move |cx: &mut gpui::App| {
         cx.update_global::<TerminalPool, _>(|pool, cx| pool.destroy(id, cx))
             .map_err(|e| anyhow::anyhow!("{e:#}"))
-            .map(|_| serde_json::Value::Null)
-    }))
+    })
     .map_err(host_error)?;
     Ok(())
 }

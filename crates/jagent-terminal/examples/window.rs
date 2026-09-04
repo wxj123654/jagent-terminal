@@ -32,15 +32,12 @@ fn main() {
         set_session_event_fn(Arc::new(|event: &SessionEvent| match event {
             SessionEvent::Title { id, title } => println!("[session {id}] title: {title:?}"),
             SessionEvent::Bell { id } => println!("[session {id}] BELL"),
-            SessionEvent::Exit { id } => println!("[session {id}] EXIT"),
+            SessionEvent::Exit { id, code } => println!("[session {id}] EXIT (code {code:?})"),
         }));
 
+        // TERM/COLORTERM defaults live in the crate (pty.rs), not here.
         let opts = SpawnOptions {
             init_command: std::env::args().nth(1),
-            env: vec![
-                ("TERM".to_string(), "xterm-256color".to_string()),
-                ("COLORTERM".to_string(), "truecolor".to_string()),
-            ],
             ..Default::default()
         };
 

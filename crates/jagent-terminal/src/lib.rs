@@ -10,15 +10,16 @@
 //!   `EventLoop::spawn`).
 //! - [`view`]: terminal rendering (vendored from gpui-terminal, adapted to
 //!   render [`TerminalModel`] instead of owning a PTY).
-//! - [`element`]: GPUIX custom element (`<terminal>`), Phase 1.
+//!
+//! The GPUIX `<terminal>` custom element lives in `packages/native`
+//! (it must implement the gpuix `CustomElement` trait); there is no
+//! element module here.
 
-pub mod element;
 pub mod model;
 pub mod pool;
 pub mod pty;
 pub mod view;
 
-pub use element::TerminalFactory;
 pub use model::{Event, TerminalModel, TerminalStyle};
 pub use pool::{SessionEvent, SessionEventFn, TerminalPool};
 pub use pty::SpawnOptions;

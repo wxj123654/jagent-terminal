@@ -37,10 +37,10 @@ export function NewThreadButton({ store }: { store: ThreadStore }) {
           paddingLeft: 8,
           paddingRight: 8,
           borderRadius: SIZES.rowRadius,
-          backgroundColor: '#2c313a',
+          backgroundColor: COLORS.surface,
           cursor: 'pointer',
           userSelect: 'none',
-          hover: { backgroundColor: '#333845' },
+          hover: { backgroundColor: COLORS.surfaceHover },
         }}
       >
         <Icon name="plus" size={12} color={COLORS.textBright} />
@@ -61,9 +61,9 @@ export function NewThreadButton({ store }: { store: ThreadStore }) {
           height: 28,
           marginLeft: 4,
           borderRadius: SIZES.rowRadius,
-          backgroundColor: '#2c313a',
+          backgroundColor: COLORS.surface,
           cursor: 'pointer',
-          hover: { backgroundColor: '#333845' },
+          hover: { backgroundColor: COLORS.surfaceHover },
         }}
       >
         <Icon name="chevronDown" size={12} color={COLORS.muted} />
@@ -79,7 +79,7 @@ export function NewThreadButton({ store }: { store: ThreadStore }) {
             right: 0,
             display: 'flex',
             flexDirection: 'column',
-            backgroundColor: '#1b1d23',
+            backgroundColor: COLORS.inputBg,
             borderWidth: 1,
             borderColor: COLORS.borderSubtle,
             borderRadius: 6,
@@ -104,7 +104,7 @@ export function NewThreadButton({ store }: { store: ThreadStore }) {
                 paddingRight: 8,
                 borderRadius: 4,
                 cursor: 'pointer',
-                hover: { backgroundColor: '#2c313a' },
+                hover: { backgroundColor: COLORS.surface },
               }}
             >
               <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.text }}>

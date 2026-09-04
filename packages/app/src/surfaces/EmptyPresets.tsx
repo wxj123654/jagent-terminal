@@ -58,7 +58,7 @@ export function EmptyPresets({ onPick }: { onPick: (presetId: string) => void })
               cursor: 'pointer',
               hover: {
                 borderColor: COLORS.accent,
-                backgroundColor: '#2c313a',
+                backgroundColor: COLORS.surface,
               },
             }}
           >

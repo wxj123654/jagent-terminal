@@ -73,6 +73,15 @@ impl TerminalSize {
 }
 
 fn pty_options(opts: &SpawnOptions) -> TtyOptions {
+    // Terminal identity defaults — session knowledge lives here, not in the
+    // napi shell. Callers may override by passing their own entries.
+    let mut env = opts.env.clone();
+    if !env.iter().any(|(k, _)| k == "TERM") {
+        env.push(("TERM".into(), "xterm-256color".into()));
+    }
+    if !env.iter().any(|(k, _)| k == "COLORTERM") {
+        env.push(("COLORTERM".into(), "truecolor".into()));
+    }
     TtyOptions {
         shell: opts
             .program
@@ -80,7 +89,7 @@ fn pty_options(opts: &SpawnOptions) -> TtyOptions {
             .map(|program| tty::Shell::new(program, opts.args.clone())),
         working_directory: opts.cwd.clone(),
         drain_on_exit: true,
-        env: opts.env.iter().cloned().collect(),
+        env: env.into_iter().collect(),
         #[cfg(not(windows))]
         child_signal_mask: None,
         #[cfg(windows)]

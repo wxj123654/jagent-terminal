@@ -23,19 +23,15 @@
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
-import {
-  installTerminalElement,
-  createTerminalSession,
-  destroyTerminalSession,
-  onSessionEvent,
-  type SessionEvent,
-} from '@jagent/native'
+import { installTerminalElement, destroyTerminalSession, onSessionEvent } from '@jagent/native'
 
 import { createElement } from 'react'
 import { App } from '../packages/app/src/plane/AgentPlane'
 import { createThreadStore, type ThreadStore } from '../packages/app/src/threads/store'
+import { createNativeThreadDeps } from '../packages/app/src/threads/nativeDeps'
+import { narrowSessionEvent, type TerminalSessionEvent } from '../packages/app/src/threads/events'
 import { builtinPresetOf, type TerminalPreset } from '../packages/app/src/threads/presets'
-import { navigateTarget, currentActiveThreadId } from '../packages/app/src/router'
+import { currentActiveThreadId } from '../packages/app/src/router'
 
 /** 轮询直到谓词为真：advanceTime 驱动 fake clock（4ms 批处理），setTimeout 让出主线程（React 提交 + TSF 回调） */
 async function until(desc: string, pred: () => boolean, timeoutMs = 15000): Promise<void> {
@@ -58,7 +54,7 @@ const BELL_PRESET: TerminalPreset = {
 }
 
 const TEST_TIMEOUT = 30_000
-const sessionEvents: SessionEvent[] = []
+const sessionEvents: TerminalSessionEvent[] = []
 
 let t: TestRoot
 let store: ThreadStore
@@ -78,20 +74,20 @@ beforeAll(() => {
     onKeyDown: (e) => keyEvents.push(`${e.modifiers?.ctrl ? 'ctrl-' : ''}${e.key}`),
   })
 
-  store = createThreadStore({
-    spawnSession: async (o) => createTerminalSession(o),
-    destroySession: async (id) => destroyTerminalSession(id),
-    navigate: navigateTarget,
-    notify: () => {},
-    closeOnExit: () => false,
-    presetOf: (id) => builtinPresetOf(id) ?? (id === BELL_PRESET.id ? BELL_PRESET : undefined),
-    activeThreadId: currentActiveThreadId,
-  })
+  // 与 main.tsx 同一装配工厂——只覆盖差异项（notify 静默 + e2e 专用 bell 预设）
+  store = createThreadStore(
+    createNativeThreadDeps({
+      notify: () => {},
+      presetOf: (id) => builtinPresetOf(id) ?? (id === BELL_PRESET.id ? BELL_PRESET : undefined),
+    }),
+  )
 
   // 事件桥必须在 store 创建后注册（回调里引用 store）——与 main.tsx 装配一致
   onSessionEvent((_err, e) => {
-    sessionEvents.push(e)
-    store.onSessionEvent(e)
+    const n = narrowSessionEvent(e)
+    if (!n) return
+    sessionEvents.push(n)
+    store.onSessionEvent(n)
   })
 
   t.render(createElement(App, { store }))

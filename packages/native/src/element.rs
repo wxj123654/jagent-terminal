@@ -50,9 +50,10 @@ pub struct TerminalElement {
 }
 
 impl TerminalElement {
-    /// Apply changed style props to the bound model. Guarded by cheap field
-    /// compares in `set_prop` so the fast path never calls `set_style`
-    /// (`set_style` notifies → repaint; unconditional calls would loop).
+    /// Apply changed style props to the bound model. Called every render;
+    /// the diff against the model's current style skips the update entirely
+    /// on the steady-state frame (set_style is also idempotent — double
+    /// defense against notify→repaint loops).
     fn apply_style(&self, model: &Entity<TerminalModel>, cx: &mut Context<GpuixView>) {
         let mut style = model.read(cx).style().clone();
         if let Some(f) = &self.font_family {
@@ -61,7 +62,9 @@ impl TerminalElement {
         if let Some(s) = self.font_size {
             style.font_size = px(s as f32);
         }
-        model.update(cx, |m, cx| m.set_style(style, cx));
+        if *model.read(cx).style() != style {
+            model.update(cx, |m, cx| m.set_style(style, cx));
+        }
     }
 
     fn placeholder(&self) -> AnyElement {

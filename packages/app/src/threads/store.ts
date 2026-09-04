@@ -12,9 +12,10 @@
 import { createStore } from 'zustand/vanilla'
 import { produce } from 'immer'
 
-import type { SpawnOptionsJs, SessionEvent } from '@jagent/native'
+import type { SpawnOptionsJs } from '@jagent/native'
 
 import type { ActiveTarget } from '../router'
+import type { TerminalSessionEvent } from './events'
 import type { TerminalPreset } from './presets'
 
 // ── 类型（§3.1）──────────────────────────────────────────────────────
@@ -79,7 +80,8 @@ export interface ThreadStore {
   close(id: string): void
   rename(id: string, title: string): void
   cycle(dir: 1 | -1): void
-  onSessionEvent(e: SessionEvent): void
+  /** 装配层专用：native → store（经 events.ts 窄化后的判别联合） */
+  onSessionEvent(e: TerminalSessionEvent): void
 }
 
 // ── 实现 ─────────────────────────────────────────────────────────────
@@ -167,41 +169,48 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
 
     onSessionEvent(e) {
       const id = `t${e.sessionId}`
-      if (e.type === 'title') {
-        set((s) => {
-          const t = s.threads.find((x) => x.id === id)
-          // customTitle 存在则忽略（冻结）
-          if (t && t.kind === 'terminal' && t.customTitle == null && e.title) {
-            t.oscTitle = e.title
-          }
-        })
-      } else if (e.type === 'bell') {
-        const t = state().threads.find((x) => x.id === id)
-        if (t && t.kind === 'terminal') {
-          // 非 active 时红点 + 通知（active 判定经 router——见 activeThreadId）
-          const isTargetActive = activeThreadId() === id
-          if (!isTargetActive) {
-            set((s) => {
-              const row = s.threads.find((x) => x.id === id)
-              if (row && row.kind === 'terminal') row.hasBell = true
-            })
-            deps.notify(t)
-          }
-        }
-      } else if (e.type === 'exit') {
-        const t = state().threads.find((x) => x.id === id)
-        if (!t || t.kind !== 'terminal') return
-        if (deps.closeOnExit()) {
-          this.close(id)
-        } else {
-          // exited 会话留在池中（不变量 3）——重激活显示残留
+      switch (e.type) {
+        case 'title': {
           set((s) => {
-            const row = s.threads.find((x) => x.id === id)
-            if (row && row.kind === 'terminal') {
-              row.status = 'exited'
-              row.exitCode = e.code ?? null
+            const t = s.threads.find((x) => x.id === id)
+            // customTitle 存在则忽略（冻结）
+            if (t && t.kind === 'terminal' && t.customTitle == null && e.title) {
+              t.oscTitle = e.title
             }
           })
+          break
+        }
+        case 'bell': {
+          const t = state().threads.find((x) => x.id === id)
+          if (t && t.kind === 'terminal') {
+            // 非 active 时红点 + 通知（active 判定经 router——见 activeThreadId）
+            const isTargetActive = activeThreadId() === id
+            if (!isTargetActive) {
+              set((s) => {
+                const row = s.threads.find((x) => x.id === id)
+                if (row && row.kind === 'terminal') row.hasBell = true
+              })
+              deps.notify(t)
+            }
+          }
+          break
+        }
+        case 'exit': {
+          const t = state().threads.find((x) => x.id === id)
+          if (!t || t.kind !== 'terminal') return
+          if (deps.closeOnExit()) {
+            this.close(id)
+          } else {
+            // exited 会话留在池中（不变量 3）——重激活显示残留
+            set((s) => {
+              const row = s.threads.find((x) => x.id === id)
+              if (row && row.kind === 'terminal') {
+                row.status = 'exited'
+                row.exitCode = e.code ?? null
+              }
+            })
+          }
+          break
         }
       }
     },

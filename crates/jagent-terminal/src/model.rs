@@ -88,8 +88,8 @@ impl Dimensions for TermDimensions {
 
 /// Appearance + behaviour that the view reads every frame. Mutated via
 /// `set_style` (element props in Phase 1); changes take effect without
-/// recreating the session.
-#[derive(Debug, Clone)]
+/// recreating the session. `PartialEq` powers `set_style`'s idempotence.
+#[derive(Debug, Clone, PartialEq)]
 pub struct TerminalStyle {
     pub font_family: SharedString,
     pub font_size: Pixels,
@@ -278,12 +278,26 @@ impl TerminalModel {
                 }
                 cx.emit(Event::Bell);
             }
-            AlacTermEvent::Exit | AlacTermEvent::ChildExit(_) => {
-                // alacritty sends both Exit and ChildExit; forward once.
+            AlacTermEvent::ChildExit(status) => {
+                // ChildExit carries the exit status; alacritty also sends a
+                // bare Exit — forward once, preferring the one with a code.
                 if !self.exited {
                     self.exited = true;
                     if self.id != 0 {
-                        forward_session_event(&SessionEvent::Exit { id: self.id });
+                        forward_session_event(&SessionEvent::Exit {
+                            id: self.id,
+                            code: status.code(),
+                        });
+                    }
+                    cx.emit(Event::Exit);
+                }
+            }
+            AlacTermEvent::Exit => {
+                // Stream end without a child status (rare): exit code unknown.
+                if !self.exited {
+                    self.exited = true;
+                    if self.id != 0 {
+                        forward_session_event(&SessionEvent::Exit { id: self.id, code: None });
                     }
                     cx.emit(Event::Exit);
                 }
@@ -352,9 +366,13 @@ impl TerminalModel {
         &self.style
     }
 
+    /// Idempotent: a no-op when the style is unchanged (callers may invoke
+    /// per-frame; only real changes notify/repaint).
     pub fn set_style(&mut self, style: TerminalStyle, cx: &mut Context<Self>) {
-        self.style = style;
-        cx.notify();
+        if self.style != style {
+            self.style = style;
+            cx.notify();
+        }
     }
 
     pub fn scrollback_lines(&self) -> usize {
