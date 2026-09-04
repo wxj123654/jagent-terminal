@@ -1,0 +1,21 @@
+{
+  "name": "@jagent/native",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "binaryName": "jagent-native",
+    "targets": [
+      "x86_64-pc-windows-msvc"
+    ]
+  },
+  "scripts": {
+    "build:debug": "napi build --platform",
+    "build": "napi build --platform --release",
+    "artifacts": "napi artifacts"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "3.9.0"
+  }
+}

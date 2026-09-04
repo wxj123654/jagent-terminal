@@ -61,17 +61,29 @@
 
 > 锚点：布局契约 §12 —— 单 pane、无 chrome、两个 PTY sidebar 切换、焦点模型结论；**R-V1：RouterProvider 在 GPUIX reconciler 下是否可用**（保底：router.subscribe + useSyncExternalStore 手动桥，接口不变）。
 
-- [ ] **T1.1** 根 `package.json`（bun workspace：`packages/*`）+ `packages/app/package.json` + 依赖白名单安装（@gpuix/react · @jagent/native · zustand · @tanstack/react-router · zod · immer · dequal）
-- [ ] **T1.2** `packages/native`：napi-rs 壳（lib.rs：createRenderer（gpuix 装配 + registry.register(TerminalFactory) + init_zed_subsystems）/ createTerminalSession / destroyTerminalSession / onSessionEvent）；`<150 行`纪律，index.d.ts 生成
-- [ ] **T1.3** app 骨架：`main.tsx`（装配 + renderer 事件桥）· `router.ts`（memory history；/ · /thread/$id · /settings?section=$s；useActiveTarget）· R-V1 验证并记录结论
-- [ ] **T1.4** `threads/store.ts` 最小集（spawnFromPreset / activate / close + 依赖注入类型 ThreadDeps）+ bun test（fake deps，§3.4 用例集的最小子集）
+- [x] **T1.1** 根 `package.json`（bun workspace：`packages/*`）+ `packages/app/package.json` + 依赖白名单安装（@gpuix/react · @jagent/native · zustand · @tanstack/react-router · zod · immer · dequal）
+- [x] **T1.2** `packages/native`：napi 壳（lib.rs：installTerminalElement + createTerminalSession / destroyTerminalSession / onSessionEvent）；lib.rs 174 行（其中 seam 镜像类型 ~60 行，见结论区），index.d.ts 生成，导出合并实测通过
+- [x] **T1.3** app 骨架：`main.tsx`（装配 + renderer 事件桥）· `router.tsx`（memory history；/ · /thread/$id · /settings?section=$s；useActiveTarget）· R-V1 验证并记录结论
+- [x] **T1.4** `threads/store.ts` 最小集（spawnFromPreset / activate / close + 依赖注入类型 ThreadDeps）+ bun test（fake deps，§3.4 用例集的最小子集）——实际已实现全规则（rename/cycle/onSessionEvent 全量），13 用例全过，T2.1 只补测试面
 - [ ] **T1.5** `plane/`（AgentPlane/Sidebar/ThreadList/ThreadRow/Pane）+ `surfaces/registry.ts` + TerminalSurface（全项目唯一 `<terminal>` 写点）
 - [ ] **T1.6** 端到端：两个 PTY 并存、切 thread 不销毁后台会话（retain 语义）、焦点模型结论（GPUIX 焦点事件到达顺序 → Ctrl-Tab 可用性，记录降级与否）
 - [ ] **T1.7** git commit "Phase 1"
 
 ### Phase 1 结论区
 
-- R-V1（RouterProvider@GPUIX）：_未填写_
+- **napi 导出合并（实测）**：jagent-native cdylib 链接 gpuix-native rlib 后，gpuix 全部 napi 导出（GpuixRenderer / TestGpuixRenderer / hasTestGpuixRenderer）与本项目 4 命令（installTerminalElement / createTerminalSession / destroyTerminalSession / onSessionEvent）合并在**同一个 jagent-native.node**（ctor 注册跨 crate 生效，无丢符号）。JS 侧 `@gpuix/react` 的 `import "@gpuix/native"` 经 `packages/gpuix-native-alias`（workspace 包，name=@gpuix/native，re-export @jagent/native）指向同一二进制 —— 单 .node 保证 registry/pool 全局唯一。
+- **createRenderer 修订（对 architecture.md §2.3）**：Rust 侧不构造 GpuixRenderer（实例由 JS 侧 `@gpuix/react createRenderer()` 创建并拥有）；装配命令改为 `installTerminalElement()`（幂等，main.tsx 在 renderer.init 之前调）。原因：① napi 3 无 `#[module_exports]` 宏 ② Rust 再 new 一个 GpuixRenderer 会产生双实例。Rust 侧访问 GPUI 线程走 gpuix 全局通道（见下）。
+- **gpuix 本地补丁清单**（.refs/gpuix，每处带 `j-agent patch` 注释，`git -C .refs/gpuix diff` 可见）：
+  1. `zed/crates/gpui/Cargo.toml` 显式 workspace root（Phase 0 遗留）
+  2. `packages/native/src/lib.rs`：`pub mod custom_elements`（原私有）
+  3. `custom_elements/mod.rs`：`GLOBAL_FACTORIES` 全局注册表 + `register_global_factory()`（with_defaults 时 drain）
+  4. `renderer.rs`：`UiCommand::RunHost`（GPUI 线程回调 + 30s 超时）+ `HOST_UI_COMMANDS` 全局通道（init_threaded 发布）+ `pub fn run_on_gpuix()`（自由函数，不依赖 JS 持有的实例）
+  5. `renderer.rs`：`pub struct GpuixView`（原 pub(crate)；外部 crate impl CustomElement 必须能命名该类型）
+  6. `.gitmodules`（Phase 0 遗留）
+- **lib.rs 行数说明**：174 行（<150 目标微超）；超出部分是 SpawnOptions/SessionEvent 两个 seam 镜像 napi object（~60 行）——协议本身，非业务泄漏。napi 3 细节：ThreadsafeFunction 单泛型（无 ErrorStrategy）、async fn 需 napi feature "async"（= tokio_rt）。
+- **已声明未接线（Phase 2 补）**：`palette` / `cursorBlink` props（view 需加 set_palette / blink 支持）；元素事件 focus/blur（待 R-V2 焦点验证后发）。
+- **@gpuix/react 引用方式**：`file:../../.refs/gpuix/packages/react`（需先在 .refs/gpuix 里 `bun install && bun run build:react` 产出 dist，与 pin 的 Rust 同 rev）；npm 版 0.7.0 存在但 JS↔Rust 协议不保证与 8b94def 匹配，不用。
+- R-V1（RouterProvider@GPUIX）：**不可用，保底手动桥生效并验证**。三个坑与解法：(a) RouterProvider 崩在 MatchesInner `router._rendered[0]`（GPUIX reconciler 渲染时序下 ack 未就绪）；(b) `router.state` 每次组装新对象 → uSES getSnapshot 不稳定（无限循环）→ 订阅回调里递增版本号、getSnapshot 返回原始值、渲染期现读 `history.location.pathname`；(c) **Transitioner 契约**：router-core 在 `history.subscribers` 非空时不自行 `load()`（core router.js `if (!this.history.subscribers.size) this.load(...)`）→ 桥的订阅回调必须 `void router.load()`，否则第二次导航起挂起（实测 settings→'/' 永不生效；连空函数订阅者都能触发）。另：`router.subscribe(fn)` 是事件级 API（需 eventType 首参，单参静默无效）——订阅源用 `router.history.subscribe`。最终形态见 router.tsx 注释；navigate 一律 fire-and-forget（promise resolve 依赖 Matches acknowledgment，手动桥下不触发，无人 await）。全导航序列（/→settings→/→thread/$id→/）实测通过；依赖版本：@tanstack/react-router 1.170.32（latest）+ router-core 1.171.27（官方配对，resolutions 锁回 1.170.32 无必要已移除）
 - 焦点模型（Ctrl-Tab 生效条件 / 是否降级）：_未填写_
 
 ---
@@ -125,3 +137,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-02 · 四份契约文档定稿（architecture.md 签名级）；TODOLIST.md 创建 · 下一步：Phase 0 T0.1
 - 2026-09-02 · Phase 0 探索（T0.1 git init / T0.2 克隆与对版实验 / vendoring 起步）后应用户要求**整体回滚清空**，项目重头开始（实验结论已存项目记忆 #13）· 下一步：Phase 0 T0.1 重做
 - 2026-09-02 · **Phase 0 完成**：T0.1 workspace（exclude .refs）· T0.2 对版确认（fork 8b94def 未漂移；同号 0.2.2 不同 API）· T0.3 crate 骨架（pool=gpui Global 修订 R5 / model 4ms 批处理 / pty=tty+EventLoop）· view vendoring（4 文件 + 2 处 fork API 适配）· T0.4-0.5 window.rs 实测 ConPTY/BEL/OSC/Exit 全过（EXIT 去重修复）· cargo test 30 过 · 下一步：Phase 1 T1.1（bun workspace + 依赖白名单）
+- 2026-09-04 · **T1.1–T1.3 完成**：bun workspace（app/native/gpuix-native-alias 三包 + file: 引用 .refs 的 @gpuix/react）· napi 壳（导出合并进单一 .node 实测 ✓；gpuix 5 处本地补丁：pub mod custom_elements / GLOBAL_FACTORIES / RunHost+HOST_UI_COMMANDS / run_on_gpuix / pub GpuixView；installTerminalElement 替代 createRenderer）· app 骨架（main/router/AgentPlane 最小形态）· **R-V1 结论：RouterProvider 不可用**，手动桥（版本号快照 + history 订阅 + router.load() Transitioner 契约）全导航序列实测通过 · 下一步：T1.5 plane/surfaces + T1.6 端到端 + commit Phase 1

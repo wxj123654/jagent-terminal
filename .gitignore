@@ -8,6 +8,10 @@
 node_modules/
 *.tsbuildinfo
 
+# napi 原生二进制（index.js/index.d.ts 是生成物但入库，供 TS 类型用）
+packages/native/*.node
+packages/native/*.dll
+
 # 杂项
 *.log
 .DS_Store

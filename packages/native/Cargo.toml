@@ -1,0 +1,30 @@
+[package]
+name = "jagent-native"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "napi shell for j-agent: the ONLY cross-language seam (architecture.md §2.3)"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# GPUUIX pinned checkout — same rev as jagent-terminal's gpui/gpui_platform,
+# same default features (test-support) so TestGpuixRenderer stays available.
+gpuix-native = { path = "../../.refs/gpuix/packages/native" }
+jagent-terminal = { path = "../../crates/jagent-terminal" }
+gpui = { path = "../../.refs/gpuix/zed/crates/gpui", default-features = false, features = [
+    "font-kit",
+] }
+
+napi = { version = "3", default-features = false, features = [
+    "napi8",
+    "serde-json",
+    "async",
+] }
+napi-derive = "3"
+serde_json = "1"
+anyhow = "1"
+
+[build-dependencies]
+napi-build = "2"

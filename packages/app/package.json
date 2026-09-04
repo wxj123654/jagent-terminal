@@ -1,0 +1,26 @@
+{
+  "name": "@jagent/app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/main.tsx",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@gpuix/react": "file:../../.refs/gpuix/packages/react",
+    "@jagent/native": "workspace:*",
+    "@tanstack/react-router": "1.170.32",
+    "dequal": "2.0.3",
+    "immer": "11.1.18",
+    "react": "19.2.8",
+    "zod": "4.5.4",
+    "zustand": "5.0.15"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.0",
+    "@types/react": "19.2.18",
+    "typescript": "5.9.3"
+  }
+}
