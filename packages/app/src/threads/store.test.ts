@@ -14,17 +14,21 @@ import {
   navigateTarget,
   router,
 } from '../router'
-import { builtinPresetOf } from './presets'
-import { createThreadStore, type ThreadDeps, type ThreadStore } from './store'
+import { builtinPresetOf, type TerminalPreset } from './presets'
+import { createThreadStore, type ThreadDeps, type ThreadStore, type TerminalThread } from './store'
 import { displayTitle } from './terminal'
 
 function makeDeps(overrides: Partial<ThreadDeps> = {}) {
   let nextSession = 1
   const destroyed: number[] = []
   const notified: string[] = []
+  const spawned: import('@jagent/native').SpawnOptionsJs[] = []
   let closeOnExit = false
   const deps: ThreadDeps = {
-    spawnSession: async () => nextSession++,
+    spawnSession: async (o) => {
+      spawned.push(o)
+      return nextSession++
+    },
     destroySession: async (id) => {
       destroyed.push(id)
     },
@@ -39,6 +43,7 @@ function makeDeps(overrides: Partial<ThreadDeps> = {}) {
     deps,
     destroyed,
     notified,
+    spawned,
     setCloseOnExit: (v: boolean) => (closeOnExit = v),
   }
 }
@@ -73,6 +78,29 @@ describe('spawnFromPreset', () => {
   test('未知 preset 抛错且状态不变', async () => {
     await expect(store.spawnFromPreset('nope')).rejects.toThrow('unknown preset')
     expect(store.getState().threads).toHaveLength(0)
+  })
+
+  test('preset 字段透传给 spawnSession；cwd 缺省回退 process.cwd()', async () => {
+    const custom: TerminalPreset = {
+      id: 'my',
+      label: 'My',
+      builtin: false,
+      program: 'pwsh',
+      args: ['-NoLogo'],
+      env: { FOO: '1' },
+      initCommand: 'echo hi',
+      // cwd 故意不填
+    }
+    const ctx = makeDeps({ presetOf: (id) => (id === 'my' ? custom : builtinPresetOf(id)) })
+    const store = createThreadStore(ctx.deps)
+    await store.spawnFromPreset('my')
+    expect(ctx.spawned[0]).toEqual({
+      cwd: process.cwd(),
+      program: 'pwsh',
+      args: ['-NoLogo'],
+      env: { FOO: '1' },
+      initCommand: 'echo hi',
+    })
   })
 })
 
@@ -124,6 +152,11 @@ describe('title / exit / closeOnExit', () => {
     let row = store.getState().threads[0]
     expect(row.kind === 'terminal' && row.oscTitle).toBe('vim')
 
+    // 空串 title 忽略（不写入 oscTitle）
+    store.onSessionEvent({ type: 'title', sessionId: 1, title: '' })
+    row = store.getState().threads[0]
+    expect(row.kind === 'terminal' && row.oscTitle).toBe('vim')
+
     store.rename('t1', '我的会话')
     store.onSessionEvent({ type: 'title', sessionId: 1, title: 'osc-after-rename' })
     row = store.getState().threads[0]
@@ -146,6 +179,17 @@ describe('title / exit / closeOnExit', () => {
     const row = store.getState().threads[0]
     expect(row.kind === 'terminal' && row.status).toBe('exited')
     expect(store.getState().threads).toHaveLength(1)
+  })
+
+  test('exitCode 贯通（契约 §2.2：code 无值 → null）', async () => {
+    const store = createThreadStore(makeDeps().deps)
+    await store.spawnFromPreset('shell')
+    await store.spawnFromPreset('shell')
+    store.onSessionEvent({ type: 'exit', sessionId: 1, code: 0 })
+    store.onSessionEvent({ type: 'exit', sessionId: 2 }) // 无 code → null（不是 undefined）
+    const [t1, t2] = store.getState().threads as TerminalThread[]
+    expect(t1.exitCode).toBe(0)
+    expect(t2.exitCode).toBeNull()
   })
 
   test('exit + closeOnExit=true → 移除（走 close）', async () => {
@@ -199,6 +243,42 @@ describe('cycle 环形', () => {
     store.cycle(1) // t3 → t1
     await flush()
     expect(currentActiveThreadId()).toBe('t1')
+  })
+
+  test("无 active（settings 表面或根路由）：dir=1 → 首个，dir=-1 → 末个", async () => {
+    const store = createThreadStore(makeDeps().deps)
+    await store.spawnFromPreset('shell') // t1
+    await store.spawnFromPreset('shell') // t2
+
+    store.activate({ type: 'settings' })
+    await flush()
+    store.cycle(1)
+    await flush()
+    expect(currentActiveThreadId()).toBe('t1')
+
+    store.activate(null) // '/'
+    await flush()
+    store.cycle(-1)
+    await flush()
+    expect(currentActiveThreadId()).toBe('t2')
+  })
+})
+
+describe('activeThreadId 未注入的回退行为', () => {
+  // deps.activeThreadId 缺省（如旧装配/局部复用）：bell 视为非 active，close 保守先导航
+  test('bell 落红点 + notify；close 先导航离开再移除', async () => {
+    const ctx = makeDeps({ activeThreadId: undefined })
+    const store = createThreadStore(ctx.deps)
+    await store.spawnFromPreset('shell')
+    // 未注入 → 视为非 active → 红点 + 通知
+    store.onSessionEvent({ type: 'bell', sessionId: 1 })
+    let row = store.getState().threads[0]
+    expect(row.kind === 'terminal' && row.hasBell).toBe(true)
+    expect(ctx.notified).toEqual(['t1'])
+    // 保守先导航（navigate(null) 到 '/'）再移除
+    store.close('t1')
+    expect(router.history.location.pathname).toBe('/')
+    expect(store.getState().threads).toHaveLength(0)
   })
 })
 

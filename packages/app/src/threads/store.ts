@@ -111,7 +111,7 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
       const preset = deps.presetOf(presetId)
       if (!preset) throw new Error(`unknown preset: ${presetId}`)
       const sessionId = await deps.spawnSession({
-        cwd: preset.cwd,
+        cwd: preset.cwd ?? process.cwd(), // 与 thread.cwd 同源（Rust None 回退也是进程 CWD，显式传保两端一致）
         program: preset.program,
         args: preset.args,
         env: preset.env,
@@ -160,11 +160,13 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
     cycle(dir) {
       const { threads } = state()
       if (threads.length === 0) return
-      // 环形移动（契约 §4）：基准 = 当前 active（deps.activeThreadId 读侧）；
-      // idx=-1（无 active）时 (−1+1)%n=0 从头开始。
+      // 环形移动（契约 §4）：基准 = 当前 active（deps.activeThreadId 读侧）。
+      // 无 active（'/' 或 settings 表面）时：dir=1 → 第一个，dir=-1 → 最后一个。
+      // （不能直接 (idx+dir+n)%n——idx=-1 且 dir=-1 会落到 n-2 的怪分支）
       const idx = threads.findIndex((t) => t.id === activeThreadId())
-      const next = threads[(idx + dir + threads.length) % threads.length]
-      activate({ type: 'thread', id: next.id })
+      const nextIdx =
+        idx === -1 ? (dir === 1 ? 0 : threads.length - 1) : (idx + dir + threads.length) % threads.length
+      activate({ type: 'thread', id: threads[nextIdx].id })
     },
 
     onSessionEvent(e) {

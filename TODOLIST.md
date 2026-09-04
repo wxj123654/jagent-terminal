@@ -25,11 +25,11 @@
 |---|---|
 | 0 Rust 终端骨架 + window.rs 验证 | ✅ 完成（结论见 Phase 0 结论区） |
 | 1 双 workspace + napi 壳 + app 最小集 | ✅ 完成（结论见 Phase 1 结论区） |
-| 2 ThreadStore 全规则 + settings-core/controls + SettingsView | ⬜ 未开始 |
+| 2 ThreadStore 全规则 + settings-core/controls + SettingsView | ◐ 进行中（T2.1/T2.2 ✅，T2.3–T2.7 待做） |
 | 3 settings-presets + chat | ⬜ 未开始 |
 | 3+ settings-acp-advanced + ACP + 键位编辑 | ⬜ 未开始 |
 
-**当前指针**：→ Phase 2 / T2.1（ThreadStore 补测试面 → settings 三切片）
+**当前指针**：→ Phase 2 / T2.3（ui/ 原子 → SettingsView）
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -99,13 +99,18 @@
 
 > 锚点：设置契约 §15 第 1–5、9–11 条；桌面通知实现定型（node-notifier vs Rust win32 toast）。
 
-- [ ] **T2.1** ThreadStore 全规则 + bun test 全用例（§3.4：bell→红点→激活清除 · customTitle 冻结 · exit 灰行 vs closeOnExit 移除 · cycle 环形 · close 先导航离开 · displayTitle 四级兜底）
-- [ ] **T2.2** settings 三切片：`schema.ts`（zod looseObject + 字段级 catch + SETTING_DEFS）· `file.ts`（fsAdapter 原子写 + memoryAdapter）· `store.ts`（patch/reset/isModified/writeError 回滚时序）+ §6.3 测试面
+- [x] **T2.1** ThreadStore 全规则 + bun test 全用例（§3.4）—— 补齐：exitCode 贯通 · cycle 无 active 基准（修正 n-2 怪分支）· activeThreadId 未注入回退 · spawn 传参 + cwd 兑底 · title 空串忽略；17 用例全绿
+- [x] **T2.2** settings 三切片：`schema.ts`（zod looseObject + 叶子 .catch + section prefault + SETTING_DEFS 11 defs + SECTIONS 7 分区）· `file.ts`（fsAdapter 原子写+自建目录 + memoryAdapter 失败注入）· `store.ts`（patch/reset/isModified/writeError 回滚时序 + gen 合并写 + init()装配期读盘）+ §6.3 测试面 17 用例
 - [ ] **T2.3** `ui/` 原子（Icon/Tooltip/SettingRow/Toggle/Select/NumberInput/RangeInput/TextInput/Textarea/Badge/PhaseBadge/IconButton）
 - [ ] **T2.4** SettingsView（SettingsNav 7 分区 + 搜索 + SettingRow 声明式渲染 + 分区深链）——Term/Notify 分区接真值；Presets/ACP 显示 Phase 徽章
 - [ ] **T2.5** 桌面通知定型 + 接线（bell → 非激活 → notify；读 settings.desktop 在装配层）
 - [ ] **T2.6** 全局键位层（Ctrl-Tab/Ctrl-Shift-Tab → cycle；Ctrl-, toggle 设置；只吃修饰键组合）
 - [ ] **T2.7** 验收锚点核对（§15：1/2/4 core · 3/5/10/11 controls · 9 term-notify）+ commit "Phase 2"
+
+### Phase 2 结论区
+
+- **T2.1 行为修正**：① cycle 无 active 基准原为 `(idx+dir+n)%n`，idx=-1 且 dir=-1 会落到 n-2 怪分支——改为 dir=1→首个、dir=-1→末个；② spawnSession 的 cwd 未做 `?? process.cwd()` 兑底（thread.cwd 有）——同源化，两端保证一致。另抓到测试名字符串里 `'/'` 截断变除法的坑（bun 显示测试名 NaN，tsc 才报错）。
+- **T2.2 契约扩展与实现注记**：① `SettingsStore` 增加 `init(): Promise<void>`（装配期读盘+parse+首帧 set；契约接口是 UI 消费面，缺生命周期方法，main.tsx 需 await 后渲染——T2.4 接线）；② zod 4.5.4 `prefault` 类型面要求完整 output——用 `section()` helper（`{} as z.input<T>` 断言）保持默认值单点定义在叶子 .catch；③ 写盘合并：gen 计数器，旧快照排队中被新 patch 超越则跳过；写失败 gen++ 作废在途写 + 回滚到 persisted（最后确认落盘快照，非 patch 前快照——交错 patch 时正确），成功路径仅在有 writeError 时才 set 清除（省无效 notify）；④ fsAdapter 首次运行目录不存在会 ENOENT——write 前 mkdir recursive（真盘验证抓到，memoryAdapter 测不出）；⑤ ACP 默认 2 示例取自原型：codex --acp / claude-code-acp；⑥ SETTING_DEFS 11 defs（notifications 2 + terminal 6 + appearance 2 + advanced 1），plusDefault 随 Presets 分区手写（选项动态），Keybindings 只读、Presets/ACP 结构性不走 defs。
 
 ---
 
@@ -147,3 +152,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-04 · **T1.1–T1.3 完成**：bun workspace（app/native/gpuix-native-alias 三包 + file: 引用 .refs 的 @gpuix/react）· napi 壳（导出合并进单一 .node 实测 ✓；gpuix 5 处本地补丁：pub mod custom_elements / GLOBAL_FACTORIES / RunHost+HOST_UI_COMMANDS / run_on_gpuix / pub GpuixView；installTerminalElement 替代 createRenderer）· app 骨架（main/router/AgentPlane 最小形态）· **R-V1 结论：RouterProvider 不可用**，手动桥（版本号快照 + history 订阅 + router.load() Transitioner 契约）全导航序列实测通过 · 下一步：T1.5 plane/surfaces + T1.6 端到端 + commit Phase 1
 - 2026-09-04 · **Phase 1 完成**：T1.5 plane/surfaces 全量（Sidebar/ThreadList/ThreadRow 行内 rename+红点+exited/NewThreadButton 预设菜单/Pane 整块替换/TerminalSurface 唯一 <terminal> 写点/EmptyPresets/tokens/Icon/useThreadStore 直桥）· T1.6 e2e 5 用例全绿（两个真 ConPTY 并存、retain+后台 bell、activate 清红点、exit 灰行+close、**焦点结论：无需降级**）· 重大修复：TSF 两参坑（事件自 T1.2 起全部被静默丢弃）· gpuix 补丁 #6/#7（run_on_test_app + host_ui_commands_ready）· napi 同步化（test 路径 thread_local）· 下一步：Phase 2 T2.1（ThreadStore 补测试面）→ T2.2 settings 三切片
 - 2026-09-04 · **架构审查修复（improve-codebase-architecture 五候选全部落地）**：① 删除 crates/jagent-terminal/src/element.rs 死模块（TerminalFactory 零引用，元素实现唯一住所 = packages/native/element.rs）· ② native 壳深化：TERM/COLORTERM 默认 env 下沉 pty.rs（壳回纯协议镜像）+ 新 host.rs（run_host<T> 一个 interface 两 adapter，serde_json 装箱收敛一处）+ set_style 幂等（PartialEq 比较，消除每帧无效 notify；element.rs 注释与实现对齐）· ③ tokens 收编全部裸 hex（COLORS +surface/surfaceHover/inputBg/closeHover，组件零裸 hex）· ④ 提取 threads/nativeDeps.ts 装配工厂（main/e2e 同一布线，差异项覆盖；§1.2 native 收口清单同步修订）· ⑤ threads/events.ts 判别联合窄化（narrowSessionEvent 边界映射，store 消费 switch 穷尽）+ **exit code 贯通**（alacritty ChildExit 带码：model 区分 ChildExit/Exit 先到先转发 → SessionEvent::Exit{code} → napi → store.exitCode，契约 §2.2 不再漂移）· 验证：cargo test 30 过 + bun test 13 过 + e2e 5 用例全绿（真 PTY）· 下一步：Phase 2 T2.1
+- 2026-09-04 · **T2.1 + T2.2 完成**：T2.1 补齐 ThreadStore 测试面（17 用例：exitCode/cycle 无 active/未注入回退/spawn 传参+cwd 同源/title 空串；含 cycle n-2 怪分支行为修正）· T2.2 settings 三切片落地（schema：looseObject+叶子 catch+section prefault+11 defs；file：fsAdapter 原子写+mkdir 自建+memoryAdapter；store：gen 合并写+persisted 回滚锚点+writeError 时序；17 用例含未知 key 往返/越界回默认/合并写/失败作废）· fsAdapter 真盘验证抓 ENOENT 缺陷并修 · tsc 干净 + 39 测试全绿（34 单测 + 5 e2e）· 下一步：T2.3（ui/ 原子）→ T2.4（SettingsView）
