@@ -185,6 +185,10 @@ pub struct TerminalRenderer {
 
     /// Color palette for resolving terminal colors
     pub palette: ColorPalette,
+
+    /// Whether the cursor block is drawn this frame (blink phase; set by
+    /// the view before cloning the renderer into the canvas closure).
+    pub cursor_visible: bool,
 }
 
 impl TerminalRenderer {
@@ -228,6 +232,7 @@ impl TerminalRenderer {
             cell_height,
             line_height_multiplier,
             palette,
+            cursor_visible: true,
         }
     }
 
@@ -721,7 +726,10 @@ impl TerminalRenderer {
             }
         }
 
-        // Paint cursor
+        // Paint cursor (skipped on the blink-off phase)
+        if !self.cursor_visible {
+            return;
+        }
         let cursor_point = grid.cursor.point;
         let cursor_x = origin.x + self.cell_width * (cursor_point.column.0 as f32);
         let cursor_y = origin.y + self.cell_height * (cursor_point.line.0 as f32);

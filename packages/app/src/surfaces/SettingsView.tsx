@@ -13,7 +13,7 @@
  * - 生命周期（Ctrl-, / Esc 关闭 / 切 thread 关闭）在全局键位层（T2.6）
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 
 import type { SettingsStore } from '../settings/store'
@@ -23,12 +23,57 @@ import type { SettingSectionId } from '../settings/schema'
 import { BUILTIN_PRESETS } from '../threads/presets'
 import { useSettingsSection, navigateSettingsSection } from '../router'
 import { Icon } from '../ui/Icon'
+import { inputFocus } from '../ui/keyboard'
 import { matchDef, renderSectionContent, SectionHeading, keybindingHits } from './SettingsSections'
 import { COLORS, FONT } from '../ui/tokens'
+
+// ── 设置面键盘生命周期（模块单例，T2.6）────────────────────────────
+// main.tsx 全局键位层需要两件组件内状态：Esc 判据（query 是否已空：非空
+// 时组件层已清空、root 层不连坐关闭）与 `/` 聚焦目标（搜索框元素 id）。
+// 纯 UI 态不进 store/router；Esc 时序依赖「React 状态让出后提交」：root
+// 层读到的永远是本次按键前的 query，两层天然不打架（时序三律同源）。
+let searchQuery = ''
+let searchInputId: number | null = null
+let escConsumedBySearch = false
+
+/** 全局键位层消费面（main.tsx）：设置面键盘态只读访问 */
+export const settingsKeyboard = {
+  /** 搜索框当前 query（'' = Esc 可关设置） */
+  query(): string {
+    return searchQuery
+  },
+  /** 搜索框元素 id（`/` 全局聚焦目标；未聚焦过为 null） */
+  searchInputId(): number | null {
+    return searchInputId
+  },
+  /** 搜索框已消费本次 Esc（清空 query）：root 层不连坐关闭 */
+  escConsumed(): boolean {
+    return escConsumedBySearch
+  },
+  /** root 层读取后重置（消费一次性） */
+  clearEscConsumed(): void {
+    escConsumedBySearch = false
+  },
+}
 
 export function SettingsView({ settings }: { settings: SettingsStore }): ReactElement {
   const section = useSettingsSection()
   const [query, setQuery] = useState('')
+  // 搜索框元素 id 用 ref 回调获取（挂载即有，不依赖 focus 事件——
+  // autoFocus 程序化聚焦不派发 JS onFocus，实测）
+  const searchRef = useRef<{ id: number } | null>(null)
+  // 模块态同步（root 键位层读）：query 提交后更新。与卸载清理分开两个
+  // effect——query 变化时不能重置 searchInputId（那是 onFocus 记的）
+  useEffect(() => {
+    searchQuery = query
+  }, [query])
+  // 卸载：设置面不在时 settingsKeyboard 的值无意义
+  useEffect(() => {
+    return () => {
+      searchQuery = ''
+      searchInputId = null
+    }
+  }, [])
   // 订阅设置快照：patch/reset/writeError 后整树重渲染（行数少，粒度足够）
   useSettings(settings)
 
@@ -73,13 +118,32 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
         >
           <Icon name="search" size={12} color={COLORS.muted} />
           <input
+            ref={(r) => {
+              searchRef.current = r
+              searchInputId = r?.id ?? null
+            }}
             testId="settings-search"
             autoFocus
             value={query}
             placeholder="搜索设置（/ 聚焦）"
             onChange={(e) => setQuery(e.value ?? '')}
+            onFocus={() => {
+              // 点击/Tab 聚焦时上报输入态（autoFocus 不触发此回调；计数
+              // 语义见 ui/keyboard.ts 注释——负值不影响 any 判定）
+              inputFocus.acquire()
+            }}
+            onBlur={() => {
+              inputFocus.release()
+            }}
             onKeyDown={(e) => {
-              if (e.key === 'escape' && query) setQuery('')
+              // Esc 消费同步写模块态：React 状态在事件回调内同步提交，
+              // root 层（同一按键的后一跳）必须看到「已消费」标记而非
+              // 清空后的 query（时序实测：useEffect 先于 root handler 跑完）
+              if (e.key === 'escape' && query) {
+                setQuery('')
+                searchQuery = ''
+                escConsumedBySearch = true
+              }
             }}
             style={{ flexGrow: 1, minWidth: 0, fontSize: 12, fontFamily: FONT.ui, color: COLORS.textBright }}
           />

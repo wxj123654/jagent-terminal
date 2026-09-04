@@ -5,31 +5,49 @@
  * 一遍，差异项（notify / closeOnExit / presetOf）经参数覆盖。native 导入
  * 收口点之一（architecture.md §1.2，修订见文档）。
  *
+ * T2.5 接线：notify 读 settings.notifications（desktop/sound）→ WinRT toast；
+ * closeOnExit 读 settings.terminal.closeOnExit；spawnSession 补
+ * scrollbackLines 兜底（契约 §3.2：scrollback 是全局设置，随 spawn 参数
+ * 下发——alacritty Term 构造后不可变）。
+ *
  * napi 命令是同步的（test 路径需本线程 VisualTestState；见 native/lib.rs），
  * seam 接口保持 Promise 形态——spawn 在真窗口模式下会短暂阻塞帧循环
  * （ConPTY 冷启动 ~1s，用户显式操作，可接受）。
  */
 
-import { createTerminalSession, destroyTerminalSession } from '@jagent/native'
+import { createTerminalSession, destroyTerminalSession, notifyDesktop } from '@jagent/native'
 
 import { navigateTarget, currentActiveThreadId } from '../router'
 import { builtinPresetOf } from './presets'
+import { displayTitle } from './terminal'
 import type { ThreadDeps } from './store'
+import type { SettingsStore } from '../settings/store'
 
-/** 可覆盖项：装配层差异点（Phase 2 的 notify/closeOnExit 接真值处） */
+/** 可覆盖项：装配层差异点（e2e：notify 静默、注入测试预设） */
 export type NativeDepsOverrides = Partial<Pick<ThreadDeps, 'notify' | 'closeOnExit' | 'presetOf'>>
 
-export function createNativeThreadDeps(overrides: NativeDepsOverrides = {}): ThreadDeps {
+export function createNativeThreadDeps(
+  settings: SettingsStore,
+  overrides: NativeDepsOverrides = {},
+): ThreadDeps {
   return {
-    spawnSession: async (o) => createTerminalSession(o),
+    spawnSession: async (o) =>
+      createTerminalSession({
+        ...o,
+        scrollbackLines: o.scrollbackLines ?? settings.get().terminal.scrollbackLines,
+      }),
     destroySession: async (id) => destroyTerminalSession(id),
     navigate: navigateTarget,
     activeThreadId: currentActiveThreadId,
     presetOf: builtinPresetOf,
-    // Phase 2（T2.5 桌面通知定型）前：BEL 通知只落 console
-    notify: (t) => console.log(`[notify] bell: t${t.sessionId}`),
-    // Phase 2 前默认不关（settings 终端区接线后读真值）
-    closeOnExit: () => false,
+    // bell → 非激活 thread → 桌面 toast（WinRT；Rust 侧 AUMID 注册幂等）。
+    // sound 依赖 desktop（settings-ui.md §6）；失败在 Rust 侧静默 warn。
+    notify: (t) => {
+      const n = settings.get().notifications
+      if (!n.desktop) return
+      notifyDesktop(`j-agent · ${displayTitle(t)}`, '终端铃（BEL）', n.sound)
+    },
+    closeOnExit: () => settings.get().terminal.closeOnExit,
     ...overrides,
   }
 }

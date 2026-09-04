@@ -8,6 +8,7 @@ import { useState } from 'react'
 import type { ReactElement } from 'react'
 
 import { controlBox, controlText } from './style'
+import { inputFocus } from './keyboard'
 import { COLORS } from './tokens'
 
 export function TextInput({
@@ -43,8 +44,14 @@ export function TextInput({
       onKeyDown={(e) => {
         if (e.key === 'enter') onSubmit?.(value)
       }}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
+      onFocus={() => {
+        setFocused(true)
+        inputFocus.acquire()
+      }}
+      onBlur={() => {
+        setFocused(false)
+        inputFocus.release()
+      }}
       style={{
         width,
         height: 28,

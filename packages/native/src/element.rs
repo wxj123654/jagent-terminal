@@ -44,8 +44,8 @@ pub struct TerminalElement {
     // Style props (appearance: set_props → forwarded to model.set_style).
     font_family: Option<String>,
     font_size: Option<f64>,
-    palette: Option<String>,       // TODO(Phase 2): view palette plumbing
-    cursor_blink: Option<bool>,    // TODO(Phase 2): cursor blink support
+    palette: Option<String>,
+    cursor_blink: Option<bool>,
     focused: bool,
 }
 
@@ -61,6 +61,12 @@ impl TerminalElement {
         }
         if let Some(s) = self.font_size {
             style.font_size = px(s as f32);
+        }
+        if let Some(p) = &self.palette {
+            style.palette = SharedString::from(p.clone());
+        }
+        if let Some(b) = self.cursor_blink {
+            style.cursor_blink = b;
         }
         if *model.read(cx).style() != style {
             model.update(cx, |m, cx| m.set_style(style, cx));

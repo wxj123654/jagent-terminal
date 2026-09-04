@@ -37,12 +37,21 @@ import {
  * （promise 的 resolve 依赖 Matches 的 acknowledgment，手动桥下不触发）。
  */
 let snapshotVersion = 0
+/** 最后一个非设置导航目标（settings-ui §4：Esc/Ctrl-, 关闭设置时回到它） */
+let lastNonSettingsTarget: ActiveTarget = null
 const subscribeRouter = (onStoreChange: () => void) =>
   router.history.subscribe(() => {
     void router.load()
     snapshotVersion++
+    const cur = activeTargetFromLocation(router.history.location.pathname)
+    if (cur?.type !== 'settings') lastNonSettingsTarget = cur
     onStoreChange()
   })
+
+/** 最后一个非设置目标（无则 null → 回 EmptyPresets） */
+export function lastNonSettings(): ActiveTarget {
+  return lastNonSettingsTarget
+}
 
 export type ActiveTarget =
   | { type: 'thread'; id: string }

@@ -1,12 +1,13 @@
 //! @jagent/native — the ONLY cross-language seam (architecture.md §2.3).
 //!
-//! Exports exactly four napi commands (changes here require a seam-protocol
+//! Exports exactly five napi commands (changes here require a seam-protocol
 //! reason):
 //! - `installTerminalElement()` — register the `<terminal>` element factory
 //!   with GPUIX (must run before the renderer is initialized)
 //! - `createTerminalSession(opts) → sessionId`
 //! - `destroyTerminalSession(sessionId)`
 //! - `onSessionEvent(cb)` — global session events (title/bell/exit)
+//! - `notifyDesktop(title, body, sound)` — Windows toast (T2.5)
 //!
 //! Everything else is protocol mirroring (SpawnOptionsJs / SessionEvent) and
 //! host dispatch ([`host`]). Renderer assembly itself stays JS-side
@@ -15,6 +16,7 @@
 
 mod element;
 mod host;
+mod notify;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -143,4 +145,12 @@ pub fn destroy_terminal_session(session_id: f64) -> Result<()> {
     })
     .map_err(host_error)?;
     Ok(())
+}
+
+/// Show a desktop toast (Windows). Fire-and-forget on a detached thread:
+/// failures log to stderr and never reject — notifications are a
+/// non-critical path (bell → notify, settings.desktop gates the call).
+#[napi]
+pub fn notify_desktop(title: String, body: String, sound: bool) {
+    notify::show(&title, &body, sound);
 }

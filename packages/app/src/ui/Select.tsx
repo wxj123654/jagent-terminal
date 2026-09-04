@@ -20,6 +20,7 @@ import {
 
 import { Icon } from './Icon'
 import { controlText, focusRing } from './style'
+import { inputFocus } from './keyboard'
 import { COLORS } from './tokens'
 
 export type SelectOption = { value: string; label: string }
@@ -44,8 +45,14 @@ export function SelectField({
     <GpuixSelect value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger
         testId={testId}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onFocus={() => {
+          setFocused(true)
+          inputFocus.acquire()
+        }}
+        onBlur={() => {
+          setFocused(false)
+          inputFocus.release()
+        }}
         style={({ open }) => ({
           display: 'flex',
           flexDirection: 'row',

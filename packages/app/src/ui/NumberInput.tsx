@@ -13,6 +13,7 @@ import type { ReactElement } from 'react'
 
 import { Icon } from './Icon'
 import { controlText } from './style'
+import { inputFocus } from './keyboard'
 import { COLORS, FONT } from './tokens'
 
 export function NumberInput({
@@ -75,7 +76,11 @@ export function NumberInput({
         value={draft ?? String(value)}
         readOnly={disabled}
         onChange={(e) => applyDraft(e.value ?? '')}
-        onBlur={() => setDraft(null)}
+        onFocus={() => inputFocus.acquire()}
+        onBlur={() => {
+          setDraft(null)
+          inputFocus.release()
+        }}
         onKeyDown={(e) => {
           if (e.key === 'up') nudge(1)
           else if (e.key === 'down') nudge(-1)

@@ -589,8 +589,7 @@ impl ColorPaletteBuilder {
     /// Builds the color palette.
     pub fn build(self) -> ColorPalette {
         self.palette
-    }
-}
+    }}
 
 #[cfg(test)]
 mod tests {
@@ -663,5 +662,49 @@ mod tests {
         };
         let hsla = palette.resolve(Color::Spec(rgb), &colors);
         assert_eq!(hsla.a, 1.0);
+    }
+}
+
+/// Named-palette registry (`TerminalStyle::palette` ids). Unknown ids fall
+/// back to [`ColorPalette::default`] (classic ANSI) — a typo degrades to the
+/// legacy look instead of panicking.
+pub fn by_name(name: &str) -> ColorPalette {
+    match name {
+        // Atom One Dark — the j-agent default (settings.terminal.palette).
+        // Standard One Dark terminal mapping (vim/iterm one-dark scheme).
+        "one-dark" => ColorPalette::builder()
+            .background(0x28, 0x2c, 0x34)
+            .foreground(0xab, 0xb2, 0xbf)
+            .cursor(0x52, 0x8b, 0xff)
+            .black(0x28, 0x2c, 0x34)
+            .red(0xe0, 0x6c, 0x75)
+            .green(0x98, 0xc3, 0x79)
+            .yellow(0xe5, 0xc0, 0x7b)
+            .blue(0x61, 0xaf, 0xef)
+            .magenta(0xc6, 0x78, 0xdd)
+            .cyan(0x56, 0xb6, 0xc2)
+            .white(0xab, 0xb2, 0xbf)
+            .bright_black(0x5c, 0x63, 0x70)
+            .bright_red(0xe0, 0x6c, 0x75)
+            .bright_green(0x98, 0xc3, 0x79)
+            .bright_yellow(0xe5, 0xc0, 0x7b)
+            .bright_blue(0x61, 0xaf, 0xef)
+            .bright_magenta(0xc6, 0x78, 0xdd)
+            .bright_cyan(0x56, 0xb6, 0xc2)
+            .bright_white(0xff, 0xff, 0xff)
+            .build(),
+        _ => ColorPalette::default(),
+    }
+}
+
+#[cfg(test)]
+mod palette_tests {
+    use super::*;
+
+    #[test]
+    fn by_name_one_dark_differs_from_default() {
+        let one_dark = by_name("one-dark");
+        assert_ne!(one_dark.background(), ColorPalette::default().background());
+        assert_eq!(by_name("nope").background(), ColorPalette::default().background());
     }
 }

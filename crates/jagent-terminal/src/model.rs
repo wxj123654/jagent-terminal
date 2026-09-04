@@ -95,6 +95,10 @@ pub struct TerminalStyle {
     pub font_size: Pixels,
     pub line_height_multiplier: f32,
     pub padding: gpui::Edges<Pixels>,
+    /// Palette id ("one-dark"), resolved by the view via `colors::by_name`.
+    pub palette: SharedString,
+    /// When false the cursor is drawn steady (no blink timer activity).
+    pub cursor_blink: bool,
 }
 
 impl Default for TerminalStyle {
@@ -104,6 +108,8 @@ impl Default for TerminalStyle {
             font_size: gpui::px(14.0),
             line_height_multiplier: 1.2,
             padding: gpui::Edges::all(gpui::px(8.0)),
+            palette: "one-dark".into(),
+            cursor_blink: true,
         }
     }
 }

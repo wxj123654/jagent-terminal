@@ -706,4 +706,5 @@ module.exports.hasTestGpuixRenderer = nativeBinding.hasTestGpuixRenderer
 module.exports.createTerminalSession = nativeBinding.createTerminalSession
 module.exports.destroyTerminalSession = nativeBinding.destroyTerminalSession
 module.exports.installTerminalElement = nativeBinding.installTerminalElement
+module.exports.notifyDesktop = nativeBinding.notifyDesktop
 module.exports.onSessionEvent = nativeBinding.onSessionEvent

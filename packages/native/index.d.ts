@@ -565,6 +565,13 @@ export declare function destroyTerminalSession(sessionId: number): void
 export declare function installTerminalElement(): void
 
 /**
+ * Show a desktop toast (Windows). Fire-and-forget on a detached thread:
+ * failures log to stderr and never reject — notifications are a
+ * non-critical path (bell → notify, settings.desktop gates the call).
+ */
+export declare function notifyDesktop(title: string, body: string, sound: boolean): void
+
+/**
  * Register the global session-event callback (once, at app startup).
  * TSF protocol: `cb(null, e)` — the payload is the SECOND argument
  * (first is the error slot). In JS: `onSessionEvent((_err, e) => ...)`.

@@ -48,6 +48,8 @@ pub struct TerminalView {
     /// Last grid size pushed to the model (resize detection happens in the
     /// paint pass; this is informational for `dimensions()`).
     last_dims: (usize, usize),
+    /// Cursor blink phase; flipped by the blink task below.
+    blink_on: bool,
 }
 
 impl TerminalView {
@@ -60,7 +62,7 @@ impl TerminalView {
             style.font_family.to_string(),
             style.font_size,
             style.line_height_multiplier,
-            Palette::default(),
+            colors::by_name(&style.palette),
         );
 
         // Repaint when the model wakes up (new content, title, bell, exit...).
@@ -70,12 +72,36 @@ impl TerminalView {
             }
         });
 
+        // Cursor blink: one task per view; it self-terminates when the view
+        // entity drops (retain semantics — unmounting the element stops the
+        // timer). While `cursor_blink` is off it idles without notifying.
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(530))
+                    .await;
+                if this
+                    .update(cx, |v, cx| {
+                        if v.model.read(cx).style().cursor_blink {
+                            v.blink_on = !v.blink_on;
+                            cx.notify();
+                        }
+                    })
+                    .is_err()
+                {
+                    break; // view dropped — stop blinking
+                }
+            }
+        })
+        .detach();
+
         Self {
             model,
             renderer,
             focus_handle: cx.focus_handle(),
             _subscription: subscription,
             last_dims: (80, 24),
+            blink_on: true,
         }
     }
 
@@ -107,6 +133,13 @@ impl TerminalView {
         }
         if renderer.line_height_multiplier != style.line_height_multiplier {
             renderer.line_height_multiplier = style.line_height_multiplier;
+            changed = true;
+        }
+        let palette = colors::by_name(&style.palette);
+        if renderer.palette.background() != palette.background()
+            || renderer.palette.foreground() != palette.foreground()
+        {
+            renderer.palette = palette;
             changed = true;
         }
         changed
@@ -148,6 +181,10 @@ impl<T> Pipe for T {}
 impl Render for TerminalView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_style(cx);
+        // Blink phase → renderer before cloning it into the canvas closure.
+        // (Off-phase hides the cursor block entirely; steady when blink is
+        // disabled — `blink_on` stays true in that branch of the task.)
+        self.renderer.cursor_visible = self.blink_on;
 
         let model = self.model.clone();
         let renderer = self.renderer.clone();

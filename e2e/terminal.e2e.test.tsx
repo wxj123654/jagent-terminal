@@ -33,7 +33,10 @@ import { memoryAdapter } from '../packages/app/src/settings/file'
 import { createNativeThreadDeps } from '../packages/app/src/threads/nativeDeps'
 import { narrowSessionEvent, type TerminalSessionEvent } from '../packages/app/src/threads/events'
 import { builtinPresetOf, type TerminalPreset } from '../packages/app/src/threads/presets'
-import { currentActiveThreadId } from '../packages/app/src/router'
+import { currentActiveThreadId, router, activeTargetFromLocation, lastNonSettings } from '../packages/app/src/router'
+import { settingsKeyboard } from '../packages/app/src/surfaces/SettingsView'
+import { inputFocus } from '../packages/app/src/ui/keyboard'
+import { createGlobalKeydown, type GlobalKeydown } from '../packages/app/src/keybindings'
 
 /** 轮询直到谓词为真：advanceTime 驱动 fake clock（4ms 批处理），setTimeout 让出主线程（React 提交 + TSF 回调） */
 async function until(desc: string, pred: () => boolean, timeoutMs = 15000): Promise<void> {
@@ -60,7 +63,10 @@ const sessionEvents: TerminalSessionEvent[] = []
 
 let t: TestRoot
 let store: ThreadStore
+let settings: ReturnType<typeof createSettingsStore>
 let keyEvents: string[] = []
+// 键位层（store 创建后接线；挂点先占位——与 main.tsx 同一 createGlobalKeydown）
+let handleKeydown: GlobalKeydown = () => {}
 
 beforeAll(() => {
   // 顺序敏感：先注册元素（GLOBAL_FACTORIES push），再建 renderer
@@ -73,12 +79,19 @@ beforeAll(() => {
     height: 760,
     // 窗口级 key 事件（on_root_key_event，Bubble 阶段）——模拟真实
     // main.tsx render({ onEvent }) 的键位层挂点
-    onKeyDown: (e) => keyEvents.push(`${e.modifiers?.ctrl ? 'ctrl-' : ''}${e.key}`),
+    onKeyDown: (e) => {
+      keyEvents.push(`${e.modifiers?.ctrl ? 'ctrl-' : ''}${e.key}`)
+      handleKeydown(e.key ?? '', e.modifiers?.ctrl ?? false, e.modifiers?.shift ?? false)
+    },
   })
 
-  // 与 main.tsx 同一装配工厂——只覆盖差异项（notify 静默 + e2e 专用 bell 预设）
+  // 设置面先行（memoryAdapter：隔离真盘；不 init——默认值即测试值）
+  settings = createSettingsStore(memoryAdapter())
+
+  // 与 main.tsx 同一装配工厂——只覆盖差异项（notify 静默：e2e 不真弹 toast；
+  // 注入 e2e 专用 bell 预设）
   store = createThreadStore(
-    createNativeThreadDeps({
+    createNativeThreadDeps(settings, {
       notify: () => {},
       presetOf: (id) => builtinPresetOf(id) ?? (id === BELL_PRESET.id ? BELL_PRESET : undefined),
     }),
@@ -92,8 +105,22 @@ beforeAll(() => {
     store.onSessionEvent(n)
   })
 
-  // 设置面：memoryAdapter（隔离真盘 ~/.j-agent/settings.json）
-  const settings = createSettingsStore(memoryAdapter())
+  // 键位层接线（与 main.tsx 同一工厂；focusSearch 走 TestRenderer 的
+  // focusElement——同一 GPUI 焦点管线）
+  handleKeydown = createGlobalKeydown({
+    store,
+    inSettings: () =>
+      activeTargetFromLocation(router.history.location.pathname)?.type === 'settings',
+    closeSettings: () => store.activate(lastNonSettings()),
+    focusSearch: () => {
+      const id = settingsKeyboard.searchInputId()
+      if (id != null) t.renderer.focusElement(id)
+    },
+    inputFocused: () => inputFocus.any,
+    settingsQuery: settingsKeyboard.query,
+  escConsumed: settingsKeyboard.escConsumed,
+  clearEscConsumed: settingsKeyboard.clearEscConsumed,
+  })
 
   t.render(createElement(App, { store, settings }))
 })
@@ -263,6 +290,99 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       await until('click on row text activates thread', () =>
         currentActiveThreadId() === target.id,
       )
+    },
+    TEST_TIMEOUT,
+  )
+
+  test(
+    'T2.5 设置联动：terminal 外观 props 随 settings.terminal 变化',
+    async () => {
+      await store.spawnFromPreset('shell')
+      await until('terminal mounted', () => t.renderer.findByType('terminal').length >= 1)
+
+      // 默认值（schema 兜底）：fontSize 13 / palette one-dark / cursorBlink true
+      // （useSettings → TerminalSurface → <terminal> props；探针实测
+      // customProps 全量透传）
+      const props = () =>
+        t.renderer.findByType('terminal')[0]!.customProps as Record<string, unknown>
+      expect(props().fontSize).toBe(13)
+      expect(props().palette).toBe('one-dark')
+      expect(props().cursorBlink).toBe(true)
+
+      // 设置 patch → props 联动（Rust 侧 setCustomProp 幂等调和，不重建会话）；
+      // 设置变化触发整树重渲染（useSettings 订阅），需让出主线程
+      settings.patch('terminal.fontSize', 18)
+      settings.patch('terminal.cursorBlink', false)
+      await until(
+        'terminal props follow settings',
+        () =>
+          (props().fontSize as number) === 18 && props().cursorBlink === false,
+      )
+
+      // 会话未重建（sessionId 不变——「样式调和而非重建」的不变量）
+      expect(props().sessionId).toBe(store.getState().threads.at(-1)!.sessionId)
+    },
+    TEST_TIMEOUT,
+  )
+
+  test(
+    'T2.6 键位层：Ctrl-, / Esc / `/` 设置面生命周期（键盘两跳 + 模块态时序）',
+    async () => {
+      // 前置：一个 thread 存在（设置关闭后要能回去）
+      await store.spawnFromPreset('shell')
+      await until('terminal mounted', () => t.renderer.findByType('terminal').length >= 1)
+      const tid = currentActiveThreadId()
+
+      // ① Ctrl-, 开设置：窗口 root 键位层（与 main.tsx 同构的 handleKeyDown
+      // 已在 createTestRoot 挂点里）——键盘事件走真 GPUI 输入管线
+      t.renderer.simulateKeystrokes('ctrl-,')
+      await until('settings view open', () => t.renderer.findByTestId('settings-view') !== undefined)
+
+      // ② 搜索框 autoFocus（§4 打开设置时焦点进搜索框）：打字 → query 更新
+      //    （键盘事件到焦点元素；nativeSimulateKeystrokes 定向搜索框）
+      const search = () => t.renderer.findByTestId('settings-search')
+      await until('settings search autofocused', () => {
+        // autoFocus 生效后才能定向打字：直接尝试打一个字，用 nav 计数面验证
+        return search() !== undefined
+      })
+      const sid = search()!.id
+      t.renderer.nativeSimulateKeystrokes(sid, 'bel')
+      await until('query committed', () => settingsKeyboard.query() === 'bel')
+
+      // ③ `/` 输入态守卫：焦点在搜索框时 `/` 是普通字符（root 层即使误判
+      //    也只是无操作 focusElement——字符照进搜索框；autoFocus 不发
+      //    onFocus 是已知面，守卫的后果分析见 keybindings.ts）
+      t.renderer.simulateKeystrokes('/')
+      await until('slash typed into focused search', () => settingsKeyboard.query() === 'bel/')
+      expect(t.renderer.findByTestId('settings-view')).toBeDefined()
+
+      // ④ Esc × 1：query 非空 → 组件层清空，设置面不关（root 层读消费标记）
+      t.renderer.simulateKeystrokes('escape')
+      await until('query cleared by first Esc', () => settingsKeyboard.query() === '')
+      expect(t.renderer.findByTestId('settings-view')).toBeDefined()
+
+      // ⑤ Esc × 2：query 已空 → root 层关闭设置，回上一 thread 表面
+      t.renderer.simulateKeystrokes('escape')
+      await until(
+        'settings closed by second Esc',
+        () => t.renderer.findByTestId('settings-view') === undefined,
+      )
+      expect(currentActiveThreadId()).toBe(tid)
+
+      // ⑥ Ctrl-Tab cycle 仍工作（键位层互不干扰）。先等 spawn 导航生效
+      //    （navigate fire-and-forget，需让出后 pathname 才指向新 thread）
+      //    全量跑时前面用例的 threads 遗留——cycle 落点按数组序断言，
+      //    不假设「下一个 = 本用例开头的 tid」
+      await store.spawnFromPreset('shell')
+      await until(
+        'second thread active',
+        () => currentActiveThreadId() === store.getState().threads.at(-1)!.id,
+      )
+      const threadsBeforeCycle = store.getState().threads
+      const curIdx = threadsBeforeCycle.findIndex((x) => x.id === currentActiveThreadId())
+      const expectedNext = threadsBeforeCycle[(curIdx + 1) % threadsBeforeCycle.length]!.id
+      t.renderer.simulateKeystrokes('ctrl-tab')
+      await until('cycled to next thread', () => currentActiveThreadId() === expectedNext)
     },
     TEST_TIMEOUT,
   )

@@ -5,15 +5,15 @@
  * ThreadStore.spawnFromPreset）。外层 div：padding 0、无 overflow 包裹、
  * 不设背景色——terminal 用自己的 palette（布局契约 §5.1 C1 无 chrome）。
  *
- * Phase 1：外观先用契约默认值（JetBrains Mono / 13）；Phase 2 接
- * settings.terminal 区。focused prop：挂载即请求焦点（焦点模型验证 T1.6）。
- * onFocus/onBlur 元素事件：Rust 侧 Phase 2 才发射（见 native/element.rs
- * TODO），此处先不挂，避免「注册了永不触发」的假象。
+ * T2.5：外观读 settings.terminal（fontFamily/fontSize/palette/cursorBlink）
+ * ——设置变化 → useSettings 重渲染 → setCustomProp → model.set_style
+ * （幂等）→ sync_style 调和，无需重建会话。scrollbackLines 属 spawn 参数
+ * （nativeDeps 兑底），不在这里。focused prop：挂载即请求焦点（T1.6）。
  */
 
 import type { TerminalThread } from '../threads/store'
 import type { SurfaceProps } from './registry'
-import { FONT } from '../ui/tokens'
+import { useSettings } from '../settings/useSettings'
 
 // ── `<terminal>` JSX 类型声明（GPUIX jsx-runtime 的 augmentation）──────
 
@@ -40,18 +40,17 @@ declare module '@gpuix/react/jsx-runtime' {
   }
 }
 
-// Phase 1 契约默认值（JetBrains Mono / 13；Phase 2 换 useSettings()）
-const DEFAULT_FONT_FAMILY = FONT.mono
-const DEFAULT_FONT_SIZE = 13
-
-export function TerminalSurface({ thread }: SurfaceProps) {
+export function TerminalSurface({ thread, settings }: SurfaceProps) {
   const t = thread as TerminalThread
+  const term = useSettings(settings).terminal
   return (
     <div style={{ display: 'flex', flexDirection: 'row', flexGrow: 1, width: '100%', height: '100%' }}>
       <terminal
         sessionId={t.sessionId}
-        fontFamily={DEFAULT_FONT_FAMILY}
-        fontSize={DEFAULT_FONT_SIZE}
+        fontFamily={term.fontFamily}
+        fontSize={term.fontSize}
+        palette={term.palette}
+        cursorBlink={term.cursorBlink}
         focused
       />
     </div>

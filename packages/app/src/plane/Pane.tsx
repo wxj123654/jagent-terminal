@@ -27,5 +27,5 @@ export function Pane({ store, settings }: { store: ThreadStore; settings: Settin
   if (active?.type === 'settings') return <SettingsView settings={settings} />
   if (!thread) return <EmptyPresets onPick={(id) => void store.spawnFromPreset(id)} />
   const S = getSurface(thread.kind)
-  return <S thread={thread} store={store} />
+  return <S thread={thread} store={store} settings={settings} />
 }

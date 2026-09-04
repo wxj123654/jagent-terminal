@@ -394,7 +394,9 @@ export function useActiveTarget(): ActiveTarget   // useRouterState → ActiveTa
 
 ```ts
 // surfaces/registry.ts
-type SurfaceProps = { thread: Thread; store: ThreadStore }
+// T2.5 契约扩展：SurfaceProps 增 settings（SettingsStore 订阅面——terminal
+// 外观真值 + 后续 chat/acp 需要读设置）
+type SurfaceProps = { thread: Thread; store: ThreadStore; settings: SettingsStore }
 type Surface = ComponentType<SurfaceProps>
 const SURFACES: Record<Thread['kind'], Surface> = {
   terminal: TerminalSurface,
@@ -413,7 +415,7 @@ function Pane({ store, settingsStore }) {
   if (active?.type === 'settings') return <SettingsView store={settingsStore} />
   if (!thread) return <EmptyPresets onPick={store.spawnFromPreset} />
   const S = getSurface(thread.kind)
-  return <S thread={thread} store={store} />
+  return <S thread={thread} store={store} settings={settingsStore} />
 }
 ```
 
@@ -422,15 +424,15 @@ function Pane({ store, settingsStore }) {
 ### TerminalSurface（唯一 `<terminal>` 绑定点）
 
 ```tsx
-function TerminalSurface({ thread }: SurfaceProps) {
-  const settings = useSettings()               // settings.terminal 区
+function TerminalSurface({ thread, settings }: SurfaceProps) {
+  const term = useSettings(settings).terminal
   return (
     <terminal
       sessionId={thread.sessionId}
-      fontFamily={settings.terminal.fontFamily}
-      fontSize={settings.terminal.fontSize}
-      cursorBlink={settings.terminal.cursorBlink}
-      palette={settings.terminal.palette}
+      fontFamily={term.fontFamily}
+      fontSize={term.fontSize}
+      cursorBlink={term.cursorBlink}
+      palette={term.palette}
       focused
       onFocus={() => /* store 侧清 bell（activate 已清，此为补充） */}
     />
@@ -438,7 +440,19 @@ function TerminalSurface({ thread }: SurfaceProps) {
 }
 ```
 
-外层 div：padding 0、无 overflow 包裹、背景不设色（terminal 自己的 palette）。焦点、选区、滚轮全归 TerminalView。
+外层 div：padding 0、无 overflow 包裹、背景不设色（terminal 自己的 palette）。焦点、选区、滚轮全归 TerminalView。T2.5 起四项外观真值随设置实时调和（setCustomProp 幂等，不重建会话）；scrollbackLines 属 spawn 参数（nativeDeps 兑底，不在此处）。
+
+### 全局键位层（T2.6 提取：src/keybindings.ts）
+
+```ts
+// createGlobalKeydown(opts)：main.tsx 与 e2e 挂点共用的依赖注入形态
+// （布线差异注入，nativeDeps 同款纪律）。分层：
+// - 修饰键组合：Ctrl-Tab/Shift-Tab → cycle；Ctrl-, → toggle 设置；其余透传
+// - 设置面生命周期键（无修饰键，仅 inSettings() 时吃）：Esc（消费标记双跳
+//   时序，见 keybindings.ts 注释）/ `/`（inputFocus 守卫 + renderer.
+//   focusElement(searchInputId)）
+// 关闭设置 = activate(lastNonSettings())（router 桥订阅回调维护）
+```
 
 ### SettingsView（settings-ui.md §12 的对齐）
 
@@ -467,7 +481,7 @@ App（useSyncExternalStore(threadStore) + useSettings()）
 - ThreadRow 的局部态：hover、rename 编辑框——useState，不上 store
 - 图标/颜色 tokens 全部从 agent-plane-layout.md §3 引（CSS 变量或 TS 常量，Phase 1 定）
 
-**全局键位层（main.tsx）**：`Ctrl-Tab` / `Ctrl-Shift-Tab` → `cycle`；`Ctrl-,` → 设置路由开/关（toggle）。只处理带修饰键组合，其余透传（硬约束 2：不吃 vim/claude 按键）。GPUIX 焦点事件到达顺序是 Phase 1 验证项——若 GPUIX 在 TerminalView 聚焦时仍把 Ctrl-Tab 送上来则可用，否则 Phase 1 降级为「列表聚焦时生效」并记录。
+**全局键位层（src/keybindings.ts，T2.6 从 main.tsx 提取；main/e2e 同一 createGlobalKeydown）**：`Ctrl-Tab` / `Ctrl-Shift-Tab` → `cycle`；`Ctrl-,` → 设置路由开/关（toggle）。修饰键组合外只吃设置面生命周期键（Esc/`/`，仅 inSettings() 时；terminal 表面时透传给 PTY——硬约束 2）。焦点模型已验（T1.6）：TerminalView 聚焦时窗口级 keyDown 仍到达，无需降级。
 
 ---
 

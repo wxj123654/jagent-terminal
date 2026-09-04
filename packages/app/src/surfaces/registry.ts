@@ -8,6 +8,7 @@
 import type { ComponentType } from 'react'
 
 import type { Thread, ThreadStore } from '../threads/store'
+import type { SettingsStore } from '../settings/store'
 import { TerminalSurface } from './TerminalSurface'
 import { ChatSurface } from './ChatSurface'
 import { AcpSurface } from './AcpSurface'
@@ -15,6 +16,8 @@ import { AcpSurface } from './AcpSurface'
 export type SurfaceProps = {
   thread: Thread
   store: ThreadStore
+  /** 设置快照订阅面（T2.5：terminal 外观 / 后续 chat/acp 需要读设置） */
+  settings: SettingsStore
 }
 
 export type Surface = ComponentType<SurfaceProps>

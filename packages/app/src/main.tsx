@@ -12,33 +12,34 @@
  *    到达则 Ctrl-Tab 全局可用；否则降级「列表/UI 聚焦时生效」并记录。
  */
 
-import { render } from '@gpuix/react'
+import { render, createRenderer } from '@gpuix/react'
 import { installTerminalElement, onSessionEvent } from '@jagent/native'
+import type { GpuixRenderer } from '@jagent/native'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-import { router, activeTargetFromLocation } from './router'
+import { router, activeTargetFromLocation, lastNonSettings } from './router'
 import { createThreadStore } from './threads/store'
 import { createNativeThreadDeps } from './threads/nativeDeps'
 import { narrowSessionEvent } from './threads/events'
 import { createSettingsStore } from './settings/store'
 import { fsAdapter } from './settings/file'
+import { settingsKeyboard } from './surfaces/SettingsView'
+import { inputFocus } from './ui/keyboard'
+import { createGlobalKeydown } from './keybindings'
 import { App } from './plane/AgentPlane'
 
 // ── seam 装配（顺序敏感：先注册元素，再开窗）──────────────────────────
 installTerminalElement()
 
-// ── ThreadStore（native 依赖注入收口处：装配工厂 + Phase 2 钩子覆盖）──
-const threadStore = createThreadStore(
-  createNativeThreadDeps({
-    // Phase 2（T2.5）接线处：notify 桌面通知 / closeOnExit 读 settings 终端区
-  }),
-)
-
 // ── SettingsStore（~/.j-agent/settings.json；S3 事实源）──
-// 装配期读盘 await 后再渲染（T2.2 结论：init 是生命周期一部分）
+// 装配期读盘 await 后再建 ThreadStore（T2.5：nativeDeps 读设置面）。
+// 首次运行只读不写（实测 ~/.j-agent 不创建，S3 语义正确）
 const settingsStore = createSettingsStore(fsAdapter(join(homedir(), '.j-agent', 'settings.json')))
 await settingsStore.init()
+
+// ── ThreadStore（native 依赖注入收口处；设置面先行）──
+const threadStore = createThreadStore(createNativeThreadDeps(settingsStore))
 
 onSessionEvent((_err, e) => {
   // seam 边界窄化：未知 type 拒绝（events.ts）
@@ -46,33 +47,39 @@ onSessionEvent((_err, e) => {
   if (n) threadStore.onSessionEvent(n)
 })
 
-// ── 全局键位层 ──────────────────────────────────────────────────────
-function handleKeyDown(key: string, ctrl: boolean, shift: boolean): void {
-  if (!ctrl) return // 只吃修饰键组合，其余透传
-  if (key === 'tab') {
-    threadStore.cycle(shift ? -1 : 1)
-  } else if (key === ',') {
-    // Ctrl-, toggle 设置（设置面 ⇄ 上一个非设置目标）
-    const cur = activeTargetFromLocation(router.history.location.pathname)
-    if (cur?.type === 'settings') threadStore.activate(null)
-    else threadStore.activate({ type: 'settings' })
-  }
-}
-
-// ── 窗口 ────────────────────────────────────────────────────────────
-render(<App store={threadStore} settings={settingsStore} />, {
+// ── 窗口（renderer 实例自持：`/` 全局聚焦需要 focusElement 命令面）──
+// 先建 renderer 再接键位层（闭包引用 renderer，声明顺序即初始化顺序）
+const renderer: GpuixRenderer = createRenderer()
+renderer.init({
   title: 'j-agent',
   appName: 'j-agent',
   width: 1180,
   height: 760,
   minWidth: 720,
   minHeight: 480,
+})
+
+// ── 全局键位层（keybindings.ts：main/e2e 共用语义；布线在此）──
+const handleKeyDown = createGlobalKeydown({
+  store: threadStore,
+  inSettings: () =>
+    activeTargetFromLocation(router.history.location.pathname)?.type === 'settings',
+  closeSettings: () => threadStore.activate(lastNonSettings()),
+  focusSearch: () => {
+    const id = settingsKeyboard.searchInputId()
+    if (id != null) renderer.focusElement(id)
+  },
+  inputFocused: () => inputFocus.any,
+  settingsQuery: settingsKeyboard.query,
+  escConsumed: settingsKeyboard.escConsumed,
+  clearEscConsumed: settingsKeyboard.clearEscConsumed,
+})
+
+render(<App store={threadStore} settings={settingsStore} />, {
+  renderer,
   onEvent: (event) => {
     if (event.eventType === 'keyDown') {
       const m = event.modifiers
-      // 记录到达顺序（T1.6 焦点模型结论的数据点：终端聚焦时窗口级
-      // keyDown 是否仍到达）
-      if (m?.ctrl) console.log('[key]', event.key, m)
       handleKeyDown(event.key ?? '', m?.ctrl ?? false, m?.shift ?? false)
     }
   },
