@@ -1,14 +1,24 @@
 /**
  * EmptyPresets — 无 thread 时的 Pane 表面（布局契约 §5.4 E2；路由 `/`）。
  *
- * 预设卡片网格：每项绑定 program/args/env/initCommand（数据在
- * threads/presets.ts）。点击 → spawnFromPreset（内部更新 lastUsedPreset）。
+ * 预设卡片网格：T3.1 起接 settings.presets.items（内置 5 + 自定义，
+ * 设置里增删实时反映）。点击 → spawnFromPreset（内部更新 lastUsedPreset）。
  */
 
-import { BUILTIN_PRESETS } from '../threads/presets'
+import type { SettingsStore } from '../settings/store'
+import { useSettings } from '../settings/useSettings'
+import { presetCommandSummary } from '../threads/presets'
 import { COLORS, FONT } from '../ui/tokens'
 
-export function EmptyPresets({ onPick }: { onPick: (presetId: string) => void }) {
+export function EmptyPresets({
+  onPick,
+  settings,
+}: {
+  onPick: (presetId: string) => void
+  settings: SettingsStore
+}) {
+  const presets = useSettings(settings).presets.items
+
   return (
     <div
       style={{
@@ -34,7 +44,7 @@ export function EmptyPresets({ onPick }: { onPick: (presetId: string) => void })
           maxWidth: 480,
         }}
       >
-        {BUILTIN_PRESETS.map((p) => (
+        {presets.map((p) => (
           <div
             key={p.id}
             testId={`preset-${p.id}`}
@@ -77,10 +87,14 @@ export function EmptyPresets({ onPick }: { onPick: (presetId: string) => void })
                 color: COLORS.muted,
                 fontSize: 11,
                 fontFamily: FONT.mono,
+                whiteSpace: 'nowrap',
+                textOverflow: 'ellipsis',
+                overflow: 'hidden',
+                maxWidth: 116,
                 pointerEvents: 'none',
               }}
             >
-              {p.initCommand ?? p.program ?? 'shell'}
+              {presetCommandSummary(p)}
             </text>
           </div>
         ))}

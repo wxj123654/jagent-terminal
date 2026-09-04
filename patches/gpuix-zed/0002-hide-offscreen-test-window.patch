@@ -1,0 +1,53 @@
+diff --git a/crates/gpui/src/app/visual_test_context.rs b/crates/gpui/src/app/visual_test_context.rs
+index b983784..1dab274 100644
+--- a/crates/gpui/src/app/visual_test_context.rs
++++ b/crates/gpui/src/app/visual_test_context.rs
+@@ -109,7 +109,15 @@ impl VisualTestAppContext {
+             WindowOptions {
+                 window_bounds: Some(WindowBounds::Windowed(bounds)),
+                 focus: false,
+-                show: true,
++                // Windows clamps fully-offscreen bounds back onto the primary
++                // display (`retrieve_window_placement` → `check_given_bounds`
++                // fallback), so a `show: true` window pops up mid-screen for
++                // the whole test run. Keep the test window hidden there
++                // instead — gpui_windows applies the requested bounds while
++                // hidden, and rendering/screenshot readback do not depend on
++                // visibility. macOS keeps `show: true`: offscreen bounds are
++                // honored as-is there, so the window is already invisible.
++                show: cfg!(not(target_os = "windows")),
+                 ..Default::default()
+             },
+             build_root,
+diff --git a/crates/gpui_windows/src/window.rs b/crates/gpui_windows/src/window.rs
+index 1a942ec..2f233f4 100644
+--- a/crates/gpui_windows/src/window.rs
++++ b/crates/gpui_windows/src/window.rs
+@@ -561,6 +561,27 @@ impl WindowsWindow {
+             }
+             unsafe { SetWindowPlacement(hwnd, &placement)? };
+         } else {
++            // Stay hidden, but apply the *requested* bounds. The window was
++            // created with `CW_USEDEFAULT`, and `placement` above may have been
++            // clamped to the display's default bounds (`retrieve_window_placement`
++            // rejects fully-offscreen positions) — but an offscreen/test
++            // renderer that relies on `show: false` deliberately positions the
++            // window off-screen and needs the exact requested size for
++            // rendering and screenshot readback. `SetWindowPos` without
++            // `SWP_SHOWWINDOW` never shows the window.
++            let requested = params.bounds.to_device_pixels(display.scale_factor());
++            let rect = calculate_window_rect(requested, &this.state.border_offset);
++            unsafe {
++                SetWindowPos(
++                    hwnd,
++                    None,
++                    rect.left,
++                    rect.top,
++                    rect.right - rect.left,
++                    rect.bottom - rect.top,
++                    SWP_NOACTIVATE | SWP_NOZORDER,
++                )?;
++            }
+             this.state.initial_placement.set(Some(WindowOpenStatus {
+                 placement,
+                 state: WindowOpenState::Windowed,

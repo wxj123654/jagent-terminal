@@ -1,7 +1,8 @@
 /**
  * ui/Textarea.tsx — 多行输入（architecture.md §7；settings-ui.md §5.2
  * 「string[] / Record → textarea 行式语法：args 每行一个；env 每行 KEY=VALUE」）。
- * Phase 3 预设编辑器用；值即原始多行文本，行式拆分由消费方做。
+ * 预设编辑器 args/env 用；值即原始多行文本，行式拆分由消费方做。
+ * T3.1：透传 onBlur（行式字段的 draft 提交点，NumberInput 同款中间态纪律）。
  */
 
 import { useState } from 'react'
@@ -9,7 +10,6 @@ import type { ReactElement } from 'react'
 
 import { controlBox, controlText } from './style'
 import { inputFocus } from './keyboard'
-import { COLORS } from './tokens'
 
 export function Textarea({
   value,
@@ -18,6 +18,7 @@ export function Textarea({
   disabled = false,
   minRows = 3,
   onChange,
+  onBlur,
   testId,
   width = 220,
 }: {
@@ -27,6 +28,8 @@ export function Textarea({
   disabled?: boolean
   minRows?: number
   onChange: (next: string) => void
+  /** 失焦回调（draft 提交点；内部 inputFocus 登记仍执行） */
+  onBlur?: () => void
   testId: string
   width?: number
 }): ReactElement {
@@ -48,6 +51,7 @@ export function Textarea({
       onBlur={() => {
         setFocused(false)
         inputFocus.release()
+        onBlur?.()
       }}
       style={{
         width,

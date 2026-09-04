@@ -24,7 +24,7 @@ export function App({ store, settings }: { store: ThreadStore; settings: Setting
         color: COLORS.text,
       }}
     >
-      <Sidebar store={store} />
+      <Sidebar store={store} settings={settings} />
       <Pane store={store} settings={settings} />
     </div>
   )

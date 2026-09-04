@@ -9,7 +9,6 @@ import type { ReactElement } from 'react'
 
 import { controlBox, controlText } from './style'
 import { inputFocus } from './keyboard'
-import { COLORS } from './tokens'
 
 export function TextInput({
   value,

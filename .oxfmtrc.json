@@ -1,0 +1,19 @@
+{
+  // 对齐项目既有风格（2026-09 全量接管时采样）：
+  // 单引号 / 无分号 / 2 空格 / 尾逗号 all / ~100 列；JSX 属性保持双引号。
+  // sortImports 开启并尊重空行分组（partitionByNewline）：组内排序统一，
+  // 手工语义分组（第三方/相对/类型）不被合并。
+  "semi": false,
+  "singleQuote": true,
+  "printWidth": 100,
+  "tabWidth": 2,
+  "trailingComma": "all",
+  "sortImports": {
+    "partitionByNewline": true,
+    "newlinesBetween": false
+  },
+  "ignorePatterns": [
+    "packages/native/index.js",
+    "packages/native/index.d.ts"
+  ]
+}

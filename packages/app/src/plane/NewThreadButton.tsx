@@ -1,32 +1,39 @@
 /**
  * NewThreadButton — `[+ {lastPreset}] [▾]`（布局契约 §6 E2）。
  *
- * 单击 + → spawn lastUsedPreset（默认 claude）；
- * 单击 ▾ → 预设菜单（Phase 1 = BUILTIN_PRESETS 五项；Phase 3 接
- * settings.presets.items 自定义预设）。菜单项 → spawn 该预设。
+ * T3.1 起预设列表接 settings.presets.items（内置 5 + 自定义，增删实时反映）。
+ * 单击 + 的目标 = plusDefault ?? lastUsedPreset ?? 首个预设（plusDefault 固定
+ * 优先；null 跟随上次使用；lastUsedPreset 悬空——指向被删预设——时兜底首项）。
+ * 菜单项 → spawn 该预设（store 内部更新 lastUsedPreset）。
  */
 
 import { useState } from 'react'
 
 import type { ThreadStore } from '../threads/store'
+import type { SettingsStore } from '../settings/store'
+import { useSettings } from '../settings/useSettings'
 import { useThreadStore } from '../threads/useThreadStore'
-import { BUILTIN_PRESETS } from '../threads/presets'
+import { presetCommandSummary } from '../threads/presets'
 import { Icon } from '../ui/Icon'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
 
-export function NewThreadButton({ store }: { store: ThreadStore }) {
+export function NewThreadButton({ store, settings }: { store: ThreadStore; settings: SettingsStore }) {
   const lastPreset = useThreadStore(store, (s) => s.lastUsedPreset)
+  const presets = useSettings(settings).presets.items
   const [open, setOpen] = useState(false)
 
-  const last = BUILTIN_PRESETS.find((p) => p.id === lastPreset) ?? BUILTIN_PRESETS[0]
-  const presets = BUILTIN_PRESETS
+  // + 的目标：plusDefault 固定 → 上次使用 → 首项兜底（列表至少含 5 内置）
+  const targetId = presets.find((p) => p.id === (settings.get().presets.plusDefault ?? lastPreset))?.id
+    ?? presets[0]?.id
+  const target = presets.find((p) => p.id === targetId) ?? presets[0]
+  if (!target) return null
 
   return (
     <div style={{ position: 'relative', display: 'flex', flexDirection: 'row', marginTop: 4, marginBottom: 6, marginLeft: SIZES.rowMarginX, marginRight: SIZES.rowMarginX }}>
-      {/* 主按钮：+ lastPreset */}
+      {/* 主按钮：+ target */}
       <div
         tabIndex={0}
-        onClick={() => void store.spawnFromPreset(last.id)}
+        onClick={() => void store.spawnFromPreset(target.id)}
         style={{
           display: 'flex',
           flexDirection: 'row',
@@ -52,7 +59,7 @@ export function NewThreadButton({ store }: { store: ThreadStore }) {
             pointerEvents: 'none',
           }}
         >
-          {last.label}
+          {target.label}
         </text>
       </div>
       {/* ▾：预设菜单 */}
@@ -76,7 +83,7 @@ export function NewThreadButton({ store }: { store: ThreadStore }) {
         <Icon name="chevronDown" size={12} color={COLORS.muted} />
       </div>
 
-      {/* 菜单：右对齐下拉（absolute，向上展开受限于按钮位置——向下展开） */}
+      {/* 菜单：右对齐下拉（absolute，向下展开） */}
       {open ? (
         <div
           style={{
@@ -129,10 +136,13 @@ export function NewThreadButton({ store }: { store: ThreadStore }) {
                   fontSize: 10,
                   fontFamily: FONT.mono,
                   color: COLORS.muted,
+                  whiteSpace: 'nowrap',
+                  textOverflow: 'ellipsis',
+                  overflow: 'hidden',
                   pointerEvents: 'none',
                 }}
               >
-                {p.initCommand ?? p.program ?? 'shell'}
+                {presetCommandSummary(p)}
               </text>
             </div>
           ))}

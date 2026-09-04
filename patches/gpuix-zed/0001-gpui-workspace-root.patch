@@ -1,0 +1,16 @@
+diff --git a/crates/gpui/Cargo.toml b/crates/gpui/Cargo.toml
+index 13cd4e8..71aeac7 100644
+--- a/crates/gpui/Cargo.toml
++++ b/crates/gpui/Cargo.toml
+@@ -1,6 +1,11 @@
+ [package]
+ name = "gpui"
+ version = "0.2.2"
++# j-agent: explicit root so workspace inheritance resolves against the zed
++# workspace even when gpui is consumed as a path dependency from another
++# workspace (D:/document/j-agent). Without this, cargo resolves `*.workspace
++# = true` against the consumer's root and fails.
++workspace = "../.."
+ edition.workspace = true
+ authors = ["Nathan Sobo <nathan@zed.dev>"]
+ description = "Zed's GPU-accelerated UI framework"

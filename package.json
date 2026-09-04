@@ -4,5 +4,17 @@
   "workspaces": [
     "packages/*",
     "e2e"
-  ]
+  ],
+  "scripts": {
+    "setup-refs": "bun run scripts/setup-refs.ts",
+    "export-patches": "bun run scripts/export-patches.ts",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "lint": "oxlint"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "oxfmt": "^0.66.0",
+    "oxlint": "^1.81.0"
+  }
 }

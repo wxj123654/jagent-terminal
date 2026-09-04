@@ -6,7 +6,7 @@
  * · SETTING_DEFS 的 path 全部真实存在于 Settings（schema 一致性）。
  */
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 
 import { memoryAdapter } from './file'
 import {
@@ -233,5 +233,150 @@ describe('subscribe', () => {
     unsub()
     store.patch('terminal.fontSize', 20)
     expect(n).toBe(4)
+  })
+})
+
+// ── 预设 CRUD（§7 规则；T3.1）──────────────────────────────────
+
+describe('preset CRUD：add / update', () => {
+  test('addPreset → 自定义预设（builtin:false）+ 唯一 id + 落盘', async () => {
+    const { store, file } = await makeStore()
+    const id = store.addPreset({ label: '自定义 1', program: 'pwsh', args: ['-NoLogo'] })
+    const added = store.get().presets.items.find((p) => p.id === id)
+    expect(added).toBeDefined()
+    expect(added!.builtin).toBe(false)
+    expect(added!.program).toBe('pwsh')
+    expect(added!.args).toEqual(['-NoLogo'])
+    await flush()
+    const onDisk = JSON.parse(file.snapshot()!)
+    expect(onDisk.presets.items).toHaveLength(6)
+    expect(onDisk.presets.items.find((p: { id: string }) => p.id === id).label).toBe('自定义 1')
+  })
+
+  test('updatePreset 改字段；空串/空集合归一 undefined（JSON 不留 "" / []）；args 空串行过滤', async () => {
+    const { store, file } = await makeStore()
+    const id = store.addPreset({ label: 'X', program: 'pwsh', args: ['-l'], env: { A: '1' }, initCommand: 'vim', cwd: 'D:/' })
+    store.updatePreset(id, { program: '', args: [], env: {}, initCommand: '', label: 'Y' })
+    const p = store.get().presets.items.find((x) => x.id === id)!
+    expect(p.label).toBe('Y')
+    expect(p.program).toBeUndefined()
+    expect(p.args).toBeUndefined()
+    expect(p.env).toBeUndefined()
+    expect(p.initCommand).toBeUndefined()
+    await flush()
+    const raw = JSON.parse(file.snapshot()!)
+    const onDisk = raw.presets.items.find((x: { id: string }) => x.id === id)
+    expect('program' in onDisk).toBe(false)
+    expect('args' in onDisk).toBe(false)
+    expect('env' in onDisk).toBe(false)
+
+    // 编辑中间态的空串行不进 JSON（LinesField 即时提交原始行，归一在此）
+    store.updatePreset(id, { args: ['NoLogo', '', 'NoPrompt'] })
+    expect(store.get().presets.items.find((x) => x.id === id)!.args).toEqual(['NoLogo', 'NoPrompt'])
+    store.updatePreset(id, { args: [''] })
+    expect(store.get().presets.items.find((x) => x.id === id)!.args).toBeUndefined()
+  })
+
+  test('updatePreset 内置预设可改字段（id 不可改在类型面）；未知 id no-op', async () => {
+    const { store } = await makeStore()
+    store.updatePreset('claude', { initCommand: 'claude --dangerously' })
+    expect(store.get().presets.items.find((p) => p.id === 'claude')!.initCommand).toBe('claude --dangerously')
+    const before = store.get().presets.items
+    store.updatePreset('nope', { label: '?' })
+    expect(store.get().presets.items).toBe(before) // 引用未变 = no-op
+  })
+})
+
+describe('preset CRUD：delete / duplicate / reset', () => {
+  test('deletePreset 自定义可删；内置 no-op', async () => {
+    const { store } = await makeStore()
+    const id = store.addPreset({ label: 'X' })
+    expect(store.get().presets.items).toHaveLength(6)
+    store.deletePreset('claude') // 内置不可删
+    expect(store.get().presets.items).toHaveLength(6)
+    store.deletePreset(id)
+    expect(store.get().presets.items).toHaveLength(5)
+    expect(store.get().presets.items.find((p) => p.id === id)).toBeUndefined()
+  })
+
+  test('deletePreset plusDefault 指向被删预设 → 回退 null（§15 第 8 条）', async () => {
+    const { store } = await makeStore()
+    const id = store.addPreset({ label: 'X' })
+    store.patch('presets.plusDefault', id)
+    expect(store.get().presets.plusDefault).toBe(id)
+    store.deletePreset(id)
+    expect(store.get().presets.plusDefault).toBeNull()
+  })
+
+  test('duplicatePreset 内置 → builtin:false + 副本后缀 + 唯一 id；返回新 id', async () => {
+    const { store } = await makeStore()
+    const nid1 = store.duplicatePreset('claude')
+    expect(nid1).toBe('claude-copy')
+    const copy1 = store.get().presets.items.find((p) => p.id === nid1)!
+    expect(copy1.builtin).toBe(false)
+    expect(copy1.label).toBe('Claude Code 副本')
+    expect(copy1.initCommand).toBe('claude') // 字段随源
+    // 再复制 claude → -copy2；复制副本本身 → -copy-copy
+    const nid2 = store.duplicatePreset('claude')
+    expect(nid2).toBe('claude-copy2')
+    const nid3 = store.duplicatePreset(nid1)
+    expect(nid3).toBe(`${nid1}-copy`)
+  })
+
+  test('duplicatePreset 自定义预设 → 同样 builtin:false 副本', async () => {
+    const { store } = await makeStore()
+    const id = store.addPreset({ label: 'X', program: 'zsh' })
+    const nid = store.duplicatePreset(id)
+    const copy = store.get().presets.items.find((p) => p.id === nid)!
+    expect(copy.builtin).toBe(false)
+    expect(copy.program).toBe('zsh')
+    expect(copy.label).toBe('X 副本')
+  })
+
+  test('resetPreset 内置改坏后恢复出厂；未改的内置 no-op（引用不变）；自定义 no-op', async () => {
+    const { store } = await makeStore()
+    store.updatePreset('claude', { label: '我的 Claude', initCommand: 'claude --x' })
+    store.resetPreset('claude')
+    const restored = store.get().presets.items.find((p) => p.id === 'claude')!
+    expect(restored.label).toBe('Claude Code')
+    expect(restored.initCommand).toBe('claude')
+
+    const before = store.get().presets.items
+    store.resetPreset('pi') // 未改过
+    expect(store.get().presets.items).not.toBe(before) // 新数组（写链路径）但内容相等
+    expect(store.get().presets.items).toEqual(before)
+
+    const id = store.addPreset({ label: 'X' })
+    const withCustom = store.get().presets.items
+    store.resetPreset(id) // 自定义无出厂值
+    expect(store.get().presets.items).toBe(withCustom)
+  })
+
+  test('CRUD 写失败同样回滚 + writeError（同一写链面）', async () => {
+    const { store, file } = await makeStore()
+    const id = store.addPreset({ label: 'X' }) // 成功落盘
+    await flush()
+    const persisted = store.get()
+
+    file.setFailWrite(new Error('EACCES'))
+    store.updatePreset(id, { label: 'Y' })
+    expect(store.get().presets.items.find((p) => p.id === id)!.label).toBe('Y')
+    await flush()
+    expect(store.get()).toEqual(persisted) // 回滚
+    expect(store.get().presets.items.find((p) => p.id === id)!.label).toBe('X')
+    expect(store.writeError()?.path).toBe('presets.items')
+  })
+})
+
+describe('运行时态纪律（§15 第 8 条后半）', () => {
+  test('lastUsedPreset 不在 Settings schema / DEFAULTS / 序列化产物中', async () => {
+    const { store, file } = await makeStore()
+    store.patch('terminal.fontSize', 15)
+    store.addPreset({ label: 'X' })
+    await flush()
+    const raw = file.snapshot()! 
+    expect(raw.includes('lastUsedPreset')).toBe(false)
+    expect('lastUsedPreset' in store.get()).toBe(false)
+    expect(JSON.stringify(DEFAULTS).includes('lastUsedPreset')).toBe(false)
   })
 })

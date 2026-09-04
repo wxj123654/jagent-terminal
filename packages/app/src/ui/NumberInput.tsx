@@ -14,7 +14,7 @@ import type { ReactElement } from 'react'
 import { Icon } from './Icon'
 import { controlText } from './style'
 import { inputFocus } from './keyboard'
-import { COLORS, FONT } from './tokens'
+import { COLORS } from './tokens'
 
 export function NumberInput({
   value,

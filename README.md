@@ -61,20 +61,16 @@ design/                     两个 HTML 可交互原型（布局 / 设置）
 - Rust stable（rustup，含 MSVC 工具链）
 - [bun](https://bun.sh) 1.3+（workspace、测试、跑 app）
 
-### 0. 准备 `.refs/`（一次性）
+### 0. 准备 `.refs/`（一次性，脚本化）
 
-GPUIX pin 了自己的 GPUI fork（`remorses/zed` @gpuix 分支 rev `8b94def`），crates.io 上的 gpui 同号不同 API，**必须本地引用**：
+GPUIX pin 了自己的 GPUI fork（`remorses/zed` @gpuix 分支 rev `8b94def`），crates.io 上的 gpui 同号不同 API，**必须本地引用**。本地修改以 patch 文件版本化在 `patches/`（清单见 patches/README.md），重建一条命令：
 
 ```bash
-git clone --depth 1 https://github.com/remorses/gpuix .refs/gpuix
-cd .refs/gpuix
-git submodule update --init --depth 1 zed
-# 应用 j-agent 补丁（6 处，均带 "j-agent patch" 注释；
-# 清单见 TODOLIST.md Phase 1 结论区）
-bun install && bun run build:react   # 产出 @gpuix/react dist
+bun run setup-refs     # clone → pin → 补丁 → 构建 @gpuix/react dist（幂等；重建加 -- --force）
 ```
 
-`.refs/` 已 gitignore，属只读参考仓（补丁除外），不进版本库。
+`.refs/` 已 gitignore（可随时删除重建）；对 gpuix/zed 源码的任何修改都经
+`bun run export-patches` 导出回 `patches/` 后随主仓库提交，不依赖人肉清单。
 
 ### 1. JS 侧
 

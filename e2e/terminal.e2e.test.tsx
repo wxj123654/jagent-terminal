@@ -32,7 +32,7 @@ import { createSettingsStore } from '../packages/app/src/settings/store'
 import { memoryAdapter } from '../packages/app/src/settings/file'
 import { createNativeThreadDeps } from '../packages/app/src/threads/nativeDeps'
 import { narrowSessionEvent, type TerminalSessionEvent } from '../packages/app/src/threads/events'
-import { builtinPresetOf, type TerminalPreset } from '../packages/app/src/threads/presets'
+import { type TerminalPreset } from '../packages/app/src/threads/presets'
 import { currentActiveThreadId, router, activeTargetFromLocation, lastNonSettings } from '../packages/app/src/router'
 import { settingsKeyboard } from '../packages/app/src/surfaces/SettingsView'
 import { inputFocus } from '../packages/app/src/ui/keyboard'
@@ -89,11 +89,14 @@ beforeAll(() => {
   settings = createSettingsStore(memoryAdapter())
 
   // 与 main.tsx 同一装配工厂——只覆盖差异项（notify 静默：e2e 不真弹 toast；
-  // 注入 e2e 专用 bell 预设）
+  // presetOf 叠加注入 e2e 专用 bell 预设：settings items 查询优先（真装配
+  // 语义，T3.1 自定义预设全链依赖），BELL_PRESET 作为额外项
   store = createThreadStore(
     createNativeThreadDeps(settings, {
       notify: () => {},
-      presetOf: (id) => builtinPresetOf(id) ?? (id === BELL_PRESET.id ? BELL_PRESET : undefined),
+      presetOf: (id) =>
+        settings.get().presets.items.find((p) => p.id === id) ??
+        (id === BELL_PRESET.id ? BELL_PRESET : undefined),
     }),
   )
 
@@ -383,6 +386,50 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       const expectedNext = threadsBeforeCycle[(curIdx + 1) % threadsBeforeCycle.length]!.id
       t.renderer.simulateKeystrokes('ctrl-tab')
       await until('cycled to next thread', () => currentActiveThreadId() === expectedNext)
+    },
+    TEST_TIMEOUT,
+  )
+
+  test(
+    'T3.1 自定义预设全链：settings CRUD → nativeDeps presetOf → 真 PTY spawn → exit 灰行',
+    async () => {
+      // ① 设置层新增自定义预设（真 SettingsStore CRUD 面）
+      const nid = settings.addPreset({
+        label: 'E2E 自定义',
+        program: 'powershell',
+        args: ['-NoProfile', '-Command', 'echo jagent-custom'],
+      })
+      const added = settings.get().presets.items.find((p) => p.id === nid)
+      expect(added?.builtin).toBe(false)
+
+      // ② spawn 走真 nativeDeps.presetOf（查 settings items，非 e2e override；
+      //    lastUsedPreset 更新 → NewThreadButton 主按钮 label 跟随）
+      await store.spawnFromPreset(nid)
+      const row = store.getState().threads.at(-1)!
+      expect(row.kind === 'terminal' && row.preset === nid).toBe(true)
+      expect(store.getState().lastUsedPreset).toBe(nid)
+      await until(
+        'custom preset label on + button',
+        () => t.renderer.getAllText().some((s) => s.includes('E2E 自定义')),
+      )
+
+      // ③ 真 PTY 整链：echo 完进程退出 → exited 灰行保留（closeOnExit=false）
+      await until(
+        'custom preset process exits',
+        () => {
+          const r = store.getState().threads.find((x) => x.id === row.id)
+          return r?.kind === 'terminal' && r.status === 'exited'
+        },
+      )
+      expect(currentActiveThreadId()).toBe(row.id)
+
+      // ④ 清理：close 销毁会话 + 行移除（避免污染后续用例）
+      store.close(row.id)
+      await until(
+        'closed',
+        () => !store.getState().threads.some((x) => x.id === row.id),
+      )
+      settings.deletePreset(nid)
     },
     TEST_TIMEOUT,
   )

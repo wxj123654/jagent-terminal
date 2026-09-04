@@ -1,0 +1,227 @@
+diff --git a/packages/native/src/custom_elements/mod.rs b/packages/native/src/custom_elements/mod.rs
+index b3811c1..fd4d328 100644
+--- a/packages/native/src/custom_elements/mod.rs
++++ b/packages/native/src/custom_elements/mod.rs
+@@ -10,6 +10,7 @@
+ ///     "div" | "text" → build_host_container()  (built-in)
+ ///     _              → registry.render(ctx)    (trait dispatch)
+ use std::collections::{HashMap, HashSet};
++use std::sync::Mutex;
+ 
+ use crate::renderer::EventCallback;
+ 
+@@ -260,6 +261,19 @@ impl CustomElementEntry {
+     }
+ }
+ 
++// j-agent patch: process-global factory table. The host napi crate calls
++// `register_global_factory` at load time (before any GpuixView is created);
++// `CustomElementRegistry::with_defaults` drains it so every renderer gets
++// the host's elements.
++static GLOBAL_FACTORIES: Mutex<Vec<Box<dyn CustomElementFactory + Send>>> =
++    Mutex::new(Vec::new());
++
++/// Register a custom element factory globally, before the first renderer.
++// j-agent patch (pub seam for external crates).
++pub fn register_global_factory(factory: Box<dyn CustomElementFactory + Send>) {
++    GLOBAL_FACTORIES.lock().unwrap().push(factory);
++}
++
+ /// Stores factories (one per type) and live adapters (one per element ID).
+ pub struct CustomElementRegistry {
+     factories: HashMap<String, Box<dyn CustomElementFactory>>,
+@@ -285,6 +299,12 @@ impl CustomElementRegistry {
+         registry.register(Box::new(code::CodeFactory));
+         registry.register(Box::new(diff::DiffFactory));
+         registry.register(Box::new(markdown::MarkdownFactory));
++        // j-agent patch: host crates (packages/native in j-agent) register
++        // factories globally before the first GpuixView exists; drain them
++        // here so every renderer picks them up.
++        for factory in GLOBAL_FACTORIES.lock().unwrap().drain(..) {
++            registry.register(factory);
++        }
+         registry
+     }
+ 
+diff --git a/packages/native/src/lib.rs b/packages/native/src/lib.rs
+index a69f0b9..a8fe81e 100644
+--- a/packages/native/src/lib.rs
++++ b/packages/native/src/lib.rs
+@@ -15,7 +15,9 @@ use napi_derive::napi;
+ mod app_menu;
+ mod automation;
+ mod color;
+-mod custom_elements;
++// j-agent patch: expose custom element traits so the host napi crate can
++// register TerminalFactory (Phase 1 seam, architecture.md §2.3/§8.2).
++pub mod custom_elements;
+ mod diff;
+ mod element_tree;
+ mod markdown;
+@@ -39,6 +41,14 @@ pub use element_tree::*;
+ pub use renderer::*;
+ pub use style::*;
+ 
++// j-agent patch (e2e seam): host-closure entry point for the test renderer
++// (mirrors run_on_gpuix; see test_renderer.rs for the contract).
++#[cfg(all(
++    feature = "test-support",
++    any(target_os = "macos", target_os = "windows"),
++))]
++pub use test_renderer::run_on_test_app;
++
+ #[cfg(any(
+     test,
+     not(all(
+diff --git a/packages/native/src/renderer.rs b/packages/native/src/renderer.rs
+index b54cd68..1d43d06 100644
+--- a/packages/native/src/renderer.rs
++++ b/packages/native/src/renderer.rs
+@@ -357,6 +357,55 @@ enum KeyInput {
+     Up(String),
+ }
+ 
++// j-agent patch: process-global UI command channel, published by
++// `init_threaded` so host crates can run callbacks on the GPUI thread
++// (terminal pool ops) without reaching a JS-owned renderer instance.
++#[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
++pub static HOST_UI_COMMANDS: std::sync::OnceLock<mpsc::UnboundedSender<UiCommand>> =
++    std::sync::OnceLock::new();
++
++// j-agent patch (e2e seam): whether the threaded host channel is live.
++// False under TestGpuixRenderer (no init_threaded) — callers fall back to
++// run_on_test_app.
++#[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
++pub fn host_ui_commands_ready() -> bool {
++    HOST_UI_COMMANDS.get().is_some()
++}
++
++// j-agent patch: pub seam for host crates — run a closure on the GPUI thread
++// (window + AsyncApp in scope) and wait for its JSON result. Longer timeout
++// than recv_ui_response: PTY spawn can exceed 2s on Windows ConPTY.
++#[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
++pub fn run_on_gpuix(
++    f: Box<
++        dyn FnOnce(
++                &mut gpui::AsyncApp,
++                gpui::WindowHandle<GpuixView>,
++            ) -> anyhow::Result<serde_json::Value>
++            + Send,
++    >,
++) -> anyhow::Result<serde_json::Value> {
++    let sender = HOST_UI_COMMANDS
++        .get()
++        .ok_or_else(|| anyhow::anyhow!("GPUI application is not initialized"))?;
++    let (response_sender, response_receiver) = sync_channel(1);
++    sender
++        .unbounded_send(UiCommand::RunHost {
++            f,
++            response: response_sender,
++        })
++        .map_err(|_| anyhow::anyhow!("The GPUI UI thread is not running"))?;
++    match response_receiver.recv_timeout(Duration::from_secs(30)) {
++        Ok(result) => result,
++        Err(RecvTimeoutError::Timeout) => Err(anyhow::anyhow!(
++            "Timed out after 30 seconds waiting for the GPUI host callback"
++        )),
++        Err(RecvTimeoutError::Disconnected) => Err(anyhow::anyhow!(
++            "The GPUI UI thread stopped during the host callback"
++        )),
++    }
++}
++
+ #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+ enum ClockControl {
+     Pause,
+@@ -434,6 +483,19 @@ enum UiCommand {
+         path: String,
+         response: SyncSender<std::result::Result<(), String>>,
+     },
++    // j-agent patch: generic host callback executed on the GPUI thread with
++    // the renderer window + AsyncApp. Lets the host napi crate run terminal
++    // pool operations (gpui Global access) without its own event-loop hook.
++    RunHost {
++        f: Box<
++            dyn FnOnce(
++                    &mut gpui::AsyncApp,
++                    gpui::WindowHandle<crate::renderer::GpuixView>,
++                ) -> anyhow::Result<serde_json::Value>
++                + Send,
++        >,
++        response: SyncSender<anyhow::Result<serde_json::Value>>,
++    },
+     Blur,
+ }
+ 
+@@ -758,7 +820,17 @@ async fn run_ui_commands(
+                 result
+             }
+             UiCommand::Blur => window.update(cx, |_view, window, _cx| window.blur()),
+-        };
++            // j-agent patch: run host callback on the GPUI thread and hand
++            // the result back through the sync channel (JS side blocks on it).
++            UiCommand::RunHost { f, response } => {
++                let result =
++                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(cx, window)))
++                        .unwrap_or_else(|panic| {
++                            Err(anyhow::anyhow!("host callback panicked: {panic:?}"))
++                        });
++                response.send(result).ok();
++                Ok(())
++            }        };
+         if let Err(error) = result {
+             if cx.update(|cx| cx.windows().is_empty()) {
+                 break;
+@@ -1101,6 +1173,13 @@ impl GpuixRenderer {
+         let selection = self.selection.clone();
+         let callback = self.event_callback_for_view();
+         let (command_sender, command_receiver) = mpsc::unbounded();
++        // j-agent patch: publish the UI command channel process-wide so host
++        // crates can run callbacks on the GPUI thread (terminal pool ops)
++        // without reaching this renderer instance from Rust.
++        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
++        crate::renderer::HOST_UI_COMMANDS
++            .set(command_sender.clone())
++            .ok();
+         let (startup_sender, startup_receiver) = sync_channel(1);
+         let exit_startup_sender = startup_sender.clone();
+         let ui_running = self.ui_running.clone();
+@@ -2828,7 +2907,9 @@ impl Drop for GpuixRenderer {
+ 
+ // ── GPUI View ────────────────────────────────────────────────────────
+ 
+-pub(crate) struct GpuixView {
++// j-agent patch: pub — external crates implement CustomElement, whose
++// render() signature names this type.
++pub struct GpuixView {
+     pub(crate) tree: Arc<Mutex<RetainedTree>>,
+     pub(crate) event_callback: Option<EventCallback>,
+     pub(crate) window_title: String,
+diff --git a/packages/native/src/test_renderer.rs b/packages/native/src/test_renderer.rs
+index f083a40..89644da 100644
+--- a/packages/native/src/test_renderer.rs
++++ b/packages/native/src/test_renderer.rs
+@@ -996,3 +996,23 @@ impl TestGpuixRenderer {
+         }
+     }
+ }
++
++// j-agent patch (e2e seam): same contract as renderer::run_on_gpuix, but for
++// the test renderer — no threaded app exists (HOST_UI_COMMANDS is never
++// published), so host closures run directly on this thread's VisualTestState.
++// bun test is single-threaded and the JS caller thread owns the context, so a
++// direct call is equivalent to the GPUI-thread round trip. Returns Err when no
++// TestGpuixRenderer was created on this thread.
++pub fn run_on_test_app(
++    f: Box<
++        dyn FnOnce(&mut gpui::App) -> anyhow::Result<serde_json::Value> + Send,
++    >,
++) -> anyhow::Result<serde_json::Value> {
++    TEST_STATE.with(|cell| {
++        let mut borrow = cell.borrow_mut();
++        let state = borrow
++            .as_mut()
++            .ok_or_else(|| anyhow::anyhow!("TestGpuixRenderer not initialized on this thread"))?;
++        state.cx.update(|app| f(app))
++    })
++}

@@ -20,7 +20,8 @@ import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
 import { SECTIONS, SETTING_DEFS, DEFAULT_ACP_AGENTS } from '../settings/schema'
 import type { SettingSectionId } from '../settings/schema'
-import { BUILTIN_PRESETS } from '../threads/presets'
+import type { TerminalPreset } from '../threads/presets'
+import { presetMatches } from '../threads/presets'
 import { useSettingsSection, navigateSettingsSection } from '../router'
 import { Icon } from '../ui/Icon'
 import { inputFocus } from '../ui/keyboard'
@@ -75,10 +76,10 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
     }
   }, [])
   // 订阅设置快照：patch/reset/writeError 后整树重渲染（行数少，粒度足够）
-  useSettings(settings)
+  const snap = useSettings(settings)
 
   const q: string | null = query.trim() || null
-  const hits = hitsBySection(q)
+  const hits = hitsBySection(q, snap.presets.items)
   const searching = q !== null
   const totalHits = Object.values(hits).reduce((a, b) => a + b, 0)
 
@@ -278,18 +279,17 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
   )
 }
 
-/** 各分区命中数（搜索过滤面：defs + 键位动作 + 预设名 + ACP 名） */
-export function hitsBySection(q: string | null): Record<string, number> {
+/** 各分区命中数（搜索过滤面：defs + 键位动作 + 预设名（动态 items）+ ACP 名） */
+export function hitsBySection(q: string | null, presetItems: TerminalPreset[]): Record<string, number> {
   if (!q) return {}
-  const lower = q.toLowerCase()
   const hits: Record<string, number> = {}
   for (const d of SETTING_DEFS) {
     if (matchDef(d, q)) hits[d.section] = (hits[d.section] ?? 0) + 1
   }
   hits.keybindings = (hits.keybindings ?? 0) + keybindingHits(q)
-  const presetHits = BUILTIN_PRESETS.filter((p) => p.label.toLowerCase().includes(lower)).length
+  const presetHits = presetItems.filter((p) => presetMatches(p, q)).length
   if (presetHits > 0) hits.presets = (hits.presets ?? 0) + presetHits
-  const acpHits = DEFAULT_ACP_AGENTS.filter((a) => a.label.toLowerCase().includes(lower)).length
+  const acpHits = DEFAULT_ACP_AGENTS.filter((a) => a.label.toLowerCase().includes(q.toLowerCase())).length
   if (acpHits > 0) hits.acp = (hits.acp ?? 0) + acpHits
   return hits
 }

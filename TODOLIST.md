@@ -26,10 +26,10 @@
 | 0 Rust 终端骨架 + window.rs 验证 | ✅ 完成（结论见 Phase 0 结论区） |
 | 1 双 workspace + napi 壳 + app 最小集 | ✅ 完成（结论见 Phase 1 结论区） |
 | 2 ThreadStore 全规则 + settings-core/controls + SettingsView | ✅ 完成（T2.1–T2.7） |
-| 3 settings-presets + chat | ⬜ 未开始（下一入口：T3.1） |
+| 3 settings-presets + chat | ◐ 进行中（T3.1 完成） |
 | 3+ settings-acp-advanced + ACP + 键位编辑 | ⬜ 未开始 |
 
-**当前指针**：→ Phase 3 / T3.1（Presets 分区 CRUD：自定义预设 id + builtin:false + cwd?；lastUsedPreset 运行时态不进 JSON）
+**当前指针**：→ Phase 3 / T3.2（ChatSurface 实装：chat thread 骨架 → 最小可用）
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -86,6 +86,8 @@
 - R-V1（RouterProvider@GPUIX）：**不可用，保底手动桥生效并验证**。三个坑与解法：(a) RouterProvider 崩在 MatchesInner `router._rendered[0]`（GPUIX reconciler 渲染时序下 ack 未就绪）；(b) `router.state` 每次组装新对象 → uSES getSnapshot 不稳定（无限循环）→ 订阅回调里递增版本号、getSnapshot 返回原始值、渲染期现读 `history.location.pathname`；(c) **Transitioner 契约**：router-core 在 `history.subscribers` 非空时不自行 `load()`（core router.js `if (!this.history.subscribers.size) this.load(...)`）→ 桥的订阅回调必须 `void router.load()`，否则第二次导航起挂起（实测 settings→'/' 永不生效；连空函数订阅者都能触发）。另：`router.subscribe(fn)` 是事件级 API（需 eventType 首参，单参静默无效）——订阅源用 `router.history.subscribe`。最终形态见 router.tsx 注释；navigate 一律 fire-and-forget（promise resolve 依赖 Matches acknowledgment，手动桥下不触发，无人 await）。全导航序列（/→settings→/→thread/$id→/）实测通过；依赖版本：@tanstack/react-router 1.170.32（latest）+ router-core 1.171.27（官方配对，resolutions 锁回 1.170.32 无必要已移除）
 - 焦点模型（Ctrl-Tab 生效条件 / 是否降级）：**全局可用，无需降级**。TerminalView 聚焦时窗口级 keyDown（gpui `on_root_key_event`，Bubble 阶段）仍到达——vendored view 的 `on_key_down` 不调 `stop_propagation`（只写 PTY 后放行）。e2e 第 5 用例固定验证（simulateKeystrokes('ctrl-tab') → 窗口回调收到）。已知副作用：ctrl-tab 被 `keystroke_to_bytes` 的 `tab` 分支（无 ctrl 判断）映射成 `\t` 写进 PTY——shell 忽略，无害；要消除可在 input.rs 给 ctrl+tab 加忽略分支（待真用例出现再做）。
 - **gpuix 补丁 #6/#7（e2e seam）**：#6 `test_renderer.rs::run_on_test_app()`（host 闭包直接跑在本线程 VisualTestState，bun test 单线程等价于 GPUI 线程往返）+ `renderer.rs::host_ui_commands_ready()`（探测线程化通道是否存活）+ `lib.rs` 条件 re-export。存在原因：TestGpuixRenderer 不跑 `init_threaded`，HOST_UI_COMMANDS 不发布。
+- **gpuix 补丁 #8（test 窗口隐藏化，2026-09-05，详见 patches/README.md）**：修 Windows 上每次 bun test 弹空白窗口。根因链：`VisualTestAppContext::open_offscreen_window` 传 `show:true`（macOS 靠 (-10000,-10000) 屏幕外位置隐形）→ Windows `retrieve_window_placement` 的 `check_given_bounds` 对完全屏幕外 bounds 返回 false → fallback `display.default_bounds()`（主屏居中）→ `SetWindowPlacement(SW_SHOWNOACTIVATE)` 真显示窗口（空白：test renderer 只在 flush/advanceTime 画帧）。修复两处（均在 zed fork）：① `gpui/src/app/visual_test_context.rs` `show: cfg!(not(windows))`；② `gpui_windows/src/window.rs` show:false 分支补 `SetWindowPos` 用**原始 params.bounds**（非被 clamp 的 placement）应用位置尺寸。验证：EnumWindows 采样无测试窗口、截图 1180x760 尺寸精确 + 非空（隐藏窗口 flip-model swapchain 渲染/读回正常）。注：尺寸验证必须走截图尺寸或 hit-test 边界，不能信 placement（被 clamp 污染）。
+- **.refs 补丁体系脚本化（2026-09-05，取代人肉清单）**：gpuix/zed 本地修改从「工作树未提交 diff + README 手工重放」升级为 quilt 风格补丁目录——`patches/gpuix/`（2 个：shallow-submodule、jagent-native-seam）+ `patches/gpuix-zed/`（2 个：gpui-workspace-root、hide-offscreen-test-window），每源文件恰属一个 patch（`scripts/refs-config.ts` MANIFEST，无 hunk 拆分）；`bun run setup-refs` 一条命令重建（clone → fetch pin `e948b20` → apply → submodule → apply → build:react，幂等，-- --force 重建），`bun run export-patches` 反向导出（--check 防 CI 漂移）。业界选型：cargo git 依赖不可行（gpuix→zed submodule，rust-lang/cargo #9622/#15775）；fork+分支需维护双 fork（单人项目成本>收益）。全量重放验证：删 .refs/gpuix 重建→cargo check→build:debug→bun test（87）+bun test e2e/（9）全绿；注意根 `bun test` 不自动收 e2e workspace（独立 package.json），e2e 必须显式 `bun test e2e/`。补丁 #6~#8 的编号体系移入 patches/README.md 对应表。
 - **napi 命令同步化**：create/destroy_terminal_session 从 `async fn` 改同步。原因：napi async 体跑 tokio 线程，而 test 路径的 `run_on_test_app` 依赖主线程 `thread_local TEST_STATE`——同步化后在 JS 调用线程执行，两条路径统一。JS 侧注入点包 `async (o) => createTerminalSession(o)` 保 Promise 形态；副作用：真窗口 spawn 短暂阻塞帧循环（ConPTY 冷启动 ~1s，用户显式操作，可接受；Phase 2 若在意可回 async + 主线程泵）。napi features 的 "async"（tokio_rt）随之移除。
 - **TSF 两参坑（T1.2 起潜伏，e2e 暴露）**：`onSessionEvent` 的 ThreadsafeFunction 回调签名是 `(err, e)`——payload 在第二参。旧代码 `(e) => ...` 里 e 恒为 null，所有 session 事件被静默丢弃（T1.3 只验了路由序列，从未真验事件到达）。已修：lib.rs ts_args_type 改双参 + main.tsx/e2e 消费处 `(_err, e) => ...`。
 - **e2e 面落成**：`e2e/terminal.e2e.test.tsx`（bun workspace 新成员 `e2e`）5 用例：① EmptyPresets 卡片 ② spawn shell+bell 两行并存 + terminal 元素进树 ③ retain：切走后后台 bell → hasBell + activate 清除 ④ exit → 灰行保留 + exited 标签 + close 全清回 EmptyPresets ⑤ 焦点模型。**时序三律**：PTY 事件消费 task 的 4ms 定时器挂 test dispatcher fake clock——轮询必须 `advanceTime()` 驱动；React 对 store/router 更新的提交需 macrotask 让出；TSF 回调也靠让出后调度。断言一律 `until()` 轮询，禁止固定 sleep（首版固定 sleep flaky 实证）。bell 会话用注入的自定义预设（短命 PowerShell 双 BEL，BELL_PRESET）——ThreadDeps.presetOf 注入设计的首次兑现。
@@ -123,9 +125,21 @@
 
 ## Phase 3 —— settings-presets + chat
 
-- [ ] **T3.1** Presets 分区 CRUD（自定义预设：id + builtin:false + cwd?；lastUsedPreset 运行时态不进 JSON）
+- [x] **T3.1** Presets 分区 CRUD（自定义预设：id + builtin:false + cwd?；lastUsedPreset 运行时态不进 JSON）——详见 Phase 3 结论区
 - [ ] **T3.2** ChatSurface 实装（chat thread 骨架 → 最小可用）
 - [ ] **T3.3** 验收锚点（§15 第 7–8 条）+ commit "Phase 3"
+
+### Phase 3 结论区（T3.1）
+
+- **store CRUD 面（settings-ui.md §12 回调面 → SettingsStore 五方法）**：addPreset（id=`custom-${Date.now().toString(36)}` 唯一化 + builtin:false，返回 id）/ updatePreset（PresetPatch 类型面锁 id+builtin 不可改；normalizePreset 归一：program/initCommand/cwd 空串、args 空数组、env 空对象 → undefined，**args 空串行过滤**——编辑中间态空行不进 JSON）/ deletePreset（内置 no-op；plusDefault===id → null；lastUsedPreset 是 ThreadStore 运行态，settings 不碰，消费侧兑底——NewThreadButton target 链 plusDefault??lastUsedPreset??首项天然兜底）/ duplicatePreset（id `-{src}-copy` 递增后缀 + label 「 副本」+ builtin:false）/ resetPreset（仅内置回 BUILTIN 出厂）。全部走同一 commit()/enqueueWrite 写链（写失败回滚/writeError/合并写免费复用）。提取 commit() 后 patch 也走它。
+- **PresetsSection 组件面**：plusDefault Select（''=跟随上次使用 → patch null）+ 列表卡（head 命中容器显式 backgroundColor + 装饰 pe:none；内置/自定义 Badge + 行级/字段级 mod-dot = presetModified/presetFieldModified（threads/presets.ts，dequal vs BUILTIN）+ 复制/重置（仅内置且 modified）/删除（仅自定义）IconButton）+ 展开编辑器六字段（label/program/initCommand/cwd 即时 TextInput；args/env LinesField）+ 底部新增（label=`自定义 ${n+1}`，新增/复制后自动展开）+ writeError 分区顶部红条。LinesField 见下条。
+- **重大平台发现 ①：GPUIX click 在子元素自带 listener 时会冒泡到父 listener**（T2.3「不冒泡」结论修正：仅纯 paint 装饰（无 listener）不冒泡；子有 onClick → 事件沿 hitbox 链 bubble，实测 log=[child,parent]）。ThreadRow 关闭钮没踩坑纯靠 onMouseDown+同步移除元素逃逸。JS 无 stopPropagation 面 → 修复模式 = **抑制 ref**：按钮 handler 先置位（冒泡 deepest-first），head onClick 消费后跳过。React 状态同步提交保证同批可靠。
+- **重大平台发现 ②：TestGpuixRenderer 路径完全不派发 React focus/blur 事件**（点击/focusElement 都不发；T2.6「autoFocus 不发」的推广——测试里 inputFocus.acquire 永不触发，负计数不影响 any 判定）。产品路径（真窗口点击聚焦）正常。→ LinesField **提交面不依赖 blur**：onChange 即时提交原始行（store 层归一过滤）+ draft 只管显示（编辑中间态尾随换行不回写受控值，无光标跳动）+ onBlur 仅归一显示。测试完全可驱动。
+- **重大平台发现 ③：GPUIX textarea 的 enter=Submit、shift-enter 才插入换行**（custom_elements/input.rs KeyBinding："enter"→Submit / "shift-enter"→Newline）。行式字段（args 每行一个参数）的真实换行手势 = shift-enter，产品语义不变。
+- **keystroke 语法坑**：`' X'` 首字符空格被解析器吞（用显式 `space` 键名）；`'-'` 是 modifier 连接符语法（Keystroke::parse），单字符 '-' 不可表达——测试数据避开。
+- **接线面（BUILTIN_PRESETS 硬编码 → settings 快照）**：NewThreadButton（+settings props，Sidebar/AgentPlane 传递；target = plusDefault ?? lastUsedPreset ?? 首项）· EmptyPresets（Pane 传 settings，卡片摘要 presetCommandSummary）· nativeDeps.presetOf（查 settings items，含自定义；e2e override 改为 settings 优先 + BELL_PRESET 叠加，不再替换真语义）· SettingsView.hitsBySection（预设命中吃动态 items，presetMatches）。threads/presets.ts 新增 presetCommandSummary/presetMatches/presetModified/presetFieldModified（数据中心单点，UI 零逻辑）。
+- **e2e 第 9 用例**（T3.1 全链）：settings.addPreset → spawnFromPreset 走真 nativeDeps.presetOf → 真 ConPTY spawn → NewThreadButton label 跟随 → 进程 exit → exited 灰行 → close 清理 + deletePreset。
+- **测试总量**：settings 37（+10 CRUD）· PresetsSection 9（新）· SettingsView 调整（真分区断言）· 单测 87 + e2e 9 + cargo 33 全绿 · tsc 干净 · 真窗口 mount 冒烟 ✓。附：Phase 2 收官提交误入的 mona-lisa.html/mona-shot.png（T2.5 通知调试产物）工作区已删，随下次 commit 清理。
 
 ## Phase 3+ —— acp/advanced/键位
 
@@ -164,3 +178,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-05 · **T2.4 完成**：SettingsView/SettingsSections/useSettings 订阅桥/router 深链 hook · Term/Notify/Appearance/Advanced 行接真值（patch 落盘+modified+reset+writeError 红条实测）· 搜索全链（过滤/计数/置灰/空态/清除/Esc/highlight wash 高亮）· Presets/ACP Phase 3 占位卡 + Keybindings 只读表 + CLI 约定卡 · main.tsx await init（首次运行零写盘验证）· App props 增 settings，e2e 同步 · 59 单测 + 6 e2e 全绿 + 真窗口冒烟 · 下一步：T2.5（桌面通知定型 + 接线）
 - 2026-09-05 · **T2.5 完成**：桌面通知定型为 Rust 自研 WinRT toast（notify.rs：AUMID+开始菜单 .lnk+手拼 XML，零新增 crate；notify-rust/node-notifier 均借 PowerShell 身份被否）· 真机冒烟：toast×3+快捷方式落盘 ✓ · 接线：nativeDeps(settings) 签名扩展（notify/closeOnExit/scrollback 真值）· SurfaceProps+settings · TerminalSurface 读 useSettings 四项（palette/cursorBlink/fontFamily/fontSize）· Rust：TerminalStyle 增 palette/cursor_blink、colors by_name（one-dark 色板）、view blink 定时器、element TODO 清偿 · e2e 第 7 用例（设置→props 联动+sessionId 不变）· 66 单测+7 e2e+cargo 33 全绿 · 下一步：T2.6（全局键位层）
 - 2026-09-05 · **T2.6 + T2.7 完成（Phase 2 收官）**：键位层提取 keybindings.ts（DI 形态 main/e2e 共用）· Esc 双跳时序实测（React 同步提交→「已消费」标记方案）· 关闭设置回 lastNonSettings（router 桥维护）· `/` 聚焦走 ref 取 id（autoFocus 不发 JS focus 事件）+ renderer.focusElement · ui/keyboard.ts 输入焦点登记 · main.tsx 自持 renderer 实例 · e2e 第 8 用例（全量跑 threads 遗留污染→数组序断言）· §15 锚点 1/2/3/4/5/9/10/11 逐条核对达成 · 67 单测+8 e2e+tsc+cargo 全绿+真窗口冒烟 · architecture.md 契约同步（SurfaceProps/keybindings/键位层修订）· commit "Phase 2" · 下一步：Phase 3 T3.1（Presets 分区 CRUD）
+- 2026-09-05 · **T3.1 完成（settings-presets 切片）**：SettingsStore 预设 CRUD 五方法（规则单点：plusDefault 删除回退/内置不可删/副本后缀/空字段归一+args 空行过滤，同一写链回滚面）· PresetsSection 实装（plusDefault Select + 列表卡 CRUD + 六字段编辑器 + 搜索过滤，占位卡换下岗）· LinesField 即时提交模式（提交不依赖 blur）· **三大平台发现回写记忆 #29**：listener 冒泡（抑制 ref 模式）/ TestRenderer 不派发 focus/blur / textarea enter=Submit shift-enter=换行 · 接线面全换 settings 快照（NewThreadButton/EmptyPresets/presetOf/hitsBySection）· e2e 第 9 用例（自定义预设真 PTY 全链）· 87 单测+9 e2e+cargo 33 全绿 · 下一步：T3.2（ChatSurface）

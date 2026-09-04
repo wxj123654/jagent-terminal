@@ -61,12 +61,19 @@ async function navigateSection(section: string): Promise<void> {
 // ── core：7 分区导航 + 默认分区 + 深链 ───────────────────────────────
 
 describe('SettingsView · core（§15 1/2/4 部分）', () => {
-  test('7 分区导航可见；默认分区 presets 占位卡（Phase 3 徽章）', () => {
+  test('7 分区导航可见；默认分区 presets 真分区（预设列表 + plusDefault）', () => {
     for (const id of ['presets', 'notifications', 'terminal', 'appearance', 'keybindings', 'acp', 'advanced']) {
       expect(t.renderer.findByTestId(`nav-${id}`)).toBeDefined()
     }
-    expect(t.renderer.findByTestId('placeholder-presets')).toBeDefined()
-    expect(texts().includes('Phase 3')).toBe(true)
+    // T3.1：Presets 不再占位——真 CRUD 分区（内置 5 行 + 新增按钮）
+    expect(t.renderer.findByTestId('placeholder-presets')).toBeUndefined()
+    expect(t.renderer.findByTestId('plus-default')).toBeDefined()
+    expect(t.renderer.findByTestId('preset-card-claude')).toBeDefined()
+    expect(t.renderer.findByTestId('add-preset')).toBeDefined()
+    // ACP 仍占位（Phase 3+；懒渲染——切到该分区才出现）
+    click('nav-acp')
+    t.renderer.flush()
+    expect(t.renderer.findByTestId('placeholder-acp')).toBeDefined()
   })
 
   test('nav 点击切分区 → terminal 行出现（SettingRow 真值渲染）', () => {
@@ -103,7 +110,7 @@ describe('SettingsView · 搜索（§15 3/5 部分）', () => {
     t.renderer.flush()
 
     // path 前缀 terminal.font* 命中 fontFamily/fontSize → terminal 计数 2
-    const nav = t.renderer.findByTestId('nav-terminal')!
+    t.renderer.findByTestId('nav-terminal')!
     expect(t.renderer.getAllText().some((s) => s.trim() === '2')).toBe(true)
 
     // 搜索模式右列：terminal 命中行（跨分区列表）

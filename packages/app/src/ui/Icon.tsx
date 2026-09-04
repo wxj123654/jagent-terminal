@@ -36,6 +36,16 @@ const SOURCES = {
   reset: strokeSvg('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>'),
   /** search：设置搜索框 */
   search: strokeSvg('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'),
+  /** copy：预设复制为自定义副本（settings-ui §7） */
+  copy: strokeSvg(
+    '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  ),
+  /** trash：删除自定义预设 */
+  trash: strokeSvg(
+    '<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>',
+  ),
+  /** chevronRight：预设行展开指示（原型 .chev） */
+  chevronRight: strokeSvg('<path d="m9 18 6-6-6-6"/>'),
 } as const
 
 export type IconName = keyof typeof SOURCES

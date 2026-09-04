@@ -6,12 +6,13 @@
  */
 
 import type { ThreadStore } from '../threads/store'
+import type { SettingsStore } from '../settings/store'
 import { Icon } from '../ui/Icon'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
 import { ThreadList } from './ThreadList'
 import { NewThreadButton } from './NewThreadButton'
 
-export function Sidebar({ store }: { store: ThreadStore }) {
+export function Sidebar({ store, settings }: { store: ThreadStore; settings: SettingsStore }) {
   return (
     <div
       style={{
@@ -46,7 +47,7 @@ export function Sidebar({ store }: { store: ThreadStore }) {
         </text>
       </div>
 
-      <NewThreadButton store={store} />
+      <NewThreadButton store={store} settings={settings} />
 
       <ThreadList store={store} />
 

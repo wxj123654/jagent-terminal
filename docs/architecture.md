@@ -456,7 +456,7 @@ function TerminalSurface({ thread, settings }: SurfaceProps) {
 
 ### SettingsView（settings-ui.md §12 的对齐）
 
-结构照契约：`SettingsNav`（7 分区 + 搜索）+ `SettingsContent`。分区组件消费 `SETTING_DEFS`（见 §6）渲染 `SettingRow`；Presets / ACP 两个结构性分区手写（列表 CRUD）。当前分区 = `/settings` 的类型化 search param `section`（分区深链免费；Esc / Ctrl-, 退出即返回）。生命周期（Ctrl-, / Esc / 切 thread 关闭）由路由与 `cycle` 天然实现，SettingsView 自身只管表单。
+结构照契约：`SettingsNav`（7 分区 + 搜索）+ `SettingsContent`。分区组件消费 `SETTING_DEFS`（见 §6）渲染 `SettingRow`；Presets 已实装（T3.1，PresetsSection 列表 CRUD）；ACP 分区手写列表 CRUD 待 Phase 3+。当前分区 = `/settings` 的类型化 search param `section`（分区深链免费；Esc / Ctrl-, 退出即返回）。生命周期（Ctrl-, / Esc / 切 thread 关闭）由路由与 `cycle` 天然实现，SettingsView 自身只管表单。
 
 ---
 
@@ -471,7 +471,7 @@ App（useSyncExternalStore(threadStore) + useSettings()）
     │   │   └── ThreadRow × N         // 图标(SVG) · displayTitle 单行 ellipsis+tooltip
     │   │                             //   红点 / exited 标签 · hover/focus 关闭钮
     │   │                             //   双击标题 → 行内 rename
-    │   ├── NewThreadButton           // [+ lastPreset ▾] anchored 菜单（settings.presets.items）
+    │   ├── NewThreadButton           // [+ target ▾] anchored 菜单（settings.presets.items；target = plusDefault ?? lastUsedPreset ?? 首项，T3.1）
     │   └── SidebarFooter             // 齿轮 → activate({type:'settings'})
     └── Pane（§4）
 ```
@@ -550,6 +550,13 @@ interface SettingsStore {
   isModified(path: Path): boolean       // !dequal(get(cur), get(DEFAULTS)) → 蓝点
   subscribe(fn): () => void
   writeError(): { path: string; message: string } | null  // 行内红条；下次成功清除
+  init(): Promise<void>                 // 装配期读盘 + 首帧 set
+  // ── 预设 CRUD（settings-ui.md §7 规则单点，T3.1；同一写链/回滚面）──
+  addPreset(input: PresetInput): string       // builtin:false + 唯一 id（custom-*），返回 id
+  updatePreset(id, patch: PresetPatch): void  // id/builtin 不可改（类型面）；空字段归一 undefined；args 空串行过滤
+  deletePreset(id: string): void             // 仅自定义；plusDefault 指向它 → 回退 null（lastUsedPreset 是运行时态，消费侧兑底）
+  duplicatePreset(id: string): string        // 副本 builtin:false + label 副本后缀 + id -copy 后缀，返回新 id
+  resetPreset(id: string): void              // 仅内置，回 BUILTIN 出厂值
 }
 ```
 
@@ -559,7 +566,7 @@ interface SettingsStore {
 
 ### 6.3 测试面
 
-内存 adapter：patch/isModified/reset · 坏 JSON / 越界值字段级回默认（zod catch）· 未知 key 往返保真 · 写失败回滚 + writeError · SETTING_DEFS 的 path 全部真实存在于 Settings（schema 一致性测试）。
+内存 adapter：patch/isModified/reset · 坏 JSON / 越界值字段级回默认（zod catch）· 未知 key 往返保真 · 写失败回滚 + writeError · 合并写 · SETTING_DEFS 的 path 全部真实存在于 Settings（schema 一致性测试）。预设 CRUD（T3.1）：add 唯一 id+builtin:false · update 空字段归一+args 空行过滤 · delete plusDefault 回退 · duplicate 副本语义 · reset 出厂值 · CRUD 写失败同一回滚面。
 
 ---
 

@@ -8,19 +8,20 @@
  * writeError（§5.3 行内红条）：出错 path 对应行下渲染红字 + 回滚已由
  * store 层完成（内存回滚 persisted，显示值随之回退）。
  *
- * Presets / ACP：Phase 3 / 3+ 占位卡（§5.3 可见但 disabled + Phase 徽章）。
- * Keybindings：第一期只读表（S5）。
+ * Presets：T3.1 实装（PresetsSection.tsx，列表 CRUD）。ACP：Phase 3+ 占位卡
+ * （§5.3 可见但 disabled + Phase 徽章）。Keybindings：第一期只读表（S5）。
  */
 
 import type { ReactElement } from 'react'
 
-import type { SettingsStore, SettingsWriteError } from '../settings/store'
+import type { SettingsStore } from '../settings/store'
 import { getByPath } from '../settings/store'
 import type { SettingDef, SettingSectionId } from '../settings/schema'
 import { SETTING_DEFS } from '../settings/schema'
 import { PhaseBadge } from '../ui/PhaseBadge'
 import { SettingRow } from '../ui/SettingRow'
 import { COLORS, FONT } from '../ui/tokens'
+import { PresetsSection } from './PresetsSection'
 
 export type SectionProps = {
   settings: SettingsStore
@@ -273,14 +274,7 @@ export function renderSectionContent(
     case 'keybindings':
       return <KeybindingsSection query={query} />
     case 'presets':
-      return (
-        <PlaceholderSection
-          testId="placeholder-presets"
-          title="预设管理"
-          phase={3}
-          note={'内置 5 预设 + 自定义预设的增删改在此完成（Phase 3 解锁）。现在可用侧栏 + 按钮的预设菜单选用内置预设。'}
-        />
-      )
+      return <PresetsSection settings={settings} query={query} />
     case 'acp':
       return (
         <PlaceholderSection

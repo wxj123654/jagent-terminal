@@ -16,8 +16,15 @@ import { dequal } from 'dequal'
 
 import { DEFAULTS, RawSettingsSchema, SettingsSchema, type Settings, type SettingsPath } from './schema'
 import type { FileAdapter } from './file'
+import { BUILTIN_PRESETS, type TerminalPreset } from '../threads/presets'
 
 export type SettingsWriteError = { path: string; message: string }
+
+/** 新预设输入（id 由 store 生成保证唯一；builtin 恒 false） */
+export type PresetInput = Pick<TerminalPreset, 'label'> &
+  Partial<Pick<TerminalPreset, 'program' | 'args' | 'env' | 'initCommand' | 'cwd'>>
+/** 预设字段补丁（id / builtin 不可改——类型面即规则） */
+export type PresetPatch = Partial<Omit<TerminalPreset, 'id' | 'builtin'>>
 
 export interface SettingsStore {
   /** 快照（zod parse 后的合法 Settings；字段级容错已在边界完成） */
@@ -33,6 +40,17 @@ export interface SettingsStore {
   writeError(): SettingsWriteError | null
   /** 装配期：读盘 + parse + 首帧 set（main.tsx await 后再渲染） */
   init(): Promise<void>
+  // ── 预设 CRUD（settings-ui.md §7 规则单点；走同一写链 / 回滚面）──
+  /** 新增自定义预设（builtin:false），返回生成的唯一 id */
+  addPreset(input: PresetInput): string
+  /** 按 id 改字段（未知 id no-op；空字段归一 undefined） */
+  updatePreset(id: string, patch: PresetPatch): void
+  /** 删除自定义预设（内置 no-op）；plusDefault 指向它 → 回退 null */
+  deletePreset(id: string): void
+  /** 复制为自定义副本（builtin:false + label 副本后缀），返回新 id */
+  duplicatePreset(id: string): string
+  /** 内置预设重置回出厂值（自定义 no-op） */
+  resetPreset(id: string): void
 }
 
 /** 深取值（dot-path；不存在返回 undefined） */
@@ -45,6 +63,33 @@ export function getByPath(obj: unknown, path: string): unknown {
 
 function serialize(s: Settings): string {
   return `${JSON.stringify(s, null, 2)}\n`
+}
+
+// ── 预设 CRUD 内部辅助（规则单点；不进接口）────────────────────────
+
+/** 空串 / 空集合字段归一 undefined；args 顺带过滤空串行（编辑中间态的空行
+ *  不进 JSON——LinesField 即时提交原始行，归一在此单点完成）。 */
+function normalizePreset(p: TerminalPreset): TerminalPreset {
+  const args = p.args?.filter((s) => s !== '')
+  return {
+    ...p,
+    program: p.program || undefined,
+    args: args && args.length > 0 ? args : undefined,
+    env: p.env && Object.keys(p.env).length > 0 ? p.env : undefined,
+    initCommand: p.initCommand || undefined,
+    cwd: p.cwd || undefined,
+  }
+}
+
+/** 递增后缀保证 id 唯一（原型语义：base → base2 → base3 …） */
+function uniquePresetId(base: string, items: TerminalPreset[]): string {
+  let id = base
+  let n = 2
+  while (items.some((p) => p.id === id)) {
+    id = `${base}${n}`
+    n++
+  }
+  return id
 }
 
 export function createSettingsStore(file: FileAdapter): SettingsStore {
@@ -81,6 +126,22 @@ export function createSettingsStore(file: FileAdapter): SettingsStore {
       })
   }
 
+  /** 统一提交面：parse 容错 → 内存即时 → 异步写链（patch 与 CRUD 共用） */
+  function commit(next: Settings, path: string) {
+    const parsed = RawSettingsSchema.parse(next)
+    set({ settings: parsed, writeError: null })
+    enqueueWrite(parsed, path)
+  }
+
+  /** 替换 presets.items（+ 可选 plusDefault 联动）后提交 */
+  function withItems(
+    s: Settings,
+    items: TerminalPreset[],
+    plusDefault: string | null = s.presets.plusDefault,
+  ) {
+    commit({ ...s, presets: { ...s.presets, items, plusDefault } }, 'presets.items')
+  }
+
   return {
     get: () => store.getState().settings,
     subscribe: (fn) => store.subscribe(fn),
@@ -99,7 +160,7 @@ export function createSettingsStore(file: FileAdapter): SettingsStore {
     },
 
     patch(path, value) {
-      const next = RawSettingsSchema.parse(
+      commit(
         produce(store.getState().settings, (draft) => {
           const keys = path.split('.')
           let cur: Record<string, unknown> = draft as unknown as Record<string, unknown>
@@ -107,10 +168,9 @@ export function createSettingsStore(file: FileAdapter): SettingsStore {
             cur = cur[keys[i]!] as Record<string, unknown>
           }
           cur[keys[keys.length - 1]!] = value
-        }),
+        }) as Settings,
+        path,
       )
-      set({ settings: next, writeError: null })
-      enqueueWrite(next, path)
     },
 
     reset(path) {
@@ -122,5 +182,56 @@ export function createSettingsStore(file: FileAdapter): SettingsStore {
     },
 
     writeError: () => store.getState().writeError,
+
+    addPreset(input) {
+      const cur = store.getState().settings
+      const id = uniquePresetId(`custom-${Date.now().toString(36)}`, cur.presets.items)
+      const preset = normalizePreset({ id, builtin: false, ...input })
+      withItems(cur, [...cur.presets.items, preset])
+      return id
+    },
+
+    updatePreset(id, patch) {
+      const cur = store.getState().settings
+      const idx = cur.presets.items.findIndex((p) => p.id === id)
+      if (idx === -1) return
+      const items = cur.presets.items.slice()
+      items[idx] = normalizePreset({ ...items[idx]!, ...patch })
+      withItems(cur, items)
+    },
+
+    deletePreset(id) {
+      const cur = store.getState().settings
+      const p = cur.presets.items.find((x) => x.id === id)
+      if (!p || p.builtin) return
+      // §7：删除前若 plusDefault 指向它 → 回退 null（跟随 lastUsedPreset）。
+      // lastUsedPreset 是 ThreadStore 运行时态，settings 不碰——消费侧兜底。
+      withItems(
+        cur,
+        cur.presets.items.filter((x) => x.id !== id),
+        cur.presets.plusDefault === id ? null : cur.presets.plusDefault,
+      )
+    },
+
+    duplicatePreset(id) {
+      const cur = store.getState().settings
+      const p = cur.presets.items.find((x) => x.id === id)
+      if (!p) return ''
+      const nid = uniquePresetId(`${id}-copy`, cur.presets.items)
+      const copy = normalizePreset({ ...p, id: nid, label: `${p.label} 副本`, builtin: false })
+      withItems(cur, [...cur.presets.items, copy])
+      return nid
+    },
+
+    resetPreset(id) {
+      const cur = store.getState().settings
+      const idx = cur.presets.items.findIndex((p) => p.id === id)
+      if (idx === -1 || !cur.presets.items[idx]!.builtin) return
+      const factory = BUILTIN_PRESETS.find((p) => p.id === id)
+      if (!factory) return
+      const items = cur.presets.items.slice()
+      items[idx] = factory
+      withItems(cur, items)
+    },
   }
 }

@@ -1,0 +1,11 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error"
+  },
+  "ignorePatterns": [
+    "packages/native/index.js",
+    "packages/native/index.d.ts",
+    "packages/gpuix-native-alias/"
+  ]
+}
