@@ -40,7 +40,7 @@
 //! # Example
 //!
 //! ```
-//! use gpui_terminal::ColorPalette;
+//! use jagent_terminal::ColorPalette;
 //!
 //! // Use default palette
 //! let default = ColorPalette::default();
@@ -81,7 +81,7 @@ use gpui::Hsla;
 /// [`ColorPalette::builder()`] for customization:
 ///
 /// ```
-/// use gpui_terminal::ColorPalette;
+/// use jagent_terminal::ColorPalette;
 ///
 /// let palette = ColorPalette::builder()
 ///     .background(0x28, 0x28, 0x28)
@@ -268,7 +268,7 @@ impl ColorPalette {
     /// # Example
     ///
     /// ```
-    /// use gpui_terminal::ColorPalette;
+    /// use jagent_terminal::ColorPalette;
     ///
     /// let palette = ColorPalette::builder()
     ///     .background(0x16, 0x16, 0x17)

@@ -23,4 +23,4 @@ pub mod view;
 pub use model::{Event, TerminalModel, TerminalStyle};
 pub use pool::{SessionEvent, SessionEventFn, TerminalPool};
 pub use pty::SpawnOptions;
-pub use view::{ColorPalette, TerminalRenderer, TerminalView};
+pub use view::{ColorPalette, TerminalRenderer, TerminalView, keystroke_to_bytes};

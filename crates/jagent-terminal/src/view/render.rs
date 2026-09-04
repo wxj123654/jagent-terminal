@@ -32,15 +32,14 @@
 //! 3. **Default Background Skip**: Cells with the default background color don't
 //!    generate separate background rectangles.
 //!
-//! 4. **Cell Measurement**: Font metrics are measured once using the '│' (BOX DRAWINGS
-//!    LIGHT VERTICAL) character and cached for consistent cell dimensions.
+//! 4. **Cell Measurement**: Font metrics are measured using the ASCII `M` glyph
+//!    from the configured monospace family and cached by GPUI.
 //!
 //! # Cell Dimensions
 //!
-//! Cell size is calculated from actual font metrics using the '│' character,
-//! which spans the full cell height in properly designed terminal fonts:
+//! Cell size is calculated from actual font metrics using the ASCII `M` glyph:
 //!
-//! - **Width**: Measured from shaped '│' character
+//! - **Width**: Measured from shaped `M` (avoids box-drawing fallback ambiguity)
 //! - **Height**: `(ascent + descent) × line_height_multiplier`
 //!
 //! The `line_height_multiplier` (default 1.0) can be adjusted to add extra
@@ -50,7 +49,7 @@
 //!
 //! ```ignore
 //! use gpui::px;
-//! use gpui_terminal::{ColorPalette, TerminalRenderer};
+//! use jagent_terminal::{ColorPalette, TerminalRenderer};
 //!
 //! let renderer = TerminalRenderer::new(
 //!     "JetBrains Mono".to_string(),
@@ -68,6 +67,7 @@ use alacritty_terminal::index::{Column, Line, Point as AlacPoint};
 use alacritty_terminal::term::Term;
 use alacritty_terminal::term::cell::{Cell, Flags};
 use alacritty_terminal::term::color::Colors;
+use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::Color;
 use gpui::{
     App, Bounds, Edges, Font, FontFeatures, FontStyle, FontWeight, Hsla, Pixels, Point,
@@ -209,8 +209,8 @@ impl TerminalRenderer {
     ///
     /// ```
     /// use gpui::px;
-    /// use gpui_terminal::render::TerminalRenderer;
-    /// use gpui_terminal::ColorPalette;
+    /// use jagent_terminal::TerminalRenderer;
+    /// use jagent_terminal::ColorPalette;
     ///
     /// let renderer = TerminalRenderer::new("Fira Code".to_string(), px(14.0), 1.0, ColorPalette::default());
     /// ```
@@ -238,17 +238,16 @@ impl TerminalRenderer {
 
     /// Measure cell dimensions based on actual font metrics.
     ///
-    /// This method measures the actual width and height of characters
-    /// using the GPUI text system. It uses the '│' (BOX DRAWINGS LIGHT VERTICAL)
-    /// character which spans the full cell height in properly designed terminal fonts.
+    /// This method measures the actual width and height of characters using the
+    /// GPUI text system. ASCII `M` comes from the configured primary family;
+    /// measuring box-drawing glyphs can accidentally select a fallback font.
     ///
     /// # Arguments
     ///
     /// * `window` - The GPUI window for text system access
     pub fn measure_cell(&mut self, window: &mut Window) {
-        // Measure using '│' (U+2502, BOX DRAWINGS LIGHT VERTICAL)
-        // This character spans the full cell height in terminal fonts, making it
-        // ideal for measuring exact cell dimensions used by TUIs
+        // ASCII M measures the primary monospace family directly. Box-drawing
+        // glyphs may be served by a fallback with different advance metrics.
         let font = Font {
             family: self.font_family.clone().into(),
             features: FontFeatures::default(),
@@ -258,7 +257,7 @@ impl TerminalRenderer {
         };
 
         let text_run = TextRun {
-            len: "│".len(),
+            len: "M".len(),
             font,
             color: gpui::black(),
             background_color: None,
@@ -266,10 +265,9 @@ impl TerminalRenderer {
             strikethrough: None,
         };
 
-        // Shape the box-drawing character to get cell metrics
         let shaped = window
             .text_system()
-            .shape_line("│".into(), self.font_size, &[text_run], None);
+            .shape_line("M".into(), self.font_size, &[text_run], None);
 
         // Get the width from the shaped line
         if shaped.width > px(0.0) {
@@ -311,34 +309,27 @@ impl TerminalRenderer {
 
         let mut current_run: Option<BatchedTextRun> = None;
         let mut current_bg: Option<BackgroundRect> = None;
+        // 下一字形应落到的 grid 列。宽字符自身占两列，spacer 不进字符串。
+        let mut next_run_col: Option<usize> = None;
 
         for (col, cell) in cells {
-            // Skip wide character spacers
-            if cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
-                continue;
-            }
-
             // Extract cell styling
-            let fg_color = self.palette.resolve(cell.fg, colors);
-            let bg_color = self.palette.resolve(cell.bg, colors);
+            let mut fg_color = self.palette.resolve(cell.fg, colors);
+            let mut bg_color = self.palette.resolve(cell.bg, colors);
+            // 反色（SGR 7）：交换 fg/bg。TUI 普遍用它画选中块/软光标
+            // （pi 的输入光标就是反色 cell），不处理则块不可见。
+            if cell.flags.contains(Flags::INVERSE) {
+                std::mem::swap(&mut fg_color, &mut bg_color);
+            }
             let bold = cell.flags.contains(Flags::BOLD);
             let italic = cell.flags.contains(Flags::ITALIC);
             let underline = cell.flags.contains(Flags::UNDERLINE);
 
-            // Get the character (or space if empty)
-            let ch = if cell.c == ' ' || cell.c == '\0' {
-                ' '
-            } else {
-                cell.c
-            };
-
-            // Handle background rectangles
+            // 背景覆盖每个 grid cell，宽字符 spacer 也不能漏掉。
             if let Some(ref mut bg_rect) = current_bg {
                 if bg_rect.color == bg_color && bg_rect.end_col == col {
-                    // Extend current background
                     bg_rect.end_col = col + 1;
                 } else {
-                    // Save current background and start new one
                     backgrounds.push(bg_rect.clone());
                     current_bg = Some(BackgroundRect {
                         start_col: col,
@@ -348,7 +339,6 @@ impl TerminalRenderer {
                     });
                 }
             } else {
-                // Start new background
                 current_bg = Some(BackgroundRect {
                     start_col: col,
                     end_col: col + 1,
@@ -357,32 +347,64 @@ impl TerminalRenderer {
                 });
             }
 
-            // Handle text runs
-            if let Some(ref mut run) = current_run {
-                if run.fg_color == fg_color
+            // Spacer 只占 grid/background，不重复 shape 宽字符。
+            if cell
+                .flags
+                .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
+            {
+                continue;
+            }
+
+            let ch = if cell.c == ' ' || cell.c == '\0' {
+                ' '
+            } else {
+                cell.c
+            };
+
+            // 制表字符由 box_drawing 模块自绘；它必须切断普通文本 run。
+            if box_drawing::is_box_drawing_char(ch) {
+                if let Some(run) = current_run.take() {
+                    text_runs.push(run);
+                }
+                next_run_col = None;
+                continue;
+            }
+
+            // 宽字符占两个 grid cell；单独成 run，避免 GPUI 的 force_width
+            // 把它后的 ASCII 错排到下一格而非下两格。
+            if cell.flags.contains(Flags::WIDE_CHAR) {
+                if let Some(run) = current_run.take() {
+                    text_runs.push(run);
+                }
+                text_runs.push(BatchedTextRun {
+                    text: ch.to_string(),
+                    start_col: col,
+                    row,
+                    fg_color,
+                    bg_color,
+                    bold,
+                    italic,
+                    underline,
+                });
+                next_run_col = None;
+                continue;
+            }
+
+            let can_extend = current_run.as_ref().is_some_and(|run| {
+                next_run_col == Some(col)
+                    && run.fg_color == fg_color
                     && run.bg_color == bg_color
                     && run.bold == bold
                     && run.italic == italic
                     && run.underline == underline
-                {
-                    // Extend current run
-                    run.text.push(ch);
-                } else {
-                    // Save current run and start new one
-                    text_runs.push(run.clone());
-                    current_run = Some(BatchedTextRun {
-                        text: ch.to_string(),
-                        start_col: col,
-                        row,
-                        fg_color,
-                        bg_color,
-                        bold,
-                        italic,
-                        underline,
-                    });
-                }
+            });
+
+            if can_extend {
+                current_run.as_mut().unwrap().text.push(ch);
             } else {
-                // Start new run
+                if let Some(run) = current_run.take() {
+                    text_runs.push(run);
+                }
                 current_run = Some(BatchedTextRun {
                     text: ch.to_string(),
                     start_col: col,
@@ -394,9 +416,9 @@ impl TerminalRenderer {
                     underline,
                 });
             }
+            next_run_col = Some(col + 1);
         }
 
-        // Push final run and background
         if let Some(run) = current_run {
             text_runs.push(run);
         }
@@ -404,10 +426,7 @@ impl TerminalRenderer {
             backgrounds.push(bg);
         }
 
-        // Merge adjacent backgrounds with same color
-        let merged_backgrounds = self.merge_backgrounds(backgrounds);
-
-        (merged_backgrounds, text_runs)
+        (self.merge_backgrounds(backgrounds), text_runs)
     }
 
     /// Merge adjacent background rects with same color.
@@ -443,6 +462,115 @@ impl TerminalRenderer {
         merged
     }
 
+    /// Calculate the on-screen bounds of the terminal cursor cell, used for
+    /// IME candidate-window positioning. Returns `None` when the cursor is
+    /// scrolled out of the visible viewport.
+    pub fn cursor_bounds(
+        &self,
+        bounds: Bounds<Pixels>,
+        padding: Edges<Pixels>,
+        term: &Term<SessionListener>,
+    ) -> Option<Bounds<Pixels>> {
+        let grid = term.grid();
+        let display_offset = grid.display_offset() as i32;
+        let p = grid.cursor.point;
+        let row = p.line.0 + display_offset;
+        if row < 0 || row as usize >= grid.screen_lines() {
+            return None;
+        }
+        let origin = Point {
+            x: bounds.origin.x + padding.left,
+            y: bounds.origin.y + padding.top,
+        };
+        Some(Bounds {
+            origin: Point {
+                x: origin.x + self.cell_width * (p.column.0 as f32),
+                y: origin.y + self.cell_height * (row as f32),
+            },
+            size: Size {
+                width: self.cell_width,
+                height: self.cell_height,
+            },
+        })
+    }
+
+    /// Paint the marked (IME pre-edit) text at the cursor position with an
+    /// underline, covering the terminal text behind it. Mirrors Zed's
+    /// terminal: composition feedback lives in the terminal view layer.
+    fn paint_marked_text(
+        &self,
+        marked_text: &str,
+        origin: Point<Pixels>,
+        cursor_point: AlacPoint,
+        display_offset: i32,
+        default_bg: Hsla,
+        foreground: Hsla,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let cursor_row = cursor_point.line.0 + display_offset;
+        if cursor_row < 0 {
+            return;
+        }
+        let x = origin.x + self.cell_width * (cursor_point.column.0 as f32);
+        let y = origin.y + self.cell_height * (cursor_row as f32);
+
+        let font = Font {
+            family: self.font_family.clone().into(),
+            features: FontFeatures::default(),
+            fallbacks: None,
+            weight: FontWeight::NORMAL,
+            style: FontStyle::Normal,
+        };
+        let run = TextRun {
+            len: marked_text.len(),
+            font,
+            color: foreground,
+            underline: Some(UnderlineStyle {
+                thickness: px(1.0),
+                color: Some(foreground),
+                wavy: false,
+            }),
+            background_color: None,
+            strikethrough: None,
+        };
+        let shaped = window.text_system().shape_line(
+            marked_text.to_string().into(),
+            self.font_size,
+            &[run],
+            None,
+        );
+        // 背景盖住组合文本后面的终端内容，宽度至少一格光标宽
+        let width = shaped.width.max(self.cell_width);
+        window.paint_quad(quad(
+            Bounds {
+                origin: Point { x, y },
+                size: Size {
+                    width,
+                    height: self.cell_height,
+                },
+            },
+            px(0.0),
+            default_bg,
+            Edges::<Pixels>::default(),
+            transparent_black(),
+            Default::default(),
+        ));
+        let base_height = self.cell_height / self.line_height_multiplier;
+        let vertical_offset = (self.cell_height - base_height) / 2.0;
+        let _ = shaped.paint(
+            Point {
+                x,
+                y: y + vertical_offset,
+            },
+            self.cell_height,
+            gpui::TextAlign::Left,
+            None,
+            window,
+            cx,
+        );
+    }
+
     /// Paint terminal content to the window.
     ///
     /// This is the main rendering method that draws the terminal grid,
@@ -453,6 +581,8 @@ impl TerminalRenderer {
     /// * `bounds` - The bounding box to render within
     /// * `padding` - Padding around the terminal content
     /// * `term` - The terminal state
+    /// * `marked_text` - Active IME composition text, if any; painted at the
+    ///   cursor and suppresses the hardware cursor while composing
     /// * `window` - The GPUI window
     /// * `cx` - The application context
     pub fn paint(
@@ -460,6 +590,7 @@ impl TerminalRenderer {
         bounds: Bounds<Pixels>,
         padding: Edges<Pixels>,
         term: &Term<SessionListener>,
+        marked_text: Option<&str>,
         window: &mut Window,
         _cx: &mut App,
     ) {
@@ -468,10 +599,17 @@ impl TerminalRenderer {
         let num_lines = grid.screen_lines();
         let num_cols = grid.columns();
         let colors = term.colors();
+        // 回滚视口：display_offset > 0 时可见区从负行号开始（见
+        // grid::display_iter 的约定），行索引需偏移才能渲染历史内容。
+        let display_offset = grid.display_offset() as i32;
 
         // Calculate default background color
         let default_bg = self.palette.resolve(
             Color::Named(alacritty_terminal::vte::ansi::NamedColor::Background),
+            colors,
+        );
+        let default_fg = self.palette.resolve(
+            Color::Named(alacritty_terminal::vte::ansi::NamedColor::Foreground),
             colors,
         );
 
@@ -493,7 +631,8 @@ impl TerminalRenderer {
 
         // Iterate over visible lines
         for line_idx in 0..num_lines {
-            let line = Line(line_idx as i32);
+            // 回滚偏移：line_idx 是屏幕行号，buffer 行号 = 屏幕行号 - offset
+            let line = Line(line_idx as i32 - display_offset);
 
             // Collect cells for this line
             let cells: Vec<(usize, Cell)> = (0..num_cols)
@@ -505,8 +644,9 @@ impl TerminalRenderer {
                 })
                 .collect();
 
-            // Layout the row for backgrounds
-            let (backgrounds, _) = self.layout_row(line_idx, cells.iter().cloned(), colors);
+            // 一次布局同时产出背景段和批量文字段。
+            let (backgrounds, text_runs) =
+                self.layout_row(line_idx, cells.iter().cloned(), colors);
 
             // Paint backgrounds
             for bg_rect in backgrounds {
@@ -650,55 +790,40 @@ impl TerminalRenderer {
                 }
             }
 
-            // Third pass: draw regular text characters
-            for (col_idx, cell) in cells_vec.iter() {
-                let ch = cell.c;
-
-                // Skip empty cells and box-drawing (already handled)
-                if ch == ' ' || ch == '\0' || box_drawing::is_box_drawing_char(ch) {
+            // Third pass: 相邻同样式字符合并后一次 shape + paint。旧实现每字符
+            // 一次 shape_line，一屏数百次；触控板滚动驱动连续 repaint 时会卡顿。
+            for run in text_runs {
+                // 无下划线的纯空格无需 shape（背景已在第一 pass 绘制）。
+                if !run.underline && run.text.chars().all(|ch| ch == ' ') {
                     continue;
                 }
 
-                let x = origin.x + self.cell_width * (*col_idx as f32);
-                let fg_color = self.palette.resolve(cell.fg, colors);
-
-                // For regular text, apply vertical offset for centering
+                let x = origin.x + self.cell_width * (run.start_col as f32);
                 let y = y_base + vertical_offset;
-
-                // Get cell flags for styling
-                let flags = cell.flags;
-                let bold = flags.contains(alacritty_terminal::term::cell::Flags::BOLD);
-                let italic = flags.contains(alacritty_terminal::term::cell::Flags::ITALIC);
-                let underline = flags.contains(alacritty_terminal::term::cell::Flags::UNDERLINE);
-
-                // Create font with styling
                 let font = Font {
                     family: self.font_family.clone().into(),
                     features: FontFeatures::default(),
                     fallbacks: None,
-                    weight: if bold {
+                    weight: if run.bold {
                         FontWeight::BOLD
                     } else {
                         FontWeight::NORMAL
                     },
-                    style: if italic {
+                    style: if run.italic {
                         FontStyle::Italic
                     } else {
                         FontStyle::Normal
                     },
                 };
-
-                // Create text run for this single character
-                let char_str = ch.to_string();
                 let text_run = TextRun {
-                    len: char_str.len(),
+                    len: run.text.len(),
                     font,
-                    color: fg_color,
+                    color: run.fg_color,
                     background_color: None,
-                    underline: if underline {
+                    underline: if run.underline {
                         Some(UnderlineStyle {
                             thickness: px(1.0),
-                            color: Some(fg_color),
+                            color: Some(run.fg_color),
                             wavy: false,
                         })
                     } else {
@@ -706,15 +831,13 @@ impl TerminalRenderer {
                     },
                     strikethrough: None,
                 };
-
-                // Shape and paint the character
-                let text: SharedString = char_str.into();
-                let shaped_line =
-                    window
-                        .text_system()
-                        .shape_line(text, self.font_size, &[text_run], None);
-
-                // Paint at exact cell position (ignore errors)
+                let text: SharedString = run.text.into();
+                let shaped_line = window.text_system().shape_line(
+                    text,
+                    self.font_size,
+                    &[text_run],
+                    Some(self.cell_width),
+                );
                 let _ = shaped_line.paint(
                     Point { x, y },
                     self.cell_height,
@@ -726,13 +849,39 @@ impl TerminalRenderer {
             }
         }
 
-        // Paint cursor (skipped on the blink-off phase)
-        if !self.cursor_visible {
+        // 光标位置提前取出：IME 组合文本与硬件光标都要用。
+        let cursor_point = grid.cursor.point;
+
+        // IME 组合文本：画在光标处并盖住身后内容；组合期间不画硬件光标
+        // （与 Zed 终端一致，避免双重光标）。
+        if let Some(marked) = marked_text
+            && !marked.is_empty()
+        {
+            self.paint_marked_text(
+                marked,
+                origin,
+                cursor_point,
+                display_offset,
+                default_bg,
+                default_fg,
+                window,
+                _cx,
+            );
             return;
         }
-        let cursor_point = grid.cursor.point;
+
+        // Cursor: TUI 隐光标（DECSET 25 关，SHOW_CURSOR 位）时不画；
+        // 闪烁 off 相位也返回。否则会在 TUI 界面上留下一个实心黑块。
+        if !self.cursor_visible || !term.mode().contains(TermMode::SHOW_CURSOR) {
+            return;
+        }
+        // 光标行号也要叠加回滚偏移；滚出可见区就不画。
+        let cursor_row = cursor_point.line.0 + display_offset;
+        if cursor_row < 0 || cursor_row as usize >= num_lines {
+            return;
+        }
         let cursor_x = origin.x + self.cell_width * (cursor_point.column.0 as f32);
-        let cursor_y = origin.y + self.cell_height * (cursor_point.line.0 as f32);
+        let cursor_y = origin.y + self.cell_height * (cursor_row as f32);
 
         let cursor_color = self.palette.resolve(
             Color::Named(alacritty_terminal::vte::ansi::NamedColor::Cursor),
@@ -758,6 +907,56 @@ impl TerminalRenderer {
             transparent_black(),
             Default::default(),
         ));
+
+        // 块光标反色：quad 盖住了光标处字形，用默认背景色重画一次该字符，
+        // 等效传统终端的块光标反色效果（空格/制图字符无需重画）。
+        let cell = grid[cursor_point].clone();
+        let ch = cell.c;
+        if ch != ' ' && ch != '\0' && !box_drawing::is_box_drawing_char(ch) {
+            let font = Font {
+                family: self.font_family.clone().into(),
+                features: FontFeatures::default(),
+                fallbacks: None,
+                weight: if cell.flags.contains(Flags::BOLD) {
+                    FontWeight::BOLD
+                } else {
+                    FontWeight::NORMAL
+                },
+                style: if cell.flags.contains(Flags::ITALIC) {
+                    FontStyle::Italic
+                } else {
+                    FontStyle::Normal
+                },
+            };
+            let char_str = ch.to_string();
+            let text_run = TextRun {
+                len: char_str.len(),
+                font,
+                color: default_bg,
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            };
+            let text: SharedString = char_str.into();
+            let shaped_line =
+                window
+                    .text_system()
+                    .shape_line(text, self.font_size, &[text_run], None);
+            // 与第三 pass 相同的垂直居中偏移
+            let base_height = self.cell_height / self.line_height_multiplier;
+            let vertical_offset = (self.cell_height - base_height) / 2.0;
+            let _ = shaped_line.paint(
+                Point {
+                    x: cursor_x,
+                    y: cursor_y + vertical_offset,
+                },
+                self.cell_height,
+                gpui::TextAlign::Left,
+                None,
+                window,
+                _cx,
+            );
+        }
     }
 }
 
@@ -776,6 +975,69 @@ mod tests {
         assert_eq!(renderer.font_family, "Fira Code");
         assert_eq!(renderer.font_size, px(14.0));
         assert_eq!(renderer.line_height_multiplier, 1.0);
+    }
+
+    #[test]
+    fn test_layout_row_splits_text_around_custom_drawn_box_characters() {
+        let renderer = TerminalRenderer::new(
+            "Menlo".to_string(),
+            px(14.0),
+            1.0,
+            ColorPalette::default(),
+        );
+        let cells = "ab│cd"
+            .chars()
+            .enumerate()
+            .map(|(col, c)| (col, Cell { c, ..Cell::default() }));
+        let (_, runs) = renderer.layout_row(0, cells, &Colors::default());
+        let texts: Vec<&str> = runs.iter().map(|run| run.text.as_str()).collect();
+        assert_eq!(texts, vec!["ab", "cd"]);
+    }
+
+    #[test]
+    fn test_layout_row_inverts_fg_bg_for_sgr7_cells() {
+        // pi 等 TUI 用反色 cell 画软光标/选中块：SGR 7 必须交换 fg/bg，
+        // 否则光标块在深色主题下不可见。
+        let renderer = TerminalRenderer::new(
+            "Menlo".to_string(),
+            px(14.0),
+            1.0,
+            ColorPalette::default(),
+        );
+        let plain = Cell { c: 'a', ..Cell::default() };
+        let mut inverted = Cell { c: ' ', ..Cell::default() };
+        inverted.flags.insert(Flags::INVERSE);
+
+        // 空格不进文字 run，但背景段必须存在且颜色被交换（= 前景色）
+        let (backgrounds, runs) = renderer.layout_row(
+            0,
+            vec![(0, plain), (1, inverted)].into_iter(),
+            &Colors::default(),
+        );
+        assert_eq!(backgrounds.len(), 2, "反色 cell 背景与默认背景不同，应独立成段");
+        assert_ne!(backgrounds[0].color, backgrounds[1].color);
+        let _ = runs;
+    }
+
+    #[test]
+    fn test_layout_row_batches_plain_text_and_skips_wide_spacer() {
+        let renderer = TerminalRenderer::new(
+            "Menlo".to_string(),
+            px(14.0),
+            1.0,
+            ColorPalette::default(),
+        );
+        let mut wide = Cell { c: '中', ..Cell::default() };
+        wide.flags.insert(Flags::WIDE_CHAR);
+        let mut spacer = Cell::default();
+        spacer.flags.insert(Flags::WIDE_CHAR_SPACER);
+        let mut cells = vec![(0, wide), (1, spacer), (2, Cell { c: 'x', ..Cell::default() })];
+        cells.extend((3..80).map(|col| (col, Cell { c: 'a', ..Cell::default() })));
+
+        let (_, runs) = renderer.layout_row(0, cells.into_iter(), &Colors::default());
+        assert_eq!(runs.len(), 2, "宽字符单独 shape，后续 ASCII 合为一个 run");
+        assert_eq!(runs[0].text, "中");
+        assert_eq!(runs[1].text, format!("x{}", "a".repeat(77)));
     }
 
     #[test]

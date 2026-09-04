@@ -72,7 +72,7 @@
 //! ```
 //! use gpui::Keystroke;
 //! use alacritty_terminal::term::TermMode;
-//! use gpui_terminal::input::keystroke_to_bytes;
+//! use jagent_terminal::keystroke_to_bytes;
 //!
 //! // Enter key
 //! let keystroke = Keystroke::parse("enter").unwrap();
@@ -84,13 +84,37 @@
 //! ```
 
 use alacritty_terminal::term::TermMode;
-use gpui::Keystroke;
+use gpui::{Keystroke, Modifiers};
+
+/// 方向键序列构造（滚轮模拟路径复用：view 在备用屏把 wheel 转方向键）。
+/// 走 keystroke_to_bytes 统一处理 APP_CURSOR 分支。
+pub fn arrow_key_bytes(direction: &str, mode: TermMode) -> Option<Vec<u8>> {
+    debug_assert!(matches!(direction, "up" | "down" | "left" | "right"));
+    keystroke_to_bytes(
+        &Keystroke {
+            modifiers: Modifiers::none(),
+            key: direction.to_string(),
+            key_char: None,
+        },
+        mode,
+    )
+}
 
 /// Convert a GPUI keystroke to terminal escape sequence bytes.
 ///
 /// This function translates GPUI keyboard events into the appropriate byte sequences
 /// expected by terminal applications. It handles special keys, control characters,
 /// and application cursor mode.
+///
+/// # Text-input path (IME / insertText)
+///
+/// Plain printable characters (no control/alt/platform modifiers) return `None`:
+/// the key event must stay un-consumed so the platform text-input path takes it —
+/// macOS routes it through `NSTextInputContext` (`insertText:` / `setMarkedText:`),
+/// Windows through `WM_CHAR` / `WM_IME_COMPOSITION`. Both land in the view's
+/// `InputHandler::replace_text_in_range`, which writes the PTY. This is what
+/// makes IME (Chinese/Japanese/Korean) input work — the same architecture as
+/// Zed's terminal.
 ///
 /// # Arguments
 ///
@@ -107,13 +131,18 @@ use gpui::Keystroke;
 /// ```
 /// use gpui::Keystroke;
 /// use alacritty_terminal::term::TermMode;
-/// use gpui_terminal::input::keystroke_to_bytes;
+/// use jagent_terminal::keystroke_to_bytes;
 ///
 /// let keystroke = Keystroke::parse("enter").unwrap();
 /// let bytes = keystroke_to_bytes(&keystroke, TermMode::empty());
 /// assert_eq!(bytes, Some(b"\r".to_vec()));
 /// ```
 pub fn keystroke_to_bytes(keystroke: &Keystroke, mode: TermMode) -> Option<Vec<u8>> {
+    // 平台快捷键修饰（macOS Cmd / Windows Win）：属于应用层快捷键，不进 PTY。
+    if keystroke.modifiers.platform {
+        return None;
+    }
+
     // Handle special keys first
     match keystroke.key.as_str() {
         // Basic control characters
@@ -121,7 +150,8 @@ pub fn keystroke_to_bytes(keystroke: &Keystroke, mode: TermMode) -> Option<Vec<u
             if keystroke.modifiers.control {
                 return Some(b"\x00".to_vec()); // Ctrl+Space = NUL
             }
-            return Some(b" ".to_vec());
+            // 无修饰空格走文本输入路径（与字母一致），保证 IME 行为统一
+            return None;
         }
         "enter" => return Some(b"\r".to_vec()),
         "escape" => return Some(b"\x1b".to_vec()),
@@ -226,35 +256,14 @@ pub fn keystroke_to_bytes(keystroke: &Keystroke, mode: TermMode) -> Option<Vec<u
         }
     }
 
-    // Handle regular printable characters
-    // Use key_char if available (contains the actual typed character with modifiers like Shift)
-    if let Some(key_char) = &keystroke.key_char
-        && !keystroke.modifiers.control
-        && !keystroke.modifiers.alt
-    {
-        return Some(key_char.as_bytes().to_vec());
+    // 可打印字符（无 ctrl/alt/platform 修饰，shift 不算控制）：交给平台
+    // 文本输入路径（insertText / WM_CHAR → InputHandler），IME 组合也
+    // 在那里发生。这里消费掉会双重写入并阻断 IME。
+    if !keystroke.modifiers.control && !keystroke.modifiers.alt {
+        return None;
     }
 
-    // Fallback to key for single characters
-    let key = keystroke.key.as_str();
-    if key.len() == 1 {
-        let ch = key.chars().next().unwrap();
-        if ch.is_ascii() && !keystroke.modifiers.control {
-            // Handle shift modifier for uppercase
-            let ch = if keystroke.modifiers.shift {
-                ch.to_ascii_uppercase()
-            } else {
-                ch
-            };
-            return Some(vec![ch as u8]);
-        }
-        // For non-ASCII characters, encode as UTF-8
-        if !keystroke.modifiers.control && !keystroke.modifiers.alt {
-            return Some(key.as_bytes().to_vec());
-        }
-    }
-
-    // If we get here, the keystroke doesn't produce any output
+    // 到这里只剩带修饰的键：alt/ctrl 组合均已处理，其余不产生输出。
     None
 }
 
@@ -409,24 +418,44 @@ mod tests {
     }
 
     #[test]
-    fn test_regular_characters() {
+    fn test_regular_characters_take_text_input_path() {
         let mode = TermMode::empty();
 
+        // 可打印字符不再直写 PTY：返回 None 让事件传播到平台
+        // insertText / WM_CHAR 路径（IME 在那里工作）。
         let a = Keystroke::parse("a").unwrap();
-        assert_eq!(keystroke_to_bytes(&a, mode), Some(b"a".to_vec()));
+        assert_eq!(keystroke_to_bytes(&a, mode), None);
 
         let z = Keystroke::parse("z").unwrap();
-        assert_eq!(keystroke_to_bytes(&z, mode), Some(b"z".to_vec()));
+        assert_eq!(keystroke_to_bytes(&z, mode), None);
 
         let zero = Keystroke::parse("0").unwrap();
-        assert_eq!(keystroke_to_bytes(&zero, mode), Some(b"0".to_vec()));
+        assert_eq!(keystroke_to_bytes(&zero, mode), None);
+
+        // 带实际字符的 shift 组合同样走文本路径
+        let upper = Keystroke {
+            modifiers: gpui::Modifiers::shift(),
+            key: "a".to_string(),
+            key_char: Some("A".to_string()),
+        };
+        assert_eq!(keystroke_to_bytes(&upper, mode), None);
     }
 
     #[test]
-    fn test_space_key() {
+    fn test_platform_modifier_never_reaches_pty() {
         let mode = TermMode::empty();
 
+        // Cmd/Win 修饰是应用快捷键，绝不写入 PTY
+        let cmd_s = Keystroke::parse("cmd-s").unwrap();
+        assert_eq!(keystroke_to_bytes(&cmd_s, mode), None);
+    }
+
+    #[test]
+    fn test_space_key_takes_text_input_path() {
+        let mode = TermMode::empty();
+
+        // 无修饰空格走文本路径；Ctrl+Space 仍直写 NUL
         let space = Keystroke::parse("space").unwrap();
-        assert_eq!(keystroke_to_bytes(&space, mode), Some(b" ".to_vec()));
+        assert_eq!(keystroke_to_bytes(&space, mode), None);
     }
 }

@@ -17,7 +17,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use gpui_terminal::box_drawing;
+//! use jagent_terminal::TerminalRenderer;
 //!
 //! // Check if a character is a box-drawing character
 //! if box_drawing::is_box_drawing_char('┌') {
