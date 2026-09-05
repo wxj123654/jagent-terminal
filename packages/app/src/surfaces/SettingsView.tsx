@@ -60,7 +60,15 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
   return (
     <div
       testId="settings-view"
-      style={{ flexGrow: 1, display: 'flex', flexDirection: 'row', backgroundColor: COLORS.pane }}
+      style={{
+        flexGrow: 1,
+        flexShrink: 1,
+        minWidth: 0,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'row',
+        backgroundColor: COLORS.pane,
+      }}
     >
       {/* ── 左列：SettingsNav ── */}
       <div
@@ -212,68 +220,68 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
         style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflowY: 'scroll' }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', padding: 20 }}>
-        {searching ? (
-          totalHits === 0 ? (
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 10,
-                alignItems: 'flex-start',
-              }}
-            >
-              <text
-                testId="settings-empty"
-                style={{ fontSize: 13, fontFamily: FONT.ui, color: COLORS.muted }}
-              >
-                {`无匹配“${query.trim()}”的设置项`}
-              </text>
+          {searching ? (
+            totalHits === 0 ? (
               <div
-                testId="settings-clear-search"
-                tabIndex={0}
-                onClick={() => setQuery('')}
-                onKeyDown={(e) => {
-                  if (e.key === 'enter') setQuery('')
-                }}
                 style={{
-                  height: 26,
-                  paddingLeft: 10,
-                  paddingRight: 10,
                   display: 'flex',
-                  alignItems: 'center',
-                  borderRadius: 4,
-                  backgroundColor: COLORS.surface,
-                  cursor: 'pointer',
-                  hover: { backgroundColor: COLORS.surfaceHover },
+                  flexDirection: 'column',
+                  gap: 10,
+                  alignItems: 'flex-start',
                 }}
               >
                 <text
+                  testId="settings-empty"
+                  style={{ fontSize: 13, fontFamily: FONT.ui, color: COLORS.muted }}
+                >
+                  {`无匹配“${query.trim()}”的设置项`}
+                </text>
+                <div
+                  testId="settings-clear-search"
+                  tabIndex={0}
+                  onClick={() => setQuery('')}
+                  onKeyDown={(e) => {
+                    if (e.key === 'enter') setQuery('')
+                  }}
                   style={{
-                    fontSize: 12,
-                    fontFamily: FONT.ui,
-                    color: COLORS.textBright,
-                    pointerEvents: 'none',
+                    height: 26,
+                    paddingLeft: 10,
+                    paddingRight: 10,
+                    display: 'flex',
+                    alignItems: 'center',
+                    borderRadius: 4,
+                    backgroundColor: COLORS.surface,
+                    cursor: 'pointer',
+                    hover: { backgroundColor: COLORS.surfaceHover },
                   }}
                 >
-                  清除搜索
-                </text>
+                  <text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: FONT.ui,
+                      color: COLORS.textBright,
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    清除搜索
+                  </text>
+                </div>
               </div>
-            </div>
+            ) : (
+              // 跨分区命中列表（对齐 Zed：搜索时右列显示全部命中）
+              SECTIONS.filter((s) => (hits[s.id] ?? 0) > 0).map((s) => (
+                <div key={s.id} style={{ marginBottom: 18 }}>
+                  <SectionHeading label={s.label} />
+                  {renderSectionContent(s.id, settings, q)}
+                </div>
+              ))
+            )
           ) : (
-            // 跨分区命中列表（对齐 Zed：搜索时右列显示全部命中）
-            SECTIONS.filter((s) => (hits[s.id] ?? 0) > 0).map((s) => (
-              <div key={s.id} style={{ marginBottom: 18 }}>
-                <SectionHeading label={s.label} />
-                {renderSectionContent(s.id, settings, q)}
-              </div>
-            ))
-          )
-        ) : (
-          <>
-            <SectionHeading label={SECTIONS.find((s) => s.id === section)?.label ?? ''} />
-            {renderSectionContent(section as SettingSectionId, settings, null)}
-          </>
-        )}
+            <>
+              <SectionHeading label={SECTIONS.find((s) => s.id === section)?.label ?? ''} />
+              {renderSectionContent(section as SettingSectionId, settings, null)}
+            </>
+          )}
         </div>
       </div>
     </div>

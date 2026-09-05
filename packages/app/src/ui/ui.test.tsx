@@ -291,6 +291,23 @@ describe('TextInput / Textarea', () => {
     t.renderer.nativeSimulateKeystrokes(el.id, 'x')
     expect(calls[calls.length - 1]).toBe('KEY=Vx')
   })
+
+  test('native input 行高取元素样式，不被默认 rem 行高撑大', () => {
+    const render = (lineHeight: number) => {
+      t.render(
+        createElement('textarea', {
+          testId: 'line-height-textarea',
+          minRows: 3,
+          style: { fontSize: 13, lineHeight },
+        }),
+      )
+      t.renderer.flush()
+      return t.renderer.getElementBounds(t.renderer.findByTestId('line-height-textarea')!.id)![3]
+    }
+
+    expect(render(17)).toBe(51)
+    expect(render(23)).toBe(69)
+  })
 })
 
 // ── Badge ────────────────────────────────────────────────────────────
@@ -352,6 +369,8 @@ describe('SettingRow', () => {
     expect(t.renderer.findByTestId('row-notifications.desktop')).toBeDefined()
     expect(t.renderer.findByTestId('moddot-notifications.desktop')).toBeDefined()
     expect(t.renderer.findByTestId('reset-notifications.desktop')).toBeDefined()
+    expect(boundsOf('reset-slot-notifications.desktop')[2]).toBe(18)
+    expect(boundsOf('reset-notifications.desktop')[2]).toBe(18)
 
     click('setting-notifications.desktop')
     expect(changes).toEqual([false])
@@ -360,18 +379,30 @@ describe('SettingRow', () => {
     expect(resets).toBe(1)
   })
 
-  test('未修改行无 reset 钮；label/description 渲染', () => {
+  test('未修改行保留 reset 槽；显隐切换不改变控件与槽位布局', () => {
     const def = defOf('terminal.scrollbackLines')
-    t.render(
-      createElement(SettingRow, {
-        def,
-        value: 10000,
-        modified: false,
-        onChange: () => {},
-        onReset: () => {},
-      }),
-    )
+    const renderRow = (modified: boolean) =>
+      t.render(
+        createElement(SettingRow, {
+          def,
+          value: 10000,
+          modified,
+          onChange: () => {},
+          onReset: () => {},
+        }),
+      )
+
+    renderRow(false)
     expect(t.renderer.findByTestId('reset-terminal.scrollbackLines')).toBeUndefined()
+    expect(t.renderer.findByTestId('reset-inactive-terminal.scrollbackLines')).toBeDefined()
+    const slotBefore = boundsOf('reset-slot-terminal.scrollbackLines')
+    const controlBefore = boundsOf('setting-terminal.scrollbackLines')
+    expect(slotBefore[2]).toBe(18)
+
+    renderRow(true)
+    expect(t.renderer.findByTestId('reset-terminal.scrollbackLines')).toBeDefined()
+    expect(boundsOf('reset-slot-terminal.scrollbackLines')).toEqual(slotBefore)
+    expect(boundsOf('setting-terminal.scrollbackLines')).toEqual(controlBefore)
     expect(t.renderer.getAllText().some((s) => s.includes('回滚行数'))).toBe(true)
     expect(t.renderer.getAllText().some((s) => s.includes('scrollback 缓冲区大小'))).toBe(true)
   })

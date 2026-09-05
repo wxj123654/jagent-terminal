@@ -9,8 +9,8 @@
 //! the typed↔JSON boxing happens exactly here, once, at the channel
 //! boundary — command functions in lib.rs stay generic over `T`.
 
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 /// Run `f` with GPUI app access and return its typed result. Picks the
 /// threaded host channel when the real renderer is live, otherwise falls

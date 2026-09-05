@@ -25,7 +25,6 @@
 import { useState } from 'react'
 
 import type { AppPlatform } from '../ui/platform'
-import { TRAFFIC_LIGHT_PADDING } from '../ui/platform'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
 
 /** 窗口控制 seam（main.tsx 装配：闭包 renderer；测试注入 spy） */
@@ -150,10 +149,9 @@ export function TitleBar({
         alignItems: 'center',
         height: SIZES.titleBarHeight,
         backgroundColor: COLORS.titlebar,
-        // mac 红绿灯只在 SidebarHeader 段让位（Zed：sidebar 打开时本段不加
-        // TRAFFIC_LIGHT_PADDING）；win drag 标记让系统接管；linux 纯内容
-        paddingLeft: platform === 'win' ? 12 : TRAFFIC_LIGHT_PADDING + 12,
-        paddingRight: platform === 'win' ? 0 : 12,
+        // 不把 padding 放在横向 flex item 上：gpuix 的 padding 会从
+        // painted bounds 起点偏移并破坏本段与 sidebar 的对齐。mac 的
+        // 红绿灯让位已由 SidebarHeader 承担，本段始终只留 12px 内容距。
         userSelect: 'none',
         ...(platform === 'win'
           ? { windowControlArea: 'drag' as const, justifyContent: 'space-between' }
@@ -164,6 +162,10 @@ export function TitleBar({
       <text
         style={{
           pointerEvents: 'none',
+          marginLeft: 12,
+          marginRight: platform === 'win' ? 0 : 12,
+          minWidth: 0,
+          flexGrow: 1,
           fontSize: 12,
           fontFamily: FONT.ui,
           fontWeight: '500',

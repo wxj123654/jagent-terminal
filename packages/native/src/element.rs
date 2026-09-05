@@ -7,13 +7,13 @@
 //! Retain semantics: `destroy()` drops only the view entity; the session
 //! stays in the pool until `destroyTerminalSession` (R1/R2 seam rules).
 
-use gpuix_native::custom_elements::{CustomElement, CustomElementFactory, CustomRenderContext};
 use gpuix_native::GpuixView;
+use gpuix_native::custom_elements::{CustomElement, CustomElementFactory, CustomRenderContext};
 use jagent_terminal::{TerminalPool, TerminalView};
 use serde_json::Value;
 
 use gpui::{AnyElement, AppContext, Context, Entity, IntoElement, ParentElement, Styled, Window};
-use gpui::{div, px, rgb, SharedString};
+use gpui::{SharedString, div, px, rgb};
 
 /// Factory registered process-wide at module load (lib.rs `#[module_exports]`).
 pub struct TerminalElementFactory;
@@ -147,7 +147,14 @@ impl CustomElement for TerminalElement {
     }
 
     fn supported_props(&self) -> &'static [&'static str] {
-        &["sessionId", "fontFamily", "fontSize", "cursorBlink", "palette", "focused"]
+        &[
+            "sessionId",
+            "fontFamily",
+            "fontSize",
+            "cursorBlink",
+            "palette",
+            "focused",
+        ]
     }
 
     fn supported_events(&self) -> &'static [&'static str] {

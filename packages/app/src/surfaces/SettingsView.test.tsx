@@ -287,3 +287,58 @@ describe('SettingsView · 真值（§15 4/5 部分）', () => {
     )
   })
 })
+
+// ── scroll containment：视口约束 + padding 不产生空滚 ─────────────────
+
+describe('SettingsView · scroll containment', () => {
+  test('短内容不产生空滚；内容超出时视口仍受父高约束', () => {
+    const constrained = createTestRoot({ width: 900, height: 700 })
+    const localSettings = createSettingsStore(memoryAdapter())
+    const frame = (height: number) =>
+      createElement(
+        'div',
+        {
+          style: {
+            width: 900,
+            height,
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: 0,
+          },
+        },
+        createElement(SettingsView, { settings: localSettings }),
+      )
+
+    try {
+      navigateSettingsSection('presets')
+      constrained.render(frame(500))
+      constrained.renderer.flush()
+
+      let scroll = constrained.renderer.findByTestId('settings-content-scroll')!
+      let bounds = constrained.renderer.getElementBounds(scroll.id)!
+      expect(bounds[3]).toBe(500)
+      constrained.renderer.nativeSimulateScrollWheel(
+        bounds[0] + bounds[2] / 2,
+        bounds[1] + 100,
+        0,
+        -1000,
+      )
+      expect(Math.abs(constrained.renderer.getScrollOffset(scroll.id)![1])).toBe(0)
+
+      constrained.render(frame(300))
+      constrained.renderer.flush()
+      scroll = constrained.renderer.findByTestId('settings-content-scroll')!
+      bounds = constrained.renderer.getElementBounds(scroll.id)!
+      expect(bounds[3]).toBe(300)
+      constrained.renderer.nativeSimulateScrollWheel(
+        bounds[0] + bounds[2] / 2,
+        bounds[1] + 100,
+        0,
+        -1000,
+      )
+      expect(constrained.renderer.getScrollOffset(scroll.id)![1]).toBeLessThan(0)
+    } finally {
+      constrained.unmount()
+    }
+  })
+})

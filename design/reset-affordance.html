@@ -110,8 +110,14 @@
   .row.modified .mod-dot { background: var(--accent); border-color: var(--accent); }
   .row-desc { font-size: 12px; color: var(--text-muted); margin-top: 3px; line-height: 17px; }
 
-  /* Zed 式「— 已修改」文字（仅方案 B 用） */
-  .mod-text { font-size: 11px; color: var(--text-muted); }
+  /* 选定的 B+：label 后固定紧凑槽。图标只做 paint 显隐，不参与重排。 */
+  .label-reset-slot {
+    width: 18px; height: 18px; flex: 0 0 18px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .panel-b .reset { width: 18px; height: 18px; }
+  .panel-b .reset svg { width: 10px; height: 10px; }
+  .panel-b .reset.label-reset.inactive { opacity: 0; pointer-events: none; }
 
   /* ── 控件 ── */
   .cell-control { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -212,18 +218,17 @@
 <div class="doc">
   <h1>行级「恢复默认」— 放置与形态设计</h1>
   <p>
-    需求：设置里<b>每一行</b>都能恢复默认值。三个候选：A 行尾随控件（当前实现）、
-    B label 旁（Zed Settings Editor 真实做法）、C 行尾固定槽 + 状态分级（推荐）。
-    下方三个面板用同一组行（含宽窄不一的控件 + textarea 高行）演示差异；行内控件可操作，
-    改动后行变 modified，reset 出现，点击即恢复。
+    需求：设置里<b>每一行</b>都能恢复默认值。已选择 B，并按反馈升级为
+    <b>label 旁固定 18px 槽 + 10px Undo 图标</b>：图标只改变透明度与交互状态，
+    不增删槽位，因此出现 / 消失不会推动 label 或右侧控件。下方保留 A/C 作为对照。
   </p>
   <table>
-    <tr><th></th><th>A 行尾随控件（现状）</th><th>B label 旁（Zed）</th><th>C 行尾固定槽（推荐）</th></tr>
-    <tr><td>位置稳定性</td><td class="bad">✗ 随控件宽度漂移</td><td class="bad">✗ 随 label 长短漂移</td><td class="good">✓ 恒定最右 24px 列</td></tr>
-    <tr><td>常态噪音</td><td class="good">低（modified 才有）</td><td class="mid">中（多一截文字）</td><td class="good">零（ghost 仅行 hover）</td></tr>
-    <tr><td>键盘可达</td><td class="good">✓ 常显可 Tab</td><td class="good">✓ 常显可 Tab</td><td class="good">✓ modified 常显可 Tab</td></tr>
-    <tr><td>功能可发现</td><td class="mid">弱（默认行无暗示）</td><td class="good">强（文字自解释）</td><td class="good">强（hover ghost + 蓝点）</td></tr>
-    <tr><td>每行都有</td><td class="bad">✗ 默认行无</td><td class="bad">✗ 默认行无</td><td class="good">✓ 位置常在，modified 激活</td></tr>
+    <tr><th></th><th>A 行尾随控件（原实现）</th><th>B label 旁固定槽（选定）</th><th>C 行尾固定槽（对照）</th></tr>
+    <tr><td>位置稳定性</td><td class="bad">✗ 随控件宽度漂移</td><td class="good">✓ 18px 槽始终占位</td><td class="good">✓ 恒定最右 24px 列</td></tr>
+    <tr><td>图标体量</td><td class="mid">13px / 24px 盒</td><td class="good">10px / 18px 盒</td><td class="mid">13px / 24px 盒</td></tr>
+    <tr><td>布局切换</td><td class="bad">✗ 增删按钮节点</td><td class="good">✓ 只切 opacity / hit-test</td><td class="good">✓ 槽位常在</td></tr>
+    <tr><td>键盘可达</td><td class="good">✓ modified 可 Tab</td><td class="good">✓ modified 可 Tab</td><td class="good">✓ modified 可 Tab</td></tr>
+    <tr><td>语义分组</td><td class="mid">与控件混在一起</td><td class="good">✓ 状态操作紧邻 label</td><td class="mid">操作远离 label</td></tr>
   </table>
   <p class="note-nonproduct">本页为设计对比原型，非产品 UI。</p>
 </div>
@@ -237,11 +242,11 @@
   <div class="panel-body" id="panelA"></div>
 </div>
 
-<!-- ══════════ 方案 B：label 旁（Zed） ══════════ -->
-<div class="panel">
+<!-- ══════════ 方案 B：label 旁固定紧凑槽（选定） ══════════ -->
+<div class="panel panel-b">
   <div class="panel-head">
-    <h2>B · label 旁 + 文字标注（Zed Settings Editor）</h2>
-    <span class="verdict">↺ 紧贴 label，后跟 muted 文字「— 已修改」。语义聚在左列，但位置随 label 长短漂移；文字常驻占宽；单文件场景（j-agent 只有 settings.json）文字信息量低。</span>
+    <h2>B · label 旁固定紧凑槽（选定）</h2>
+    <span class="verdict">蓝点 → label → 18×18 固定槽；Undo 图标仅 10px。默认时按钮保持挂载但透明、禁用且不进 Tab；modified 时只切 paint / hit-test，不触发布局位移。</span>
   </div>
   <div class="panel-body" id="panelB"></div>
 </div>
@@ -351,14 +356,15 @@ function buildRow(d, panel) {
   const labelText = document.createElement('span'); labelText.textContent = d.label;
   labelRow.appendChild(dot); labelRow.appendChild(labelText);
 
-  /* 方案 B：label 后紧跟 ↺ + 「— 已修改」 */
+  /* 方案 B：label 后固定 18px 槽；按钮常驻，只切透明度与交互态。 */
   if (panel === 'B') {
-    if (mod) {
-      labelRow.appendChild(resetBtn(d, panel));
-      const mt = document.createElement('span');
-      mt.className = 'mod-text'; mt.textContent = '— 已修改';
-      labelRow.appendChild(mt);
-    }
+    const slot = document.createElement('span');
+    slot.className = 'label-reset-slot';
+    const b = resetBtn(d, panel, 'label-reset' + (mod ? '' : ' inactive'));
+    b.disabled = !mod;
+    b.tabIndex = mod ? 0 : -1;
+    slot.appendChild(b);
+    labelRow.appendChild(slot);
   }
   const desc = document.createElement('div');
   desc.className = 'row-desc'; desc.textContent = d.desc;
@@ -419,7 +425,7 @@ function render() {
     hint.innerHTML = p === 'A'
       ? '↺ 只在 modified 行出现、位置随控件浮动 —— 悬停各行观察水平位置不齐。'
       : p === 'B'
-        ? '↺ 与「— 已修改」都在左列 —— 语义聚集，但不同行 label 长短不同，↺ 不对齐。'
+        ? '↺ 视觉尺寸 10px；修改「字号」或「终端字体」再恢复，右侧控件与 label 坐标保持不变。'
         : '默认行悬停 → ghost ↺ 浮现（不可点）；modified 行 ↺ 常显、<span class="kbd">Tab</span> 可达、悬停看 tooltip「当前值 → 默认值」。';
     host.appendChild(hint);
   });

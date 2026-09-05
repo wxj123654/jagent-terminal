@@ -1,6 +1,6 @@
 /**
  * ui/SettingRow.tsx — 设置行（architecture.md §7；settings-ui.md §5.1 行结构：
- * 左 label + description，右 控件 + modified 蓝点 + reset）。
+ * 左 label + description（label 后固定 reset 槽），右侧仅放控件）。
  *
  * D7 声明式渲染的展示原子：def 只作类型来源（type-only import，编译期擦除，
  * 运行时零耦合——ui/ 不依赖任何人的运行时依赖不变），值与回调全由上层
@@ -8,8 +8,10 @@
  *
  * 可见性规则（§5.1 + §11 折中）：
  * - modified 蓝点常显（键盘可发现）；
- * - reset 按钮 modified 时始终渲染且 tabIndex 0（GPUIX 无 :focus-within，
- *   hover-only 显隐会伤键盘可达），常态半透明、行 hover 时全显；
+ * - 可用行始终保留 18×18 reset 槽，槽内始终挂载同一个 IconButton：
+ *   modified 只切 opacity / pointerEvents / tabIndex，不增删布局节点，因此
+ *   恢复图标出现或消失不会推动 label 或右侧控件；
+ * - Undo 图标视觉尺寸 10px，modified 时常显且可聚焦（避免 hover-only）；
  * - def.phase 项：控件 disabled + PhaseBadge（§5.3「可见但 disabled」）。
  */
 
@@ -163,6 +165,33 @@ export function SettingRow({
           >
             {def.label}
           </text>
+          {/* label 后固定 18px reset 槽：按钮始终挂载，只切可见/交互状态，
+              避免 modified 切换时重排。Phase 行本身不可修改，不占槽。 */}
+          {!disabled ? (
+            <div
+              testId={`reset-slot-${def.path}`}
+              style={{
+                width: 18,
+                height: 18,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                opacity: modified ? 1 : 0,
+                pointerEvents: modified ? 'auto' : 'none',
+              }}
+            >
+              <IconButton
+                name="reset"
+                size={10}
+                hitSize={18}
+                label={`恢复默认：${def.label}`}
+                disabled={!modified}
+                onClick={onReset}
+                testId={modified ? `reset-${def.path}` : `reset-inactive-${def.path}`}
+              />
+            </div>
+          ) : null}
           {def.phase !== undefined ? (
             <PhaseBadge phase={def.phase} testId={`phase-${def.path}`} />
           ) : null}
@@ -186,25 +215,16 @@ export function SettingRow({
         ) : null}
       </div>
 
-      {/* 右列：控件 + reset（modified 时） */}
+      {/* 右列只放控件；reset 属于设置项状态，放在左侧 label 后。 */}
       <div
         style={{
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 8,
           flexShrink: 0,
         }}
       >
         {control()}
-        {modified ? (
-          <IconButton
-            name="reset"
-            label={`恢复默认：${def.label}`}
-            onClick={onReset}
-            testId={`reset-${def.path}`}
-          />
-        ) : null}
       </div>
     </div>
   )

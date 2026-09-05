@@ -8,9 +8,9 @@
 
 import type { SettingsStore } from '../settings/store'
 import type { ThreadStore } from '../threads/store'
-import type { AppPlatform } from '../ui/platform'
-import { TRAFFIC_LIGHT_PADDING } from '../ui/platform'
 import { Icon } from '../ui/Icon'
+import type { AppPlatform } from '../ui/platform'
+import { TRAFFIC_LIGHT_WIDTH } from '../ui/platform'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
 import { NewThreadButton } from './NewThreadButton'
 import { ThreadList } from './ThreadList'
@@ -40,18 +40,29 @@ export function SidebarHeader({
         alignItems: 'center',
         justifyContent: 'space-between',
         height: SIZES.titleBarHeight,
-        paddingLeft: TRAFFIC_LIGHT_PADDING + 12,
-        paddingRight: 10,
+        // 不把 padding 放在横向 flex item 上：gpuix 的 padding 不计入
+        // flex 占位，会让本段从 x=83 开始并把 TitleBar 推出窗口。
+        // 用子项 margin 保留视觉内缩，同时让本段严格占满 248px。
         backgroundColor: COLORS.sidebar,
         userSelect: 'none',
         ...(platform === 'win' ? { windowControlArea: 'drag' as const } : {}),
       }}
       {...(platform === 'mac' ? drag : {})}
     >
-      <text style={{ fontSize: 11, fontFamily: FONT.ui, fontWeight: '600', color: COLORS.muted }}>
+      <text
+        style={{
+          marginLeft: (platform === 'mac' ? TRAFFIC_LIGHT_WIDTH : 0) + 12,
+          fontSize: 11,
+          fontFamily: FONT.ui,
+          fontWeight: '600',
+          color: COLORS.muted,
+        }}
+      >
         AGENT
       </text>
-      <text style={{ fontSize: 10, fontFamily: FONT.mono, color: COLORS.muted }}>⌃⇥</text>
+      <text style={{ marginRight: 10, fontSize: 10, fontFamily: FONT.mono, color: COLORS.muted }}>
+        ⌃⇥
+      </text>
     </div>
   )
 }

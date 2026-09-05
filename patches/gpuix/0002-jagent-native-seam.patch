@@ -1,8 +1,35 @@
 diff --git a/packages/native/src/custom_elements/input.rs b/packages/native/src/custom_elements/input.rs
-index 3f2ee7f..bfaeed4 100644
+index 3f2ee7f..d2427d3 100644
 --- a/packages/native/src/custom_elements/input.rs
 +++ b/packages/native/src/custom_elements/input.rs
-@@ -1308,7 +1308,15 @@ impl TextEditorState {
+@@ -355,6 +355,7 @@ impl CustomElement for TextEditorElement {
+                     drag_autoscroll_active: false,
+                     scroll_top: 0.0,
+                     scroll_left: 0.0,
++                    vertical_offset: 0.0,
+                     follow_cursor: true,
+                     last_lines: Vec::new(),
+                     line_starts: vec![0],
+@@ -579,6 +580,9 @@ struct TextEditorState {
+     drag_autoscroll_active: bool,
+     scroll_top: f32,
+     scroll_left: f32,
++    /// 单行且内容矮于视口时，内容在视口内垂直居中的偏移（web 单行 input 行为）；
++    /// 多行恒为 0。caret/selection/文本/hit-test 坐标全部叠加该偏移。
++    vertical_offset: f32,
+     follow_cursor: bool,
+     last_lines: Vec<WrappedLine>,
+     line_starts: Vec<usize>,
+@@ -1112,7 +1116,7 @@ impl TextEditorState {
+         };
+         self.index_for_point(point(
+             position.x - bounds.left() + px(self.scroll_left),
+-            position.y - bounds.top() + px(self.scroll_top),
++            position.y - bounds.top() + px(self.scroll_top) - px(self.vertical_offset),
+         ))
+     }
+ 
+@@ -1308,7 +1312,15 @@ impl TextEditorState {
              (SharedString::from(self.content.clone()), false)
          };
          let font_size = style.font_size.to_pixels(window.rem_size());
@@ -19,6 +46,58 @@ index 3f2ee7f..bfaeed4 100644
          let color = if is_placeholder {
              gpui::rgba(0x8f8f8fff).into()
          } else {
+@@ -1527,7 +1539,7 @@ impl EntityInputHandler for TextEditorState {
+         Some(Bounds::new(
+             point(
+                 bounds.left() + start.x - px(self.scroll_left),
+-                bounds.top() + start.y - px(self.scroll_top),
++                bounds.top() + start.y - px(self.scroll_top) + px(self.vertical_offset),
+             ),
+             size(px(2.0), self.line_height),
+         ))
+@@ -1708,11 +1720,18 @@ impl gpui::Element for EditorTextElement {
+         self.input.update(cx, |input, _| {
+             input.last_bounds = Some(bounds);
+             input.clamp_scroll(f32::from(bounds.size.width), f32::from(bounds.size.height));
++            // 单行内容矮于视口时垂直居中（多行/可滚时顶对齐，同 web）。
++            // clamp_scroll 之后算，避免被滚动路径覆盖。
++            input.vertical_offset = if !input.multiline {
++                ((f32::from(bounds.size.height) - input.content_height) / 2.0).max(0.0)
++            } else {
++                0.0
++            };
+         });
+         let input = self.input.read(cx);
+         let origin = point(
+             bounds.left() - px(input.scroll_left),
+-            bounds.top() - px(input.scroll_top),
++            bounds.top() - px(input.scroll_top) + px(input.vertical_offset),
+         );
+         let mut selection = Vec::new();
+         let mut caret = None;
+@@ -1795,7 +1814,7 @@ impl gpui::Element for EditorTextElement {
+             for quad in prepaint.selection.drain(..) {
+                 window.paint_quad(quad);
+             }
+-            let (lines, line_height, scroll_top, scroll_left, display) =
++            let (lines, line_height, scroll_top, scroll_left, vertical_offset, display) =
+                 self.input.update(cx, |input, _| {
+                     let display = if input.content.is_empty() {
+                         input.placeholder.clone()
+@@ -1807,11 +1826,12 @@ impl gpui::Element for EditorTextElement {
+                         input.line_height,
+                         input.scroll_top,
+                         input.scroll_left,
++                        input.vertical_offset,
+                         display,
+                     )
+                 });
+             crate::text::log_painted_text(display);
+-            let mut y = bounds.top() - px(scroll_top);
++            let mut y = bounds.top() - px(scroll_top) + px(vertical_offset);
+             for line in &lines {
+                 let height = line.size(line_height).height;
+                 line.paint(
 diff --git a/packages/native/src/custom_elements/mod.rs b/packages/native/src/custom_elements/mod.rs
 index b3811c1..fd4d328 100644
 --- a/packages/native/src/custom_elements/mod.rs

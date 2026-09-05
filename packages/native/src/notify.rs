@@ -28,20 +28,20 @@
 mod imp {
     use std::path::PathBuf;
 
-    use windows::core::{Interface, HSTRING};
     use windows::Data::Xml::Dom::XmlDocument;
     use windows::UI::Notifications::{ToastNotification, ToastNotificationManager, ToastNotifier};
     use windows::Win32::Foundation::PROPERTYKEY;
     use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
     use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoTaskMemFree, IPersistFile, CLSCTX_INPROC_SERVER,
-        COINIT_APARTMENTTHREADED,
+        CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
+        CoTaskMemFree, IPersistFile,
     };
     use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
     use windows::Win32::UI::Shell::{
-        FOLDERID_Programs, IShellLinkW, KNOWN_FOLDER_FLAG, SHGetKnownFolderPath, ShellLink,
-        SetCurrentProcessExplicitAppUserModelID,
+        FOLDERID_Programs, IShellLinkW, KNOWN_FOLDER_FLAG, SHGetKnownFolderPath,
+        SetCurrentProcessExplicitAppUserModelID, ShellLink,
     };
+    use windows::core::{HSTRING, Interface};
 
     /// Stable identity of j-agent for the Windows notification platform.
     const AUMID: &str = "dev.jagent.Terminal";
@@ -80,9 +80,8 @@ mod imp {
 
         let toast = ToastNotification::CreateToastNotification(&xml)?;
         // SAFETY: static-class factory call; AUMID is our own registered id.
-        let notifier: ToastNotifier = unsafe {
-            ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(AUMID))?
-        };
+        let notifier: ToastNotifier =
+            unsafe { ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(AUMID))? };
         // SAFETY: hands the toast to the platform; `toast` stays alive here
         // until the call returns.
         unsafe { notifier.Show(&toast) }
@@ -110,7 +109,10 @@ mod imp {
         let shortcut = shortcut_path()?;
         if let Some(parent) = shortcut.parent() {
             if let Err(e) = std::fs::create_dir_all(parent) {
-                eprintln!("[notify] cannot create shortcut dir {}: {e}", parent.display());
+                eprintln!(
+                    "[notify] cannot create shortcut dir {}: {e}",
+                    parent.display()
+                );
             }
         }
 
@@ -144,8 +146,7 @@ mod imp {
 
     fn shortcut_path() -> windows::core::Result<PathBuf> {
         // SAFETY: KNOWNFOLDER path out-param is freed below via CoTaskMemFree.
-        let path =
-            unsafe { SHGetKnownFolderPath(&FOLDERID_Programs, KNOWN_FOLDER_FLAG(0), None)? };
+        let path = unsafe { SHGetKnownFolderPath(&FOLDERID_Programs, KNOWN_FOLDER_FLAG(0), None)? };
         // SAFETY: PWSTR comes straight from SHGetKnownFolderPath (valid,
         // NUL-terminated, owned by us until CoTaskMemFree below).
         let s = unsafe { path.to_string() }?;

@@ -86,15 +86,12 @@ const handleKeyDown = createGlobalKeydown({
   keys: () => settingsStore.get().keybindings,
 })
 
-render(
-  <App store={threadStore} settings={settingsStore} windowControls={windowControls} />,
-  {
-    renderer,
-    onEvent: (event) => {
-      if (event.eventType === 'keyDown') {
-        const m = event.modifiers
-        handleKeyDown(event.key ?? '', m?.ctrl ?? false, m?.shift ?? false)
-      }
-    },
+render(<App store={threadStore} settings={settingsStore} windowControls={windowControls} />, {
+  renderer,
+  onEvent: (event) => {
+    if (event.eventType === 'keyDown') {
+      const m = event.modifiers
+      handleKeyDown(event.key ?? '', m?.ctrl ?? false, m?.shift ?? false)
+    }
   },
-)
+})

@@ -95,15 +95,18 @@ j-agent window
 
 ```
 ┌───────────────────────────────────────────────┬──────────────┐
-│ Label                                  ●      │ [控件]  [↺] │
-│ 说明文字（muted，一行）                        │              │
+│ ● Label [↶]                                   │       [控件] │
+│   说明文字（muted，一行）                       │              │
 └───────────────────────────────────────────────┴──────────────┘
 ```
 
-- 左：label + 单行 description（muted）
-- 右：控件 + modified 蓝点 + reset 按钮
-- **modified 蓝点常显**（键盘可发现）；reset 按钮 hover / focus-within 时出现——不可 hover-only（对齐 agent-plane-layout.md §10 关闭按钮规则）
-- reset 点击 = 恢复该项默认值，蓝点消失
+- 左：modified 蓝点 + label + **固定 18×18 reset 槽**；下一行是 description（muted）
+- 右：只放控件；reset 不再跟随宽窄不一的控件漂移
+- 可用设置行始终保留 reset 槽，槽内按钮始终挂载；modified 只切换 opacity、pointerEvents 与 tabIndex，**不增删布局节点**，因此图标出现 / 消失不会推动 label 或右侧控件
+- reset 使用 10px `Undo` 线框图标（18×18 桌面命中盒），仅 modified 时可见、可 Tab / Enter；tooltip 为「恢复默认：{设置名}」
+- **modified 蓝点常显**（键盘可发现）；reset 也在 modified 时常显，不使用 hover-only 显隐（GPUIX 无 `:focus-within`）
+- reset 点击 = 恢复该项默认值，蓝点与图标同时消失，固定槽仍保留
+- Phase disabled 行不可修改，不保留 reset 槽
 
 ### 5.2 控件类型映射
 

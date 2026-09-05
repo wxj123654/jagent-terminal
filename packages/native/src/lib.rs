@@ -30,7 +30,7 @@ use gpui::BorrowAppContext;
 
 use element::TerminalElementFactory;
 use gpuix_native::custom_elements::register_global_factory;
-use jagent_terminal::pool::{set_session_event_fn, SessionEvent as RustSessionEvent};
+use jagent_terminal::pool::{SessionEvent as RustSessionEvent, set_session_event_fn};
 use jagent_terminal::{SpawnOptions, TerminalPool};
 
 /// Register the `<terminal>` element factory with GPUIX. Must run before the
