@@ -41,17 +41,21 @@ export function SidebarHeader({
         justifyContent: 'space-between',
         height: SIZES.titleBarHeight,
         // 不把 padding 放在横向 flex item 上：gpuix 的 padding 不计入
-        // flex 占位，会让本段从 x=83 开始并把 TitleBar 推出窗口。
-        // 用子项 margin 保留视觉内缩，同时让本段严格占满 248px。
-        backgroundColor: COLORS.sidebar,
+        // flex 占位，会让本段从 x=TRAFFIC_LIGHT_WIDTH 开始并把 TitleBar
+        // 推出窗口。用子项 margin 保留视觉内缩，本段严格占满 248px。
+        // 与 TitleBar 同色：顶栏行是一条连续表面，不是侧栏顶盖。
+        backgroundColor: COLORS.titlebar,
         userSelect: 'none',
         ...(platform === 'win' ? { windowControlArea: 'drag' as const } : {}),
       }}
       {...(platform === 'mac' ? drag : {})}
     >
       <text
+        testId="sidebar-header-label"
         style={{
           marginLeft: (platform === 'mac' ? TRAFFIC_LIGHT_WIDTH : 0) + 12,
+          // GPUI 文本基线略高于几何中心；+1px 与系统红绿灯光学对齐。
+          marginTop: 1,
           fontSize: 11,
           fontFamily: FONT.ui,
           fontWeight: '600',
@@ -60,7 +64,15 @@ export function SidebarHeader({
       >
         AGENT
       </text>
-      <text style={{ marginRight: 10, fontSize: 10, fontFamily: FONT.mono, color: COLORS.muted }}>
+      <text
+        style={{
+          marginRight: 10,
+          marginTop: 1,
+          fontSize: 10,
+          fontFamily: FONT.mono,
+          color: COLORS.muted,
+        }}
+      >
         ⌃⇥
       </text>
     </div>

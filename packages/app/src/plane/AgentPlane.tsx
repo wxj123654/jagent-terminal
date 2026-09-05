@@ -52,12 +52,14 @@ export function App({
         color: COLORS.text,
       }}
     >
-      {/* 顶栏行（自绘 titlebar；mac 红绿灯悬浮在 SidebarHeader 段上方） */}
+      {/* 顶栏行（自绘 titlebar；mac 红绿灯悬浮在 SidebarHeader 段上方）。
+          整行同色，避免左段 sidebar 色与右段 titlebar 色接缝。 */}
       <div
         style={{
           display: 'flex',
           flexDirection: 'row',
           flexShrink: 0,
+          backgroundColor: COLORS.titlebar,
           borderBottomWidth: 1,
           borderColor: COLORS.border,
         }}

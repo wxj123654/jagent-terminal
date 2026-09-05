@@ -8,19 +8,27 @@
  * - linux：默认 Server decorations（WM 标题栏在上），无自绘窗口控制
  */
 
+import { release } from 'node:os'
+
 export type AppPlatform = 'mac' | 'win' | 'linux'
 
 export const PLATFORM: AppPlatform =
   process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'win' : 'linux'
 
+/** Darwin 25 = macOS 26 Tahoe；Zed 对 SDK 26+ 把红绿灯让位从 71 提到 78。 */
+const MACOS_TAHOE_DARWIN_MAJOR = 25
+
+export function trafficLightWidth(platform: NodeJS.Platform, kernelRelease: string): number {
+  if (platform !== 'darwin') return 71
+  const major = Number.parseInt(kernelRelease.split('.')[0] ?? '0', 10)
+  return Number.isFinite(major) && major >= MACOS_TAHOE_DARWIN_MAJOR ? 78 : 71
+}
+
 /**
  * macOS 红绿灯宽度（Zed TRAFFIC_LIGHT_PADDING）。
  *
- * 红绿灯是固定物理像素、不随 rem 缩放，所以用 px 而非 rem；含窗口
- * 1px 边框余量。Zed 在 macOS SDK 26（Tahoe）下取 78——那是编译期
- * 探测，运行期无法区分，先取旧值 71，待实测 Tahoe 后再调。
- *
- * 注意：这是纯常量，不带平台判断——组件按注入的 platform prop 决定
- * 是否让位（测试可跨平台断言；勿写成「真机平台 ? 71 : 0」）。
+ * 红绿灯是固定物理像素、不随 UI 缩放，所以用 px 而非 em；含窗口
+ * 1px 边框余量。组件按注入的 platform prop 决定是否让位（测试可跨
+ * 平台断言；勿写成「真机平台 ? 78 : 0」）。
  */
-export const TRAFFIC_LIGHT_WIDTH = 71
+export const TRAFFIC_LIGHT_WIDTH = trafficLightWidth(process.platform, release())

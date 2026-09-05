@@ -160,10 +160,12 @@ export function TitleBar({
       {...(platform === 'mac' ? drag : {})}
     >
       <text
+        testId="titlebar-title"
         style={{
           pointerEvents: 'none',
           marginLeft: 12,
           marginRight: platform === 'win' ? 0 : 12,
+          marginTop: 1,
           minWidth: 0,
           flexGrow: 1,
           fontSize: 12,

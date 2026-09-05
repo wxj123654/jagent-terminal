@@ -10,7 +10,7 @@ export const COLORS = {
   app: '#282c34',
   pane: '#1e2127',
   sidebar: '#21252b',
-  /** 自绘顶栏底（与 sidebar 同色：整条顶栏与左栏连成一体，Zed 同款） */
+  /** 自绘顶栏底。与 sidebar 同色，整条顶栏行（含左段）连成一体。 */
   titlebar: '#21252b',
   terminal: '#1a1d23',
   /** 抬升表面：active 行底 / 按钮底 / 通用 hover（One Dark selection） */

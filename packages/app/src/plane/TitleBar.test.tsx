@@ -10,6 +10,7 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
+import { TRAFFIC_LIGHT_WIDTH } from '../ui/platform'
 import { SidebarHeader } from './Sidebar'
 import { TitleBar, type WindowControls } from './TitleBar'
 
@@ -44,7 +45,7 @@ function boundsOf(testId: string): number[] {
 // ── mac：红绿灯让位在 SidebarHeader 段；TitleBar 段正常 padding ──────
 
 describe('TitleBar · mac', () => {
-  test('SidebarHeader 让位红绿灯（content 起点 83=71+12），TitleBar 段 12', () => {
+  test(`SidebarHeader 让位红绿灯（content 起点 ${TRAFFIC_LIGHT_WIDTH}+12），TitleBar 段 12`, () => {
     const { wc } = controlsSpy()
     t.render(
       createElement(
@@ -57,7 +58,7 @@ describe('TitleBar · mac', () => {
     t.renderer.flush()
 
     // padding 不放在横向 flex item 上，因此整个左段与内容列严格
-    // 对齐；红绿灯让位体现在 AGENT 文本的 marginLeft=83。
+    // 对齐；红绿灯让位体现在 AGENT 文本的 marginLeft。
     const header = boundsOf('sidebar-header')
     expect(header[0]).toBe(0)
     expect(header[2]).toBe(248)
@@ -65,7 +66,13 @@ describe('TitleBar · mac', () => {
 
     const bar = boundsOf('titlebar')
     expect(bar[0]).toBe(248) // 左段宽 248；标题文本从 260 开始
-    // AGENT 文字实际起点 ≈ 83（让位后）；标题起点 ≈ 260（248+12）
+    const label = boundsOf('sidebar-header-label')
+    expect(label[0]).toBe(TRAFFIC_LIGHT_WIDTH + 12)
+    const title = boundsOf('titlebar-title')
+    expect(title[0]).toBe(248 + 12)
+    // Optical 1px drop: both labels sit below the geometric center.
+    expect(label[1]).toBeGreaterThan(header[1])
+    expect(title[1]).toBeGreaterThan(bar[1])
     const texts = t.renderer.getAllText()
     expect(texts.join('\n')).toContain('AGENT')
     expect(texts.join('\n')).toContain('j-agent')
