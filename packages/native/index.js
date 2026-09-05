@@ -703,6 +703,7 @@ module.exports = nativeBinding
 module.exports.GpuixRenderer = nativeBinding.GpuixRenderer
 module.exports.TestGpuixRenderer = nativeBinding.TestGpuixRenderer
 module.exports.hasTestGpuixRenderer = nativeBinding.hasTestGpuixRenderer
+module.exports.applyWindowAppearance = nativeBinding.applyWindowAppearance
 module.exports.createTerminalSession = nativeBinding.createTerminalSession
 module.exports.destroyTerminalSession = nativeBinding.destroyTerminalSession
 module.exports.installTerminalElement = nativeBinding.installTerminalElement

@@ -1,9 +1,9 @@
 //! @jagent/native — the ONLY cross-language seam (architecture.md §2.3).
 //!
-//! Exports exactly five napi commands (changes here require a seam-protocol
-//! reason):
+//! Exports napi commands (changes here require a seam-protocol reason):
 //! - `installTerminalElement()` — register the `<terminal>` element factory
 //!   with GPUIX (must run before the renderer is initialized)
+//! - `applyWindowAppearance()` — force native chrome to the dark theme
 //! - `createTerminalSession(opts) → sessionId`
 //! - `destroyTerminalSession(sessionId)`
 //! - `onSessionEvent(cb)` — global session events (title/bell/exit)
@@ -14,6 +14,7 @@
 //! (`@gpuix/react` `createRenderer` + `renderer.init()`); Rust sees it only
 //! through the process-global UI command channel (see gpuix `run_on_gpuix`).
 
+mod appearance;
 mod element;
 mod host;
 mod notify;
@@ -35,10 +36,22 @@ use jagent_terminal::{SpawnOptions, TerminalPool};
 
 /// Register the `<terminal>` element factory with GPUIX. Must run before the
 /// renderer is initialized (`main.tsx` calls it at startup, before
-/// `renderer.init()`); idempotent (a second call just re-registers the type).
+/// `renderer.init()`). A second call currently pushes another factory; the
+/// first `GpuixView` still drains the global table (gpuix 0002).
 #[napi]
 pub fn install_terminal_element() {
     register_global_factory(Box::new(TerminalElementFactory));
+}
+
+/// Match native window chrome to the dark UI (Zed `init_app_appearance`).
+/// On macOS this sets `GPUIApplication.appearance` to DarkAqua so traffic-light
+/// glyphs use the dark-theme artwork. Prefer letting `renderer.init` do this
+/// (after GPUIApplication exists, before the first NSWindow). Calling the
+/// stock `NSApplication` class first freezes the AppKit singleton.
+/// A no-op on platforms without the override.
+#[napi]
+pub fn apply_window_appearance() {
+    appearance::apply_dark();
 }
 
 /// Mirror of `SpawnOptions` (Rust) — see architecture.md §2.3. Appearance

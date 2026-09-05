@@ -554,6 +554,16 @@ export interface WindowSize {
   height: number
 }
 /**
+ * Match native window chrome to the dark UI (Zed `init_app_appearance`).
+ * On macOS this sets `GPUIApplication.appearance` to DarkAqua so traffic-light
+ * glyphs use the dark-theme artwork. Prefer letting `renderer.init` do this
+ * (after GPUIApplication exists, before the first NSWindow). Calling the
+ * stock `NSApplication` class first freezes the AppKit singleton.
+ * A no-op on platforms without the override.
+ */
+export declare function applyWindowAppearance(): void
+
+/**
  * Spawn a terminal session: PTY + model + pool registration. Resolves with
  * the sessionId that `<terminal sessionId>` binds to.
  *
@@ -573,7 +583,8 @@ export declare function destroyTerminalSession(sessionId: number): void
 /**
  * Register the `<terminal>` element factory with GPUIX. Must run before the
  * renderer is initialized (`main.tsx` calls it at startup, before
- * `renderer.init()`); idempotent (a second call just re-registers the type).
+ * `renderer.init()`). A second call currently pushes another factory; the
+ * first `GpuixView` still drains the global table (gpuix 0002).
  */
 export declare function installTerminalElement(): void
 

@@ -2,7 +2,7 @@
  * e2e/terminal.e2e.test.tsx — T1.6 端到端（architecture.md §9 测试面：
  * element/pool/model 真 PTY + surfaces/registry + Pane 整块替换）。
  *
- * 跑法：bun test e2e/（Windows + TestGpuixRenderer；真 ConPTY，慢是正常的）。
+ * 跑法：bun test e2e/（macOS/Windows + TestGpuixRenderer；真 PTY）。
  *
  * 验证面（T1.6 清单）：
  * 1. 两个 PTY 并存（列表两行 + 各自 surface 绑定）
@@ -16,12 +16,13 @@
  * - session 事件经 TSF 异步到达 JS；PTY 消费 task 的 4ms 批处理定时器
  *   挂在 test dispatcher 的 fake clock 上——轮询循环必须 advanceTime 驱动。
  * - React 对 store/router 的更新提交需要让出主线程（macrotask）。
- * - bell 会话 = 短命 PowerShell 子进程写双 BEL（单 BEL 紧跟 OSC 会被吃，
- *   Phase 0 实测）。spawn resolve 时 PowerShell 还没起来（冷启动 >500ms），
- *   同步 activate 切走必然先于 bell 到达 → bell 落在后台行。
+ * - bell 会话 = 本机 Bun 子进程，等待父测试的临时文件握手后写双 BEL。
+ *   父测试确认切后台且 terminal 元素解绑后才触发，不依赖 shell 冷启动时长。
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { installTerminalElement, destroyTerminalSession, onSessionEvent } from '@jagent/native'
@@ -61,13 +62,15 @@ const BELL_PRESET: TerminalPreset = {
   id: 'e2e-bell',
   label: 'E2E Bell',
   builtin: false,
-  program: 'powershell',
-  args: ['-NoProfile', '-Command', '[Console]::Write([char]7 + [char]7); Start-Sleep 3'],
+  program: process.execPath,
+  args: [join(import.meta.dir, '__fixtures__/bell.ts')],
 }
 
 const TEST_TIMEOUT = 30_000
 const sessionEvents: TerminalSessionEvent[] = []
 
+let bellFixtureDir: string
+let bellTrigger: string
 let t: TestRoot
 let store: ThreadStore
 let settings: ReturnType<typeof createSettingsStore>
@@ -76,6 +79,10 @@ let keyEvents: string[] = []
 let handleKeydown: GlobalKeydown = () => {}
 
 beforeAll(() => {
+  bellFixtureDir = mkdtempSync(join(tmpdir(), 'jagent-e2e-bell-'))
+  bellTrigger = join(bellFixtureDir, 'release')
+  BELL_PRESET.env = { JAGENT_E2E_BELL_TRIGGER: bellTrigger }
+
   // 顺序敏感：先注册元素（GLOBAL_FACTORIES push），再建 renderer
   // （GpuixView with_defaults 时 drain）。
   installTerminalElement()
@@ -150,6 +157,7 @@ afterAll(() => {
     }
   }
   t?.unmount()
+  rmSync(bellFixtureDir, { recursive: true, force: true })
 })
 
 describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () => {
@@ -192,9 +200,14 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       const shellRow = s0.threads[0]! // 前台：普通 shell
       const bellRow = s0.threads[1]! // 将转后台：bell 会话（此刻 active）
 
-      // 同步切走（PowerShell 冷启动 >500ms，bell 必然晚于这次 activate）
       store.activate({ type: 'thread', id: shellRow.id })
       expect(currentActiveThreadId()).toBe(shellRow.id)
+      await until('shell surface mounted before releasing bell', () =>
+        t.renderer
+          .findByType('terminal')
+          .some((el) => el.customProps?.sessionId === shellRow.sessionId),
+      )
+      writeFileSync(bellTrigger, 'release\n')
 
       // 后台 bell 送达：hasBell=true（全局通道，不依赖元素存活）
       await until('bell event → hasBell on background row', () => {
@@ -406,8 +419,8 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       // ① 设置层新增自定义预设（真 SettingsStore CRUD 面）
       const nid = settings.addPreset({
         label: 'E2E 自定义',
-        program: 'powershell',
-        args: ['-NoProfile', '-Command', 'echo jagent-custom'],
+        program: process.execPath,
+        args: ['-e', 'console.log("jagent-custom")'],
       })
       const added = settings.get().presets.items.find((p) => p.id === nid)
       expect(added?.builtin).toBe(false)

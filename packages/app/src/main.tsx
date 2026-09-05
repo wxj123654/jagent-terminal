@@ -5,7 +5,7 @@
  * 1. seam 装配：installTerminalElement（renderer.init 之前）+ onSessionEvent
  *    → ThreadStore（全局会话事件，后台也送达）
  * 2. ThreadStore 创建（native 装配在 threads/nativeDeps.ts 工厂）
- *    + 路由 + App 渲染（GPUIX render 一站式：createRenderer + init + createRoot）
+ *    + 路由 + App 渲染（appWindow 持有 renderer，公开 startFrameLoop 泵 macOS）
  * 3. 全局键位层（Ctrl-Tab / Ctrl-Shift-Tab / Ctrl-,）：窗口级 keyDown，
  *    只处理带修饰键组合，其余透传（硬约束 2：不吃 vim/claude 按键）。
  *    ⚠ T1.6 验证项：TerminalView 聚焦时窗口 keyDown 是否仍到达——
@@ -14,10 +14,9 @@
 
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { render, createRenderer } from '@gpuix/react'
 import { installTerminalElement, onSessionEvent } from '@jagent/native'
-import type { GpuixRenderer } from '@jagent/native'
 
+import { appWindow } from './appWindow'
 import { createGlobalKeydown } from './keybindings'
 import { App } from './plane/AgentPlane'
 import type { WindowControls } from './plane/TitleBar'
@@ -51,8 +50,7 @@ onSessionEvent((_err, e) => {
 
 // ── 窗口（renderer 实例自持：`/` 全局聚焦需要 focusElement 命令面）──
 // 先建 renderer 再接键位层（闭包引用 renderer，声明顺序即初始化顺序）
-const renderer: GpuixRenderer = createRenderer()
-renderer.init({
+const renderer = appWindow.renderer({
   title: 'j-agent',
   appName: 'j-agent',
   width: 1180,
@@ -86,12 +84,14 @@ const handleKeyDown = createGlobalKeydown({
   keys: () => settingsStore.get().keybindings,
 })
 
-render(<App store={threadStore} settings={settingsStore} windowControls={windowControls} />, {
-  renderer,
-  onEvent: (event) => {
-    if (event.eventType === 'keyDown') {
-      const m = event.modifiers
-      handleKeyDown(event.key ?? '', m?.ctrl ?? false, m?.shift ?? false)
-    }
+appWindow.mount(
+  <App store={threadStore} settings={settingsStore} windowControls={windowControls} />,
+  {
+    onEvent: (event) => {
+      if (event.eventType === 'keyDown') {
+        const m = event.modifiers
+        handleKeyDown(event.key ?? '', m?.ctrl ?? false, m?.shift ?? false)
+      }
+    },
   },
-})
+)

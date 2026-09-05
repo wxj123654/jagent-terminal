@@ -39,7 +39,6 @@ export type PatchManifest = Readonly<Record<Suite, PatchEntry>>
 
 export const MANIFEST = {
   gpuix: {
-    '0001-shallow-submodule.patch': ['.gitmodules'],
     '0002-jagent-native-seam.patch': [
       'packages/native/src/custom_elements/mod.rs',
       'packages/native/src/custom_elements/input.rs',
@@ -48,8 +47,6 @@ export const MANIFEST = {
       'packages/native/src/style.rs',
       'packages/native/src/test_renderer.rs',
     ],
-    '0003-macos-injected-renderer-frame-loop.patch': ['packages/react/src/reconciler/renderer.ts'],
-    '0004-window-control-area.patch': ['packages/react/src/types/host.ts'],
   },
   'gpuix-zed': {
     '0001-gpui-workspace-root.patch': ['crates/gpui/Cargo.toml'],
