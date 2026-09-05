@@ -59,7 +59,9 @@ export function NumberInput({
       style={{
         display: 'flex',
         flexDirection: 'row',
-        alignItems: 'stretch',
+        // 一行文字的 input 垂直居中（native input 文字元素是 measured 一行高，
+        // stretch 会把它顶在盒顶 → 文字贴顶；同 TextInput/gpuix 官方 composer）
+        alignItems: 'center',
         width: 220,
         height: 28,
         borderRadius: 4,
@@ -93,8 +95,16 @@ export function NumberInput({
           ...controlText(),
         }}
       />
-      {/* 步进钮列：↑/↓，各 22×~13 */}
-      <div style={{ display: 'flex', flexDirection: 'column', width: 22, flexShrink: 0 }}>
+      {/* 步进钮列：↑/↓，各 22×~13；alignSelf stretch 铺满壳高（外层改 center 后需显式声明） */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          width: 22,
+          alignSelf: 'stretch',
+          flexShrink: 0,
+        }}
+      >
         <StepperButton
           testId={`${testId}-inc`}
           icon="chevronUp"

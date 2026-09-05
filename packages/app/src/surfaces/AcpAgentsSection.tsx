@@ -55,7 +55,10 @@ export function AcpAgentsSection({
   const visible = query ? agents.filter((a) => acpAgentMatches(a, query)) : agents
 
   return (
-    <div>
+    // minWidth 0：覆盖 flex item 的 min-width:auto，否则描述 text 的
+    // max-content 会把整条 column 链撑宽（卡片/按钮超出 content 右缘被裁），
+    // text 自身也拿不到确定宽而不 wrap
+    <div style={{ minWidth: 0 }}>
       <text
         style={{
           fontSize: 11.5,
@@ -63,6 +66,7 @@ export function AcpAgentsSection({
           color: COLORS.muted,
           lineHeight: 16,
           marginBottom: 8,
+          whiteSpace: 'normal',
           pointerEvents: 'none',
         }}
       >

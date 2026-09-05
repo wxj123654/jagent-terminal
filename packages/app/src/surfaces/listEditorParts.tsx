@@ -38,11 +38,17 @@ export function FieldRow({
           alignItems: 'center',
           gap: 6,
           width: 130,
+          minWidth: 0,
           flexShrink: 0,
         }}
       >
         <text
-          style={{ fontSize: 12.5, fontFamily: FONT.ui, color: COLORS.text, pointerEvents: 'none' }}
+          style={{
+            fontSize: 12.5,
+            fontFamily: FONT.ui,
+            color: COLORS.text,
+            pointerEvents: 'none',
+          }}
         >
           {label}
         </text>
@@ -51,6 +57,12 @@ export function FieldRow({
             fontSize: 10.5,
             fontFamily: FONT.mono,
             color: COLORS.muted,
+            // 超宽截断（如 InitCommand + initCommand > 130px）：ellipsis 而非
+            // 溢出盖到右侧控件上（web 原型里溢出被 input 不透明背景盖住，
+            // GPUIX 绘制顺序不同，必须自己截）
+            minWidth: 0,
+            whiteSpace: 'nowrap',
+            textOverflow: 'ellipsis',
             pointerEvents: 'none',
           }}
         >

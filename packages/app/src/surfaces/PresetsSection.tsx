@@ -403,7 +403,15 @@ function PresetEditor({
       </FieldRow>
 
       <div style={{ display: 'flex', flexDirection: 'row', gap: 6, marginTop: 10 }}>
-        <text style={{ fontSize: 11.5, fontFamily: FONT.ui, color: COLORS.muted, lineHeight: 16 }}>
+        <text
+          style={{
+            fontSize: 11.5,
+            fontFamily: FONT.ui,
+            color: COLORS.muted,
+            lineHeight: 16,
+            whiteSpace: 'normal',
+          }}
+        >
           凭证走 shell 环境——设置里不出现 API key 输入框。initCommand 作为普通键入打进 shell，不是
           exec 替换进程。
         </text>
