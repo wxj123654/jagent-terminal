@@ -8,10 +8,14 @@ description = "napi shell for j-agent: the ONLY cross-language seam (architectur
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+# Linux 构建用 --no-default-features 禁用（wgpu 图像回读未落地，gpuix 上游
+# CI 同样禁）；其余平台默认启用（TestGpuixRenderer 供 e2e 使用）。
+default = ["test-support"]
+test-support = ["gpuix-native/test-support"]
+
 [dependencies]
-# GPUUIX pinned checkout — same rev as jagent-terminal's gpui/gpui_platform,
-# same default features (test-support) so TestGpuixRenderer stays available.
-gpuix-native = { path = "../../.refs/gpuix/packages/native" }
+gpuix-native = { path = "../../.refs/gpuix/packages/native", default-features = false }
 jagent-terminal = { path = "../../crates/jagent-terminal" }
 gpui = { path = "../../.refs/gpuix/zed/crates/gpui", default-features = false, features = [
     "font-kit",
@@ -25,6 +29,12 @@ napi-derive = "3"
 serde = "1"
 serde_json = "1"
 anyhow = "1"
+
+# Match the pinned zed fork so we can set NSApplication.appearance before
+# the first window exists (gpui App is not live yet).
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "=0.26.0"
+objc = "0.2"
 
 # Windows toast (notify.rs). Version aligned with the pinned zed fork's
 # workspace (0.61) — cargo merges features across the tree, no conflict.

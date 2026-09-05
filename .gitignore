@@ -12,6 +12,9 @@ node_modules/
 packages/native/*.node
 packages/native/*.dll
 
+# 打包产物（bun run build）
+dist/
+
 # 杂项
 *.log
 .DS_Store

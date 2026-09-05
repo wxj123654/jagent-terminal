@@ -1,0 +1,109 @@
+# 三端构建：GitHub Actions matrix 各平台原生构建（macos / ubuntu / windows），
+# 产出单文件可执行（bun build --compile 嵌入各平台 .node）。
+#
+# 触发：手动（workflow_dispatch）或推 v* tag。
+# push 到 main 不跑：GPUI 全量编译很贵（首跑 20-40 分钟/平台，缓存后增量）。
+#
+# 与 .refs/gpuix 官方 CI（ci.yml）对齐的部分：
+#   - Linux 系统依赖清单（Vulkan/Wayland/X11/fonts，源自 zed script/linux）
+#   - macOS 需下载 Metal Toolchain（Xcode 26 起不自带）
+#   - Rust 读 rust-toolchain.toml；rustflags 清空防止 -D warnings 卡构建
+#   - Linux native 禁 test-support（wgpu 图像回读未落地）——scripts/build.ts 自动处理
+#
+# 产物（per 平台 artifact）：dist/<platform>/jagent[.exe]；macOS 额外含
+# JAgent.app（ditto zip 保权限；未开发者证书签名，本地自用够用，正式分发
+# 需 codesign + notarize）。
+
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build - ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest # arm64 runner
+            platform: darwin-arm64
+            app-flag: --app
+          - os: ubuntu-latest
+            platform: linux-x64-gnu
+            app-flag: ''
+          - os: windows-latest
+            platform: windows-x64
+            app-flag: ''
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      # 读 rust-toolchain.toml（stable；zed fork pin 的工具链要求）
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false # 下一步显式缓存（含根 target/，跨 job 不变）
+          rustflags: '' # 不要 -D warnings；告警策略归 crate 管
+
+      # gpui_apple 用 `metal` 编 shader，Xcode 26 runner 不自带该工具链
+      - name: Install Metal toolchain
+        if: runner.os == 'macOS'
+        run: xcodebuild -downloadComponent MetalToolchain
+
+      # GPUI Linux 系统依赖（Vulkan/Wayland/X11/fonts；zed script/linux 同源）
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            gcc g++ clang \
+            libfontconfig-dev \
+            libwayland-dev \
+            libxkbcommon-x11-dev \
+            libx11-xcb-dev \
+            libssl-dev \
+            libzstd-dev \
+            libvulkan1 \
+            vulkan-validationlayers
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ matrix.platform }}-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ matrix.platform }}-cargo-
+
+      - name: Install JS dependencies
+        run: bun install
+
+      # 重建 .refs/gpuix（浅克隆 pin + 补丁 + zed submodule + build:react）；
+      # 幂等设计，未来若加 .refs 缓存可直接命中跳过
+      - name: Setup refs (gpuix + zed + patches)
+        run: bun run setup-refs
+
+      - name: Build
+        run: bun run build ${{ matrix.app-flag }}
+
+      # .app 目录直接上传会丢权限/Finder 元数据，ditto zip 保真
+      - name: Zip app bundle (macOS)
+        if: runner.os == 'macOS'
+        run: cd dist/darwin-arm64 && ditto -c -k --keepParent JAgent.app JAgent.app.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jagent-${{ matrix.platform }}
+          path: dist/${{ matrix.platform }}/*
+          if-no-files-found: error

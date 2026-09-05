@@ -3034,12 +3034,14 @@ name = "jagent-native"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cocoa 0.26.0",
  "gpui",
  "gpuix-native",
  "jagent-terminal",
  "napi",
  "napi-build",
  "napi-derive",
+ "objc",
  "serde",
  "serde_json",
  "windows 0.61.3",
