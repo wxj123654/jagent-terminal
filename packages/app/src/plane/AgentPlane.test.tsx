@@ -8,11 +8,13 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
+import { createGlobalKeydown } from '../keybindings'
 import { memoryAdapter } from '../settings/file'
 import { createSettingsStore, type SettingsStore } from '../settings/store'
 import { createThreadStore, type ThreadStore, type ThreadDeps } from '../threads/store'
 import { defaultWorkspace } from '../threads/workspaces'
 import { App } from './AgentPlane'
+import { sidebarKeyboard } from './sidebarKeyboard'
 
 let t: TestRoot
 
@@ -92,3 +94,63 @@ describe('AgentPlane：窄窗口抽屉（W4）', () => {
     expect(t.renderer.findByTestId('drawer-panel')).toBeUndefined()
   })
 })
+
+describe('AgentPlane：⌘K/Ctrl-K 聚焦搜索 → 打字 → Esc（无 terminal 场景闭环）', () => {
+  test('cmd-k 路由 → 焦点进搜索框 → 键入进 query → Esc 清空', async () => {
+    // 独立 root：onKeyDown 接 createGlobalKeydown（与 main.tsx/e2e 同构）
+    const settings = createSettingsStore(memoryAdapter())
+    const store = createThreadStore(makeDeps(), {
+      initialWorkspaces: [defaultWorkspace('/w/alpha')],
+    })
+    t = createTestRoot({
+      width: 900,
+      height: 700,
+      onKeyDown: (e) => {
+        handleKeydown(
+          e.key ?? '',
+          e.modifiers?.ctrl ?? false,
+          e.modifiers?.shift ?? false,
+          e.modifiers?.cmd ?? false,
+        )
+      },
+    })
+    handleKeydown = createGlobalKeydown({
+      store,
+      inSettings: () => false,
+      closeSettings: () => {},
+      focusSearch: () => {},
+      focusThreadSearch: () => {
+        const id = sidebarKeyboard.searchInputId()
+        if (id != null) t.renderer.focusElement(id)
+      },
+      inputFocused: () => false,
+      settingsQuery: () => '',
+      escConsumed: () => false,
+      clearEscConsumed: () => {},
+      keys: () => settings.get().keybindings,
+    })
+    t.render(createElement(App, { store, settings }))
+    t.renderer.flush()
+    await until2(() => sidebarKeyboard.searchInputId() != null)
+
+    // 平台默认键位（darwin cmd-k / 其他 ctrl-k）
+    t.renderer.simulateKeystrokes(process.platform === 'darwin' ? 'cmd-k' : 'ctrl-k')
+    t.renderer.flush()
+    // 焦点在搜索框：后续键击进 query
+    t.renderer.simulateKeystrokes('al')
+    await until2(() => sidebarKeyboard.query() === 'al')
+    // Esc 清空（宽窗口 onEscEmpty 未注入 → no-op）
+    t.renderer.simulateKeystrokes('escape')
+    await until2(() => sidebarKeyboard.query() === '')
+  })
+})
+
+let handleKeydown: ReturnType<typeof createGlobalKeydown> = () => {}
+async function until2(pred: () => boolean, timeoutMs = 3000): Promise<void> {
+  const start = Date.now()
+  for (;;) {
+    if (pred()) return
+    if (Date.now() - start > timeoutMs) throw new Error('timeout waiting for condition')
+    await new Promise((r) => setTimeout(r, 20))
+  }
+}

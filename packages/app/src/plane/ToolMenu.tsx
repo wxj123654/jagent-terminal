@@ -13,6 +13,8 @@
  * 见 memory #2）；trigger = 工作区行（side=bottom 展开于行下）。
  */
 
+import { useState } from 'react'
+
 import type { AcpAgent } from '../settings/schema'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
@@ -20,6 +22,7 @@ import { presetCommandSummary } from '../threads/presets'
 import type { ThreadStore, Workspace } from '../threads/store'
 import { workspaceDisplayName } from '../threads/workspaces'
 import { Icon } from '../ui/Icon'
+import { inputFocus } from '../ui/keyboard'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
 
 function agentCommandSummary(a: AcpAgent): string {
@@ -38,8 +41,15 @@ export function ToolMenu({
   onClose: () => void
 }) {
   const snap = useSettings(settings)
-  const presets = snap.presets.items
-  const acpAgents = snap.acpAgents
+  // 工具筛选（W5；原型清单「工具筛选」）：label/command/args 子串命中
+  const [filter, setFilter] = useState('')
+  const lower = filter.trim().toLowerCase()
+  const hit = (...xs: (string | undefined)[]) =>
+    lower === '' || xs.some((x) => x?.toLowerCase().includes(lower))
+  const presets = snap.presets.items.filter((p) =>
+    hit(p.label, p.program, p.initCommand, ...(p.args ?? [])),
+  )
+  const acpAgents = snap.acpAgents.filter((a) => hit(a.label, a.command, ...(a.args ?? [])))
 
   const pick = (fn: () => void) => () => {
     onClose()
@@ -107,6 +117,45 @@ export function ToolMenu({
         </text>
       </div>
 
+      {/* 筛选框（W5）：工具多时快速过滤；Esc 清空（层级内消费） */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+          marginLeft: 4,
+          marginRight: 4,
+          marginBottom: 4,
+          borderWidth: 1,
+          borderColor: COLORS.borderSubtle,
+          borderRadius: 4,
+          height: 24,
+          paddingLeft: 6,
+          paddingRight: 6,
+          backgroundColor: COLORS.app,
+        }}
+      >
+        <Icon name="search" size={10} color={COLORS.muted} />
+        <input
+          testId="tool-menu-filter"
+          value={filter}
+          placeholder="筛选工具…"
+          onChange={(e) => setFilter(e.value ?? '')}
+          onFocus={() => inputFocus.acquire()}
+          onBlur={() => inputFocus.release()}
+          onKeyDown={(e) => {
+            if (e.key === 'escape' && filter) setFilter('')
+          }}
+          style={{
+            flexGrow: 1,
+            fontSize: 11,
+            fontFamily: FONT.ui,
+            color: COLORS.text,
+          }}
+        />
+      </div>
+
       {presets.map((p) => (
         <div
           key={p.id}
@@ -152,6 +201,22 @@ export function ToolMenu({
           </text>
         </div>
       ))}
+
+      {presets.length === 0 && acpAgents.length === 0 ? (
+        <text
+          style={{
+            fontSize: 11,
+            fontFamily: FONT.ui,
+            color: COLORS.muted,
+            paddingLeft: 8,
+            paddingRight: 8,
+            paddingTop: 6,
+            paddingBottom: 6,
+          }}
+        >
+          无匹配工具
+        </text>
+      ) : null}
 
       <div
         style={{

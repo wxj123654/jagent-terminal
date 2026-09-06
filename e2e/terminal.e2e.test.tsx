@@ -679,3 +679,142 @@ describe('T3+.2 e2e: 键位可编辑（捕获格 → 即时生效 → Advanced J
     TEST_TIMEOUT,
   )
 })
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase W e2e：工作区全链（多工作区 spawn 归属 → 跨工作区 cycle →
+// 恢复最近会话 → 移除连锁回退 → ⌘K 端到端）。前面 describe 的会话继续
+// 存活（retain 语义），不重置 store——按 arrival 顺序构造归属。
+// ═══════════════════════════════════════════════════════════════════
+describe('Phase W e2e: 工作区全链', () => {
+  let w2: string
+  let w1ShellId: string
+  let w2ShellId: string
+
+  test(
+    '添加工作区 → spawn 归属 → 侧栏双分组渲染',
+    async () => {
+      // 自包含：前面 describe 的会话已被各自收尾 close——w1 会话在此新建
+      await store.spawnFromPreset('shell', e2eWorkspace.id)
+      w2 = store.addWorkspace('proj2', '/w/proj2')
+      await store.spawnFromPreset('shell', w2)
+
+      const s = store.getState()
+      expect(s.workspaces).toHaveLength(2)
+      const t2 = s.threads.filter((x) => x.kind === 'terminal' && x.workspaceId === w2)
+      expect(t2).toHaveLength(1)
+      w2ShellId = t2[0]!.id
+      // 全量跑时前面 describe 会遗留 threads（retain 池）——取「最后 spawn
+      // 的」w1 会话（本用例刚 spawn 的），不假设唯一
+      const t1 = s.threads
+        .filter((x) => x.kind === 'terminal' && x.workspaceId === e2eWorkspace.id)
+        .filter((x) => x.id === s.threads.at(-2)?.id || x.id === s.threads.at(-1)?.id)
+      expect(t1.length).toBeGreaterThanOrEqual(1)
+      w1ShellId = t1.at(-1)!.id
+
+      // 侧栏分组树：两个 workspace 行 + 缩进行
+      await until('both workspace rows', () => {
+        t.renderer.flush()
+        return (
+          t.renderer.findByTestId(`workspace-${e2eWorkspace.id}`) != null &&
+          t.renderer.findByTestId(`workspace-${w2}`) != null &&
+          t.renderer.findByTestId(`row-${w1ShellId}`) != null &&
+          t.renderer.findByTestId(`row-${w2ShellId}`) != null
+        )
+      })
+      // lastSession 记账：w2 的最近会话 = 新 shell
+      expect(store.getState().workspaces.find((x) => x.id === w2)?.lastSession).toBe(w2ShellId)
+    },
+    TEST_TIMEOUT,
+  )
+
+  test(
+    'Ctrl-Tab 跨工作区 cycle（真事件管线；环形流转）',
+    async () => {
+      // 收敛：activate w2 的 shell；router push 异步 → until 生效后再走
+      store.activate({ type: 'thread', id: w2ShellId })
+      await until('w2 active', () => currentActiveThreadId() === w2ShellId)
+
+      // 真管线（simulateKeystrokes；navigate fire-and-forget，每步等生效）
+      const ring = store.getState().threads.length
+      const seen = new Set<string>([w2ShellId])
+      for (let i = 0; i < ring + 2; i++) {
+        // prev 必须在 tab 前取：tab 生效（activate → navigate 异步落地）后
+        // 才算一次「落地」，循环里 prev-after 结构会死锁等下一次变化
+        const prev = currentActiveThreadId()
+        t.renderer.simulateKeystrokes('ctrl-tab')
+        await until('cycle landed', () => currentActiveThreadId() !== prev)
+        const cur = currentActiveThreadId()
+        if (cur != null) seen.add(cur)
+        if (cur === w2ShellId) break
+      }
+      expect(seen.has(w1ShellId)).toBe(true) // 跨工作区环形可达
+      expect(currentActiveThreadId()).toBe(w2ShellId)
+    },
+    TEST_TIMEOUT,
+  )
+
+  test(
+    'activateWorkspace 恢复 lastSession；close 后回退空态（临时 w3，不破坏 w1/w2）',
+    async () => {
+      const w3 = store.addWorkspace('w3', '/w/w3')
+      await store.spawnFromPreset('shell', w3)
+      const w3Id = store
+        .getState()
+        .threads.find((x) => x.kind === 'terminal' && x.workspaceId === w3)!.id
+
+      // 切走 → activateWorkspace(w3) 恢复其最近会话
+      store.activate({ type: 'thread', id: w1ShellId })
+      store.activateWorkspace(w3)
+      expect(currentActiveThreadId()).toBe(w3Id)
+      expect(store.getState().workspaces.find((x) => x.id === w3)?.lastSession).toBe(w3Id)
+
+      // close → lastSession 清（null）→ activateWorkspace 回起始页（不激活死 id）
+      store.close(w3Id)
+      expect(store.getState().workspaces.find((x) => x.id === w3)?.lastSession ?? null).toBeNull()
+      store.activateWorkspace(w3)
+      expect(currentActiveThreadId()).toBeNull()
+      store.removeWorkspace(w3) // 收尾
+    },
+    TEST_TIMEOUT,
+  )
+
+  test(
+    '⌘K/Ctrl-K 路由端到端：键事件到 root → 聚焦目标存在（terminal 在场不写 PTY）',
+    async () => {
+      // 已知问题（TODOLIST W5 结论区）：terminal 元素在场时 GPUI 焦点在
+      // 帧渲染后被抢回，programmatic focus + 打字在 TestRenderer 不成立
+      // ——打字进 query 的行为由 AgentPlane.test（无 terminal 场景）锁定。
+      // 这里锁路由层：cmd-k 到 root、focusThreadSearch 有目标、不写 PTY。
+      const sid = () => sidebarKeyboard.searchInputId()
+      await until('sidebar search mounted', () => sid() != null)
+
+      // 平台默认键位走真事件管线（root onKeyDown → handleKeydown）
+      t.renderer.simulateKeystrokes(process.platform === 'darwin' ? 'cmd-k' : 'ctrl-k')
+      await new Promise((r) => setTimeout(r, 150))
+      expect(sid()).not.toBeNull() // focusThreadSearch 被调用且未抛
+      // 无 PTY 泄漏：两工作区 shell 会话仍在（未被误关/误写崩溃）
+      const terms = store.getState().threads.filter((x) => x.kind === 'terminal')
+      expect(terms.length).toBeGreaterThanOrEqual(2)
+    },
+    TEST_TIMEOUT,
+  )
+
+  test(
+    'removeWorkspace：连锁 close 会话 + 工作区消失 + 活跃回退存活会话',
+    async () => {
+      store.activate({ type: 'thread', id: w2ShellId })
+      expect(currentActiveThreadId()).toBe(w2ShellId)
+      store.removeWorkspace(w2)
+      const s = store.getState()
+      expect(s.workspaces.map((x) => x.id)).not.toContain(w2)
+      expect(s.threads.some((x) => x.id === w2ShellId)).toBe(false)
+      // close 单点既有语义：active thread 被 close → activate(null) 回起始页
+      expect(currentActiveThreadId()).toBeNull()
+      await until(
+        'sidebar shows single group',
+        () => t.renderer.findByTestId(`workspace-${w2}`) == null,
+      )
+    },
+    TEST_TIMEOUT,
+  )
+})

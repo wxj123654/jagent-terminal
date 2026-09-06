@@ -307,3 +307,30 @@ describe('WorkspaceList：浏览…（W3 目录选择）', () => {
     )
   })
 })
+
+describe('WorkspaceList：工具菜单筛选（W5 原型清单对齐）', () => {
+  test('筛选命中过滤列表；无匹配显示空态；Esc 清空', async () => {
+    t.render(createElement(Harness, { query: '' }))
+    t.renderer.flush()
+    clickCenter(`new-menu-${wsA}`)
+    await until('menu open', () => t.renderer.findByTestId('tool-menu-filter') != null)
+
+    // 输入 she → 只剩 shell（label 命中；其他内置预设名不含）
+    const filterEl = t.renderer.findByTestId('tool-menu-filter')!
+    t.renderer.nativeSimulateKeystrokes(filterEl.id, 'she')
+    await until('filtered', () => {
+      const shell = t.renderer.findByTestId('tool-preset-shell')
+      const claude = t.renderer.findByTestId('tool-preset-claude')
+      return shell != null && claude == null
+    })
+
+    // 无命中：空态提示（zzz 不命中任何 label/command）
+    t.renderer.nativeSimulateKeystrokes(filterEl.id, 'zzz')
+    await until('empty state', () => t.renderer.getAllText().some((s) => s === '无匹配工具'))
+
+    // Esc 清空（层级内消费）→ 列表恢复
+    t.renderer.nativeSimulateKeyDown(filterEl.id, 'escape')
+    await until('restored', () => t.renderer.findByTestId('tool-preset-claude') != null)
+    clickCenter(`new-menu-${wsA}`) // 收尾关闭
+  })
+})

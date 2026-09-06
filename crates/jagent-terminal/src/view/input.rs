@@ -158,6 +158,12 @@ pub fn keystroke_to_bytes(keystroke: &Keystroke, mode: TermMode) -> Option<Vec<u
         "backspace" => return Some(b"\x7f".to_vec()),
         "tab" => {
             // Shift+Tab sends a different sequence
+            if keystroke.modifiers.control {
+                // Ctrl(+Shift)+Tab = 应用层 cycle 键（硬约束 2 例外：全局
+                // 修饰组合不进 PTY；W5 e2e 发现终端聚焦时 Ctrl-Tab 曾被当
+                // 裸 tab 写入 PTY → root 键位层收不到，会话切换失效）
+                return None;
+            }
             if keystroke.modifiers.shift {
                 return Some(b"\x1b[Z".to_vec());
             }
@@ -384,6 +390,22 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn ctrl_tab_not_swallowed_by_terminal() {
+        // W5：Ctrl(+Shift)+Tab 是应用层 cycle 键——终端聚焦时必须透传到
+        // root 键位层（None = 不写 PTY、不 stop_propagation）
+        let mode = TermMode::empty();
+        let ctrl_tab = Keystroke::parse("ctrl-tab").unwrap();
+        assert_eq!(keystroke_to_bytes(&ctrl_tab, mode), None);
+        let ctrl_shift_tab = Keystroke::parse("ctrl-shift-tab").unwrap();
+        assert_eq!(keystroke_to_bytes(&ctrl_shift_tab, mode), None);
+        // 裸 tab / shift-tab 语义不变
+        let tab = Keystroke::parse("tab").unwrap();
+        assert_eq!(keystroke_to_bytes(&tab, mode), Some(b"\t".to_vec()));
+        let shift_tab = Keystroke::parse("shift-tab").unwrap();
+        assert_eq!(keystroke_to_bytes(&shift_tab, mode), Some(b"\x1b[Z".to_vec()));
+    }
+
     fn test_ctrl_combinations() {
         let mode = TermMode::empty();
 

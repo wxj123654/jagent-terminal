@@ -30,9 +30,9 @@
 | 2 ThreadStore 全规则 + settings-core/controls + SettingsView | ✅ 完成（T2.1–T2.7） |
 | 3 settings-presets + chat | ✅ 完成（T3.1+T3.2） |
 | 3+ settings-acp-advanced + ACP + 键位编辑 | ✅ 完成（T3+.1–T3+.3） |
-| W 工作区平面迁移 | ◑ W0–W4 完成；W5 e2e 收口待做 |
+| W 工作区平面迁移 | ✅ W0–W5 完成（含 ctrl-tab PTY 真 bug 修复）|
 
-**当前指针**：→ Phase W / W5（工作区面 e2e：真 PTY 多工作区、Ctrl-Tab 跨工作区 cycle、抽屉窄窗口交互、⌘K 键位面端到端）
+**当前指针**：→ Phase W 收官 ✅（W0–W5 全完成）· 待办：真窗口手验清单（W3 目录选择 / W4 抽屉+⌘K / W5 ⌘K terminal 在场打字）· Phase W+ 候选项见看板
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -228,7 +228,17 @@
 - **窄窗口抽屉（760px）**：AgentPlane useWindowSize（poll 100ms；TestRenderer 构造传 width/height → 测试可控断点，fallback 800×600 保宽态）。窄态：Pane 全宽 + drawerOpen 时 **scrim+Sidebar 后渲染**（GPUI 树序绘制 CONSTRAINTS #2——覆盖层必须后画）；TitleBar 汉堡钮（新 Icon menu）toggle；scrim 点击/Esc 关。
 - **设置面键位表**：KEY_ACTIONS +searchThreads 行；KeyCap 捕获格支持 cmd（'cmd-' 前缀构造；requireCtrl 校验放宽为 ctrl 或 cmd）。
 - **测试**：keybindings.test 5（cmd 匹配/设置面不劫持/改绑即时生效）+ AgentPlane.test 3（宽常驻/窄抽屉开-关/Esc 关抽屉）。app 175 + e2e 12 + tsc/fmt/lint 全绿。跨断点动态变宽 offscreen 无法模拟（窗口尺寸构造后不变）——真窗口手验项。
-- [ ] **W5** 验收锚点：原型验证清单全项对齐（工作区归属/恢复最近会话/草稿保留/工具筛选/自定义命令/搜索/移除回退/窄窗口）+ e2e 扩展（工作区全链：添加工作区 → 新建 pi 会话 → 切换 → 恢复 → 移除回退）+ 真窗口冒烟 + commit "Phase W"
+- [x] **W5** 验收锚点：详见 Phase W 结论区（W5）
+
+### Phase W 结论区（W5，e2e 收口）
+
+- **原型清单对齐核对**：工作区归属/恢复最近会话 ✓（W1/W2+e2e）、草稿保留 → 原生语境 = PTY scrollback retain（T1.6 已锁，HTML 原型的示例输入不移植）、工具筛选 ✓（本轮补 ToolMenu 筛选框：label/program/args/initCommand 子串 + 空态 + Esc 清空）、自定义命令 = ACP agents 项 ✓、搜索 ✓（W2+本轮）、移除回退 ✓（语义修正见下）、窄窗口抽屉 ✓（W4）。
+- **e2e Phase W describe（5 用例）**：添加工作区 → spawn 归属 → 侧栏双分组；Ctrl-Tab 跨工作区 cycle（真事件管线环形流转）；activateWorkspace 恢复 lastSession + close 回退空态（临时 w3 自包含）；⌘K 路由（见已知问题）；removeWorkspace 连锁 close + 回起始页。
+- **真 bug 修复（本轮最大收获）**：`keystroke_to_bytes` 对 **ctrl-tab 返回 `\t`**——终端聚焦时 Ctrl-Tab 被当裸 tab 写入 PTY，root 键位层收不到 → **真窗口里会话切换一直失效**。修：tab 分支带 control 修饰返回 None（透传 root；裸 tab/shift-tab 语义不变）。cargo 新增 `ctrl_tab_not_swallowed_by_terminal`。
+- **removeWorkspace 语义定稿**：close active thread → activate(null) 回起始页（close 单点既有语义，非「切相邻」）——e2e 锁定；未来若要 Zed 式「切相邻」是行为变更再议。
+- **e2e 写法坑**：①until 循环里 `prev` 必须在事件派发**前**取（after 结构死锁等下一次变化）；②describe 间不隔离——Phase W 用例不假设前面 describe 的 threads 池状态（retain 池有遗留），「最后 spawn 的」用 `.at(-1)` 定位；③单跑 `-t` 用例时依赖前置用例赋值的变量会 undefined——自包含或全 describe 跑。
+- **已知问题（未解，记录）**：terminal 元素在场时 GPUI 焦点在帧渲染后被抢回——`focusElement` + 后续 `simulateKeystrokes` 在 TestRenderer 下键击丢失（无 terminal 场景三条聚焦路径全通：autoFocus/focusElement+simulate/nativeSimulateKeystrokes 原子）。疑与 terminal paint 闭包 `handle_input` 每帧注册 InputHandler 有关。**真窗口 ⌘K 打字是否受影响待手验**——若真窗口也丢键，开专项修（gpuix/gpui 层）。打字进 query 的行为由 AgentPlane.test（无 terminal 场景）闭环锁定。
+- **测试**：e2e 12→17；AgentPlane.test +1（⌘K 无 terminal 闭环）；WorkspaceList.test +1（ToolMenu 筛选）；cargo 37→38。app 177 + e2e 17 + cargo 38 全绿。
 
 ---
 
@@ -279,3 +289,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-06 · **W2 完成（侧栏 UI）**：Sidebar 改工作区分组树（WorkspaceList：WorkspaceGroup 行[箭头 toggle 不激活/点行恢复 lastSession/双击 rename/hover 移除] + ThreadRow indent 缩进 + 空工作区引导 + AddWorkspaceForm 内联表单）· ToolMenu（NewThreadButton 演化：目标工作区头 name+cwd + 预设/New Chat/ACP 全带 workspaceId）· 搜索（searchThreads 四路命中 + 结果行 suffix 工作区名）· uSES 快照稳定性坑（selector 新数组炸 → 稳定引用 + 渲染期现算）· e2e 迁移（装配默认工作区 + spawn 归属 + 菜单 testId）· WorkspaceList.test 9 + searchThreads 2 新增；app 166 + e2e 12 全绿 · 下一步：W3 目录选择 seam
 - 2026-09-06 · **W3 完成（目录选择 seam）**：gpuix 盘点零 dialog 导出 → packages/native/picker.rs 自建（mac NSOpenPanel 主线程模态 / win IFileOpenDialog detached STA；TSF NonBlocking 防 JS 线程死锁；windows crate features 零新增）· prop 注入链 main→App→Sidebar→WorkspaceList→AddWorkspaceForm（未注入隐藏按钮）· 浏览后填 path+空名自动 basename · WorkspaceList.test +1（fake picker 全路径）· app 167 + e2e 12 + cargo 37 全绿 · NSOpenPanel 真交互待用户真机验收 · 下一步：W4（⌘K/Ctrl-K + Esc 层级 + 窄窗口抽屉）
 - 2026-09-06 · **W4 完成（空态与键盘）**：keybindings 增 searchThreads（⌘K/Ctrl-K 聚焦侧栏搜索；keystrokeMatches 扩 cmd 语法；设置面不劫持；platform 修饰不写 PTY 零冲突）· Esc 层级定稿（编辑态→清 query→关抽屉→no-op；无元素级 blur API）· 窄窗口抽屉 760px（useWindowSize + 树序后画覆盖层 + 汉堡钮 Icon menu + scrim/Esc 关）· KeyCap 捕获格支持 cmd-· keybindings.test 5 + AgentPlane.test 3 · app 175 + e2e 12 全绿 · 下一步：W5（工作区面 e2e 收口）
+- 2026-09-06 · **W5 完成（e2e 收口，Phase W 收官）**：原型清单全项对齐（草稿保留=PTY retain 不移植；工具筛选本轮补 ToolMenu 筛选框）· e2e 12→17（Phase W describe：归属/cycle/恢复/移除/⌘K 路由）· **ctrl-tab 真 bug 修复**（终端聚焦时被当 \\t 写 PTY → 会话切换失效；input.rs ctrl+tab 返 None 透传 root；cargo 38）· removeWorkspace 语义定稿（回起始页）· 已知问题记录：terminal 在场 GPUI 焦点帧后抢回（TestRenderer programmatic focus+打字丢键；真窗口待手验）· app 177 + e2e 17 全绿
