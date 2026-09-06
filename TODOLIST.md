@@ -17,7 +17,9 @@
 | `docs/agent-plane-layout.md` | Agent Plane 布局契约（A 单 pane / C1 无顶栏 / D1 混排 / E2 预设） |
 | `docs/settings-ui.md` | 设置界面契约（S1–S5 / 7 分区 / §14 落地顺序 / §15 验收清单） |
 | `docs/gpuix-zed-terminal-fusion.md` | 调研与硬约束（§4 硬约束 6：字节流不过 napi；GPUIX pin GPUI fork） |
-| `design/*.html` | 两个 HTML 原型（布局/设置），样式对齐用 |
+| `design/*.html` | HTML 原型（布局/设置/交互方案），样式对齐用 |
+
+**待评审工作区方案（不是实现契约）**：`design/workspace-plane.html`，操作说明 `design/workspace-plane.md`。用户已选择独立 HTML、Codex 式工作区分组；正式应用尚未迁移。落地拆解见下方 **Phase W（工作区平面迁移）**。
 
 ## 进度看板
 
@@ -27,9 +29,9 @@
 | 1 双 workspace + napi 壳 + app 最小集 | ✅ 完成（结论见 Phase 1 结论区） |
 | 2 ThreadStore 全规则 + settings-core/controls + SettingsView | ✅ 完成（T2.1–T2.7） |
 | 3 settings-presets + chat | ✅ 完成（T3.1+T3.2） |
-| 3+ settings-acp-advanced + ACP + 键位编辑 | ◑ T3+.1/.2 完成；T3+.3 验收锚点未做 |
+| 3+ settings-acp-advanced + ACP + 键位编辑 | ✅ 完成（T3+.1–T3+.3） |
 
-**当前指针**：→ Phase 3+ / T3+.3（验收锚点 §15 第 6 条 + commit）
+**当前指针**：→ Phase W / W0（用户评审工作区原型 `design/workspace-plane.md`，通过后开工 W1）
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -154,7 +156,11 @@
 
 - [x] **T3+.1** ACP Agents 分区 + AcpSurface（ACP JSON-RPC 子进程）——详见下方结论区
 - [x] **T3+.2** Advanced 分区 + 键位编辑解锁（S5 只读 → 可编辑）——详见下方结论区
-- [ ] **T3+.3** 验收锚点（§15 第 6 条）+ commit
+- [x] **T3+.3** 验收锚点（§15 第 6 条）+ commit —— 见下方结论区
+
+### Phase 3+ 结论区（T3+.3 验收）
+
+- **§15 第 6 条「settings.json 为事实源：实时视图随修改同步；『在编辑器中打开』可用」核对达成**：① 实时视图与写盘同源——store 的 `serializeSettings()` 同一函数既写盘（commit 快照）又渲染 Advanced 分区 markdown code block，无两套序列化；修改即时反映由 uSES 订阅驱动（e2e 第 12 用例锁定：改键 ctrl-. 后 JSON 视图含新值 + `"keybindings"` section）。② 「在编辑器中打开」：memory adapter 无 path 按钮不渲染（e2e 断言 byTestId undefined）；darwin `open` 分支真机调用实测通过（无 throw，fire-and-forget 语义）；真盘 adapter 携带 path 产品路径渲染。③ 全量验证：app 单测 134 + e2e 12（macOS 全绿，09-09 fixture 修复生效）+ cargo 37 + tsc/fmt:check/lint 干净 + 真窗口冒烟 mount complete。④ 代码已在 T3+.1/T3+.2 提交（a22ba9f/836f9be），本块收官补工作区原型入库（design/ 6 文件，独立 commit）+ .impeccable 工具产物 gitignore。
 
 ### Phase 3+ 结论区（T3+.2，键位可编辑 + Advanced）
 
@@ -178,10 +184,22 @@
 
 ---
 
+## Phase W —— 工作区平面迁移（原型 → 原生 app）
+
+> 锚点：`design/workspace-plane.html`（待评审方案）+ `design/PRODUCT.md` + `design/DESIGN.md`。原型已通过交互测试与独立审查（ship）；本 Phase 把工作区分组与多 TUI 会话模型落进 `packages/app`，不改变既有 PTY / `<terminal>` 架构（硬约束 2–4 不变）。**用户评审通过原型后才开工**。
+
+- [ ] **W0** 原型评审定稿：用户过一遍 `design/workspace-plane.md` 体验路径，确认工作区分组、工具清单（pi/[CC]/Codex CLI/Shell/lazygit/yazi/btop/自定义）与交互细节（恢复最近会话、草稿保留、空工作区引导）；补充「本地目录选择」为原生必做项（系统对话框，对应原型「浏览…」按钮）
+- [ ] **W1** 数据层：`threads/workspaces.ts`（Workspace：id/name/path/expanded/lastSession/sessions[]，会话归属工作区而非全局平铺）；ThreadStore 改造（spawnFromPreset 增 workspaceId、activateWorkspace 恢复 lastSession、工作区 CRUD）；持久化策略拍板（settings.json vs 独立 state.json——工作区含运行时态，倾向独立文件）；bun test 全规则用例迁移 + 新增工作区用例
+- [ ] **W2** 侧栏 UI：Sidebar 改工作区分组树（工作区行：图标+名称+会话数+「＋」新建；会话行继承现有 ThreadRow：红点/rename/exited）；「＋」打开工具选择菜单（anchored，含工具图标+命令摘要+自定义命令入口，展示目标工作区与 cwd）；「添加工作区」对话框（名称+目录，「浏览…」走原生目录选择对话框——需确认 gpuix 是否暴露 folder picker，无则 rust seam 补）；「⌕ 搜索会话」跨工作区搜索
+- [ ] **W3** 目录选择 seam：gpuix 层 API 盘点（有无 folder picker / dialog 导出）；无则 `packages/native` 增 `pickDirectory()`（macOS NSOpenPanel / Windows IFileDialog，走现有 run_host 通道），e2e 可注入 fake
+- [ ] **W4** 空态与键盘：空工作区引导（默认 pi 卡）；窄窗口抽屉（760px 断点对齐原型）；⌘K/Ctrl-K 搜索、Esc 层级与现有 keybindings.ts 合流（工作区面不劫持终端输入，硬约束 2 同源）
+- [ ] **W5** 验收锚点：原型验证清单全项对齐（工作区归属/恢复最近会话/草稿保留/工具筛选/自定义命令/搜索/移除回退/窄窗口）+ e2e 扩展（工作区全链：添加工作区 → 新建 pi 会话 → 切换 → 恢复 → 移除回退）+ 真窗口冒烟 + commit "Phase W"
+
+---
+
 ## 验收锚点速查（settings-ui.md §15）
 
 core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-advanced→6 · 第12条（无障碍）横切随切片验收。
-
 ## 硬约束速查（违反 = 返工）
 
 1. 字节流不过 napi（fusion §4-6）
@@ -219,3 +237,6 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-09 · **标题栏对齐 Zed Tahoe**：用户对照截图后，红绿灯让位仍按旧值 71，AGENT 贴灯、标题光学偏上。按 Zed `TRAFFIC_LIGHT_PADDING`（SDK 26+ = 78）改为 Darwin ≥ 25 用 78；顶栏整行（含 SidebarHeader）统一 `COLORS.titlebar`；标签 `marginTop:1` 光学下移。测试按常量断言 label x=`TRAFFIC_LIGHT_WIDTH+12`。
 - 2026-09-09 · **gpuix 补丁第一批收缩**：删除 gpuix 0001（浅克隆改 `.gitmodules`，setup 已 `--depth 1`）/ 0003（帧循环改上游 `render()`）/ 0004（标题栏 TS 声明）以及 0002 内 input `vertical_offset`；新增 `packages/app/src/appWindow.ts`（公开 `startFrameLoop` 生命周期：复用同一 renderer、热重载停旧循环、关窗退出、`stop()` 清理）与 `gpuix.d.ts`（`declare module '@gpuix/react'` 增补 `windowControlArea` / `startWindowMove` / `titlebarDoubleClick`）；`scripts/refs-state.ts` 供 setup/export 共用，检查两仓 pin、实际补丁、staged、未管理改动、多余 patch、必需 dist 存在性。e2e T1.6 的 PowerShell fixture 改为本机 `process.execPath` + `e2e/__fixtures__/bell.ts` 文件握手（切后台后再发双 BEL）。验证：app 130 / e2e 12 / refs-state 10 全绿、typecheck、export --check、setup 快速路径通过。未实施：标题栏原生迁项目、workspace 归属实验、Windows 测试窗隐藏替代、factory drain 多 renderer 契约。下一步：第二批标题栏迁出。
 - 2026-09-08 · **设置界面 input 布局修复（贴顶/重叠/溢出三连）**：用户报「设置界面 input 布局有问题」· 诊断：e2e 临时脚本（TestRenderer captureScreenshot，复刻 terminal.e2e.test.tsx 装配 + navigateSettingsSection 逐分区截图）+ PNG 逐行像素扫描（文字 y 范围 vs 框 y 范围）量化——**所有单行 input 文字贴顶**（pad_top 3-6px vs pad_bot 24-28px @2x）；Presets 展开表单 InitCommand 行 label 列溢出盖住 input；ACP 分区整块超宽（描述 text max-content 撑开 column 链，垃圾桶图标切半）· 根因与修复（全部工程内，未动 .refs）：① 单行 input 贴顶 = native input 文字元素是 measured 布局、高度恰为一行（EditorTextElement clamp 到 line_height，vertical_offset 恒 0——记忆 #9 的 native 修复对单行 input 天然失效），壳样式（28 高/border/bg/padding）压在 input 自身上时该行顶对齐盒顶；照 gpuix 官方 example-app composer 模式重构 TextInput：**视觉壳外置到 div（alignItems center），input 本体只 flexGrow 放文字**；NumberInput 外层 alignItems stretch→center + 步进列 alignSelf:stretch ② FieldRow label 列（130px）装不下 InitCommand+initCommand → key 文字 minWidth:0+ellipsis 截断（web 原型靠 input 不透明背景盖住溢出，GPUIX 树序不同必须自己截）③ ACP 根 div 加 minWidth:0（覆盖 flex item min-width:auto，否则 text max-content 一路撑开 scroll 链），whiteSpace normal 需要确定宽约束才 wrap；Presets 底部说明同补 whiteSpace · 验证：像素扫描 offset -11px→-2px（字形自然分布）、截图逐分区目检、tsc+125 单测+oxfmt/oxlint 全绿、e2e 8 pass（T1.6 4 fail 为既存 macOS powershell fixture 基线）· 下一步：真机验收
+- 2026-09-06 · **工作区与多 TUI 交互原型**：用户确认独立 HTML + Codex 式工作区分组，新增 `design/workspace-plane.html`；工作区展开/切换、恢复最近会话、cwd 继承、pi/Claude Code/Codex CLI/Shell/lazygit/yazi/btop/自定义命令、新建/搜索/重命名/移除、BEL 示例清除、草稿保留及窄屏抽屉。全部模拟，不访问文件系统、不执行命令、不连接模型；未改原生应用与 `.refs`。`design/workspace-plane.test.mjs` 复用已有 Playwright + Chrome，10 组通过、0 运行时错误，截图覆盖桌面/紧凑/窄屏及工具关键状态；独立 reviewer 代行 finish-reviewer，结论 ship（原型范围）。设计记录位于 `design/PRODUCT.md`、`design/DESIGN.md`，操作说明 `design/workspace-plane.md`。检索返回 FAQ 落地页模板，不适用于本任务，未采用；保留既有深色系统。检测器 HTML parser 缺失降级 regex，不将空结果当完整认证。下一步：用户评审原型后，再决定正式工作区状态与原生 UI 落地。
+- 2026-09-06 · **原型两轮迭代**：①新建会话弹窗布局修复（用户报「元素有点乱」）：工具项与自定义命令统一 3 列网格对齐、弹窗框架固定高度仅列表内滚（消除筛选/空态跳动）、自定义命令拆入固定 footer 常驻、工作区行横排压紧 + cwd 单行省略；新增 `design/workspace-dialog.test.mjs` 回归（4 视口几何断言）。②添加工作区本地目录选择（用户要求「本地选择而不是输入」）：「浏览…」按钮，showDirectoryPicker 优先、webkitdirectory 回退（实测回退路径触发正常），选择后自动填路径与名称。下一步：任务拆分已进 TODOLIST Phase W（W0–W5），等用户评审原型后开工。
+- 2026-09-06 · **Phase 3+ 收官（T3+.3）**：§15 第 6 条锚点核对达成（JSON 实时视图与写盘同源 + e2e 第 12 用例锁定；「在编辑器中打开」darwin open 分支实测 + memory 无 path 不渲染）· 全量：app 134 + e2e 12（macOS 全绿）+ cargo 37 + tsc/fmt/lint 干净 + 真窗口冒烟 · 工作区原型补入库（design/ 6 文件 + .impeccable gitignore）· 下一步：Phase W W0（用户评审工作区原型）
