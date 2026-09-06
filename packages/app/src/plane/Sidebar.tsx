@@ -18,7 +18,7 @@ import type { AppPlatform } from '../ui/platform'
 import { TRAFFIC_LIGHT_WIDTH } from '../ui/platform'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
 import { useTitleBarDrag, type WindowControls } from './TitleBar'
-import { WorkspaceList } from './WorkspaceList'
+import { WorkspaceList, type DirectoryPicker } from './WorkspaceList'
 
 /**
  * 顶栏左段：AGENT 标识 + 线程切换 hint。mac 上给红绿灯让位（Zed：
@@ -83,7 +83,15 @@ export function SidebarHeader({
   )
 }
 
-export function Sidebar({ store, settings }: { store: ThreadStore; settings: SettingsStore }) {
+export function Sidebar({
+  store,
+  settings,
+  pickDirectory,
+}: {
+  store: ThreadStore
+  settings: SettingsStore
+  pickDirectory?: DirectoryPicker
+}) {
   const [query, setQuery] = useState('')
 
   return (
@@ -139,7 +147,12 @@ export function Sidebar({ store, settings }: { store: ThreadStore; settings: Set
         />
       </div>
 
-      <WorkspaceList store={store} settings={settings} query={query} />
+      <WorkspaceList
+        store={store}
+        settings={settings}
+        query={query}
+        pickDirectory={pickDirectory}
+      />
 
       {/* Footer：设置入口（Ctrl-, 同效，见 main.tsx 键位层） */}
       <div

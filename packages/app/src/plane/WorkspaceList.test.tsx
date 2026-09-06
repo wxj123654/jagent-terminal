@@ -26,9 +26,17 @@ let settings: SettingsStore
 let wsA: string // 默认 expanded 工作区
 let wsB: string
 
-/** query 可变壳（Sidebar 的搜索框态等价） */
-function Harness({ query }: { query: string }) {
-  return <WorkspaceList store={store} settings={settings} query={query} />
+/** query/picker 可变壳（Sidebar 的搜索框态 + main.tsx 的 picker 注入等价） */
+function Harness({
+  query,
+  pickDirectory,
+}: {
+  query: string
+  pickDirectory?: () => Promise<string | null>
+}) {
+  return (
+    <WorkspaceList store={store} settings={settings} query={query} pickDirectory={pickDirectory} />
+  )
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0))
@@ -256,5 +264,46 @@ describe('WorkspaceList：搜索态', () => {
     store.close(shellId)
     store.close(chatId)
     t.renderer.flush()
+  })
+})
+
+describe('WorkspaceList：浏览…（W3 目录选择）', () => {
+  test('未注入 picker：按钮不渲染；注入后点击 → 填 path + 空名称自动 basename', async () => {
+    // 未注入：无按钮
+    t.render(createElement(Harness, { query: '' }))
+    t.renderer.flush()
+    clickCenter('add-workspace')
+    await until('form visible', () => t.renderer.findByTestId('add-workspace-form') != null)
+    expect(t.renderer.findByTestId('browse-directory')).toBeUndefined()
+
+    // 注入 fake：选择 → path 填入 + name 自动 basename（表单在同构树上保持 open）
+    let resolvePick: (p: string | null) => void = () => {}
+    const fake = () =>
+      new Promise<string | null>((r) => {
+        resolvePick = r
+      })
+    t.render(createElement(Harness, { query: '', pickDirectory: fake }))
+    t.renderer.flush()
+    expect(t.renderer.findByTestId('browse-directory') != null).toBe(true)
+    clickCenter('browse-directory')
+    resolvePick('/w/picked-proj')
+    await until('path filled', () => {
+      const el = t.renderer.findByTestId('add-workspace-path')
+      const v = el ? String(t.renderer.getElement(el.id)?.customProps?.value ?? '') : ''
+      return v === '/w/picked-proj'
+    })
+    // 名称空 → basename 自动填
+    const nameEl = t.renderer.findByTestId('add-workspace-name')!
+    const nameVal = String(t.renderer.getElement(nameEl.id)?.customProps?.value ?? '')
+    expect(nameVal).toBe('picked-proj')
+
+    // 取消路径：再次浏览取消 → 已填值不动
+    clickCenter('browse-directory')
+    resolvePick(null)
+    await until('idle after cancel', () => true)
+    const pathEl = t.renderer.findByTestId('add-workspace-path')!
+    expect(String(t.renderer.getElement(pathEl.id)?.customProps?.value ?? '')).toBe(
+      '/w/picked-proj',
+    )
   })
 })

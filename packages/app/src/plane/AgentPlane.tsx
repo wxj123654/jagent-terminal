@@ -18,6 +18,7 @@ import { COLORS, FONT } from '../ui/tokens'
 import { Pane } from './Pane'
 import { Sidebar, SidebarHeader } from './Sidebar'
 import { TitleBar, type WindowControls } from './TitleBar'
+import type { DirectoryPicker } from './WorkspaceList'
 
 /** 顶栏标题：当前线程 displayTitle · 设置 → '设置' · 空态 → 'j-agent' */
 function useTitle(store: ThreadStore): string {
@@ -34,10 +35,13 @@ export function App({
   store,
   settings,
   windowControls,
+  pickDirectory,
 }: {
   store: ThreadStore
   settings: SettingsStore
   windowControls?: WindowControls
+  /** 原生目录选择（W3；main.tsx 包装 native pickDirectory；缺省隐藏「浏览…」） */
+  pickDirectory?: DirectoryPicker
 }) {
   const title = useTitle(store)
   return (
@@ -69,7 +73,7 @@ export function App({
       </div>
       {/* 内容行 */}
       <div style={{ display: 'flex', flexDirection: 'row', flexGrow: 1, minHeight: 0 }}>
-        <Sidebar store={store} settings={settings} />
+        <Sidebar store={store} settings={settings} pickDirectory={pickDirectory} />
         <Pane store={store} settings={settings} />
       </div>
     </div>

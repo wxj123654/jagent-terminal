@@ -30,14 +30,19 @@ import { ToolMenu } from './ToolMenu'
 /** 会话行在分组下的缩进（视觉分组） */
 const SESSION_INDENT = 12
 
+/** 原生目录选择 seam（W3）：resolve(path) / resolve(null) = 取消或不可用 */
+export type DirectoryPicker = () => Promise<string | null>
+
 export function WorkspaceList({
   store,
   settings,
   query,
+  pickDirectory,
 }: {
   store: ThreadStore
   settings: SettingsStore
   query: string
+  pickDirectory?: DirectoryPicker
 }) {
   const workspaces = useThreadStore(store, (s) => s.workspaces)
   const trimmed = query.trim()
@@ -50,7 +55,7 @@ export function WorkspaceList({
       {workspaces.map((ws) => (
         <WorkspaceGroup key={ws.id} store={store} settings={settings} workspaceId={ws.id} />
       ))}
-      <AddWorkspaceForm store={store} />
+      <AddWorkspaceForm store={store} pickDirectory={pickDirectory} />
     </div>
   )
 }
@@ -295,10 +300,34 @@ function WorkspaceGroup({
 
 // ── 添加工作区（内联表单；「浏览…」目录选择 = W3）───────────────────
 
-function AddWorkspaceForm({ store }: { store: ThreadStore }) {
+function AddWorkspaceForm({
+  store,
+  pickDirectory,
+}: {
+  store: ThreadStore
+  pickDirectory?: DirectoryPicker
+}) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [path, setPath] = useState('')
+  const [picking, setPicking] = useState(false)
+
+  /** 「浏览…」：原生目录选择 → 填 path +（名称空时）自动填 basename（原型契约） */
+  const browse = () => {
+    if (!pickDirectory || picking) return
+    setPicking(true)
+    pickDirectory()
+      .then((picked) => {
+        if (picked) {
+          setPath(picked)
+          if (!name.trim()) {
+            const base = picked.split(/[\\/]/).filter(Boolean).pop()
+            if (base) setName(base)
+          }
+        }
+      })
+      .finally(() => setPicking(false))
+  }
 
   const submit = () => {
     if (!path.trim()) return // 目录必填；名称空 → basename 兜底（store 单点）
@@ -375,9 +404,50 @@ function AddWorkspaceForm({ store }: { store: ThreadStore }) {
         onChange={setName}
         placeholder="my-project"
       />
-      <text style={{ fontSize: 10, fontFamily: FONT.ui, color: COLORS.muted }}>
-        目录（绝对路径；「浏览…」选择随后续版本）
-      </text>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <text style={{ fontSize: 10, fontFamily: FONT.ui, color: COLORS.muted }}>
+          目录（绝对路径）
+        </text>
+        {pickDirectory ? (
+          <div
+            tabIndex={0}
+            testId="browse-directory"
+            onClick={browse}
+            onKeyDown={(e) => {
+              if (e.key === 'enter' || e.key === 'space') browse()
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              height: 16,
+              paddingLeft: 6,
+              paddingRight: 6,
+              borderRadius: 3,
+              cursor: 'pointer',
+              opacity: picking ? 0.5 : 1,
+              hover: { backgroundColor: COLORS.surfaceHover },
+            }}
+          >
+            <text
+              style={{
+                fontSize: 10,
+                fontFamily: FONT.ui,
+                color: COLORS.accent,
+                pointerEvents: 'none',
+              }}
+            >
+              浏览…
+            </text>
+          </div>
+        ) : null}
+      </div>
       <TextInput
         testId="add-workspace-path"
         value={path}

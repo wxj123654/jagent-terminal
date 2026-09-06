@@ -603,6 +603,16 @@ export declare function notifyDesktop(title: string, body: string, sound: boolea
 export declare function onSessionEvent(cb: (err: null, e: import('./index').SessionEvent) => void): void
 
 /**
+ * Native folder picker (W3). Callback contract mirrors `onSessionEvent`:
+ * payload is the SECOND argument — `pickDirectory((_err, path) => ...)`.
+ * `path === null` = cancelled / unavailable. On macOS the modal loop runs
+ * synchronously on the JS/main thread (the panel pumps AppKit); on Windows
+ * it runs on a detached STA thread. The JS side treats this as async (the
+ * callback may fire on a later tick in both cases).
+ */
+export declare function pickDirectory(cb: (err: null, path: string | null) => void): void
+
+/**
  * Global session event payload (R2): one channel for title/bell/exit,
  * delivered even when the element is unmounted (background PTY).
  */

@@ -14,7 +14,11 @@
 
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { installTerminalElement, onSessionEvent } from '@jagent/native'
+import {
+  installTerminalElement,
+  onSessionEvent,
+  pickDirectory as pickDirectoryNative,
+} from '@jagent/native'
 
 import { appWindow } from './appWindow'
 import { createGlobalKeydown } from './keybindings'
@@ -108,7 +112,18 @@ const handleKeyDown = createGlobalKeydown({
 })
 
 appWindow.mount(
-  <App store={threadStore} settings={settingsStore} windowControls={windowControls} />,
+  <App
+    store={threadStore}
+    settings={settingsStore}
+    windowControls={windowControls}
+    pickDirectory={() =>
+      // native 面是回调式（TSF 两参契约）；装配层包装成 Promise（面板可能
+      // 长时间开着——macOS runModal 阻塞 JS 线程，resolve 在模态结束后）
+      new Promise<string | null>((resolve) => {
+        pickDirectoryNative((_err, path) => resolve(path ?? null))
+      })
+    }
+  />,
   {
     onEvent: (event) => {
       if (event.eventType === 'keyDown') {

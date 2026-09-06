@@ -709,3 +709,4 @@ module.exports.destroyTerminalSession = nativeBinding.destroyTerminalSession
 module.exports.installTerminalElement = nativeBinding.installTerminalElement
 module.exports.notifyDesktop = nativeBinding.notifyDesktop
 module.exports.onSessionEvent = nativeBinding.onSessionEvent
+module.exports.pickDirectory = nativeBinding.pickDirectory

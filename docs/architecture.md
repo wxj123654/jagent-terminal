@@ -199,6 +199,13 @@ type SpawnOptions = {
 function createTerminalSession(opts: SpawnOptions): Promise<number>   // → sessionId
 function destroyTerminalSession(sessionId: number): Promise<void>
 function onSessionEvent(cb: (e: SessionEvent) => void): void
+function pickDirectory(cb: (err: null, path: string | null) => void): void
+// Phase W3：原生目录选择（添加工作区「浏览…」）。macOS NSOpenPanel 在
+// JS/主线程跑模态（gpuix 在调用线程跑 GPUI，panel 自泵 AppKit）；Windows
+// IFileOpenDialog 走 detached STA 线程（notify.rs 同款）。TSF 两参契约同
+// onSessionEvent；JS 侧由 main.tsx 包装成 Promise<string|null> 并以 prop
+// 注入 App → Sidebar → WorkspaceList → AddWorkspaceForm（windowControls
+// 同款 seam；未注入则「浏览…」不渲染——测试面零注入）
 
 // createRenderer：包装 gpuix 构造 + registry.register(TerminalFactory)
 //                + init_zed_subsystems（theme/settings，一次性）

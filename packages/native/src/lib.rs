@@ -8,6 +8,9 @@
 //! - `destroyTerminalSession(sessionId)`
 //! - `onSessionEvent(cb)` — global session events (title/bell/exit)
 //! - `notifyDesktop(title, body, sound)` — Windows toast (T2.5)
+//! - `pickDirectory(cb)` — native folder picker for add-workspace (W3):
+//!   macOS NSOpenPanel (modal on the JS/main thread) / Windows IFileOpenDialog
+//!   (detached STA thread); callback `(err, path | null)`.
 //!
 //! Everything else is protocol mirroring (SpawnOptionsJs / SessionEvent) and
 //! host dispatch ([`host`]). Renderer assembly itself stays JS-side
@@ -18,6 +21,7 @@ mod appearance;
 mod element;
 mod host;
 mod notify;
+mod picker;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -166,4 +170,17 @@ pub fn destroy_terminal_session(session_id: f64) -> Result<()> {
 #[napi]
 pub fn notify_desktop(title: String, body: String, sound: bool) {
     notify::show(&title, &body, sound);
+}
+
+/// Native folder picker (W3). Callback contract mirrors `onSessionEvent`:
+/// payload is the SECOND argument — `pickDirectory((_err, path) => ...)`.
+/// `path === null` = cancelled / unavailable. On macOS the modal loop runs
+/// synchronously on the JS/main thread (the panel pumps AppKit); on Windows
+/// it runs on a detached STA thread. The JS side treats this as async (the
+/// callback may fire on a later tick in both cases).
+#[napi(ts_args_type = "cb: (err: null, path: string | null) => void")]
+pub fn pick_directory(cb: ThreadsafeFunction<Option<String>>) {
+    picker::pick_directory(Box::new(move |path| {
+        cb.call(Ok(path), ThreadsafeFunctionCallMode::NonBlocking);
+    }));
 }
