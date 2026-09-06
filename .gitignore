@@ -22,3 +22,6 @@ Thumbs.db
 
 # pi agent 本地会话产物
 .pi/
+
+# impeccable skill 设计工具工作产物
+design/.impeccable/

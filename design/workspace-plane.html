@@ -1,0 +1,870 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>j-agent · 工作区原型</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --desktop: #101216;
+      --sidebar: #21252b;
+      --terminal: #1a1d23;
+      --surface: #282c34;
+      --hover: #2c313a;
+      --selected: #303844;
+      --border: #363c47;
+      --line: #2d333d;
+      --text: #bdc4cf;
+      --bright: #e2e6ed;
+      --muted: #9ca5b3;
+      --accent: #83bff1;
+      --accent-bg: #253648;
+      --green: #a6ce8c;
+      --amber: #e5c07b;
+      --red: #ee929a;
+      --purple: #d2a3e1;
+      --cyan: #87cbd4;
+      --on-accent: #16212d;
+      --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --mono: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+      --sidebar-width: 276px;
+      --feedback: 140ms ease-out;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; height: 100vh; height: 100dvh; padding: 32px; display: grid; place-items: center; background: var(--desktop); color: var(--text); font: 13px/1.5 var(--ui); }
+    button, input, textarea, select { font: inherit; color: inherit; }
+    button { cursor: pointer; border: 0; background: transparent; padding: 0; touch-action: manipulation; }
+    button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
+    button { transition: background-color var(--feedback), color var(--feedback); }
+    button:hover { color: var(--bright); }
+    button:active { background-color: var(--selected); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    ::selection { color: var(--bright); background: #395475; }
+    input, textarea { caret-color: var(--accent); }
+    input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+    * { scrollbar-width: thin; scrollbar-color: #505968 transparent; }
+    h1, h2, h3, p, pre { margin: 0; }
+    svg.icon { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+    .muted { color: var(--muted); }
+    .bright { color: var(--bright); }
+    .accent { color: var(--accent); }
+    .green { color: var(--green); }
+    .amber { color: var(--amber); }
+    .red { color: var(--red); }
+    .purple { color: var(--purple); }
+    .mono { font-family: var(--mono); }
+    .truncate { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .skip-link { position: fixed; top: 6px; left: 12px; padding: 8px 12px; background: var(--accent); color: var(--on-accent); z-index: 20; transform: translateY(-150%); }
+    .skip-link:focus { transform: translateY(0); }
+    .window { width: min(1440px, 100%); height: min(920px, 100%); min-height: 0; border: 1px solid var(--border); border-radius: 11px; background: var(--terminal); box-shadow: 0 24px 72px #0005; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+    .titlebar { height: 44px; flex-shrink: 0; display: flex; align-items: center; background: var(--sidebar); border-bottom: 1px solid var(--line); }
+    .titlebar-left { width: var(--sidebar-width); flex-shrink: 0; padding: 0 14px; display: flex; align-items: center; gap: 18px; }
+    .traffic { display: flex; gap: 8px; }
+    .traffic i { width: 11px; height: 11px; border-radius: 50%; background: #ff6058; }
+    .traffic i:nth-child(2) { background: #febc2e; }
+    .traffic i:nth-child(3) { background: #28c840; }
+    .app-name { font-size: 12px; font-weight: 600; color: var(--text); }
+    .icon-button { width: 28px; height: 28px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted); }
+    .icon-button:hover { background: var(--hover); color: var(--bright); }
+    #sidebar-toggle { margin-left: auto; }
+    .window-location { padding-left: 20px; display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; font-size: 12px; }
+    .window-location .divider { color: var(--muted); }
+    #title-session { color: var(--muted); }
+    .prototype-label { margin: 0 15px; font-size: 11px; color: var(--muted); padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; white-space: nowrap; }
+    .prototype-label:hover { background: var(--hover); }
+    .layout { flex: 1; min-height: 0; display: flex; }
+    .sidebar { width: var(--sidebar-width); flex-shrink: 0; background: var(--sidebar); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+    .sidebar-actions { padding: 18px 12px 20px; display: grid; gap: 6px; }
+    .nav-button { display: flex; align-items: center; gap: 10px; padding: 9px 10px; text-align: left; border-radius: 6px; width: 100%; }
+    .nav-button:hover { background: var(--hover); }
+    .nav-button.primary { color: var(--bright); background: var(--hover); }
+    .nav-button.primary:hover { background: var(--selected); }
+    .nav-button kbd { margin-left: auto; color: var(--muted); font: 11px var(--ui); }
+    .workspace-heading { display: flex; align-items: center; padding: 0 16px 8px 22px; justify-content: space-between; }
+    .workspace-heading h2 { font-size: 11px; font-weight: 500; color: var(--muted); }
+    .workspace-list { flex: 1; overflow-y: auto; padding: 0 10px 20px; }
+    .workspace-group { margin-bottom: 18px; }
+    .workspace-row { display: flex; align-items: center; min-height: 34px; border-radius: 5px; gap: 1px; }
+    .workspace-row.is-current .workspace-name { color: var(--bright); }
+    .workspace-row:hover { background: var(--hover); }
+    .workspace-toggle { width: 24px; min-height: 30px; flex-shrink: 0; color: var(--muted); display: grid; place-items: center; border-radius: 4px; }
+    .workspace-toggle .icon { width: 12px; height: 12px; transition: transform var(--feedback); }
+    .workspace-toggle[aria-expanded="true"] .icon { transform: rotate(90deg); }
+    .workspace-name { min-width: 0; display: flex; align-items: center; gap: 8px; flex: 1; padding: 5px 0; text-align: left; font-weight: 500; }
+    .workspace-name .icon { width: 15px; height: 15px; color: var(--muted); }
+    .workspace-name .count { font-size: 11px; font-weight: 400; margin-left: auto; margin-right: 4px; color: var(--muted); }
+    .workspace-add { width: 26px; height: 28px; }
+    .workspace-sessions { margin-left: 13px; padding-left: 7px; border-left: 1px solid var(--line); display: grid; gap: 3px; margin-top: 4px; }
+    .session-row { display: flex; align-items: center; min-width: 0; border-radius: 5px; position: relative; }
+    .session-row:hover { background: var(--hover); }
+    .session-row.is-active { background: var(--selected); }
+    .session-main { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; min-height: 34px; padding: 6px 4px 6px 10px; text-align: left; border-radius: 5px; }
+    .session-main > .icon { color: var(--muted); width: 14px; height: 14px; }
+    .is-active .session-main { color: var(--bright); }
+    .is-active .session-main > .icon { color: var(--accent); }
+    .session-title { flex: 1; font-size: 12px; }
+    .session-state { display: flex; align-items: center; color: var(--red); padding: 0 3px; }
+    .session-state .icon { width: 12px; height: 12px; }
+    .exited-text { color: var(--muted); font-size: 10px; white-space: nowrap; }
+    .session-more { width: 24px; height: 28px; margin-right: 3px; opacity: 0; }
+    .session-row:is(:hover, :focus-within, .is-active) .session-more { opacity: 1; }
+    .empty-group { font-size: 12px; color: var(--muted); padding: 7px 10px; text-align: left; border-radius: 4px; }
+    .empty-group:hover { background: var(--hover); }
+    .sidebar-bottom { padding: 12px 14px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .local-label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+    .local-label .icon { width: 14px; height: 14px; }
+    .pane { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--terminal); }
+    .pane:focus-visible { outline-offset: -3px; }
+    .terminal { font: 13px/1.85 var(--mono); flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .terminal-log { flex: 1; overflow-y: auto; padding: 26px 32px 22px; overflow-wrap: anywhere; }
+    .pi-brand { display: flex; align-items: baseline; flex-wrap: wrap; gap: 12px; margin-bottom: 4px; }
+    .pi-brand h1 { font-size: 25px; font-weight: 600; color: var(--accent); line-height: 1.4; }
+    .pi-brand span { color: var(--muted); font-size: 12px; }
+    .terminal-context { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+    .terminal-context .context-path { color: var(--cyan); overflow-wrap: anywhere; }
+    .terminal-context .icon { width: 12px; height: 12px; vertical-align: -2px; margin-right: 5px; }
+    .terminal-divider { height: 1px; background: var(--line); margin: 20px 0 24px; }
+    .terminal-prompt { display: flex; align-items: baseline; gap: 10px; color: var(--bright); margin-bottom: 21px; }
+    .terminal-prompt .chevron { color: var(--accent); flex-shrink: 0; }
+    .terminal-copy { max-width: 78ch; margin-bottom: 18px; }
+    .tool-output { padding: 12px 16px; background: #20242c; margin: 18px 0; max-width: 84ch; border-radius: 3px; }
+    .tool-output .tool-command { color: var(--purple); margin-bottom: 7px; }
+    .tool-output pre { font: inherit; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .terminal-list { list-style: none; margin: 0 0 20px; padding: 0; }
+    .terminal-list li { margin-bottom: 5px; padding-left: 18px; position: relative; }
+    .terminal-list li::before { content: "·"; color: var(--muted); position: absolute; left: 1px; }
+    .terminal-list strong { color: var(--bright); font-weight: 500; }
+    .terminal-note { color: var(--muted); font-size: 12px; margin-top: 14px; }
+    .terminal-entry { margin-top: 20px; }
+    .terminal-entry .terminal-prompt { margin-bottom: 12px; white-space: pre-wrap; }
+    .terminal-entry .demo-reply { color: var(--muted); white-space: pre-wrap; }
+    .terminal-input-area { flex-shrink: 0; padding: 0 32px 15px; }
+    .terminal-input-label { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; color: var(--muted); padding: 8px 0; }
+    .terminal-input-row { display: flex; align-items: flex-start; gap: 10px; border-top: 1px solid var(--accent); border-bottom: 1px solid var(--accent); padding: 13px 0; }
+    .terminal-input-row > span { color: var(--accent); padding-top: 2px; }
+    .terminal-input-row textarea { min-width: 0; width: 100%; height: 48px; resize: none; border: 0; background: transparent; font: inherit; line-height: 1.7; padding: 0; }
+    .terminal-input-row textarea:focus-visible { outline-offset: 3px; }
+    .terminal-send { align-self: center; color: var(--accent); }
+    .terminal-footer { display: flex; justify-content: space-between; gap: 10px; padding-top: 9px; font-size: 11px; color: var(--muted); }
+    .terminal-footer span { min-width: 0; }
+    .shell-log pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .shell-input .terminal-input-row { border-top-color: var(--line); border-bottom-color: var(--line); }
+    .shell-input .terminal-input-row textarea { height: 30px; }
+    .workspace-empty { flex: 1; padding: 44px 32px; overflow-y: auto; }
+    .workspace-empty-inner { max-width: 580px; margin: clamp(20px, 8vh, 90px) auto 0; }
+    .workspace-empty .folder-outline { color: var(--muted); margin-bottom: 20px; }
+    .workspace-empty .folder-outline .icon { width: 34px; height: 34px; stroke-width: 1.2; }
+    .workspace-empty h1 { font-size: 23px; font-weight: 550; color: var(--bright); margin-bottom: 6px; overflow-wrap: anywhere; }
+    .workspace-empty .empty-path { color: var(--muted); font: 12px/1.7 var(--mono); overflow-wrap: anywhere; }
+    .workspace-empty p { margin: 26px 0 22px; color: var(--muted); font-size: 14px; line-height: 1.8; }
+    .empty-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 7px 13px; border-radius: 5px; border: 1px solid var(--border); background: var(--hover); color: var(--bright); }
+    .button:hover { background: var(--selected); }
+    .button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 550; }
+    .button.primary:hover { background: #a2cffa; }
+    .button.danger { color: var(--red); }
+    .empty-tool-list { margin-top: 38px; border-top: 1px solid var(--line); padding-top: 18px; display: flex; flex-wrap: wrap; gap: 8px 22px; }
+    .empty-tool-list button { display: flex; align-items: center; gap: 7px; padding: 6px 0; color: var(--muted); }
+    .empty-tool-list button:hover { color: var(--bright); }
+    .tui { padding: 14px; gap: 12px; }
+    .tui-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; min-height: 26px; }
+    .tui-title > span { min-width: 0; }
+    .tui-title b { color: var(--green); font-weight: 500; }
+    .tui-panels { display: flex; flex: 1; min-height: 0; min-width: 0; gap: 12px; }
+    .tui-left { width: 33%; min-width: 190px; display: flex; flex-direction: column; gap: 12px; }
+    .tui-frame { border: 1px solid #5b687a; border-radius: 5px; min-width: 0; padding: 12px; position: relative; }
+    .tui-frame h2 { position: absolute; top: -12px; left: 9px; background: var(--terminal); padding: 0 6px; font-size: 12px; font-weight: 500; color: var(--accent); }
+    .tui-files { flex: 1; padding: 16px 5px 8px; }
+    .tui-file { display: flex; width: 100%; align-items: center; gap: 9px; padding: 5px 8px; text-align: left; font: 12px/1.7 var(--mono); border-radius: 2px; }
+    .tui-file:hover, .tui-file.is-selected { background: var(--selected); color: var(--bright); }
+    .tui-diff { flex: 1; min-height: 0; }
+    .diff-code { font: 12px/1.9 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 7px; max-height: 100%; overflow-y: auto; }
+    .diff-code > span { display: block; }
+    .diff-add { color: var(--green); background: #223026; display: block; }
+    .diff-remove { color: var(--red); background: #34252c; display: block; }
+    .diff-heading { color: var(--cyan); }
+    .tui-help { color: var(--muted); font-size: 11px; display: flex; flex-wrap: wrap; gap: 6px 20px; padding: 2px 2px 0; }
+    .tui-help b { color: var(--accent); font-weight: 500; }
+    .tui-help button { font: inherit; color: inherit; padding: 2px 4px; border-radius: 3px; }
+    .tui-help button:hover { background: var(--hover); color: var(--bright); }
+    .yazi-columns { gap: 0; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+    .yazi-column { min-width: 0; overflow: auto; padding: 12px 6px; flex: 1; }
+    .yazi-column + .yazi-column { border-left: 1px solid var(--border); }
+    .yazi-parent { flex: .65; }
+    .yazi-preview { flex: 1.7; padding: 18px; font-size: 12px; }
+    .yazi-column-title { font-size: 11px; color: var(--muted); padding: 0 8px 12px; }
+    .file-preview { font: 12px/1.9 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+    .btop-content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; padding-top: 14px; }
+    .cpu-chart { display: flex; align-items: flex-end; gap: 4px; height: 120px; border-bottom: 1px solid var(--border); margin: 10px 0; }
+    .cpu-chart i { flex: 1; background: #719e8c; min-width: 2px; }
+    .btop-metrics { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 24px; font-size: 12px; }
+    .btop-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .btop-table th, .btop-table td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); }
+    .btop-table th { color: var(--accent); font-weight: 500; }
+    .btop-table th:nth-child(n+3), .btop-table td:nth-child(n+3) { text-align: right; }
+    dialog { padding: 0; color: var(--text); border: 1px solid #525d6e; border-radius: 10px; background: var(--sidebar); box-shadow: 0 20px 70px #0008; width: min(460px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow-y: auto; }
+    dialog::backdrop { background: #080b1080; }
+    dialog[open] { animation: dialog-in 160ms ease-out; }
+    @keyframes dialog-in { from { opacity: .65; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+    .dialog-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 18px 20px 6px; }
+    .dialog-heading h2 { font-size: 15px; font-weight: 600; color: var(--bright); }
+    .dialog-body { padding: 12px 20px 20px; }
+    .dialog-intro { font-size: 12px; color: var(--muted); line-height: 1.8; margin-bottom: 18px; }
+    .field { margin-bottom: 16px; }
+    .field label, .field-label { display: block; font-size: 12px; font-weight: 500; margin-bottom: 6px; color: var(--text); }
+    .field input, .field select, .search-input { width: 100%; min-width: 0; border: 1px solid #697586; background: var(--terminal); border-radius: 5px; padding: 9px 11px; min-height: 38px; }
+    .field small { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+    .field input[aria-invalid="true"] { border-color: var(--red); }
+    .field .field-error { color: var(--red); }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 7px; }
+    .path-picker { display: flex; gap: 8px; }
+    .path-picker input { flex: 1; }
+    .path-picker .button { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; padding: 0 14px; min-height: 38px; font-size: 13px; }
+    .path-picker .button .icon { width: 15px; height: 15px; }
+    #tool-dialog { width: min(480px, calc(100vw - 32px)); height: min(720px, calc(100dvh - 48px)); overflow: hidden; }
+    #tool-dialog[open] { display: flex; flex-direction: column; }
+    #tool-dialog .dialog-heading { flex-shrink: 0; padding: 16px 24px 12px; }
+    .tool-context { flex-shrink: 0; min-width: 0; padding: 0 24px 16px; }
+    .tool-context .field { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 12px; margin: 0; }
+    .tool-context label { margin: 0; color: var(--muted); }
+    .tool-context select { min-height: 36px; padding: 7px 10px; border-color: var(--border); }
+    .tool-context small { color: var(--muted); display: block; margin: 6px 0 0 60px; font: 11px/1.6 var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tool-search { flex-shrink: 0; position: relative; padding: 0 24px 12px; }
+    .tool-search > .icon { position: absolute; left: 36px; top: 12px; color: var(--muted); pointer-events: none; }
+    .tool-search .search-input { padding-left: 36px; }
+    .tool-options { flex: 1; min-height: 0; padding: 0 12px 8px; overflow-y: auto; overscroll-behavior: contain; }
+    .option-group-label { font-size: 11px; font-weight: 500; padding: 12px 12px 6px; color: var(--muted); }
+    .tool-option { display: grid; grid-template-columns: 20px minmax(0, 1fr) 68px; width: 100%; align-items: center; text-align: left; column-gap: 12px; padding: 8px 12px; min-height: 56px; border-radius: 6px; }
+    .tool-option:hover, .tool-option:focus-visible { background: var(--hover); }
+    .tool-option > .icon, .tool-option > [data-icon] { display: grid; place-items: center; color: var(--muted); width: 20px; height: 20px; }
+    .tool-option > [data-icon] .icon { width: 18px; height: 18px; }
+    .tool-option .option-text { flex: 1; min-width: 0; }
+    .tool-option .option-name { color: var(--bright); display: block; font-weight: 500; }
+    .tool-option .option-description { font-size: 11px; display: block; color: var(--muted); margin-top: 2px; }
+    .tool-option code { justify-self: end; font: 11px var(--mono); color: var(--muted); white-space: nowrap; }
+    .tool-option .recommended { color: var(--accent); font: 10px var(--ui); margin-left: 6px; }
+    .tool-options-empty { color: var(--muted); padding: 20px 12px; text-align: center; }
+    .tool-dialog-footer { flex-shrink: 0; padding: 8px 12px 12px; border-top: 1px solid var(--border); }
+    .custom-option { grid-template-columns: 20px minmax(0, 1fr) 20px; }
+    .custom-option > [data-icon]:last-child { justify-self: end; }
+    .search-results { padding: 8px; max-height: 420px; overflow-y: auto; }
+    .search-result { width: 100%; display: flex; gap: 12px; align-items: center; padding: 11px 12px; text-align: left; border-radius: 5px; }
+    .search-result:hover { background: var(--hover); }
+    .search-result .result-copy { min-width: 0; flex: 1; }
+    .search-result span { display: block; }
+    .search-result small { display: block; color: var(--muted); font-size: 11px; padding-top: 3px; overflow-wrap: anywhere; }
+    .shortcut-list { margin: 0; }
+    .shortcut-list > div { display: flex; justify-content: space-between; gap: 20px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+    .shortcut-list dd { margin: 0; color: var(--muted); text-align: right; }
+    .help-notes { margin: 18px 0 4px; padding-left: 18px; color: var(--muted); font-size: 12px; line-height: 1.9; }
+    .toast { position: absolute; bottom: 20px; right: 20px; z-index: 5; border: 1px solid var(--border); background: var(--surface); box-shadow: 0 6px 20px #0005; border-radius: 6px; padding: 10px 14px; max-width: min(420px, calc(100% - 40px)); font-size: 12px; pointer-events: none; }
+    .drawer { margin: 0; height: 100dvh; max-height: 100dvh; width: min(300px, calc(100vw - 40px)); max-width: none; border-radius: 0; border: 0; }
+    .drawer .sidebar { width: 100%; height: 100%; border: 0; }
+    .drawer-close { display: none; }
+    .drawer .drawer-close { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px 0; }
+    .sidebar-collapsed .layout > .sidebar { display: none; }
+    .sidebar-collapsed .titlebar-left { width: 178px; }
+    @media (max-width: 1100px) {
+      body { padding: 16px; }
+      :root { --sidebar-width: 250px; }
+      .terminal-log { padding: 22px; }
+      .terminal-input-area { padding-left: 22px; padding-right: 22px; }
+      .tui-left { min-width: 164px; }
+    }
+    @media (max-width: 760px) {
+      body { padding: 0; }
+      .window { height: 100%; border-radius: 0; border: 0; }
+      .layout > .sidebar { display: none; }
+      .titlebar-left, .sidebar-collapsed .titlebar-left { width: auto; padding: 0 8px; gap: 0; }
+      .traffic, .app-name { display: none; }
+      .titlebar { height: 48px; }
+      .window-location { padding-left: 4px; gap: 7px; }
+      #title-session { display: none; }
+      .window-location .divider { display: none; }
+      .prototype-label { font-size: 10px; margin: 0 10px; padding: 4px 6px; }
+      .icon-button { min-width: 40px; min-height: 40px; }
+      .workspace-toggle { width: 36px; min-height: 40px; }
+      .workspace-name, .session-main { min-height: 42px; }
+      .session-more { opacity: 1; }
+      .session-title { font-size: 13px; }
+      .terminal { font-size: 12px; }
+      .terminal-log { padding: 22px 18px; }
+      .terminal-input-area { padding: 0 18px 12px; }
+      .terminal-footer { flex-wrap: wrap; }
+      .terminal-input-label .input-hint { display: none; }
+      .terminal-input-row textarea { height: 54px; }
+      .tui { padding: 12px; }
+      .tui-title { flex-wrap: wrap; }
+      .tui-panels { flex-direction: column; overflow-y: auto; gap: 18px; padding-top: 12px; }
+      .tui-left { width: 100%; min-width: 0; flex-direction: row; flex-wrap: wrap; }
+      .tui-left .tui-frame:first-child { width: 100%; }
+      .tui-left .tui-files { min-width: 58%; }
+      .tui-diff { min-height: 260px; overflow: visible; }
+      .yazi-columns { gap: 0; padding-top: 0; }
+      .yazi-parent { display: none; }
+      .yazi-column { flex: none; }
+      .yazi-column + .yazi-column { border-left: 0; border-top: 1px solid var(--border); }
+      .yazi-preview { min-height: 180px; }
+      .cpu-chart { gap: 3px; }
+      .btop-table th, .btop-table td { padding: 6px 3px; font-size: 11px; }
+      .btop-table .optional-column { display: none; }
+      .workspace-empty { padding: 30px 24px; }
+      .workspace-empty-inner { margin-top: 30px; }
+      .field input, .field select, .search-input { font-size: 16px; }
+      .path-picker { flex-wrap: wrap; }
+      .path-picker .button { min-height: 44px; }
+      #tool-dialog { width: calc(100vw - 24px); height: min(720px, calc(100dvh - 24px)); max-height: calc(100dvh - 24px); }
+      #tool-dialog .dialog-heading { padding: 8px 16px; }
+      .tool-context { padding: 0 16px 12px; }
+      .tool-search { padding: 0 16px 8px; }
+      .tool-search > .icon { left: 28px; }
+      .tool-options { padding-left: 4px; padding-right: 4px; }
+      .tool-dialog-footer { padding: 4px 4px 8px; }
+      .tool-option { grid-template-columns: 20px minmax(0, 1fr) 56px; column-gap: 10px; }
+      .custom-option { grid-template-columns: 20px minmax(0, 1fr) 20px; }
+      .tool-option, .search-result, .button { min-height: 44px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#pane">跳到当前会话</a>
+  <div class="window" id="app">
+    <header class="titlebar">
+      <div class="titlebar-left">
+        <div class="traffic" aria-hidden="true"><i></i><i></i><i></i></div>
+        <span class="app-name">j-agent</span>
+        <button class="icon-button" id="sidebar-toggle" aria-label="切换工作区侧栏" aria-controls="sidebar" aria-expanded="true" title="切换工作区侧栏"></button>
+      </div>
+      <div class="window-location" aria-label="当前工作区与会话">
+        <span class="truncate" id="title-workspace"></span><span class="divider">/</span><span class="truncate" id="title-session"></span>
+      </div>
+      <button class="prototype-label" data-action="help" title="原型说明：不会执行命令">交互原型 · 未连接 PTY</button>
+    </header>
+    <div class="layout">
+      <aside class="sidebar" id="sidebar" aria-label="工作区与工具会话">
+        <div class="drawer-close"><strong>工作区</strong><button class="icon-button" data-action="close-drawer" aria-label="关闭工作区侧栏" data-icon="close"></button></div>
+        <div class="sidebar-actions">
+          <button class="nav-button primary" id="new-session" data-action="new-session"><span data-icon="plus"></span><span>新建会话</span></button>
+          <button class="nav-button" data-action="search"><span data-icon="search"></span><span>搜索会话</span><kbd id="search-shortcut">⌘ K</kbd></button>
+        </div>
+        <div class="workspace-heading"><h2>工作区</h2><button class="icon-button" data-action="add-workspace" aria-label="添加工作区" title="添加工作区" data-icon="folder-plus"></button></div>
+        <nav class="workspace-list" id="workspace-list" aria-label="按工作区浏览会话"></nav>
+        <footer class="sidebar-bottom">
+          <span class="local-label"><span data-icon="monitor"></span><span id="workspace-count"></span></span>
+          <button class="icon-button" data-action="help" aria-label="原型说明与快捷键" title="原型说明与快捷键" data-icon="help"></button>
+        </footer>
+      </aside>
+      <main class="pane" id="pane" tabindex="-1" aria-label="当前工具内容"></main>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+  </div>
+
+  <dialog id="tool-dialog" aria-labelledby="tool-title">
+    <div class="dialog-heading"><h2 id="tool-title">新建会话</h2><button class="icon-button" data-close aria-label="取消新建会话" data-icon="close"></button></div>
+    <div class="tool-context">
+      <div class="field"><label for="tool-workspace">工作区</label><select id="tool-workspace" aria-describedby="tool-cwd"></select></div>
+      <small id="tool-cwd"></small>
+    </div>
+    <div class="tool-search"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><label for="tool-filter" class="sr-only">搜索工具</label><input class="search-input" id="tool-filter" placeholder="搜索工具…" autocomplete="off" /></div>
+    <div class="tool-options" id="tool-options"></div>
+    <div class="tool-dialog-footer"><button class="tool-option custom-option" data-action="custom-tool"><span data-icon="code"></span><span class="option-text"><span class="option-name">自定义命令</span><span class="option-description">运行任意已安装的 CLI / TUI 工具</span></span><span class="muted" data-icon="chevron"></span></button></div>
+  </dialog>
+
+  <dialog id="workspace-dialog" aria-labelledby="workspace-dialog-title">
+    <div class="dialog-heading"><h2 id="workspace-dialog-title">添加工作区</h2><button class="icon-button" data-close aria-label="取消添加工作区" data-icon="close"></button></div>
+    <form class="dialog-body" id="workspace-form" novalidate>
+      <p class="dialog-intro">一个项目目录，一个工作区。新建的工具会话将从这个目录开始。</p>
+      <div class="field"><label for="workspace-name">工作区名称</label><input id="workspace-name" placeholder="例如 my-project" maxlength="80" required autocomplete="off" aria-describedby="workspace-name-error" /><small class="field-error" id="workspace-name-error" hidden></small></div>
+      <div class="field"><label for="workspace-path">项目目录</label><div class="path-picker"><input id="workspace-path" class="mono" placeholder="~/Projects/my-project" maxlength="300" required autocomplete="off" spellcheck="false" aria-describedby="workspace-path-hint workspace-path-error" /><button type="button" class="button" id="pick-directory" data-action="pick-directory" aria-label="从本地选择项目目录"><span data-icon="folder-open"></span><span>浏览…</span></button></div><small id="workspace-path-hint">原型仅保存示例路径，不会读取本地文件；目录选择在真实应用中由系统对话框完成。</small><small class="field-error" id="workspace-path-error" hidden></small></div>
+      <div class="dialog-actions"><button type="button" class="button" data-close>取消</button><button class="button primary" type="submit">添加工作区</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="custom-dialog" aria-labelledby="custom-title">
+    <div class="dialog-heading"><h2 id="custom-title">自定义工具会话</h2><button class="icon-button" data-close aria-label="取消自定义会话" data-icon="close"></button></div>
+    <form class="dialog-body" id="custom-form" novalidate>
+      <p class="dialog-intro" id="custom-context"></p>
+      <div class="field"><label for="custom-name">会话名称</label><input id="custom-name" placeholder="例如 数据库客户端" maxlength="80" required autocomplete="off" aria-describedby="custom-name-error" /><small class="field-error" id="custom-name-error" hidden></small></div>
+      <div class="field"><label for="custom-command">启动命令</label><input id="custom-command" class="mono" placeholder="例如 nvim ." maxlength="500" required autocomplete="off" spellcheck="false" aria-describedby="custom-command-hint custom-command-error" /><small id="custom-command-hint">可填写命令及参数。此原型不会安装工具或执行命令。</small><small class="field-error" id="custom-command-error" hidden></small></div>
+      <div class="dialog-actions"><button type="button" class="button" data-action="back-tools">返回工具列表</button><button class="button primary" type="submit">创建示例会话</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="search-dialog" aria-labelledby="search-title">
+    <div class="dialog-heading"><h2 id="search-title">搜索会话</h2><button class="icon-button" data-close aria-label="关闭搜索" data-icon="close"></button></div>
+    <div class="dialog-body" style="padding-bottom: 0"><label class="sr-only" for="session-search">会话、工具或工作区名称</label><input id="session-search" class="search-input" placeholder="搜索会话、工具或工作区…" autocomplete="off" /></div>
+    <div class="search-results" id="search-results"></div>
+  </dialog>
+
+  <dialog id="session-dialog" aria-labelledby="session-dialog-title">
+    <div class="dialog-heading"><h2 id="session-dialog-title">管理会话</h2><button class="icon-button" data-close aria-label="关闭会话管理" data-icon="close"></button></div>
+    <form class="dialog-body" id="session-form" novalidate>
+      <p class="dialog-intro" id="session-context"></p>
+      <div class="field"><label for="session-name">会话名称</label><input id="session-name" maxlength="80" required autocomplete="off" aria-describedby="session-name-error" /><small class="field-error" id="session-name-error" hidden></small></div>
+      <div class="dialog-actions"><button type="button" class="button danger" data-action="remove-session">移除示例会话</button><button class="button primary" type="submit">保存名称</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <div class="dialog-heading"><h2 id="help-title">工作区原型</h2><button class="icon-button" data-close aria-label="关闭原型说明" data-icon="close"></button></div>
+    <div class="dialog-body">
+      <p class="dialog-intro">左侧组织项目，右侧专注工具。pi、Shell 与各种 TUI 共用同一套工作区和会话切换方式。</p>
+      <dl class="shortcut-list"><div><dt>切换项目</dt><dd>点击工作区名称</dd></div><div><dt>展开 / 收起会话</dt><dd>点击文件夹前的箭头</dd></div><div><dt>新建工具会话</dt><dd>工作区旁的 ＋</dd></div><div><dt>全局搜索</dt><dd>⌘ K / Ctrl K</dd></div><div><dt>关闭弹窗</dt><dd>Esc</dd></div></dl>
+      <ul class="help-notes"><li>所有 TUI 内容、通知、监控数值均为示例，未连接 PTY 或模型。</li><li>输入和会话在切换时保留；刷新页面恢复初始示例，不持久化到磁盘。</li><li>铃铛代表示例 BEL 通知，打开对应会话后清除；不会猜测工具是否正在思考。</li><li>终端输入框内保留 Ctrl 组合键；全局搜索始终可通过左侧按钮打开。</li><li>lazygit 与 yazi 可点击文件查看不同示例，Shell 可试用 pwd、ls、help。</li></ul>
+      <div class="dialog-actions"><button class="button" data-close>继续体验</button></div>
+    </div>
+  </dialog>
+  <dialog class="drawer" id="workspace-drawer" aria-label="工作区侧栏"></dialog>
+
+  <script>
+    'use strict';
+    const $ = (selector, root = document) => root.querySelector(selector);
+    const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+    const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const paths = {
+      plus: '<path d="M12 5v14M5 12h14"/>',
+      close: '<path d="m6 6 12 12M6 18 18 6"/>',
+      search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>',
+      folder: '<path d="M3 7V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z"/>',
+      'folder-plus': '<path d="M3 7V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z"/><path d="M12 11v6m-3-3h6"/>',
+      'folder-open': '<path d="M3 7V5a1 1 0 0 1 1-1h5l2 3h6a2 2 0 0 1 2 2v2H6l-3 8h18l3-8"/>',
+      chevron: '<path d="m9 5 7 7-7 7"/>',
+      terminal: '<path d="m4 5 6 6-6 6m9 1h7"/>',
+      agent: '<rect x="4" y="5" width="16" height="14" rx="3"/><path d="M9 10v3m6-3v3M12 2v3m-3 11h6"/>',
+      git: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="6" r="2"/><path d="M6 7v10m12-9c0 6-12 2-12 8"/>',
+      files: '<path d="M8 3h7l5 5v13H8V3Zm7 0v6h5M4 7v14"/>',
+      activity: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+      code: '<path d="m7 6-5 6 5 6m10-12 5 6-5 6M14 3l-4 18"/>',
+      bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
+      more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+      sidebar: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
+      monitor: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/>',
+      help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4m0 3h.01"/>',
+      enter: '<path d="M19 5v8H5m5-5-5 5 5 5"/>',
+    };
+    const icon = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.terminal}</svg>`;
+    const tools = [
+      { id:'pi', name:'pi', command:'pi', icon:'agent', group:'AI 编程', description:'在项目中对话、读写代码、调用工具' },
+      { id:'claude', name:'Claude Code', command:'claude', icon:'agent', group:'AI 编程', description:'使用 Claude Code 的终端界面' },
+      { id:'codex', name:'Codex CLI', command:'codex', icon:'agent', group:'AI 编程', description:'使用 Codex 的终端界面' },
+      { id:'shell', name:'Shell', command:'$SHELL', icon:'terminal', group:'终端工具', description:'运行命令、脚本和开发服务' },
+      { id:'lazygit', name:'lazygit', command:'lazygit', icon:'git', group:'终端工具', description:'浏览变更、分支和提交' },
+      { id:'yazi', name:'yazi', command:'yazi', icon:'files', group:'终端工具', description:'浏览项目文件与预览内容' },
+      { id:'btop', name:'btop', command:'btop', icon:'activity', group:'终端工具', description:'查看资源占用与系统进程' },
+    ];
+    let serial = 20;
+    const makeSession = (id, tool, title, extras = {}) => ({ id, tool, title, bell:false, exited:false, draft:'', history:[], scrollTop:0, selectedFile:0, ...extras });
+    const state = {
+      activeWorkspace:'jagent', activeSession:'pi-main', toolWorkspace:'jagent', managingSession:null,
+      workspaces:[
+        { id:'jagent', name:'jagent-terminal', path:'~/Projects/jagent-terminal', branch:'feat/workspaces', expanded:true, lastSession:'pi-main', sessions:[
+          makeSession('pi-main','pi','设计工作区侧栏', { sample:true }),
+          makeSession('git-main','lazygit','lazygit', { bell:true }),
+          makeSession('yazi-main','yazi','项目文件'),
+          makeSession('shell-main','shell','开发终端'),
+        ] },
+        { id:'website', name:'website', path:'~/Projects/website', branch:'main', expanded:true, lastSession:'pi-web', sessions:[
+          makeSession('pi-web','pi','整理登录页样式'),
+          makeSession('shell-web','shell','本地预览', { exited:true }),
+        ] },
+        { id:'playground', name:'playground', path:'~/Projects/playground', branch:null, expanded:false, lastSession:null, sessions:[] },
+      ],
+    };
+    const workspace = (id = state.activeWorkspace) => state.workspaces.find(w => w.id === id);
+    const findSession = id => { for (const w of state.workspaces) { const s = w.sessions.find(s => s.id === id); if (s) return { w, s }; } return null; };
+    const toolFor = s => tools.find(t => t.id === s.tool) || { name:s.title, command:s.command || '', icon:'terminal' };
+    const pane = $('#pane');
+    const sidebar = $('#sidebar');
+    const drawer = $('#workspace-drawer');
+    const narrow = matchMedia('(max-width: 760px)');
+    let toastTimer;
+
+    function announce(message) {
+      clearTimeout(toastTimer);
+      $('#toast').textContent = message;
+      $('#toast').hidden = false;
+      toastTimer = setTimeout(() => { $('#toast').hidden = true; }, 4000);
+    }
+    function closeDrawer() {
+      if (drawer.open) drawer.close();
+      if (sidebar.parentElement === drawer) $('.layout').prepend(sidebar);
+      updateSidebarToggle();
+    }
+    function updateSidebarToggle() {
+      const expanded = narrow.matches ? drawer.open : !$('#app').classList.contains('sidebar-collapsed');
+      $('#sidebar-toggle').setAttribute('aria-expanded', String(expanded));
+    }
+    drawer.addEventListener('cancel', event => { event.preventDefault(); closeDrawer(); });
+    drawer.addEventListener('close', () => { if (sidebar.parentElement === drawer) $('.layout').prepend(sidebar); updateSidebarToggle(); if (!$('dialog[open]') && !pane.contains(document.activeElement)) $('#sidebar-toggle').focus(); });
+    narrow.addEventListener('change', () => { closeDrawer(); updateSidebarToggle(); });
+    function showDialog(id, focusSelector) {
+      closeDrawer();
+      const d = $(id);
+      d.showModal();
+      if (focusSelector) $(focusSelector).focus();
+    }
+    function saveTerminalPosition() {
+      const item = findSession(state.activeSession);
+      if (item && $('#terminal-log')) item.s.scrollTop = $('#terminal-log').scrollTop;
+    }
+    function renderSidebar() {
+      const focusKey = document.activeElement?.dataset.focus;
+      $('#workspace-list').innerHTML = state.workspaces.map(w => `
+        <section class="workspace-group" aria-label="${escapeHTML(w.name)} 工作区">
+          <div class="workspace-row ${w.id === state.activeWorkspace ? 'is-current' : ''}">
+            <button class="workspace-toggle" data-action="toggle-workspace" data-workspace="${w.id}" data-focus="toggle-${w.id}" aria-label="${w.expanded ? '收起' : '展开'} ${escapeHTML(w.name)}" aria-expanded="${w.expanded}" aria-controls="sessions-${w.id}">${icon('chevron')}</button>
+            <button class="workspace-name" data-action="activate-workspace" data-workspace="${w.id}" data-focus="workspace-${w.id}" title="${escapeHTML(w.path)}" ${w.id === state.activeWorkspace ? 'aria-current="true"' : ''}>${icon('folder')}<span class="truncate">${escapeHTML(w.name)}</span><span class="count" aria-label="${w.sessions.length} 个会话">${w.sessions.length || ''}</span></button>
+            <button class="icon-button workspace-add" data-action="new-session" data-workspace="${w.id}" data-focus="add-${w.id}" aria-label="在 ${escapeHTML(w.name)} 新建会话" title="在此工作区新建会话">${icon('plus')}</button>
+          </div>
+          <div class="workspace-sessions" id="sessions-${w.id}" ${w.expanded ? '' : 'hidden'}>
+            ${w.sessions.length ? w.sessions.map(s => `<div class="session-row ${s.id === state.activeSession ? 'is-active' : ''}">
+              <button class="session-main" data-action="activate-session" data-session="${s.id}" data-focus="session-${s.id}" title="${escapeHTML(s.title)} · ${escapeHTML(toolFor(s).name)} · ${escapeHTML(w.path)}${s.bell ? ' · 有终端通知' : ''}" ${s.id === state.activeSession ? 'aria-current="true"' : ''}>
+                ${icon(toolFor(s).icon)}<span class="session-title truncate">${escapeHTML(s.title)}</span>${s.bell ? `<span class="session-state" aria-label="有终端通知">${icon('bell')}</span>` : ''}${s.exited ? '<span class="exited-text">已退出</span>' : ''}
+              </button>
+              <button class="icon-button session-more" data-action="manage-session" data-session="${s.id}" data-focus="manage-${s.id}" aria-label="管理会话：${escapeHTML(s.title)}" title="重命名或移除会话">${icon('more')}</button>
+            </div>`).join('') : `<button class="empty-group" data-action="new-session" data-workspace="${w.id}">创建第一个会话</button>`}
+          </div>
+        </section>`).join('');
+      $('#workspace-count').textContent = `本地 · ${state.workspaces.length} 个工作区`;
+      if (focusKey) $(`[data-focus="${CSS.escape(focusKey)}"]`)?.focus();
+    }
+    function activateSession(id, focus = true) {
+      const item = findSession(id);
+      if (!item) return;
+      saveTerminalPosition();
+      const hadBell = item.s.bell;
+      state.activeWorkspace = item.w.id;
+      state.activeSession = id;
+      item.w.lastSession = id;
+      item.w.expanded = true;
+      item.s.bell = false;
+      closeDrawer();
+      $$('#search-dialog[open]').forEach(d => d.close());
+      render();
+      if (focus) ($('#terminal-input') || pane).focus();
+      if (hadBell) announce(`已打开 ${item.s.title}，终端通知已清除。`);
+    }
+    function activateWorkspace(id) {
+      const w = workspace(id);
+      if (!w) return;
+      const s = w.sessions.find(s => s.id === w.lastSession) || w.sessions[0];
+      if (s) return activateSession(s.id);
+      saveTerminalPosition();
+      state.activeWorkspace = id;
+      state.activeSession = null;
+      w.expanded = true;
+      closeDrawer();
+      render();
+      pane.focus();
+    }
+    function branchLabel(w) { return w.branch ? `<span>${icon('git')}${escapeHTML(w.branch)}</span>` : ''; }
+    function historyHTML(s) {
+      return s.history.map(entry => `<div class="terminal-entry"><div class="terminal-prompt"><span class="chevron">›</span><span>${escapeHTML(entry.input)}</span></div><div class="demo-reply">${escapeHTML(entry.output)}</div></div>`).join('');
+    }
+    function terminalInput(s, w, shell = false) {
+      return `<form class="terminal-input-area ${shell ? 'shell-input' : ''}" data-terminal-form>
+        <div class="terminal-input-label"><label for="terminal-input">${shell ? '命令输入' : `${escapeHTML(toolFor(s).name)} 输入`} <span class="muted">· 演示</span></label><span class="input-hint">Enter 提交 · Shift + Enter 换行</span></div>
+        <div class="terminal-input-row"><span aria-hidden="true">${shell ? '$' : '›'}</span><textarea id="terminal-input" spellcheck="false" rows="2" maxlength="4000" placeholder="${shell ? '试试 pwd、ls 或 help' : '继续这个项目中的任务…'}">${escapeHTML(s.draft)}</textarea><button type="submit" class="icon-button terminal-send" aria-label="提交演示输入" title="提交演示输入">${icon('enter')}</button></div>
+        <div class="terminal-footer"><span class="truncate" title="${escapeHTML(w.path)}">${escapeHTML(w.name)} ${w.branch ? `· ${escapeHTML(w.branch)}` : ''}</span><span>${shell ? 'shell' : '模型未连接'} · 本地示例</span></div>
+      </form>`;
+    }
+    function renderAgent(s, w) {
+      const t = toolFor(s);
+      return `<section class="terminal" aria-label="${escapeHTML(t.name)} TUI 交互示意">
+        <div class="terminal-log" id="terminal-log">
+          <div class="pi-brand"><h1>${escapeHTML(t.name)}</h1><span>coding agent</span></div>
+          <div class="terminal-context"><span class="context-path">${escapeHTML(w.path)}</span>${branchLabel(w)}</div>
+          <div class="terminal-divider"></div>
+          ${s.sample ? `<div class="terminal-prompt"><span class="chevron">›</span><span>为终端添加工作区分组，在项目里使用 pi 和各种 TUI 工具。</span></div>
+          <p class="terminal-copy">我会先看侧栏结构。工作区负责组织项目，会话负责保留各个工具自己的上下文。</p>
+          <div class="tool-output"><div class="tool-command">read <span class="bright">packages/app/src/plane/Sidebar.tsx</span></div><pre>Sidebar
+  NewThreadButton
+  ThreadList
+  SidebarFooter</pre></div>
+          <p class="terminal-copy">现有会话是平铺的。可以改成两层，而不改变终端本身：</p>
+          <ul class="terminal-list"><li><strong>工作区</strong> — 项目目录，以及属于这个项目的会话。</li><li><strong>工具会话</strong> — pi、Shell、lazygit、yazi…各自独立。</li><li><strong>切换</strong> — 回到上次的会话，输入和上下文都还在。</li></ul>
+          <p class="terminal-copy">右侧继续留给工具。不用在每次切换时重新 <span class="accent">cd</span>，也不用多一套聊天界面。</p>
+          <p class="terminal-note">以上为 TUI 示例内容。可以点击左侧的 lazygit 或项目文件，切换工具视图。</p>` : `<p class="terminal-copy bright">已为 ${escapeHTML(w.name)} 准备 ${escapeHTML(t.name)} 示例会话。</p><p class="terminal-copy">新会话的工作目录是 <span class="accent">${escapeHTML(w.path)}</span>。你可以在这里输入任务，体验同一项目下不同工具的切换。</p><p class="terminal-note">这是交互示意，尚未启动 ${escapeHTML(t.command)} 或连接模型。</p>`}
+          ${historyHTML(s)}
+        </div>${terminalInput(s, w)}
+      </section>`;
+    }
+    function renderShell(s, w) {
+      const t = toolFor(s);
+      return `<section class="terminal" aria-label="Shell TUI 交互示意"><div class="terminal-log shell-log" id="terminal-log">
+        <div class="terminal-context"><span class="context-path">${escapeHTML(w.path)}</span>${branchLabel(w)}</div><div class="terminal-divider"></div>
+        ${s.cleared ? '' : s.tool === 'custom' ? `<pre><span class="green">${escapeHTML(w.name)}</span> <span class="muted">$</span> ${escapeHTML(s.command)}\n\n<span class="muted">自定义命令示意。正式接入后将在上述目录启动工具；此处未执行。</span></pre>` : `<pre><span class="green">${escapeHTML(w.name)}</span> <span class="muted">$</span> pwd\n${escapeHTML(w.path)}\n\n<span class="green">${escapeHTML(w.name)}</span> <span class="muted">$</span> ls\n<span class="accent">packages/  crates/  docs/  design/</span>\nREADME.md  package.json\n\n<span class="muted">终端示例。输入 help 查看支持的演示命令。</span></pre>`}
+        ${s.exited ? '<p class="terminal-note">[示例进程已退出 · code 0] 此会话保留最后的输出。</p>' : ''}${historyHTML(s)}
+        </div>${s.exited ? `<div class="terminal-input-area"><button class="button" data-action="restart-session" data-session="${s.id}">${icon('terminal')}重新创建示例会话</button><p class="terminal-note">不会启动真实进程。</p></div>` : terminalInput(s, w, true)}</section>`;
+    }
+    const gitFiles = ['Sidebar.tsx', 'workspaceStore.ts', 'workspaceStore.test.ts'];
+    const gitDiffs = [
+      ['@@ Sidebar · 工作区分组示意 @@','- <ThreadList threads={threads} />','+ <WorkspaceList workspaces={workspaces}>','+   <ThreadList workspaceId={activeId} />','+ </WorkspaceList>','','  // 会话归属工作区；终端渲染保持不变。'],
+      ['@@ Workspace · 状态模型示意 @@','+ type Workspace = {','+   id: string','+   name: string','+   cwd: string','+   sessionIds: string[]','+   lastActiveSessionId?: string','+ }'],
+      ['@@ 测试场景示意 · 未实际运行 @@','+ 新建会话继承工作区目录','+ 切换工作区恢复上次会话','+ 后台会话内容继续保留','+ 打开会话后清除 BEL 通知'],
+    ];
+    function renderGit(s, w) {
+      const selected = Math.min(s.selectedFile, gitFiles.length - 1);
+      return `<section class="terminal tui" aria-label="lazygit TUI 交互示意"><div class="tui-title"><span><b>lazygit</b> <span class="muted">· ${escapeHTML(w.name)}</span></span><span class="muted">示例仓库 · 未读取 Git</span></div>
+        <div class="tui-panels"><div class="tui-left"><div class="tui-frame"><h2>[1] 状态</h2><div class="green">${escapeHTML(w.branch || 'main')}</div><div class="muted" style="font-size:12px">3 个示例变更</div></div>
+          <div class="tui-frame tui-files"><h2>[2] 文件</h2>${gitFiles.map((f, i) => `<button class="tui-file ${i === selected ? 'is-selected' : ''}" data-action="git-file" data-index="${i}" aria-pressed="${i === selected}"><span class="${i ? 'green' : 'amber'}">${i ? 'A' : 'M'}</span><span class="truncate">${f}</span></button>`).join('')}</div>
+          <div class="tui-frame"><h2>[3] 本地分支</h2><div class="green" style="font-size:12px">${escapeHTML(w.branch || 'main')}</div><div class="muted" style="font-size:12px">main</div></div>
+        </div><div class="tui-frame tui-diff"><h2>${gitFiles[selected]}</h2><div class="diff-code">${gitDiffs[selected].map(l => `<span class="${l.startsWith('+') ? 'diff-add' : l.startsWith('-') ? 'diff-remove' : l.startsWith('@@') ? 'diff-heading' : ''}">${escapeHTML(l) || ' '}</span>`).join('')}</div></div></div>
+        <div class="tui-help"><span><b>↑ ↓</b> 选择文件</span><span>也可点击文件查看 diff</span><span>所有变更仅为示意</span></div></section>`;
+    }
+    const yaziFiles = [
+      { name:'packages/', kind:'folder', preview:'packages/\n├── app/\n│   └── src/\n│       ├── plane/\n│       ├── threads/\n│       └── ui/\n└── native/' },
+      { name:'crates/', kind:'folder', preview:'crates/\n└── jagent-terminal/\n    ├── Cargo.toml\n    └── src/\n        ├── pool.rs\n        └── view/' },
+      { name:'docs/', kind:'folder', preview:'docs/\n├── architecture.md\n├── agent-plane-layout.md\n└── settings-ui.md' },
+      { name:'design/', kind:'folder', preview:'design/\n├── agent-plane-layout.html\n├── settings-ui.html\n└── workspace-plane.html' },
+      { name:'README.md', kind:'file', preview:'# j-agent\n\n一个工作区，多种终端工具。\n\n- 用 pi 处理当前项目的任务\n- 用 lazygit 浏览变更\n- 用 yazi 查看项目文件\n- 用 Shell 运行日常命令\n\n这里是文件预览示意，并非磁盘内容。' },
+      { name:'package.json', kind:'file', preview:'{\n  "name": "example-workspace",\n  "private": true\n}\n\n// 示例数据，不读取本地文件。' },
+    ];
+    function renderYazi(s, w) {
+      const selected = Math.min(s.selectedFile, yaziFiles.length - 1);
+      const file = yaziFiles[selected];
+      return `<section class="terminal tui" aria-label="yazi TUI 交互示意"><div class="tui-title"><span class="truncate"><b>yazi</b> <span class="accent">${escapeHTML(w.path)}</span></span><span class="muted">文件示意</span></div>
+        <div class="tui-panels yazi-columns"><div class="yazi-column yazi-parent"><div class="yazi-column-title">Projects</div>${state.workspaces.map(item => `<button class="tui-file ${item.id === w.id ? 'is-selected' : ''}" data-action="yazi-workspace" data-workspace="${item.id}">${icon('folder')}<span class="truncate">${escapeHTML(item.name)}</span></button>`).join('')}</div>
+        <div class="yazi-column"><div class="yazi-column-title">${escapeHTML(w.name)}</div>${yaziFiles.map((f,i) => `<button class="tui-file ${i === selected ? 'is-selected' : ''}" data-action="yazi-file" data-index="${i}" aria-pressed="${i === selected}"><span class="${f.kind === 'folder' ? 'accent' : 'muted'}">${icon(f.kind === 'folder' ? 'folder' : 'files')}</span><span class="truncate">${f.name}</span></button>`).join('')}</div>
+        <div class="yazi-column yazi-preview"><div class="yazi-column-title">${file.name}</div><pre class="file-preview">${escapeHTML(file.preview)}</pre></div></div>
+        <div class="tui-help"><span><b>↑ ↓</b> 选择文件</span><span>${selected + 1} / ${yaziFiles.length}</span><span>点击列表预览 · 未连接文件系统</span></div></section>`;
+    }
+    function renderBtop(s, w) {
+      const values = [12,14,20,18,26,24,32,28,20,18,25,36,30,23,18,28,46,38,30,26,19,22,30,24,20,18,25,21,17,23,19,18];
+      return `<section class="terminal tui" aria-label="btop TUI 交互示意"><div class="tui-title"><span><b>btop</b> <span class="muted">· 本机资源</span></span><span class="muted">静态示例 · 非真实监控</span></div><div class="btop-content">
+        <div class="tui-frame"><h2>cpu</h2><div class="btop-metrics"><span>CPU <span class="green">18%</span></span><span class="muted">8 cores · 演示数据</span></div><div class="cpu-chart" role="img" aria-label="模拟 CPU 历史占用，范围 12% 至 46%">${values.map(v => `<i style="height:${v * 2}%"></i>`).join('')}</div><div class="btop-metrics muted"><span>core 0 <span class="green">▰▰▱▱▱▱▱▱ 24%</span></span><span>core 1 <span class="green">▰▱▱▱▱▱▱▱ 12%</span></span><span>core 2 <span class="green">▰▰▱▱▱▱▱▱ 18%</span></span></div></div>
+        <div class="tui-frame"><h2>memory</h2><div class="btop-metrics"><span>used <span class="purple">8.2 GiB</span> / 24 GiB</span><span class="muted">available 15.8 GiB</span><span class="muted">swap 0 B</span></div></div>
+        <div class="tui-frame" style="flex:1"><h2>processes · 全系统示例</h2><table class="btop-table"><thead><tr><th>PID</th><th>进程</th><th>CPU%</th><th>内存</th><th class="optional-column">用户</th></tr></thead><tbody>${[['1248','pi','3.2','182 MiB'],['1210','j-agent','1.4','96 MiB'],['1386','lazygit','0.3','24 MiB'],['1102','zsh','0.0','8 MiB'],['1490','btop','0.5','12 MiB']].map(row => `<tr>${row.map((v,i) => `<td class="${i === 1 ? 'green' : ''}">${v}</td>`).join('')}<td class="optional-column muted">local</td></tr>`).join('')}</tbody></table></div>
+        </div><div class="tui-help"><span>启动目录：${escapeHTML(w.path)}</span><span>监控范围仍为本机，不限于当前工作区</span></div></section>`;
+    }
+    function renderEmpty(w) {
+      return `<section class="workspace-empty"><div class="workspace-empty-inner"><div class="folder-outline">${icon('folder')}</div><h1>${escapeHTML(w.name)}</h1><div class="empty-path">${escapeHTML(w.path)}</div><p>这个工作区还没有会话。<br>从 pi 开始一个任务，或打开你熟悉的终端工具。</p><div class="empty-actions"><button class="button primary" data-action="quick-tool" data-tool="pi">${icon('plus')}新建 pi 会话</button><button class="button" data-action="new-session" data-workspace="${w.id}">选择其他工具 ${icon('chevron')}</button></div><div class="empty-tool-list">${tools.filter(t => ['shell','lazygit','yazi','btop'].includes(t.id)).map(t => `<button data-action="quick-tool" data-tool="${t.id}">${icon(t.icon)}${t.name}</button>`).join('')}</div><p class="terminal-note">所有工具从当前目录开始。原型不会实际启动进程。</p></div></section>`;
+    }
+    function renderPane() {
+      const w = workspace();
+      const s = w.sessions.find(s => s.id === state.activeSession);
+      $('#title-workspace').textContent = w.name;
+      $('#title-workspace').title = w.path;
+      $('#title-session').textContent = s?.title || '新工作区';
+      pane.setAttribute('aria-label', `${w.name} · ${s ? toolFor(s).name : '工作区起始页'}`);
+      if (!s) { pane.innerHTML = renderEmpty(w); return; }
+      if (['pi','claude','codex'].includes(s.tool)) pane.innerHTML = renderAgent(s, w);
+      else if (s.tool === 'lazygit') pane.innerHTML = renderGit(s, w);
+      else if (s.tool === 'yazi') pane.innerHTML = renderYazi(s, w);
+      else if (s.tool === 'btop') pane.innerHTML = renderBtop(s, w);
+      else pane.innerHTML = renderShell(s, w);
+      if ($('#terminal-log')) $('#terminal-log').scrollTop = s.scrollTop;
+    }
+    function render() { renderSidebar(); renderPane(); }
+    function renderToolOptions() {
+      const filter = $('#tool-filter').value.trim().toLowerCase();
+      const filtered = tools.filter(t => `${t.name} ${t.command} ${t.description}`.toLowerCase().includes(filter));
+      $('#tool-options').innerHTML = filtered.length ? ['AI 编程','终端工具'].map(group => {
+        const matches = filtered.filter(t => t.group === group);
+        if (!matches.length) return '';
+        return `<h3 class="option-group-label">${group}</h3>${matches.map(t => `<button class="tool-option" data-action="pick-tool" data-tool="${t.id}">${icon(t.icon)}<span class="option-text"><span class="option-name">${t.name}${t.id === 'pi' ? '<span class="recommended">默认</span>' : ''}</span><span class="option-description">${t.description}</span></span><code>${t.command}</code></button>`).join('')}`;
+      }).join('') : '<div class="tool-options-empty">没有匹配工具，可在下方添加自定义命令。</div>';
+    }
+    function openTools(workspaceId = state.activeWorkspace) {
+      state.toolWorkspace = workspaceId;
+      $('#tool-workspace').innerHTML = state.workspaces.map(w => `<option value="${w.id}" ${w.id === workspaceId ? 'selected' : ''}>${escapeHTML(w.name)}</option>`).join('');
+      $('#tool-cwd').textContent = `cwd  ${workspace(workspaceId).path}`;
+      $('#tool-cwd').title = workspace(workspaceId).path;
+      $('#tool-filter').value = '';
+      renderToolOptions();
+      showDialog('#tool-dialog','#tool-filter');
+    }
+    function createSession(toolId, extras = {}, workspaceId = state.toolWorkspace) {
+      const w = workspace(workspaceId);
+      const t = tools.find(t => t.id === toolId);
+      const s = makeSession(`s${++serial}`, toolId, extras.title || (toolId === 'pi' ? '新的 pi 会话' : t?.name || '自定义工具'), extras);
+      w.sessions.push(s);
+      $$('#tool-dialog[open], #custom-dialog[open]').forEach(d => d.close());
+      activateSession(s.id);
+      announce(`已在 ${w.name} 创建 ${toolFor(s).name} 示例会话。`);
+    }
+    function renderSearch() {
+      const q = $('#session-search').value.trim().toLowerCase();
+      const found = state.workspaces.flatMap(w => w.sessions.map(s => ({w,s}))).filter(({w,s}) => `${w.name} ${w.path} ${s.title} ${toolFor(s).name}`.toLowerCase().includes(q));
+      $('#search-results').innerHTML = found.length ? found.map(({w,s}) => `<button class="search-result" data-action="activate-session" data-session="${s.id}">${icon(toolFor(s).icon)}<span class="result-copy"><span>${escapeHTML(s.title)}</span><small>${escapeHTML(w.name)} · ${escapeHTML(toolFor(s).name)} · ${escapeHTML(w.path)}</small></span></button>`).join('') : '<div class="tool-options-empty" role="status">没有匹配的会话。试试项目名或工具名。</div>';
+    }
+    function clearErrors(form) {
+      $$('.field-error', form).forEach(el => { el.hidden = true; el.textContent = ''; });
+      $$('[aria-invalid]', form).forEach(el => el.removeAttribute('aria-invalid'));
+    }
+    function fieldError(id, message) {
+      $(`#${id}`).setAttribute('aria-invalid','true');
+      $(`#${id}-error`).textContent = message;
+      $(`#${id}-error`).hidden = false;
+    }
+    function validateRequired(form, ids) {
+      clearErrors(form);
+      let valid = true;
+      ids.forEach(id => { if (!$(`#${id}`).value.trim()) { fieldError(id, '请填写此项。'); valid = false; } });
+      if (!valid) $('[aria-invalid="true"]', form).focus();
+      return valid;
+    }
+    function selectFile(index) {
+      const item = findSession(state.activeSession);
+      if (!item) return;
+      item.s.selectedFile = index;
+      renderPane();
+      $(`.tui-file[data-index="${index}"]`)?.focus();
+    }
+    function terminalReply(s, w, input) {
+      if (['pi','claude','codex'].includes(s.tool)) return '演示：这条输入已保留在当前会话中。正式接入后会交给此工作区的 agent；原型不会调用模型、执行命令或修改文件。';
+      const command = input.trim();
+      if (command === 'pwd') return w.path;
+      if (command === 'ls') return 'packages/  crates/  docs/  design/\nREADME.md  package.json\n（固定示例目录）';
+      if (command === 'help') return '仅支持演示：pwd · ls · echo <文本> · clear · help\n所有命令都在浏览器中模拟，不访问本地系统。';
+      if (command.startsWith('echo ')) return command.slice(5);
+      return `未执行：${command}\n这是独立界面原型。输入 help 查看演示命令。`;
+    }
+
+    document.addEventListener('click', async event => {
+      const close = event.target.closest('[data-close]');
+      if (close) { event.preventDefault(); close.closest('dialog').close(); return; }
+      const button = event.target.closest('[data-action]');
+      if (!button) return;
+      const action = button.dataset.action;
+      if (action === 'toggle-workspace') { const w = workspace(button.dataset.workspace); w.expanded = !w.expanded; renderSidebar(); }
+      else if (action === 'activate-workspace') activateWorkspace(button.dataset.workspace);
+      else if (action === 'activate-session') activateSession(button.dataset.session);
+      else if (action === 'new-session') openTools(button.dataset.workspace || state.activeWorkspace);
+      else if (action === 'pick-tool') createSession(button.dataset.tool);
+      else if (action === 'quick-tool') createSession(button.dataset.tool, {}, state.activeWorkspace);
+      else if (action === 'close-drawer') closeDrawer();
+      else if (action === 'add-workspace') { $('#workspace-form').reset(); clearErrors($('#workspace-form')); showDialog('#workspace-dialog','#workspace-name'); }
+      else if (action === 'pick-directory') {
+        if (window.showDirectoryPicker) {
+          try {
+            const dir = await window.showDirectoryPicker({ id: 'jagent-workspace', mode: 'read' });
+            $('#workspace-path').value = `~/${dir.name}`;
+            if (!$('#workspace-name').value) $('#workspace-name').value = dir.name;
+            announce(`已选择示例目录「${dir.name}」，仅记录名称，不读取内容。`);
+          } catch (error) { if (error && error.name !== 'AbortError') announce('未能选择目录，可直接填写路径。'); }
+        } else {
+          const input = document.createElement('input');
+          input.type = 'file'; input.webkitdirectory = true;
+          input.addEventListener('change', () => {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            const rel = (file.webkitRelativePath || file.name).split('/')[0];
+            $('#workspace-path').value = `~/${rel}`;
+            if (!$('#workspace-name').value) $('#workspace-name').value = rel;
+            announce(`已选择示例目录「${rel}」，仅记录名称，不读取内容。`);
+          });
+          input.click();
+        }
+      }
+      else if (action === 'help') showDialog('#help-dialog');
+      else if (action === 'search') { $('#session-search').value = ''; renderSearch(); showDialog('#search-dialog','#session-search'); }
+      else if (action === 'custom-tool') {
+        $('#tool-dialog').close();
+        $('#custom-form').reset(); clearErrors($('#custom-form'));
+        $('#custom-context').textContent = `${workspace(state.toolWorkspace).name} · ${workspace(state.toolWorkspace).path}`;
+        showDialog('#custom-dialog','#custom-name');
+      }
+      else if (action === 'back-tools') { $('#custom-dialog').close(); openTools(state.toolWorkspace); }
+      else if (action === 'manage-session') {
+        state.managingSession = button.dataset.session;
+        const {w,s} = findSession(state.managingSession);
+        clearErrors($('#session-form')); $('#session-name').value = s.title;
+        $('#session-context').textContent = `${w.name} · ${toolFor(s).name}。移除仅作用于示例，不操作真实进程。`;
+        showDialog('#session-dialog','#session-name');
+      }
+      else if (action === 'remove-session') {
+        const item = findSession(state.managingSession);
+        if (!item) return;
+        const wasActive = state.activeSession === item.s.id;
+        item.w.sessions = item.w.sessions.filter(s => s.id !== item.s.id);
+        if (item.w.lastSession === item.s.id) item.w.lastSession = item.w.sessions[0]?.id || null;
+        $('#session-dialog').close();
+        if (wasActive) activateWorkspace(item.w.id); else renderSidebar();
+        announce(`已移除示例会话「${item.s.title}」。`);
+      }
+      else if (action === 'restart-session') {
+        const {w,s} = findSession(button.dataset.session);
+        createSession(s.tool, { title:s.title }, w.id);
+      }
+      else if (action === 'git-file' || action === 'yazi-file') selectFile(Number(button.dataset.index));
+      else if (action === 'yazi-workspace') {
+        const w = workspace(button.dataset.workspace);
+        const existing = w.sessions.find(s => s.tool === 'yazi');
+        if (existing) activateSession(existing.id); else createSession('yazi', {}, w.id);
+      }
+    });
+    $('#sidebar-toggle').addEventListener('click', () => {
+      if (narrow.matches) { if (drawer.open) closeDrawer(); else { drawer.append(sidebar); drawer.showModal(); updateSidebarToggle(); } }
+      else { $('#app').classList.toggle('sidebar-collapsed'); updateSidebarToggle(); }
+    });
+    $('#tool-workspace').addEventListener('change', event => { state.toolWorkspace = event.target.value; $('#tool-cwd').textContent = `cwd  ${workspace(state.toolWorkspace).path}`; $('#tool-cwd').title = workspace(state.toolWorkspace).path; });
+    $('#tool-filter').addEventListener('input', renderToolOptions);
+    $('#session-search').addEventListener('input', renderSearch);
+    document.addEventListener('input', event => { if (event.target.id === 'terminal-input') { const item = findSession(state.activeSession); if (item) item.s.draft = event.target.value; } });
+    document.addEventListener('submit', event => {
+      event.preventDefault();
+      const form = event.target;
+      if (form.id === 'workspace-form') {
+        if (!validateRequired(form, ['workspace-name','workspace-path'])) return;
+        const name = $('#workspace-name').value.trim();
+        const path = $('#workspace-path').value.trim();
+        if (!/^(?:\/|~\/|[A-Za-z]:[\\/]|\\\\)/.test(path)) { fieldError('workspace-path', '请填写绝对路径，例如 ~/Projects/app、/Projects/app 或 C:\\Projects\\app。'); $('#workspace-path').focus(); return; }
+        if (state.workspaces.some(w => w.path.replace(/[\\/]+$/, '') === path.replace(/[\\/]+$/, ''))) { fieldError('workspace-path', '此目录已有工作区，请从左侧选择，或填写其他目录。'); $('#workspace-path').focus(); return; }
+        const w = { id:`w${++serial}`, name, path, expanded:true, branch:null, lastSession:null, sessions:[] };
+        state.workspaces.push(w); $('#workspace-dialog').close(); activateWorkspace(w.id); announce(`已添加示例工作区「${name}」。`);
+      } else if (form.id === 'custom-form') {
+        if (!validateRequired(form, ['custom-name','custom-command'])) return;
+        createSession('custom', { title:$('#custom-name').value.trim(), command:$('#custom-command').value.trim() });
+      } else if (form.id === 'session-form') {
+        if (!validateRequired(form, ['session-name'])) return;
+        const item = findSession(state.managingSession);
+        if (!item) return;
+        item.s.title = $('#session-name').value.trim(); $('#session-dialog').close(); render(); announce('会话名称已更新。');
+      } else if (form.hasAttribute('data-terminal-form')) {
+        const {w,s} = findSession(state.activeSession);
+        const input = $('#terminal-input').value.trim();
+        if (!input) return;
+        if (input === 'clear' && !['pi','claude','codex'].includes(s.tool)) { s.history = []; s.cleared = true; }
+        else s.history.push({ input, output:terminalReply(s,w,input) });
+        s.draft = ''; renderPane(); $('#terminal-input').focus();
+        $('#terminal-log').scrollTop = $('#terminal-log').scrollHeight;
+      }
+    });
+    document.addEventListener('keydown', event => {
+      if (event.isComposing || event.keyCode === 229) return;
+      if (event.target.id === 'terminal-input' && event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) { event.preventDefault(); event.target.closest('form').requestSubmit(); return; }
+      if (event.target.id === 'tool-filter' && event.key === 'Enter') { event.preventDefault(); $('#tool-options [data-action="pick-tool"]')?.click(); return; }
+      if (event.target.id === 'session-search' && event.key === 'Enter') { event.preventDefault(); $('#search-results button')?.click(); return; }
+      const open = $('dialog[open]');
+      if (open && ['ArrowDown','ArrowUp'].includes(event.key) && ['tool-dialog','search-dialog'].includes(open.id)) {
+        const candidates = $$(open.id === 'tool-dialog' ? '#tool-options button' : '#search-results button');
+        if (!candidates.length || event.target.tagName === 'SELECT') return;
+        const current = candidates.indexOf(document.activeElement);
+        const next = event.key === 'ArrowDown' ? (current + 1) % candidates.length : (current <= 0 ? candidates.length - 1 : current - 1);
+        event.preventDefault(); candidates[next].focus(); return;
+      }
+      if (event.target.id === 'terminal-input' && !event.metaKey) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && !open) { event.preventDefault(); $('[data-action="search"]').click(); return; }
+      if (open) return;
+      const item = findSession(state.activeSession);
+      if (item && pane.contains(event.target) && ['lazygit','yazi'].includes(item.s.tool) && ['ArrowDown','ArrowUp'].includes(event.key)) {
+        const count = item.s.tool === 'lazygit' ? gitFiles.length : yaziFiles.length;
+        event.preventDefault(); selectFile((item.s.selectedFile + (event.key === 'ArrowDown' ? 1 : -1) + count) % count);
+      }
+    });
+    $$('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon); });
+    $('#sidebar-toggle').innerHTML = icon('sidebar');
+    $('#search-shortcut').textContent = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ K' : 'Ctrl K';
+    render(); updateSidebarToggle();
+  </script>
+</body>
+</html>
