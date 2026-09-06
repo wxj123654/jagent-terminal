@@ -17,7 +17,7 @@
 
 import { createTerminalSession, destroyTerminalSession, notifyDesktop } from '@jagent/native'
 
-import { navigateTarget, currentActiveThreadId } from '../router'
+import { navigateTarget, currentActiveThreadId, currentActiveWorkspaceId } from '../router'
 import type { SettingsStore } from '../settings/store'
 import { createAcpConnection } from './acp'
 import { createEchoAgent } from './chat'
@@ -42,6 +42,7 @@ export function createNativeThreadDeps(
     destroySession: async (id) => destroyTerminalSession(id),
     navigate: navigateTarget,
     activeThreadId: currentActiveThreadId,
+    activeWorkspaceId: currentActiveWorkspaceId,
     presetOf: (id) => settings.get().presets.items.find((p) => p.id === id),
     // bell → 非激活 thread → 桌面 toast（WinRT；Rust 侧 AUMID 注册幂等）。
     // sound 依赖 desktop（settings-ui.md §6）；失败在 Rust 侧静默 warn。

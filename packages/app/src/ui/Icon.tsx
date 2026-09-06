@@ -58,6 +58,14 @@ const SOURCES = {
   ),
   /** menu：窄窗口抽屉 toggle（W4 汉堡钮） */
   menu: strokeSvg('<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>'),
+  /** bell：会话通知（Phase W 对齐原型 workspace-plane bell 图标） */
+  bell: strokeSvg(
+    '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>',
+  ),
+  /** more：行内「…」管理菜单（Phase W 对齐原型 session-more） */
+  more: strokeSvg(
+    '<circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/>',
+  ),
 } as const
 
 export type IconName = keyof typeof SOURCES

@@ -261,22 +261,22 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       })
       expect(store.getState().threads).toHaveLength(2)
 
-      // exited 微标签渲染在列表里（React 提交轮询）
-      await until('exited badge visible', () => t.renderer.getAllText().some((x) => x === 'exited'))
+      // exited 微标签渲染在列表里（React 提交轮询；Phase W 中文化「已退出」）
+      await until('exited badge visible', () => t.renderer.getAllText().some((x) => x === '已退出'))
 
       // close 后台行（当前 active 在它上 → 先导航离开再移除，不变量 1）
       store.close(bellRowId)
       await until('row removed', () => store.getState().threads.length === 1)
       expect(currentActiveThreadId()).not.toBe(bellRowId)
 
-      // close 剩下的行 → 回 EmptyPresets（路由 /）
+      // close 剩下的行 → 回其工作区起始页（Phase W：close 兑底 = /workspace/$id）
       const lastId = store.getState().threads[0]!.id
       store.close(lastId)
       await until('all rows removed', () => store.getState().threads.length === 0)
       expect(currentActiveThreadId()).toBeNull()
-      // Pane 整块替换回 EmptyPresets
-      await until('EmptyPresets restored', () =>
-        t.renderer.getAllText().some((x) => x.includes('新建会话')),
+      // Pane 整块替换为工作区起始页（WorkspaceEmpty，非全局 EmptyPresets）
+      await until('workspace empty page restored', () =>
+        t.renderer.getAllText().some((x) => x.includes('这个工作区还没有会话')),
       )
     },
     TEST_TIMEOUT,

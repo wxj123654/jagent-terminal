@@ -8,7 +8,13 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { activeTargetFromLocation, currentActiveThreadId, navigateTarget, router } from '../router'
+import {
+  activeTargetFromLocation,
+  currentActiveThreadId,
+  currentActiveWorkspaceId,
+  navigateTarget,
+  router,
+} from '../router'
 import type { ChatAgent } from './chat'
 import { builtinPresetOf, type TerminalPreset } from './presets'
 import { createThreadStore, type ThreadDeps, type ThreadStore, type TerminalThread } from './store'
@@ -70,6 +76,7 @@ function makeDeps(overrides: Partial<ThreadDeps> = {}) {
     closeOnExit: () => closeOnExit,
     presetOf: (id) => builtinPresetOf(id),
     activeThreadId: currentActiveThreadId,
+    activeWorkspaceId: currentActiveWorkspaceId,
     chatAgent: chat.agent,
     createAcpAgent: acp.factory,
     ...overrides,
@@ -716,21 +723,26 @@ describe('activateWorkspace / close / removeWorkspace', () => {
     })
   })
 
-  test('activateWorkspace：恢复 lastSession；无/死 lastSession → 回起始页（null）', async () => {
+  test('activateWorkspace：恢复 lastSession；无/死 lastSession → 工作区起始页', async () => {
     const wsId = store.getState().workspaces[0]!.id
-    // 无 lastSession → 起始页
+    // 无 lastSession → 工作区起始页（/workspace/$id，非全局 '/'）
     store.activateWorkspace(wsId)
     expect(currentActiveThreadId()).toBeNull()
+    expect(currentActiveWorkspaceId()).toBe(wsId)
     // 有 lastSession → 恢复
     await store.spawnFromPreset('shell', wsId)
     const tid = currentActiveThreadId()
     void router.navigate({ to: '/' })
     store.activateWorkspace(wsId)
     expect(currentActiveThreadId()).toBe(tid)
-    // 死 id（会话已 close）→ 起始页
+    // 死 id（会话已 close，lastSession 已清）→ 工作区起始页
+    store.activateWorkspace(wsId)
+    expect(currentActiveThreadId()).toBe(tid)
     store.close(tid!)
+    expect(currentActiveWorkspaceId()).toBe(wsId) // close 兑底 = 回归属工作区起始页
     store.activateWorkspace(wsId)
     expect(currentActiveThreadId()).toBeNull()
+    expect(currentActiveWorkspaceId()).toBe(wsId)
   })
 
   test('close lastSession 指向的会话 → lastSession 清空（工作区起始页数据面）', async () => {
@@ -756,10 +768,12 @@ describe('activateWorkspace / close / removeWorkspace', () => {
     expect(store.getState().threads.map((t) => t.id)).toEqual(['t2'])
     expect(store.getState().workspaces.map((w) => w.id)).toEqual([wb!.id])
     expect(currentActiveThreadId()).toBe('t2') // active 不在 wa → 不导航
-    // 移除含 active 会话的工作区 → 先导航兑底再清
+    // 移除含 active 会话的工作区 → close 兑底先到 /workspace/$id，工作区
+    // 删除后再兜底回全局 '/'（EmptyPresets）
     store.removeWorkspace(wb!.id)
     expect(deps.destroyed).toEqual([1, 2])
     expect(currentActiveThreadId()).toBeNull()
+    expect(currentActiveWorkspaceId()).toBeNull()
     expect(store.getState().threads).toHaveLength(0)
     expect(store.getState().workspaces).toHaveLength(0)
   })

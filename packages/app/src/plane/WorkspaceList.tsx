@@ -278,19 +278,39 @@ function WorkspaceGroup({
             <ThreadRow key={id} id={id} store={store} indent={SESSION_INDENT} />
           ))}
           {sessions.length === 0 ? (
-            <text
+            /* 空组引导（原型 empty-group）：可点按钮直接开工具菜单，
+               不止文案提示「点 ＋」（对齐原型「创建第一个会话」） */
+            <div
+              tabIndex={0}
+              testId={`workspace-create-first-${ws.id}`}
+              onClick={() => setMenuOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'enter' || e.key === 'space') setMenuOpen(true)
+              }}
               style={{
-                marginLeft: SIZES.rowMarginX + SESSION_INDENT + SIZES.rowPaddingX,
-                marginTop: 2,
-                marginBottom: 2,
-                fontSize: 10,
-                fontFamily: FONT.ui,
-                color: COLORS.muted,
-                pointerEvents: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                height: 22,
+                marginLeft: SIZES.rowMarginX + SESSION_INDENT,
+                marginRight: SIZES.rowMarginX,
+                paddingLeft: SIZES.rowPaddingX,
+                paddingRight: SIZES.rowPaddingX,
+                borderRadius: 4,
+                cursor: 'pointer',
+                hover: { backgroundColor: COLORS.surface },
               }}
             >
-              空工作区——点 ＋ 新建会话
-            </text>
+              <text
+                style={{
+                  fontSize: 11,
+                  fontFamily: FONT.ui,
+                  color: COLORS.muted,
+                  pointerEvents: 'none',
+                }}
+              >
+                创建第一个会话
+              </text>
+            </div>
           ) : null}
         </div>
       ) : null}

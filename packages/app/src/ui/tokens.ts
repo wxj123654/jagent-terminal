@@ -25,6 +25,8 @@ export const COLORS = {
   textBright: '#d7dae0',
   muted: '#5c6370',
   accent: '#61afef',
+  /** accent 按钮 hover（提亮一档；原型 .button.primary:hover #a2cffa 同意图） */
+  accentHover: '#82c1f2',
   /** accent 低透明度底（toggle 开启轨道 / 焦点环，原型 --accent-soft） */
   accentSoft: 'rgba(97, 175, 239, 0.15)',
   /** 自定义徽章青（原型 --cyan） */

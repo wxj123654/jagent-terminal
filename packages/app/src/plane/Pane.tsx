@@ -17,6 +17,7 @@ import { getSurface } from '../surfaces/registry'
 import { SettingsView } from '../surfaces/SettingsView'
 import type { ThreadStore } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
+import { WorkspaceEmpty } from './WorkspaceEmpty'
 
 export function Pane({ store, settings }: { store: ThreadStore; settings: SettingsStore }) {
   const active = useActiveTarget()
@@ -25,6 +26,12 @@ export function Pane({ store, settings }: { store: ThreadStore; settings: Settin
   )
 
   if (active?.type === 'settings') return <SettingsView settings={settings} />
+  // 工作区起始页（Phase W；原型「空工作区/会话移除后回退目的地」）。
+  // 死 id（工作区已删，removeWorkspace 兑底前的一瞬）→ 落全局空态兜底
+  if (active?.type === 'workspace') {
+    const ws = store.getState().workspaces.find((w) => w.id === active.id)
+    if (ws) return <WorkspaceEmpty store={store} settings={settings} workspace={ws} />
+  }
   if (!thread) {
     // 空态预设卡：spawn 进第一个工作区（无工作区则不归属——防御；正常装配
     // 首启即有默认工作区，Phase W2 起新建入口全带归属）

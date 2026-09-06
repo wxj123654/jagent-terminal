@@ -109,7 +109,10 @@ export type ThreadDeps = {
   createAcpAgent: (agentId: string) => ChatAgent
   /** 路由读侧（active 判定：bell 红点只打非 active、cycle 基准、close 先导航离开）。
    *  装配层注入（直接读 history）。未注入时：bell 视为非 active，close 保守先导航。 */
+  /** 路由读侧：当前指向的 thread（缺省 null —— 保守视为非 active） */
   activeThreadId?: () => string | null
+  /** 路由读侧：当前指向的工作区起始页（Phase W；removeWorkspace 兑底用，缺省 null） */
+  activeWorkspaceId?: () => string | null
   /** 工作区持久化（Phase W）：workspaces 任何变化后 fire（fire-and-forget；
    *  装配层写 state.json，失败仅 warn）。不注入则跳过（纯内存，测试面）。 */
   persistWorkspaces?: (workspaces: Workspace[]) => void
@@ -282,8 +285,12 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
     close(id) {
       const thread = state().threads.find((t) => t.id === id)
       if (!thread) return
-      // 不变量 1：close 前先导航离开（路由不得指向将移除的行）
-      if (routerPointsAt(id)) activate(null)
+      // 不变量 1：close 前先导航离开（路由不得指向将移除的行）。
+      // Phase W：有归属 → 回该工作区起始页（原型「会话移除后回工作区
+      // 起始页」）；无归属（旧数据/局部复用）→ '/'
+      if (routerPointsAt(id)) {
+        activate(thread.workspaceId ? { type: 'workspace', id: thread.workspaceId } : null)
+      }
       if (thread.kind === 'terminal') void deps.destroySession(thread.sessionId)
       if (thread.kind === 'acp') {
         // 连接随行销毁（子进程 kill；释放失败不阻塞移除）
@@ -369,26 +376,30 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
     removeWorkspace(id) {
       if (!state().workspaces.some((w) => w.id === id)) return
       // 连带 close 全部会话：destroySession/dispose/导航兑底都复用 close 单点
-      //（首个被 close 的 active thread 会先 activate(null)；后续 close 的
-      // routerPointsAt 已 false，不再额外导航）
+      //（首个被 close 的 active thread 会先导航到本工作区起始页；后续 close
+      // 的 routerPointsAt 已 false，不再额外导航）
       for (const victim of state().threads.filter((t) => t.workspaceId === id)) {
         this.close(victim.id)
       }
       set((s) => {
         s.workspaces = s.workspaces.filter((w) => w.id !== id)
       })
+      // 工作区已删：路由若指向它的起始页（close 兑底或用户停在空态）→
+      // 回全局起始页（EmptyPresets 兑底）；非 active 不导航
+      if (deps.activeWorkspaceId?.() === id) activate(null)
       persist()
     },
 
     activateWorkspace(id) {
       const ws = state().workspaces.find((w) => w.id === id)
       if (!ws) return
-      // 恢复上次会话；已不存在（重启后 PTY 即死）或从未打开 → 回起始页。
+      // 恢复上次会话；已不存在（重启后 PTY 即死）或从未打开 → 工作区
+      // 起始页（router 目标 /workspace/$id，Pane 渲染 WorkspaceEmpty）。
       // activate 内部会再写 lastSession（幂等，同 id 无害）
       const target = ws.lastSession
         ? state().threads.find((t) => t.id === ws.lastSession)
         : undefined
-      activate(target ? { type: 'thread', id: target.id } : null)
+      activate(target ? { type: 'thread', id: target.id } : { type: 'workspace', id })
     },
 
     toggleWorkspaceExpanded(id) {

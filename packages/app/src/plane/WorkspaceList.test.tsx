@@ -142,12 +142,27 @@ describe('WorkspaceList：分组树', () => {
     t.renderer.flush()
   })
 
-  test('空工作区引导行（expanded 且无会话）', async () => {
+  test('空工作区引导行（可点开工具菜单；对齐原型「创建第一个会话」）', async () => {
     t.render(createElement(Harness, { query: '' }))
     t.renderer.flush()
     await until('beta empty hint', () =>
-      t.renderer.getAllText().some((s) => s.includes('空工作区')),
+      t.renderer.getAllText().some((s) => s.includes('创建第一个会话')),
     )
+    // 点击引导行 → 打开该工作区的工具菜单（与行 ＋ 同一 menuOpen 链）；
+    // 结尾 pick 一项关闭（occlude 层吞点击，见 TODOLIST 已知问题——
+    // 菜单无外点/Esc 关闭，测试必须自收敛，否则吞掉后续用例的点击）
+    clickCenter(`workspace-create-first-${wsB}`)
+    await until(
+      'tool menu opens from empty-group hint',
+      () => t.renderer.findByTestId('tool-menu-target') != null,
+    )
+    clickCenter('tool-preset-shell')
+    await until('spawned into beta from empty-group menu', () =>
+      store.getState().threads.some((x) => x.kind === 'terminal' && x.workspaceId === wsB),
+    )
+    const th = store.getState().threads.find((x) => x.kind === 'terminal' && x.workspaceId === wsB)
+    store.close(th!.id)
+    t.renderer.flush()
   })
 })
 

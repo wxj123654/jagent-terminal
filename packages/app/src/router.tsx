@@ -53,7 +53,11 @@ export function lastNonSettings(): ActiveTarget {
   return lastNonSettingsTarget
 }
 
-export type ActiveTarget = { type: 'thread'; id: string } | { type: 'settings' } | null
+export type ActiveTarget =
+  | { type: 'thread'; id: string }
+  | { type: 'workspace'; id: string }
+  | { type: 'settings' }
+  | null
 
 /** 路由占位组件——手动桥下路由树只是 URL 形状 + search 校验，不渲染。 */
 function RouteSlot() {
@@ -74,6 +78,13 @@ const threadRoute = createRoute({
   component: RouteSlot,
 })
 
+/** 工作区起始页（Phase W：空工作区/会话投移除后的回退目的地，原型「工作区起始页」） */
+const workspaceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/workspace/$id',
+  component: RouteSlot,
+})
+
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',
@@ -83,7 +94,7 @@ const settingsRoute = createRoute({
   component: RouteSlot,
 })
 
-const routeTree = rootRoute.addChildren([indexRoute, threadRoute, settingsRoute])
+const routeTree = rootRoute.addChildren([indexRoute, threadRoute, workspaceRoute, settingsRoute])
 
 export const router = createRouter({
   routeTree,
@@ -138,6 +149,8 @@ export function navigateSettingsSection(section: string): void {
 export function activeTargetFromLocation(pathname: string): ActiveTarget {
   const m = /^\/thread\/(.+)$/.exec(pathname)
   if (m) return { type: 'thread', id: m[1] }
+  const w = /^\/workspace\/(.+)$/.exec(pathname)
+  if (w) return { type: 'workspace', id: w[1] }
   if (pathname === '/settings') return { type: 'settings' }
   return null
 }
@@ -151,6 +164,8 @@ export function navigateTarget(t: ActiveTarget): void {
     void router.navigate({ to: '/' })
   } else if (t.type === 'settings') {
     void router.navigate({ to: '/settings' })
+  } else if (t.type === 'workspace') {
+    void router.navigate({ to: '/workspace/$id', params: { id: t.id } })
   } else {
     void router.navigate({ to: '/thread/$id', params: { id: t.id } })
   }
@@ -160,4 +175,10 @@ export function navigateTarget(t: ActiveTarget): void {
 export function currentActiveThreadId(): string | null {
   const t = activeTargetFromLocation(router.history.location.pathname)
   return t?.type === 'thread' ? t.id : null
+}
+
+/** 装配层的路由读侧（ThreadDeps.activeWorkspaceId 的注入体；removeWorkspace 兑底用）。 */
+export function currentActiveWorkspaceId(): string | null {
+  const t = activeTargetFromLocation(router.history.location.pathname)
+  return t?.type === 'workspace' ? t.id : null
 }

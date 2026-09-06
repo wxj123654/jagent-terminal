@@ -25,13 +25,17 @@ import type { DirectoryPicker } from './WorkspaceList'
 /** 窄窗口抽屉断点（原型 W0 契约）：低于此宽 sidebar 变 overlay 抽屉 */
 const NARROW_BREAKPOINT = 760
 
-/** 顶栏标题：当前线程 displayTitle · 设置 → '设置' · 空态 → 'j-agent' */
+/** 顶栏标题：当前线程 displayTitle · 设置 → '设置' · 工作区起始页 → 工作区名 · 空态 → 'j-agent' */
 function useTitle(store: ThreadStore): string {
   const active = useActiveTarget()
   const thread = useThreadStore(store, (s) =>
     active?.type === 'thread' ? s.threads.find((t) => t.id === active.id) : undefined,
   )
+  const workspace = useThreadStore(store, (s) =>
+    active?.type === 'workspace' ? s.workspaces.find((w) => w.id === active.id) : undefined,
+  )
   if (active?.type === 'settings') return '设置'
+  if (active?.type === 'workspace' && workspace) return workspace.name
   if (!thread) return 'j-agent'
   return thread.kind === 'terminal' ? displayTitle(thread) : thread.title
 }

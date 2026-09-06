@@ -238,6 +238,15 @@
 - **removeWorkspace 语义定稿**：close active thread → activate(null) 回起始页（close 单点既有语义，非「切相邻」）——e2e 锁定；未来若要 Zed 式「切相邻」是行为变更再议。
 - **e2e 写法坑**：①until 循环里 `prev` 必须在事件派发**前**取（after 结构死锁等下一次变化）；②describe 间不隔离——Phase W 用例不假设前面 describe 的 threads 池状态（retain 池有遗留），「最后 spawn 的」用 `.at(-1)` 定位；③单跑 `-t` 用例时依赖前置用例赋值的变量会 undefined——自包含或全 describe 跑。
 - **已知问题（未解，记录）**：terminal 元素在场时 GPUI 焦点在帧渲染后被抢回——`focusElement` + 后续 `simulateKeystrokes` 在 TestRenderer 下键击丢失（无 terminal 场景三条聚焦路径全通：autoFocus/focusElement+simulate/nativeSimulateKeystrokes 原子）。疑与 terminal paint 闭包 `handle_input` 每帧注册 InputHandler 有关。**真窗口 ⌘K 打字是否受影响待手验**——若真窗口也丢键，开专项修（gpuix/gpui 层）。打字进 query 的行为由 AgentPlane.test（无 terminal 场景）闭环锁定。
+
+### Phase W 结论区（W6，原型对齐补遗：工作区起始页 + 行管理菜单）
+
+- **背景**：用户复核发现实现与原型有多处偏差；对齐范围经确认 = 工作区起始页（#1）+ 空组可点引导（#8）+ 会话行 … 菜单/bell 图标/已退出中文化（#9）。侧栏 276px/标题行/底部计数/顶栏面包屑/顶部新建按钮**有意保持现状**（后两者是 W2 定稿的决策）。
+- **工作区起始页**：①router 新目标 `{type:'workspace', id}`（路径 /workspace/$id；`ActiveTarget` 联合扩展，`navigateTarget`/`activeTargetFromLocation` 同步；新增 `currentActiveWorkspaceId` 装配读侧）。②store 语义三点：close 归属会话 → 兑底 activate({type:'workspace'})（原 activate(null)，原型「会话移除后回工作区起始页」）；activateWorkspace 空/死 lastSession → workspace 目标（原 null）；removeWorkspace 后若路由仍指向该 workspace → activate(null) 全局兑底（ThreadDeps 新增 `activeWorkspaceId?: () => string | null`，nativeDeps 注入）。③Pane 路由分支渲染 `WorkspaceEmpty`（plane/，非 thread kind 不进 registry）：folder+名称+path+引导文案+「新建 pi 会话」primary（pi 预设 id 查 settings，被删则隐藏）+「选择其他工具」（复用 ToolMenu，anchored 到按钮容器）+ 其余预设快捷 pills；「所有工具从工作区目录启动」说明。顶栏标题 workspace 目标 → 工作区名。新 token `accentHover`（primary 按钮 hover 提亮）。
+- **空组引导行**：纯文字「空工作区——点 ＋」→ 可点按钮「创建第一个会话」（testId workspace-create-first-$id，点击 setMenuOpen(true) 复用行 ＋ 的 ToolMenu 链）。
+- **会话行（ThreadRow）**：✕ 直删钮 → 「…」管理菜单（anchored end+deferred：重命名→行内编辑、移除会话→store.close；hover/focus/active 可见，键盘 Delete 直删保留，Esc 关菜单优先于取消编辑）；bell 红点 → bell 图标（新 icon）；exited → 已退出。icon 库新增 bell/more（原型 paths 同源）。
+- **新发现（GPUIX 事实）**：anchored `occlude` 只是 gpui BlockMouse（阻止命中穿透），**无内建外点关闭**；gpuix 窗口级监听只有 key 事件（RootEventHandlers 无 mouse）→ 菜单打开后除再点 trigger/pick 项外无关闭路径（W2 ToolMenu 既有行为，本轮记录为已知问题；修法需全局 pointerdown 或 anchored 失焦回调，后续专项）。测试面：occlude 层吞点击，开菜单的用例必须 pick 自收敛，否则吞掉后续用例的点击。
+- **测试**：WorkspaceEmpty.test 新增 4（渲染/primary spawn/ToolMenu 打开+pick/快捷 pill spawn）；WorkspaceList.test 空组用例改断言+pick 收敛；store.test activateWorkspace/removeWorkspace 用例改 workspace 目标断言（补 activeWorkspaceId 注入）；e2e exited 断言中文化 + close 兑底断言改「工作区起始页」。app 181（+4）+ e2e 17 + tsc/fmt/lint 全绿；TestRenderer 截图目检起始页居中布局与侧栏空组引导。
 - **测试**：e2e 12→17；AgentPlane.test +1（⌘K 无 terminal 闭环）；WorkspaceList.test +1（ToolMenu 筛选）；cargo 37→38。app 177 + e2e 17 + cargo 38 全绿。
 
 ---
