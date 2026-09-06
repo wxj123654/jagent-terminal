@@ -30,9 +30,9 @@
 | 2 ThreadStore 全规则 + settings-core/controls + SettingsView | ✅ 完成（T2.1–T2.7） |
 | 3 settings-presets + chat | ✅ 完成（T3.1+T3.2） |
 | 3+ settings-acp-advanced + ACP + 键位编辑 | ✅ 完成（T3+.1–T3+.3） |
-| W 工作区平面迁移 | ◑ W0–W3 完成；W4 空态键盘/窄窗口待做 |
+| W 工作区平面迁移 | ◑ W0–W4 完成；W5 e2e 收口待做 |
 
-**当前指针**：→ Phase W / W4（空态与键盘：空工作区引导已有；⌘K/Ctrl-K 聚焦搜索 + Esc 层级与 keybindings.ts 合流 + 窄窗口抽屉 760px 断点）
+**当前指针**：→ Phase W / W5（工作区面 e2e：真 PTY 多工作区、Ctrl-Tab 跨工作区 cycle、抽屉窄窗口交互、⌘K 键位面端到端）
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -219,7 +219,15 @@
 - **实现（packages/native/src/picker.rs）**：`pickDirectory(cb)` TSF 回调面（两参契约同 onSessionEvent——payload 在第二参）。**macOS**：NSOpenPanel 在 JS/主线程同步跑模态（gpuix 在调用线程跑 GPUI；runModal 自泵 AppKit，panel 交互正常、身后窗口暂停重绘=模态语义）；objc 0.2 msg_send（appearance.rs 同款），canChooseDirectories/!files/!multiple。**Windows**：IFileOpenDialog 走 detached STA 线程 + CoInitializeEx（notify.rs 同款），FOS_PICKFOLDERS|FOS_FORCEFILESYSTEM，SIGDN_FILESYNCHRONOUS 取路径；windows crate 0.61 现有 features（Win32_UI_Shell/Win32_System_Com）已覆盖零新增。**TSF call 统一 NonBlocking**：macOS 在 JS 线程内回调（Blocking 会等 JS → 死锁），统一 NonBlocking 从任意线程安全入队。
 - **JS 注入链**：main.tsx 包装 `() => Promise<string|null>` → App → Sidebar → WorkspaceList → AddWorkspaceForm prop（windowControls 同款 seam 纪律；plane/ 零 @jagent/native 直 import，§1.2 不破）。未注入（测试默认）「浏览…」不渲染（「在编辑器中打开」同款模式）。选择后：填 path + **名称空时**自动 basename（尊重手输）。
 - **验证**：cargo test 37 + napi build（darwin-arm64 .node + index.d.ts pickDirectory 导出 ✓）；WorkspaceList.test +1（未注入无按钮 / fake 选择填值+自动名称 / 取消不动已填值）；app 167 + e2e 12 + tsc/fmt/lint 全绿；真窗口 mount ✓。**NSOpenPanel 真交互（面板弹出/选择/取消）待用户真机验收**——agent shell 弹模态面板无法自动断言。
-- [ ] **W4** 空态与键盘：空工作区引导（默认 pi 卡）；窄窗口抽屉（760px 断点对齐原型）；⌘K/Ctrl-K 搜索、Esc 层级与现有 keybindings.ts 合流（工作区面不劫持终端输入，硬约束 2 同源）
+- [x] **W4** 空态与键盘：详见 Phase W 结论区（W4）
+
+### Phase W 结论区（W4，空态与键盘）
+
+- **⌘K/Ctrl-K 聚焦侧栏搜索**：keybindings.ts 新动作 `searchThreads`（默认 mac cmd-k / win ctrl-k，schema 平台分支 catch）。**keystrokeMatches 扩 cmd 语法**（'cmd-' 前缀；EventModifiers.cmd 即 mac ⌘/win Win）。层级：设置面打开时**不劫持**（⌘K 语义留给设置面）；⌘ 是 platform 修饰不写 PTY（硬约束 2 天然零冲突）。Sidebar 搜索框 ref → `plane/sidebarKeyboard`（模块态，settingsKeyboard 同款纪律）→ main.tsx focusThreadSearch。**元素 blur 无 API**（renderer.blur 是窗口级）——Esc 空值时不强 blur。
+- **Esc 层级定稿**：组件编辑态（已有，搜索框/重命名/捕获格）→ query 非空清空 → 窄窗口抽屉态关抽屉（onEscEmpty prop）→ 宽窗口 no-op（保持焦点直接打字）。
+- **窄窗口抽屉（760px）**：AgentPlane useWindowSize（poll 100ms；TestRenderer 构造传 width/height → 测试可控断点，fallback 800×600 保宽态）。窄态：Pane 全宽 + drawerOpen 时 **scrim+Sidebar 后渲染**（GPUI 树序绘制 CONSTRAINTS #2——覆盖层必须后画）；TitleBar 汉堡钮（新 Icon menu）toggle；scrim 点击/Esc 关。
+- **设置面键位表**：KEY_ACTIONS +searchThreads 行；KeyCap 捕获格支持 cmd（'cmd-' 前缀构造；requireCtrl 校验放宽为 ctrl 或 cmd）。
+- **测试**：keybindings.test 5（cmd 匹配/设置面不劫持/改绑即时生效）+ AgentPlane.test 3（宽常驻/窄抽屉开-关/Esc 关抽屉）。app 175 + e2e 12 + tsc/fmt/lint 全绿。跨断点动态变宽 offscreen 无法模拟（窗口尺寸构造后不变）——真窗口手验项。
 - [ ] **W5** 验收锚点：原型验证清单全项对齐（工作区归属/恢复最近会话/草稿保留/工具筛选/自定义命令/搜索/移除回退/窄窗口）+ e2e 扩展（工作区全链：添加工作区 → 新建 pi 会话 → 切换 → 恢复 → 移除回退）+ 真窗口冒烟 + commit "Phase W"
 
 ---
@@ -270,3 +278,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-06 · **Phase W 开工：W0 定稿 + W1 数据层完成**：W0 = 两轮迭代验收 + 用户放行 · W1 = threads/workspaces.ts（Workspace 类型 + state.json zod schema 逐行容错 + defaultWorkspace/workspaceSessions）+ ThreadStore 改造（平铺+workspaceId 归属不嵌套、cwd 链 preset.cwd→workspace.path→CWD、activateWorkspace 恢复 lastSession/死 id 回起始页、removeWorkspace 连锁 close、persistWorkspaces fire-and-forget）+ main.tsx state.json 装配（首启只读不写，空/损坏→默认工作区）· zod array.catch 整组回退坑（单行坏抹全部→逐行 safeParse）· 测试 workspaces 8 + store 13 新增，存量 31 零改动全过；app 155 + e2e 12 + tsc/fmt/lint 全绿 · 下一步：W2（侧栏工作区分组树 UI）
 - 2026-09-06 · **W2 完成（侧栏 UI）**：Sidebar 改工作区分组树（WorkspaceList：WorkspaceGroup 行[箭头 toggle 不激活/点行恢复 lastSession/双击 rename/hover 移除] + ThreadRow indent 缩进 + 空工作区引导 + AddWorkspaceForm 内联表单）· ToolMenu（NewThreadButton 演化：目标工作区头 name+cwd + 预设/New Chat/ACP 全带 workspaceId）· 搜索（searchThreads 四路命中 + 结果行 suffix 工作区名）· uSES 快照稳定性坑（selector 新数组炸 → 稳定引用 + 渲染期现算）· e2e 迁移（装配默认工作区 + spawn 归属 + 菜单 testId）· WorkspaceList.test 9 + searchThreads 2 新增；app 166 + e2e 12 全绿 · 下一步：W3 目录选择 seam
 - 2026-09-06 · **W3 完成（目录选择 seam）**：gpuix 盘点零 dialog 导出 → packages/native/picker.rs 自建（mac NSOpenPanel 主线程模态 / win IFileOpenDialog detached STA；TSF NonBlocking 防 JS 线程死锁；windows crate features 零新增）· prop 注入链 main→App→Sidebar→WorkspaceList→AddWorkspaceForm（未注入隐藏按钮）· 浏览后填 path+空名自动 basename · WorkspaceList.test +1（fake picker 全路径）· app 167 + e2e 12 + cargo 37 全绿 · NSOpenPanel 真交互待用户真机验收 · 下一步：W4（⌘K/Ctrl-K + Esc 层级 + 窄窗口抽屉）
+- 2026-09-06 · **W4 完成（空态与键盘）**：keybindings 增 searchThreads（⌘K/Ctrl-K 聚焦侧栏搜索；keystrokeMatches 扩 cmd 语法；设置面不劫持；platform 修饰不写 PTY 零冲突）· Esc 层级定稿（编辑态→清 query→关抽屉→no-op；无元素级 blur API）· 窄窗口抽屉 760px（useWindowSize + 树序后画覆盖层 + 汉堡钮 Icon menu + scrim/Esc 关）· KeyCap 捕获格支持 cmd-· keybindings.test 5 + AgentPlane.test 3 · app 175 + e2e 12 全绿 · 下一步：W5（工作区面 e2e 收口）

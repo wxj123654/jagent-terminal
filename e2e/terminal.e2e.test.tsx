@@ -30,6 +30,7 @@ import { installTerminalElement, destroyTerminalSession, onSessionEvent } from '
 import { createElement } from 'react'
 import { createGlobalKeydown, type GlobalKeydown } from '../packages/app/src/keybindings'
 import { App } from '../packages/app/src/plane/AgentPlane'
+import { sidebarKeyboard } from '../packages/app/src/plane/sidebarKeyboard'
 import {
   currentActiveThreadId,
   router,
@@ -139,6 +140,10 @@ beforeAll(() => {
     closeSettings: () => store.activate(lastNonSettings()),
     focusSearch: () => {
       const id = settingsKeyboard.searchInputId()
+      if (id != null) t.renderer.focusElement(id)
+    },
+    focusThreadSearch: () => {
+      const id = sidebarKeyboard.searchInputId()
       if (id != null) t.renderer.focusElement(id)
     },
     inputFocused: () => inputFocus.any,

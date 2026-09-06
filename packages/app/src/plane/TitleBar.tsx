@@ -24,6 +24,7 @@
 
 import { useState } from 'react'
 
+import { Icon } from '../ui/Icon'
 import type { AppPlatform } from '../ui/platform'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
 
@@ -131,10 +132,17 @@ export function TitleBar({
   title,
   platform,
   windowControls,
+  narrow,
+  drawerOpen,
+  onToggleDrawer,
 }: {
   title: string
   platform: AppPlatform
   windowControls?: WindowControls
+  /** 窄窗口抽屉态（W4）：true 渲染汉堡钮（点击 toggle 抽屉） */
+  narrow?: boolean
+  drawerOpen?: boolean
+  onToggleDrawer?: () => void
 }) {
   const drag = useTitleBarDrag(windowControls)
   return (
@@ -159,6 +167,28 @@ export function TitleBar({
       }}
       {...(platform === 'mac' ? drag : {})}
     >
+      {narrow ? (
+        <div
+          testId="drawer-toggle"
+          tabIndex={0}
+          onClick={() => onToggleDrawer?.()}
+          onKeyDown={(e) => {
+            if (e.key === 'enter' || e.key === 'space') onToggleDrawer?.()
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 28,
+            height: SIZES.titleBarHeight,
+            flexShrink: 0,
+            cursor: 'pointer',
+            hover: { backgroundColor: COLORS.surfaceHover },
+          }}
+        >
+          <Icon name="menu" size={13} color={drawerOpen ? COLORS.accent : COLORS.text} />
+        </div>
+      ) : null}
       <text
         testId="titlebar-title"
         style={{

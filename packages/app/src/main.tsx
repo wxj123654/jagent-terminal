@@ -23,6 +23,7 @@ import {
 import { appWindow } from './appWindow'
 import { createGlobalKeydown } from './keybindings'
 import { App } from './plane/AgentPlane'
+import { sidebarKeyboard } from './plane/sidebarKeyboard'
 import type { WindowControls } from './plane/TitleBar'
 import { router, activeTargetFromLocation, lastNonSettings } from './router'
 import { fsAdapter } from './settings/file'
@@ -103,6 +104,11 @@ const handleKeyDown = createGlobalKeydown({
     const id = settingsKeyboard.searchInputId()
     if (id != null) renderer.focusElement(id)
   },
+  focusThreadSearch: () => {
+    // W4 ⌘K/Ctrl-K：Sidebar 常驻（宽窗口）；抽屉关闭时 id 为 null → no-op
+    const id = sidebarKeyboard.searchInputId()
+    if (id != null) renderer.focusElement(id)
+  },
   inputFocused: () => inputFocus.any,
   settingsQuery: settingsKeyboard.query,
   escConsumed: settingsKeyboard.escConsumed,
@@ -128,7 +134,7 @@ appWindow.mount(
     onEvent: (event) => {
       if (event.eventType === 'keyDown') {
         const m = event.modifiers
-        handleKeyDown(event.key ?? '', m?.ctrl ?? false, m?.shift ?? false)
+        handleKeyDown(event.key ?? '', m?.ctrl ?? false, m?.shift ?? false, m?.cmd ?? false)
       }
     },
   },

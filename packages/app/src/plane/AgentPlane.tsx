@@ -8,6 +8,8 @@
  * renderer；测试传 spy）。
  */
 
+import { useWindowSize } from '@gpuix/react'
+import { useState } from 'react'
 import { useActiveTarget } from '../router'
 import type { SettingsStore } from '../settings/store'
 import type { ThreadStore } from '../threads/store'
@@ -19,6 +21,9 @@ import { Pane } from './Pane'
 import { Sidebar, SidebarHeader } from './Sidebar'
 import { TitleBar, type WindowControls } from './TitleBar'
 import type { DirectoryPicker } from './WorkspaceList'
+
+/** 窄窗口抽屉断点（原型 W0 契约）：低于此宽 sidebar 变 overlay 抽屉 */
+const NARROW_BREAKPOINT = 760
 
 /** 顶栏标题：当前线程 displayTitle · 设置 → '设置' · 空态 → 'j-agent' */
 function useTitle(store: ThreadStore): string {
@@ -44,6 +49,20 @@ export function App({
   pickDirectory?: DirectoryPicker
 }) {
   const title = useTitle(store)
+  // 窄窗口抽屉（W4）：useWindowSize poll 100ms（TestRenderer 无窗口面时
+  // fallback 800×600 → 宽窗口态，测试零影响）
+  const { width } = useWindowSize()
+  const narrow = width < NARROW_BREAKPOINT
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const sidebar = (
+    <Sidebar
+      store={store}
+      settings={settings}
+      pickDirectory={pickDirectory}
+      onEscEmpty={narrow ? () => setDrawerOpen(false) : undefined}
+    />
+  )
+  const pane = <Pane store={store} settings={settings} />
   return (
     <div
       style={{
@@ -69,12 +88,66 @@ export function App({
         }}
       >
         <SidebarHeader platform={PLATFORM} windowControls={windowControls} />
-        <TitleBar title={title} platform={PLATFORM} windowControls={windowControls} />
+        <TitleBar
+          title={title}
+          platform={PLATFORM}
+          windowControls={windowControls}
+          narrow={narrow}
+          drawerOpen={drawerOpen}
+          onToggleDrawer={narrow ? () => setDrawerOpen((v) => !v) : undefined}
+        />
       </div>
-      {/* 内容行 */}
-      <div style={{ display: 'flex', flexDirection: 'row', flexGrow: 1, minHeight: 0 }}>
-        <Sidebar store={store} settings={settings} pickDirectory={pickDirectory} />
-        <Pane store={store} settings={settings} />
+      {/* 内容行。窄窗口时 Pane 先、抽屉（Sidebar+scrim）后——GPUI 按树序
+          绘制（CONSTRAINTS #2），后画的覆盖层才不会被 Pane 整块盖住。 */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          flexGrow: 1,
+          minHeight: 0,
+          position: 'relative',
+        }}
+      >
+        {narrow ? (
+          <>
+            {pane}
+            {drawerOpen ? (
+              <>
+                <div
+                  testId="drawer-scrim"
+                  onClick={() => setDrawerOpen(false)}
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: '#00000099',
+                  }}
+                />
+                <div
+                  testId="drawer-panel"
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 248,
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                >
+                  {sidebar}
+                </div>
+              </>
+            ) : null}
+          </>
+        ) : (
+          <>
+            {sidebar}
+            {pane}
+          </>
+        )}
       </div>
     </div>
   )

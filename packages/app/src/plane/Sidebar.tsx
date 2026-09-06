@@ -17,6 +17,7 @@ import { inputFocus } from '../ui/keyboard'
 import type { AppPlatform } from '../ui/platform'
 import { TRAFFIC_LIGHT_WIDTH } from '../ui/platform'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
+import { sidebarKeyboard } from './sidebarKeyboard'
 import { useTitleBarDrag, type WindowControls } from './TitleBar'
 import { WorkspaceList, type DirectoryPicker } from './WorkspaceList'
 
@@ -87,10 +88,13 @@ export function Sidebar({
   store,
   settings,
   pickDirectory,
+  onEscEmpty,
 }: {
   store: ThreadStore
   settings: SettingsStore
   pickDirectory?: DirectoryPicker
+  /** Esc 层级最低层（W4）：query 空 + Esc → 窄窗口抽屉关闭（宽窗口 no-op） */
+  onEscEmpty?: () => void
 }) {
   const [query, setQuery] = useState('')
 
@@ -129,14 +133,28 @@ export function Sidebar({
       >
         <Icon name="search" size={12} color={COLORS.muted} />
         <input
+          ref={(r) => {
+            sidebarKeyboard.setSearchInput(r?.id ?? null)
+          }}
           testId="session-search"
           value={query}
           placeholder="搜索会话"
-          onChange={(e) => setQuery(e.value ?? '')}
+          onChange={(e) => {
+            setQuery(e.value ?? '')
+            sidebarKeyboard.setQuery(e.value ?? '')
+          }}
           onFocus={() => inputFocus.acquire()}
           onBlur={() => inputFocus.release()}
           onKeyDown={(e) => {
-            if (e.key === 'escape') setQuery('')
+            // Esc 层级（W4）：非空清空 → 空+抽屉态关抽屉（onEscEmpty）
+            if (e.key === 'escape') {
+              if (query) {
+                setQuery('')
+                sidebarKeyboard.setQuery('')
+              } else {
+                onEscEmpty?.()
+              }
+            }
           }}
           style={{
             flexGrow: 1,

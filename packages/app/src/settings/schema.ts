@@ -121,6 +121,9 @@ export const RawSettingsSchema = z.looseObject({
       cyclePrev: z.string().catch('ctrl-shift-tab'),
       toggleSettings: z.string().catch('ctrl-,'),
       focusSearch: z.string().catch('/'),
+      /** W4：聚焦工作区侧栏搜索框。默认平台化（mac ⌘K 不写 PTY 零冲突；
+       *  win ctrl-k 属修饰组合层）。mac/win 同 schema——键位串自带 cmd- 前缀 */
+      searchThreads: z.string().catch(process.platform === 'darwin' ? 'cmd-k' : 'ctrl-k'),
     }),
   ),
   advanced: section(

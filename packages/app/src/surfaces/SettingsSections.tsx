@@ -137,11 +137,17 @@ export function CliConventionsCard(): ReactElement {
 /** 可编辑动作（settings.keybindings 四叶）。requireCtrl 语义约束：
  *  cycleNext/cyclePrev/toggleSettings 生活在全局修饰键层（硬约束 2：不吃裸键——终端里
  *  vim/claude 按键必须透传）；focusSearch 生活在设置面裸键层。 */
-const KEY_ACTIONS: { action: KeybindingAction; label: string; requireCtrl: boolean }[] = [
+const KEY_ACTIONS: {
+  action: KeybindingAction
+  label: string
+  /** true = 必含主修饰（ctrl 或 cmd，W4 起含 cmd-k）；设置面保存时校验 */
+  requireCtrl: boolean
+}[] = [
   { action: 'cycleNext', label: '下一个 thread（循环切换）', requireCtrl: true },
   { action: 'cyclePrev', label: '上一个 thread（循环切换）', requireCtrl: true },
   { action: 'toggleSettings', label: '打开 / 关闭设置', requireCtrl: true },
   { action: 'focusSearch', label: '聚焦设置搜索', requireCtrl: false },
+  { action: 'searchThreads', label: '搜索会话（侧栏，⌘K/Ctrl-K）', requireCtrl: true },
 ]
 
 /** 平台语义只读行（不参与配置） */
@@ -200,7 +206,10 @@ function KeyCap({
   const [editing, setEditing] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
   const path = `keybindings.${action}` as SettingsPath
-  const onKeyDown = (e: { key?: string; modifiers?: { ctrl: boolean; shift: boolean } }) => {
+  const onKeyDown = (e: {
+    key?: string
+    modifiers?: { ctrl: boolean; shift: boolean; cmd?: boolean }
+  }) => {
     if (!editing) {
       if (e.key === 'enter') {
         setEditing(true)
@@ -215,11 +224,12 @@ function KeyCap({
       setHint(null)
       return
     }
-    // 修饰键单独按下：等待非修饰键
-    if (e.key === 'ctrl' || e.key === 'shift' || e.key === 'alt') return
+    // 修饰键单独按下：等待非修饰键（cmd 单按：W4 起 cmd-k 可捕获）
+    if (e.key === 'ctrl' || e.key === 'shift' || e.key === 'alt' || e.key === 'cmd') return
     const ctrl = e.modifiers?.ctrl ?? false
     const shift = e.modifiers?.shift ?? false
-    const ks = `${ctrl ? 'ctrl-' : ''}${shift ? 'shift-' : ''}${e.key ?? ''}`
+    const cmd = e.modifiers?.cmd ?? false
+    const ks = `${cmd ? 'cmd-' : ''}${ctrl ? 'ctrl-' : ''}${shift ? 'shift-' : ''}${e.key ?? ''}`
     if (e.key === '-') {
       setHint('「-」不可用（语法限制）')
       return
@@ -228,11 +238,11 @@ function KeyCap({
       setHint('不支持的键')
       return
     }
-    if (requireCtrl && !ctrl) {
-      setHint('需含 Ctrl（全局层不吃裸键）')
+    if (requireCtrl && !ctrl && !cmd) {
+      setHint('需含 Ctrl 或 ⌘（全局层不吃裸键）')
       return
     }
-    if (!requireCtrl && (ctrl || shift)) {
+    if (!requireCtrl && (ctrl || shift || cmd)) {
       setHint('需无修饰键（设置面裸键层）')
       return
     }
