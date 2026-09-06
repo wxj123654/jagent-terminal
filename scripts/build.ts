@@ -15,7 +15,8 @@
  *     无法在 mac 上链接）：其他跨端直接报错——去目标平台机器上跑，或走 CI。
  *   - native 构建参数随平台分化：Linux 追加 --no-default-features（gpuix
  *     test-support 的 wgpu 图像回读在 Linux 未落地，上游 CI 同样禁用）。
- *   - --app 是纯套壳（Info.plist + PkgInfo + adhoc codesign），不重新编译；
+ *   - --app 在 compile 后增加安装壳（Info.plist + app.icns + PkgInfo + adhoc codesign）；
+ *     Windows 自动嵌入 app.ico（必须在 Windows 构建，Bun 依赖 Windows 资源 API）。
  *     Windows/Linux 安装包形态（installer/AppImage）暂未实现，输出裸二进制。
  *
  * 体积注记：symbol 剥离由根 Cargo.toml [profile.release] strip = "symbols"
@@ -113,6 +114,7 @@ const NATIVE_DIR = join(REPO_ROOT, 'packages/native')
 const APP_ENTRY = join('packages/app/src/main.tsx') // 相对 REPO_ROOT
 const DIST_DIR = join(REPO_ROOT, 'dist', platform.target)
 const NODE_FILE = join(NATIVE_DIR, `jagent-native.${platform.napi}.node`)
+const ICON_DIR = join(REPO_ROOT, 'packages/app/assets/icons')
 
 // ── 工具 ──────────────────────────────────────────────────────────────────
 
@@ -128,6 +130,23 @@ async function runLive(cmd: string, args: string[], cwd: string) {
 function die(msg: string): never {
   console.error(`\n✗ ${msg}`)
   process.exit(1)
+}
+
+// 图标预检在耗时编译之前失败，不发布缺图标的 Windows/macOS 安装产物。
+if (platform.target === 'windows-x64' && process.platform !== 'win32') {
+  die(
+    'Windows .exe 图标嵌入依赖 Windows 资源 API，Bun 不支持跨系统 --windows-icon。' +
+      '请在 Windows 上构建（即使使用 --skip-native 也一样）。',
+  )
+}
+const iconFile =
+  platform.target === 'windows-x64'
+    ? join(ICON_DIR, 'app.ico')
+    : WANT_APP && platform.darwin
+      ? join(ICON_DIR, 'app.icns')
+      : undefined
+if (iconFile && !existsSync(iconFile)) {
+  die(`缺少应用图标 ${iconFile}；运行 bun run icons 重新生成。`)
 }
 
 // ── 1. native：napi build（cargo 增量） ───────────────────────────────────
@@ -180,9 +199,12 @@ const compileArgs = [
   join('dist', platform.target, platform.exe),
 ]
 if (crossNative) compileArgs.push('--target', platform.bun)
+if (platform.target === 'windows-x64') {
+  compileArgs.push('--windows-icon', join(ICON_DIR, 'app.ico'))
+}
 await runLive('bun', compileArgs, REPO_ROOT)
 
-// ── 3. --app：macOS 安装壳（Info.plist + PkgInfo + adhoc codesign） ──────
+// ── 3. --app：macOS 安装壳（Info.plist + 图标 + PkgInfo + adhoc codesign） ──
 
 if (WANT_APP) {
   if (!platform.darwin) {
@@ -198,6 +220,7 @@ if (WANT_APP) {
     mkdirSync(join(contents, 'MacOS'), { recursive: true })
     mkdirSync(join(contents, 'Resources'), { recursive: true })
     cpSync(join(DIST_DIR, platform.exe), join(contents, 'MacOS', platform.exe))
+    cpSync(join(ICON_DIR, 'app.icns'), join(contents, 'Resources', 'app.icns'))
 
     writeFileSync(
       join(contents, 'Info.plist'),
@@ -214,8 +237,7 @@ if (WANT_APP) {
 	<key>CFBundleExecutable</key><string>${platform.exe}</string>
 	<key>LSMinimumSystemVersion</key><string>11.0</string>
 	<key>NSHighResolutionCapable</key><true/>
-	<!-- 图标就位后取消注释（Resources/app.icns）：
-	<key>CFBundleIconFile</key><string>app</string> -->
+	<key>CFBundleIconFile</key><string>app.icns</string>
 </dict>
 </plist>
 `,

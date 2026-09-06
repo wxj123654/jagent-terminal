@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" role="img" aria-labelledby="title description">
+  <title id="title">JAgent</title>
+  <desc id="description">An ivory terminal prompt and a blue geometric j on a graphite rounded tile.</desc>
+  <defs>
+    <linearGradient id="tile" x1="512" y1="96" x2="512" y2="928" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#343B47"/>
+      <stop offset="1" stop-color="#1A1D23"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="512" y1="96" x2="512" y2="928" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#596373"/>
+      <stop offset="1" stop-color="#282C34"/>
+    </linearGradient>
+  </defs>
+  <path d="M320 96H704C852 96 928 172 928 320V704C928 852 852 928 704 928H320C172 928 96 852 96 704V320C96 172 172 96 320 96Z" fill="url(#tile)"/>
+  <path d="M320 100H704C849 100 924 175 924 320V704C924 849 849 924 704 924H320C175 924 100 849 100 704V320C100 175 175 100 320 100Z" stroke="url(#edge)" stroke-width="4"/>
+  <path d="M304 378L438 512L304 646" stroke="#EDF2F7" stroke-width="80" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M692 432V586C692 676 646 716 568 716H520" stroke="#61AFEF" stroke-width="84" stroke-linecap="round"/>
+  <rect x="650" y="274" width="84" height="84" rx="21" fill="#61AFEF"/>
+</svg>

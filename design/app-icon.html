@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JAgent · 应用图标</title>
+  <style>
+    :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #1a1d23; color: #d7dae0; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(100% - 64px, 1000px); margin: 56px auto; }
+    header { display: flex; align-items: center; gap: 36px; margin-bottom: 44px; }
+    header img { width: 256px; height: 256px; flex-shrink: 0; }
+    h1 { font-size: 32px; font-weight: 600; letter-spacing: -.025em; margin: 0 0 16px; }
+    p { color: #abb2bf; font-size: 15px; line-height: 1.75; margin: 0; max-width: 36em; }
+    h2 { font-size: 15px; font-weight: 500; margin: 0 0 24px; }
+    .proof { padding: 28px 32px 24px; border-radius: 12px; margin-top: 20px; }
+    .dark { background: #282c34; }
+    .light { background: #e9edf3; color: #343b47; color-scheme: light; }
+    .sizes { display: flex; align-items: end; gap: 44px; flex-wrap: wrap; }
+    figure { margin: 0; display: grid; justify-items: center; gap: 12px; }
+    figure img { display: block; }
+    figcaption { font-size: 12px; font-variant-numeric: tabular-nums; color: #abb2bf; }
+    .light figcaption { color: #525c6b; }
+    footer { margin-top: 32px; display: flex; gap: 24px; flex-wrap: wrap; }
+    a { color: #83bff1; text-decoration-thickness: 1px; text-underline-offset: 4px; font-size: 14px; }
+    a:focus-visible { outline: 2px solid #83bff1; outline-offset: 6px; border-radius: 2px; }
+    ::selection { color: #1a1d23; background: #83bff1; }
+    @media (max-width: 620px) {
+      main { width: calc(100% - 40px); margin: 28px auto; }
+      header { flex-direction: column; align-items: start; gap: 20px; }
+      header img { width: 192px; height: 192px; align-self: center; }
+      .proof { padding: 24px; }
+      .sizes { gap: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <img src="../packages/app/assets/icons/app-512.png" alt="JAgent 图标：石墨色圆角底上的白色终端提示符与蓝色 j" width="256" height="256">
+      <div>
+        <h1>JAgent</h1>
+        <p>终端提示符与几何小写 j。延续 One Dark 石墨底和蓝色强调色，以清楚的轮廓识别应用，不使用机器人、闪光或细小文字。</p>
+      </div>
+    </header>
+    <section class="proof dark" aria-labelledby="dark-title">
+      <h2 id="dark-title">深色背景 · 原尺寸</h2>
+      <div class="sizes">
+        <figure><img src="../packages/app/assets/icons/app-16.png" width="16" height="16" alt=""><figcaption>16 px</figcaption></figure>
+        <figure><img src="../packages/app/assets/icons/app-24.png" width="24" height="24" alt=""><figcaption>24 px</figcaption></figure>
+        <figure><img src="../packages/app/assets/icons/app-32.png" width="32" height="32" alt=""><figcaption>32 px</figcaption></figure>
+        <figure><img src="../packages/app/assets/icons/app-48.png" width="48" height="48" alt=""><figcaption>48 px</figcaption></figure>
+        <figure><img src="../packages/app/assets/icons/app-64.png" width="64" height="64" alt=""><figcaption>64 px</figcaption></figure>
+        <figure><img src="../packages/app/assets/icons/app-128.png" width="128" height="128" alt=""><figcaption>128 px</figcaption></figure>
+      </div>
+    </section>
+    <section class="proof light" aria-labelledby="light-title">
+      <h2 id="light-title">浅色背景 · 原尺寸</h2>
+      <div class="sizes">
+        <figure><img src="../packages/app/assets/icons/app-16.png" width="16" height="16" alt=""><figcaption>16 px</figcaption></figure>
+        <figure><img src="../packages/app/assets/icons/app-24.png" width="24" height="24" alt=""><figcaption>24 px</figcaption></figure>
+        <figure><img src="../packages/app/assets/icons/app-32.png" width="32" height="32" alt=""><figcaption>32 px</figcaption></figure>
+        <figure><img src="../packages/app/assets/icons/app-48.png" width="48" height="48" alt=""><figcaption>48 px</figcaption></figure>
+        <figure><img src="../packages/app/assets/icons/app-64.png" width="64" height="64" alt=""><figcaption>64 px</figcaption></figure>
+        <figure><img src="../packages/app/assets/icons/app-128.png" width="128" height="128" alt=""><figcaption>128 px</figcaption></figure>
+      </div>
+    </section>
+    <footer>
+      <a href="../packages/app/assets/icons/app.svg">SVG 源稿</a>
+      <a href="../packages/app/assets/icons/app-1024.png">1024 px PNG</a>
+      <a href="../packages/app/assets/icons/app.icns" download>macOS ICNS</a>
+      <a href="../packages/app/assets/icons/app.ico" download>Windows ICO</a>
+    </footer>
+  </main>
+</body>
+</html>

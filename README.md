@@ -99,6 +99,18 @@ cargo run -p jagent-terminal --example window   # Phase 0 验证窗口（纯 gpu
 
 e2e 时序注意：PTY 事件消费是 4ms 批处理定时器，断言一律 `until()` 轮询并驱动 fake clock——禁止固定 sleep（详见 `TODOLIST.md` Phase 1 结论区「时序三律」）。
 
+### 4. 打包与应用图标
+
+```bash
+bun run build                         # 当前平台可执行文件
+bun run build --app                   # macOS：额外生成 JAgent.app（含图标）
+bun run build --app --skip-native     # 已有对应 .node 时，只重新编译应用并打包
+```
+
+产物位于 `dist/<platform>/`。Windows 构建自动将图标嵌入 `.exe`，需要在 Windows 上执行；macOS 请使用 `.app` 才能在 Finder / Dock 显示图标。Linux 当前仅输出裸二进制，尚无桌面安装集成。
+
+图标源稿与多平台文件在 [`packages/app/assets/icons/`](packages/app/assets/icons/README.md)，预览见 [`design/app-icon.html`](design/app-icon.html)。修改 `app.svg` 后运行 `bun run icons` 更新 PNG / ICNS / ICO，再运行 `bun test scripts/icons.test.ts`。普通打包直接使用已入库资产，无需图像工具。
+
 ## 技术栈
 
 | 层 | 选型 |

@@ -298,6 +298,16 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 
 ---
 
+## 应用图标与打包
+
+- [x] 原创 `>` + 几何 `j` 图标：继承 One Dark 石墨 / accent 蓝，SVG 源稿及多尺寸 PNG、macOS ICNS、Windows ICO 位于 `packages/app/assets/icons/`；深浅底尺寸预览为 `design/app-icon.html`。
+- [x] `bun run icons` 可复现生成：`@resvg/resvg-js` **2.6.2**（npm registry `latest` 联网核实为稳定版；仅根开发依赖，无 peer 约束，不改 app 依赖 / Rust crate）。本机 ImageMagick MSVG 渲染器会漏掉 gradient/path/stroke，因此弃用它生成，仅用于独立解码校验。PNG 带来源 / SVG SHA-256，ICO/ICNS 内嵌同一 PNG。
+- [x] `scripts/build.ts`：macOS `Resources/app.icns` + `CFBundleIconFile` + 复制后签名；Windows `--windows-icon`，跨宿主提前明确失败（官方文档确认依赖 Windows 资源 API，`--skip-native` 也不能跨宿主嵌图标）。Linux 仍是裸二进制，尚未接 `.desktop`。
+- [x] 验证：图标 12 + refs 10 + app 240 测试全过，typecheck / lint / 定向 fmt 通过；`bun run build --app --skip-native`、plutil、ICNS 字节比对、codesign strict 验签、iconutil / ImageMagick 独立解码均通过。
+- [ ] Windows 真机 `.exe` 图标与用户 Dock/Finder 外观验收（本机为 macOS，未声称 Windows 已实测）。
+
+---
+
 ## 会话日志（每 session 追加一行：日期 · 做了什么 · 下一步）
 
 - 2026-09-02 · 四份契约文档定稿（architecture.md 签名级）；TODOLIST.md 创建 · 下一步：Phase 0 T0.1
@@ -333,3 +343,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-10 · **Phase G 完成（Git 树只读 graph）**：调研 Zed git 三层（git CLI 数据层/git_store 协调层/git_ui 视图层 6.5 万行）→ 设计 docs/git-graph.md（用户拍板 workspace 内 tab + 一期只读）→ 落地 G1 数据层（cli.ts 流式 Bun.spawn + graph.ts lane 状态机同构移植 + format.ts）→ G2 视图（GitGraphStore/graphSvg 按色分组 svg/GitGraphView + WorkspacePage tab + workspaces.paneTab + Ctrl+Shift+G 与 gitGraphKey 键位层）→ G3 打磨（scrollToItem 视口跟随 seam 链、6 万提交压测 0.02s/maxLanes=2/零残留）· 全绿 typecheck/fmt/lint/app 240 · 坑：DiffDetail selector 对象字面量炸 uSES（改整 state）；合成数据拓扑错曾伪装算法 bug（最小复现先证清白）；TestRenderer 拿不到 virtual-list 行 bounds（点击管线真机验）· 下一步：用户真机验收（Ctrl+Shift+G → Git 图 tab），G4 status/commit 另立设计
 - 2026-09-10 · **Phase G 视觉自验收官**：TestRenderer captureScreenshot 两轮（graph + 选中详情）· **重大发现：gpuix `<virtual-list>`/`<diff scroll>` 列表元素不吃 flexGrow/absolute 对边拉伸，只认显式 height**（A–E 五组对照实验锁定；chat 的 ConversationView 消息区同构同病，真窗口行为待用户验证）· 修复：列表高度 = useWindowSize() 减已知 chrome（顶栏/tab 条/工具条/错误条），行宽 = 窗口宽 − 详情列，diff 体同理 · 详情列 `<diff>` 在 TestRenderer 不绘制（native custom element 同 markdown 限制）→ 一期自绘 DiffBody（逐行着色，文件头 muted/@@ accent/+绿/−红，---/+++ 前缀判断须先于 -/+）· lane 几何/merge 曲线/main 徽章/选中高亮/三列对齐截图全过 · 排障教训：连续 python 字符串补丁错位导致「实验状态漂移」（A–E 的 style 残留叠加），5 轮黑屏假象；二分时先核对文件实际状态再改 · app 240 + e2e 17 + typecheck + lint + fmt 全绿 · 待用户真机：Ctrl+Shift+G 实测 + chat 消息区是否同样需要高度修复
 - 2026-09-06 · **W5 完成（e2e 收口，Phase W 收官）**：原型清单全项对齐（草稿保留=PTY retain 不移植；工具筛选本轮补 ToolMenu 筛选框）· e2e 12→17（Phase W describe：归属/cycle/恢复/移除/⌘K 路由）· **ctrl-tab 真 bug 修复**（终端聚焦时被当 \\t 写 PTY → 会话切换失效；input.rs ctrl+tab 返 None 透传 root；cargo 38）· removeWorkspace 语义定稿（回起始页）· 已知问题记录：terminal 在场 GPUI 焦点帧后抢回（TestRenderer programmatic focus+打字丢键；真窗口待手验）· app 177 + e2e 17 全绿
+- 2026-09-06 · **应用图标完成**：原创石墨底 `>` + 蓝色几何 `j`，SVG/九档 PNG/ICNS/ICO 入库，`bun run icons`（resvg 开发依赖）可复现，`design/app-icon.html` 深浅底+小尺寸预览；macOS `.app` 资源与 plist 接线、Windows `--windows-icon` + 跨宿主明确拒绝；12 图标 + 10 refs + 240 app 测试、tsc（含 scripts）、lint/fmt、macOS build/plist/字节比对/strict 签名/独立解码均通过。独立 reviewer 代行 finish-reviewer，结论 ship（资产与本机范围），无阻塞项；未改 .refs、未重编 Rust。下一步：用户视觉确认；Windows 发布前真机验证 Explorer 图标。
