@@ -14,6 +14,7 @@ import {
   parseWorkspaceState,
   serializeWorkspaceState,
   workspaceDisplayName,
+  searchThreads,
   workspaceSessions,
   type Workspace,
 } from './workspaces'
@@ -115,5 +116,66 @@ describe('workspaces: 构造与派生', () => {
     const threads: Thread[] = [t('c1', 'w1'), t('c2'), t('c3', 'w2'), t('c4', 'w1')]
     expect(workspaceSessions(threads, 'w1').map((x) => x.id)).toEqual(['c1', 'c4'])
     expect(workspaceSessions(threads, 'w-none')).toEqual([])
+  })
+})
+
+describe('workspaces: searchThreads（跨工作区搜索）', () => {
+  const t = (id: string, workspaceId?: string, cwd?: string): ChatThread & { cwd?: string } => ({
+    kind: 'chat',
+    id,
+    title: id === 'c-pi-工作' ? 'pi 调试会话' : id,
+    createdAt: 0,
+    messages: [],
+    pendingReply: false,
+    workspaceId,
+    cwd,
+  })
+  const ws = [defaultWorkspace('/w/alpha'), { ...defaultWorkspace('/w/beta'), name: 'beta' }]
+
+  test('标题 / 工具名 / 目录 / 工作区名四路命中；结果带工作区引用', () => {
+    const threads = [
+      t('c-pi-工作', ws[0]!.id), // 标题「pi 调试会话」
+      t('c-plain', ws[1]!.id),
+      t('c-orphan'), // 无归属：无工作区字段，仅标题/工具可命中
+    ]
+    // 标题命中
+    expect(searchThreads(threads, ws, 'pi 调试').map((r) => r.thread.id)).toEqual(['c-pi-工作'])
+    // 工具名（Chat）
+    expect(searchThreads(threads, ws, 'chat').map((r) => r.thread.id)).toEqual([
+      'c-pi-工作',
+      'c-plain',
+      'c-orphan',
+    ])
+    // 工作区名（beta）→ 归属行命中；无归属行不进
+    expect(searchThreads(threads, ws, 'beta').map((r) => r.thread.id)).toEqual(['c-plain'])
+    expect(searchThreads(threads, ws, 'beta')[0]!.workspace?.name).toBe('beta')
+    // 大小写不敏感
+    expect(searchThreads(threads, ws, 'CHAT').map((r) => r.thread.id)).toHaveLength(3)
+    // 空 query → 空
+    expect(searchThreads(threads, ws, '  ')).toEqual([])
+  })
+
+  test('terminal 行：preset label 与 cwd 参与命中（presetLabelOf 注入）', () => {
+    const term = {
+      kind: 'terminal',
+      id: 't1',
+      sessionId: 1,
+      preset: 'shell',
+      cwd: '/w/alpha/sub',
+      status: 'running',
+      hasBell: false,
+      createdAt: 0,
+      workspaceId: ws[0]!.id,
+    } as const
+    // 工具名（Shell 预设 label）
+    expect(
+      searchThreads([term], ws, 'shell', (pid) => (pid === 'shell' ? 'Shell' : undefined)).map(
+        (r) => r.thread.id,
+      ),
+    ).toEqual(['t1'])
+    // cwd 子路径
+    expect(searchThreads([term], ws, 'alpha/sub').map((r) => r.thread.id)).toEqual(['t1'])
+    // 未注入 presetLabelOf → tool 面回退 'Terminal'
+    expect(searchThreads([term], ws, 'terminal').map((r) => r.thread.id)).toEqual(['t1'])
   })
 })

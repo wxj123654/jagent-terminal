@@ -30,9 +30,9 @@
 | 2 ThreadStore 全规则 + settings-core/controls + SettingsView | ✅ 完成（T2.1–T2.7） |
 | 3 settings-presets + chat | ✅ 完成（T3.1+T3.2） |
 | 3+ settings-acp-advanced + ACP + 键位编辑 | ✅ 完成（T3+.1–T3+.3） |
-| W 工作区平面迁移 | ◑ W0/W1 完成；W2 侧栏 UI 待做 |
+| W 工作区平面迁移 | ◑ W0/W1/W2 完成；W3 目录选择 seam 待做 |
 
-**当前指针**：→ Phase W / W2（侧栏 UI：工作区分组树 + 新建菜单 + 添加工作区对话框 + 搜索）
+**当前指针**：→ Phase W / W3（目录选择 seam：gpuix API 盘点，无 folder picker 则 packages/native 补 pickDirectory + 浏览按钮接线）
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -201,7 +201,16 @@
 - **store 规则增补**：activate 带 workspaceId 的 thread → `lastSession` 记录（实际变化才 persist，produce 同步执行用局部标记判 touch）；close 该会话 → lastSession 置 null（「最后一个会话被移除回工作区起始页」的数据面，空态 UI 是 W2）；removeWorkspace 连带 close 归属会话（复用 close 单点：destroy/dispose/导航兑底）；activateWorkspace 死 id/无 lastSession → activate(null)；toggleWorkspaceExpanded 只翻转不导航（点箭头与点行分离，原型契约）。
 - **main.tsx 装配**：state.json 读取在 settingsStore.init() 之后（同 await 装配期）；persistWorkspaces 失败仅 warn。真窗口冒烟：mount complete + 首启不写 state.json ✓；装配链路真盘写读往返（fsAdapter + serialize + parse）独立验证 ✓。
 - **测试面**：workspaces.test 8（parse 容错 4 + 往返 1 + 构造派生 3）+ store.test 新增 13（CRUD/persist 4 + 归属与 cwd 5 + activate/close/remove 4）；存量 31 用例零改动全过（向后兼容实证）。app 155 + e2e 12 + tsc/fmt/lint 全绿。architecture.md §1.1/§3.1/§3.2/§3.3 已同步。
-- [ ] **W2** 侧栏 UI：Sidebar 改工作区分组树（工作区行：图标+名称+会话数+「＋」新建；会话行继承现有 ThreadRow：红点/rename/exited）；「＋」打开工具选择菜单（anchored，含工具图标+命令摘要+自定义命令入口，展示目标工作区与 cwd）；「添加工作区」对话框（名称+目录，「浏览…」走原生目录选择对话框——需确认 gpuix 是否暴露 folder picker，无则 rust seam 补）；「⌕ 搜索会话」跨工作区搜索
+- [x] **W2** 侧栏 UI：工作区分组树 + ToolMenu + 添加工作区 + 搜索——详见 Phase W 结论区（W2）
+
+### Phase W 结论区（W2，侧栏 UI）
+
+- **结构变更（原案微调）**：① 原型「顶部新建会话按钮 + 工作区行 ＋」收敛为**工作区行 ＋ 唯一入口**（消除「当前工作区」歧义；全局空态兜底仍是 EmptyPresets——其 onPick 带第一工作区归属）；NewThreadButton/ThreadList 删除，菜单演化为 ToolMenu（anchored deferred，新增目标工作区头 name+mono cwd；testId：入口 `new-menu-$wsId`、预设项 `tool-preset-$presetId`、new-chat/new-acp 承袭）。② 原型「添加工作区对话框」落地为**侧栏内联表单**（GPUIX 无居中模态原语，anchored 是相对 trigger 定位——内联表单零浮层复杂度；「浏览…」按钮 W3 目录选择 seam 后补，当前目录手输 + placeholder 说明）。
+- **WorkspaceGroup 行交互**：点行 = activateWorkspace（恢复 lastSession）；点箭头 = 仅 toggle（抑制 ref 模式防冒泡连坐，T3.1 同款）；双击 = rename（行内 input，与 ThreadRow 同构）；hover 显示移除钮（onMouseDown 同步移除逃逸冒泡——ThreadRow 关闭钮同款）。空工作区（expanded 无会话）引导行文案。
+- **搜索**：`searchThreads(threads, workspaces, query, presetLabelOf?)` 纯函数（workspaces.ts）——命中面 = 标题 + 工具名（terminal→preset label / chat / acp）+ cwd + 工作区 name/path，大小写不敏感；结果行 = ThreadRow 无缩进 + suffix 工作区名（muted mono）。
+- **uSES 快照稳定性（新坑实测）**：selector 返回 `searchThreads(...)` 新数组会让 useSyncExternalStore 判快照不稳定（无限渲染）——订阅 `s.threads`/`s.workspaces` 稳定引用（immer 结构共享），命中列表**渲染期现算**（SettingsView hitsBySection 同模式）。
+- **e2e 迁移**：装配 `initialWorkspaces: [defaultWorkspace(process.cwd())]`（与 main.tsx 首启同构）+ spawnFromPreset 全带归属（无归属行不进分组树——e2e 断言经 UI 行可见性）；菜单入口 testId 换 `new-menu-$wsId`；T3.1「+ 按钮 label 跟随」断言改「归属行出现在分组树」（plusDefault→label 联动随 NewThreadButton 退役，lastUsedPreset→EmptyPresets/ToolMenu 无单点展示面，纯 store 断言保留）。
+- **测试面**：WorkspaceList.test 9（分组渲染/缩进/toggle 不激活/点行恢复/空态引导/菜单目标头+项/预设 spawn 归属+cwd/chat 归属/添加表单必填+basename/搜索三路命中+空态）+ searchThreads 纯函数 2；app 166 + e2e 12 全绿；真窗口冒烟 mount complete + 无交互不写盘复验（state.json 首启只读不写 ✓）。
 - [ ] **W3** 目录选择 seam：gpuix 层 API 盘点（有无 folder picker / dialog 导出）；无则 `packages/native` 增 `pickDirectory()`（macOS NSOpenPanel / Windows IFileDialog，走现有 run_host 通道），e2e 可注入 fake
 - [ ] **W4** 空态与键盘：空工作区引导（默认 pi 卡）；窄窗口抽屉（760px 断点对齐原型）；⌘K/Ctrl-K 搜索、Esc 层级与现有 keybindings.ts 合流（工作区面不劫持终端输入，硬约束 2 同源）
 - [ ] **W5** 验收锚点：原型验证清单全项对齐（工作区归属/恢复最近会话/草稿保留/工具筛选/自定义命令/搜索/移除回退/窄窗口）+ e2e 扩展（工作区全链：添加工作区 → 新建 pi 会话 → 切换 → 恢复 → 移除回退）+ 真窗口冒烟 + commit "Phase W"
@@ -252,3 +261,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-06 · **原型两轮迭代**：①新建会话弹窗布局修复（用户报「元素有点乱」）：工具项与自定义命令统一 3 列网格对齐、弹窗框架固定高度仅列表内滚（消除筛选/空态跳动）、自定义命令拆入固定 footer 常驻、工作区行横排压紧 + cwd 单行省略；新增 `design/workspace-dialog.test.mjs` 回归（4 视口几何断言）。②添加工作区本地目录选择（用户要求「本地选择而不是输入」）：「浏览…」按钮，showDirectoryPicker 优先、webkitdirectory 回退（实测回退路径触发正常），选择后自动填路径与名称。下一步：任务拆分已进 TODOLIST Phase W（W0–W5），等用户评审原型后开工。
 - 2026-09-06 · **Phase 3+ 收官（T3+.3）**：§15 第 6 条锚点核对达成（JSON 实时视图与写盘同源 + e2e 第 12 用例锁定；「在编辑器中打开」darwin open 分支实测 + memory 无 path 不渲染）· 全量：app 134 + e2e 12（macOS 全绿）+ cargo 37 + tsc/fmt/lint 干净 + 真窗口冒烟 · 工作区原型补入库（design/ 6 文件 + .impeccable gitignore）· 下一步：Phase W W0（用户评审工作区原型）
 - 2026-09-06 · **Phase W 开工：W0 定稿 + W1 数据层完成**：W0 = 两轮迭代验收 + 用户放行 · W1 = threads/workspaces.ts（Workspace 类型 + state.json zod schema 逐行容错 + defaultWorkspace/workspaceSessions）+ ThreadStore 改造（平铺+workspaceId 归属不嵌套、cwd 链 preset.cwd→workspace.path→CWD、activateWorkspace 恢复 lastSession/死 id 回起始页、removeWorkspace 连锁 close、persistWorkspaces fire-and-forget）+ main.tsx state.json 装配（首启只读不写，空/损坏→默认工作区）· zod array.catch 整组回退坑（单行坏抹全部→逐行 safeParse）· 测试 workspaces 8 + store 13 新增，存量 31 零改动全过；app 155 + e2e 12 + tsc/fmt/lint 全绿 · 下一步：W2（侧栏工作区分组树 UI）
+- 2026-09-06 · **W2 完成（侧栏 UI）**：Sidebar 改工作区分组树（WorkspaceList：WorkspaceGroup 行[箭头 toggle 不激活/点行恢复 lastSession/双击 rename/hover 移除] + ThreadRow indent 缩进 + 空工作区引导 + AddWorkspaceForm 内联表单）· ToolMenu（NewThreadButton 演化：目标工作区头 name+cwd + 预设/New Chat/ACP 全带 workspaceId）· 搜索（searchThreads 四路命中 + 结果行 suffix 工作区名）· uSES 快照稳定性坑（selector 新数组炸 → 稳定引用 + 渲染期现算）· e2e 迁移（装配默认工作区 + spawn 归属 + 菜单 testId）· WorkspaceList.test 9 + searchThreads 2 新增；app 166 + e2e 12 全绿 · 下一步：W3 目录选择 seam

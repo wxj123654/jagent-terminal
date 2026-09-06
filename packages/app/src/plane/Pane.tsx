@@ -25,8 +25,14 @@ export function Pane({ store, settings }: { store: ThreadStore; settings: Settin
   )
 
   if (active?.type === 'settings') return <SettingsView settings={settings} />
-  if (!thread)
-    return <EmptyPresets onPick={(id) => void store.spawnFromPreset(id)} settings={settings} />
+  if (!thread) {
+    // 空态预设卡：spawn 进第一个工作区（无工作区则不归属——防御；正常装配
+    // 首启即有默认工作区，Phase W2 起新建入口全带归属）
+    const firstWs = store.getState().workspaces[0]?.id
+    return (
+      <EmptyPresets onPick={(id) => void store.spawnFromPreset(id, firstWs)} settings={settings} />
+    )
+  }
   const S = getSurface(thread.kind)
   return <S thread={thread} store={store} settings={settings} />
 }

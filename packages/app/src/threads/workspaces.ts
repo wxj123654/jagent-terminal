@@ -106,3 +106,37 @@ export function defaultWorkspace(path: string, now: number = Date.now()): Worksp
 export function workspaceSessions(threads: Thread[], workspaceId: string): Thread[] {
   return threads.filter((t) => t.workspaceId === workspaceId)
 }
+
+// ── 跨工作区搜索（Phase W2；原型：标题、工具、目录）────────────────
+
+/** 会话的搜索命中面：标题 + 工具名（调用方注入 preset 查询）+ 目录 */
+export function searchThreads(
+  threads: Thread[],
+  workspaces: Workspace[],
+  query: string,
+  presetLabelOf: (presetId?: string) => string | undefined = () => undefined,
+): Array<{ thread: Thread; workspace?: Workspace }> {
+  const q = query.trim().toLowerCase()
+  if (q === '') return []
+  const wsById = new Map(workspaces.map((w) => [w.id, w]))
+  const hits: Array<{ thread: Thread; workspace?: Workspace }> = []
+  for (const t of threads) {
+    const ws = t.workspaceId ? wsById.get(t.workspaceId) : undefined
+    const title = t.kind === 'terminal' ? terminalTitle(t) : t.title
+    const tool =
+      t.kind === 'terminal'
+        ? (presetLabelOf(t.preset) ?? 'Terminal')
+        : t.kind === 'acp'
+          ? 'ACP'
+          : 'Chat'
+    const dir = t.kind === 'terminal' ? t.cwd : (ws?.path ?? '')
+    const haystack = `${title} ${tool} ${dir} ${ws?.name ?? ''} ${ws?.path ?? ''}`.toLowerCase()
+    if (haystack.includes(q)) hits.push({ thread: t, workspace: ws })
+  }
+  return hits
+}
+
+/** terminal 标题（displayTitle 的本地等价——避免 workspaces→terminal 循环 import） */
+function terminalTitle(t: Extract<Thread, { kind: 'terminal' }>): string {
+  return t.customTitle ?? t.oscTitle ?? t.initCommand ?? 'Terminal'
+}

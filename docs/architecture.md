@@ -553,7 +553,7 @@ App（useSyncExternalStore(threadStore) + useSettings()）
 ```
 
 状态流约定：
-- **zustand selector 按粒度订阅**：ThreadRow 订阅 `s.threads` 中自己的行（引用不变 → 不重渲染）；导航用 `useActiveTarget()`（§3.5）；两个 store 的写入只经 store 方法
+- **zustand selector 按粒度订阅**：ThreadRow 订阅 `s.threads` 中自己的行（引用不变 → 不重渲染）；WorkspaceGroup 订阅 `s.workspaces` 自己那行 + 归属会话 id 串；搜索结果订阅 `s.threads`/`s.workspaces` 稳定引用、命中列表渲染期现算（uSES 的 getSnapshot 必须返回稳定引用——新数组会炸，W2 实测）；导航用 `useActiveTarget()`（§3.5）；两个 store 的写入只经 store 方法
 - ThreadRow 的局部态：hover、rename 编辑框——useState，不上 store
 - 图标/颜色 tokens 全部从 agent-plane-layout.md §3 引（CSS 变量或 TS 常量，Phase 1 定）
 

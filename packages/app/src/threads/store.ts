@@ -20,6 +20,8 @@ import type { TerminalSessionEvent } from './events'
 import type { TerminalPreset } from './presets'
 import { workspaceDisplayName, type Workspace } from './workspaces'
 
+export type { Workspace } from './workspaces'
+
 // ── 类型（§3.1）──────────────────────────────────────────────────────
 
 export type TerminalThread = {

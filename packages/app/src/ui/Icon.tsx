@@ -52,6 +52,10 @@ const SOURCES = {
   ),
   /** chevronRight：预设行展开指示（原型 .chev） */
   chevronRight: strokeSvg('<path d="m9 18 6-6-6-6"/>'),
+  /** folder：工作区（Phase W；原型 workspace 图标） */
+  folder: strokeSvg(
+    '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  ),
 } as const
 
 export type IconName = keyof typeof SOURCES

@@ -44,6 +44,7 @@ import { narrowSessionEvent, type TerminalSessionEvent } from '../packages/app/s
 import { createNativeThreadDeps } from '../packages/app/src/threads/nativeDeps'
 import { type TerminalPreset } from '../packages/app/src/threads/presets'
 import { createThreadStore, type ThreadStore } from '../packages/app/src/threads/store'
+import { defaultWorkspace } from '../packages/app/src/threads/workspaces'
 import { inputFocus } from '../packages/app/src/ui/keyboard'
 
 /** 轮询直到谓词为真：advanceTime 驱动 fake clock（4ms 批处理），setTimeout 让出主线程（React 提交 + TSF 回调） */
@@ -73,6 +74,7 @@ let bellFixtureDir: string
 let bellTrigger: string
 let t: TestRoot
 let store: ThreadStore
+let e2eWorkspace: ReturnType<typeof defaultWorkspace>
 let settings: ReturnType<typeof createSettingsStore>
 let keyEvents: string[] = []
 // 键位层（store 创建后接线；挂点先占位——与 main.tsx 同一 createGlobalKeydown）
@@ -105,6 +107,9 @@ beforeAll(() => {
   // 与 main.tsx 同一装配工厂——只覆盖差异项（notify 静默：e2e 不真弹 toast；
   // presetOf 叠加注入 e2e 专用 bell 预设：settings items 查询优先（真装配
   // 语义，T3.1 自定义预设全链依赖），BELL_PRESET 作为额外项
+  // Phase W2：e2e 装配与 main.tsx 首启同构（默认工作区；会话归属它——
+  // 侧栏是工作区分组树，无归属行不渲染）
+  e2eWorkspace = defaultWorkspace(process.cwd())
   store = createThreadStore(
     createNativeThreadDeps(settings, {
       // T3.2：echo 后端零延迟（产品默认 600ms 模拟思考；e2e 不等）
@@ -114,6 +119,7 @@ beforeAll(() => {
         settings.get().presets.items.find((p) => p.id === id) ??
         (id === BELL_PRESET.id ? BELL_PRESET : undefined),
     }),
+    { initialWorkspaces: [e2eWorkspace] },
   )
 
   // 事件桥必须在 store 创建后注册（回调里引用 store）——与 main.tsx 装配一致
@@ -175,8 +181,8 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
   test(
     'spawn（shell + bell）→ 两行并存，active=bell 行，terminal 元素渲染',
     async () => {
-      await store.spawnFromPreset('shell')
-      await store.spawnFromPreset(BELL_PRESET.id)
+      await store.spawnFromPreset('shell', e2eWorkspace.id)
+      await store.spawnFromPreset(BELL_PRESET.id, e2eWorkspace.id)
 
       const s = store.getState()
       expect(s.threads).toHaveLength(2)
@@ -274,7 +280,7 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
   test(
     '焦点模型：TerminalView 聚焦时窗口 keyDown 仍到达（Ctrl-Tab 全局可用）',
     async () => {
-      await store.spawnFromPreset('shell')
+      await store.spawnFromPreset('shell', e2eWorkspace.id)
       const row = store.getState().threads[0]!
       await until('active = new row', () => currentActiveThreadId() === row.id)
       await new Promise((r) => setTimeout(r, 120))
@@ -298,7 +304,7 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
     '行点击命中模型：点行文字区 → activate（装饰层 pe:none 穿透）',
     async () => {
       // 上一个用例留下 1 个 shell 行；再 spawn 一个作切换目标
-      await store.spawnFromPreset('shell')
+      await store.spawnFromPreset('shell', e2eWorkspace.id)
       const rows = store.getState().threads
       const target = rows[0]!
       await until(
@@ -321,7 +327,7 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
   test(
     'T2.5 设置联动：terminal 外观 props 随 settings.terminal 变化',
     async () => {
-      await store.spawnFromPreset('shell')
+      await store.spawnFromPreset('shell', e2eWorkspace.id)
       await until('terminal mounted', () => t.renderer.findByType('terminal').length >= 1)
 
       // 默认值（schema 兜底）：fontSize 13 / palette one-dark / cursorBlink true
@@ -352,7 +358,7 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
     'T2.6 键位层：Ctrl-, / Esc / `/` 设置面生命周期（键盘两跳 + 模块态时序）',
     async () => {
       // 前置：一个 thread 存在（设置关闭后要能回去）
-      await store.spawnFromPreset('shell')
+      await store.spawnFromPreset('shell', e2eWorkspace.id)
       await until('terminal mounted', () => t.renderer.findByType('terminal').length >= 1)
       const tid = currentActiveThreadId()
 
@@ -399,7 +405,7 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       //    （navigate fire-and-forget，需让出后 pathname 才指向新 thread）
       //    全量跑时前面用例的 threads 遗留——cycle 落点按数组序断言，
       //    不假设「下一个 = 本用例开头的 tid」
-      await store.spawnFromPreset('shell')
+      await store.spawnFromPreset('shell', e2eWorkspace.id)
       await until(
         'second thread active',
         () => currentActiveThreadId() === store.getState().threads.at(-1)!.id,
@@ -426,13 +432,15 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       expect(added?.builtin).toBe(false)
 
       // ② spawn 走真 nativeDeps.presetOf（查 settings items，非 e2e override；
-      //    lastUsedPreset 更新 → NewThreadButton 主按钮 label 跟随）
-      await store.spawnFromPreset(nid)
+      //    lastUsedPreset 更新）。W2 起 + 主按钮移除：UI 面断言改为归属行
+      //    出现在工作区分组树
+      await store.spawnFromPreset(nid, e2eWorkspace.id)
       const row = store.getState().threads.at(-1)!
       expect(row.kind === 'terminal' && row.preset === nid).toBe(true)
       expect(store.getState().lastUsedPreset).toBe(nid)
-      await until('custom preset label on + button', () =>
-        t.renderer.getAllText().some((s) => s.includes('E2E 自定义')),
+      await until(
+        'row visible in workspace tree',
+        () => t.renderer.findByTestId(`row-${row.id}`) !== undefined,
       )
 
       // ③ 真 PTY 整链：echo 完进程退出 → exited 灰行保留（closeOnExit=false）
@@ -458,7 +466,7 @@ describe('T3.2 e2e: chat 全链（菜单入口 → ChatSurface → echo 回复 �
       const threadsBefore = store.getState().threads.length
 
       // ① + 菜单展开：预设项 + 固定 New Chat（分隔线下）
-      const menuBtn = t.renderer.findByTestId('open-preset-menu')!
+      const menuBtn = t.renderer.findByTestId(`new-menu-${e2eWorkspace.id}`)!
       const mb = t.renderer.getElementBounds(menuBtn.id)!
       t.renderer.nativeSimulateClick(mb[0] + mb[2] / 2, mb[1] + mb[3] / 2)
       await until('preset menu open with New Chat item', () => {
@@ -538,7 +546,7 @@ describe('T3+.1 e2e: ACP 全链（菜单入口 → AcpSurface → 真子进程 J
       const threadsBefore = store.getState().threads.length
 
       // ② 菜单展开 → agent 项（分隔线下，New Chat 之后）
-      const menuBtn = t.renderer.findByTestId('open-preset-menu')!
+      const menuBtn = t.renderer.findByTestId(`new-menu-${e2eWorkspace.id}`)!
       const mb = t.renderer.getElementBounds(menuBtn.id)!
       t.renderer.nativeSimulateClick(mb[0] + mb[2] / 2, mb[1] + mb[3] / 2)
       await until('agent entry in menu', () => {

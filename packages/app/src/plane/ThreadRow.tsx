@@ -33,7 +33,19 @@ export function rowTitle(thread: Thread): string {
   return thread.kind === 'terminal' ? displayTitle(thread) : thread.title
 }
 
-export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
+export function ThreadRow({
+  id,
+  store,
+  indent = 0,
+  suffix,
+}: {
+  id: string
+  store: ThreadStore
+  /** 左缩进（工作区分组下的会话行；搜索结果行不缩） */
+  indent?: number
+  /** 尾部附注（搜索结果行显示工作区名；静默装饰） */
+  suffix?: string
+}) {
   const thread = useThreadStore(store, (s) => s.threads.find((t) => t.id === id))
   const active = useActiveTarget()
   const [hovered, setHovered] = useState(false)
@@ -95,7 +107,7 @@ export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
         flexDirection: 'row',
         alignItems: 'center',
         height: SIZES.rowHeight,
-        marginLeft: SIZES.rowMarginX,
+        marginLeft: SIZES.rowMarginX + indent,
         marginRight: SIZES.rowMarginX,
         paddingLeft: SIZES.rowPaddingX,
         paddingRight: SIZES.rowPaddingX - 2,
@@ -170,6 +182,21 @@ export function ThreadRow({ id, store }: { id: string; store: ThreadStore }) {
           {rowTitle(thread)}
         </text>
       )}
+
+      {suffix ? (
+        <text
+          style={{
+            fontSize: 10,
+            fontFamily: FONT.mono,
+            color: COLORS.muted,
+            flexShrink: 0,
+            marginRight: 2,
+            pointerEvents: 'none',
+          }}
+        >
+          {suffix}
+        </text>
+      ) : null}
 
       {showBell ? (
         <div

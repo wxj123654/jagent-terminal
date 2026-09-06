@@ -1,20 +1,24 @@
 /**
  * Sidebar — 左栏（布局契约 §2/§3：248px 固定宽）。
  *
- * 顶部 Header 行已抽为 SidebarHeader：与 TitleBar 同处「顶栏行」
- * （Zed 融合模式：红绿灯让位由 SidebarHeader 承担，见 plane/TitleBar.tsx）。
- * 本体：NewThreadButton · ThreadList · Footer(齿轮 → settings 表面)。
+ * Phase W2 起结构：搜索框（跨工作区搜会话；Esc 清空）→ WorkspaceList
+ * （工作区分组树 + 添加工作区；新建入口 = 工作区行 ＋ 的 ToolMenu）→
+ * Footer(齿轮 → settings 表面)。原 NewThreadButton/ThreadList 平铺形态
+ * 由 WorkspaceList 取代（TopBar 常驻新建钮移除：入口唯一化到工作区行，
+ * 无「当前工作区」歧义）。
  */
+
+import { useState } from 'react'
 
 import type { SettingsStore } from '../settings/store'
 import type { ThreadStore } from '../threads/store'
 import { Icon } from '../ui/Icon'
+import { inputFocus } from '../ui/keyboard'
 import type { AppPlatform } from '../ui/platform'
 import { TRAFFIC_LIGHT_WIDTH } from '../ui/platform'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
-import { NewThreadButton } from './NewThreadButton'
-import { ThreadList } from './ThreadList'
 import { useTitleBarDrag, type WindowControls } from './TitleBar'
+import { WorkspaceList } from './WorkspaceList'
 
 /**
  * 顶栏左段：AGENT 标识 + 线程切换 hint。mac 上给红绿灯让位（Zed：
@@ -80,6 +84,8 @@ export function SidebarHeader({
 }
 
 export function Sidebar({ store, settings }: { store: ThreadStore; settings: SettingsStore }) {
+  const [query, setQuery] = useState('')
+
   return (
     <div
       style={{
@@ -93,9 +99,47 @@ export function Sidebar({ store, settings }: { store: ThreadStore; settings: Set
         borderColor: COLORS.border,
       }}
     >
-      <NewThreadButton store={store} settings={settings} />
+      {/* 搜索会话（跨工作区：标题/工具/目录；非空时列表切搜索结果） */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+          marginTop: 6,
+          marginLeft: 10,
+          marginRight: 10,
+          marginBottom: 6,
+          height: 28,
+          paddingLeft: 8,
+          paddingRight: 8,
+          borderRadius: 4,
+          backgroundColor: COLORS.inputBg,
+          borderWidth: 1,
+          borderColor: COLORS.borderSubtle,
+        }}
+      >
+        <Icon name="search" size={12} color={COLORS.muted} />
+        <input
+          testId="session-search"
+          value={query}
+          placeholder="搜索会话"
+          onChange={(e) => setQuery(e.value ?? '')}
+          onFocus={() => inputFocus.acquire()}
+          onBlur={() => inputFocus.release()}
+          onKeyDown={(e) => {
+            if (e.key === 'escape') setQuery('')
+          }}
+          style={{
+            flexGrow: 1,
+            fontSize: 12,
+            fontFamily: FONT.ui,
+            color: COLORS.text,
+          }}
+        />
+      </div>
 
-      <ThreadList store={store} />
+      <WorkspaceList store={store} settings={settings} query={query} />
 
       {/* Footer：设置入口（Ctrl-, 同效，见 main.tsx 键位层） */}
       <div
