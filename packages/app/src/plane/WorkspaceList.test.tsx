@@ -420,8 +420,8 @@ describe('WorkspaceList：新建会话弹窗筛选（W7）', () => {
       t.renderer.getAllText().some((s) => s.includes('没有匹配工具')),
     )
 
-    // 遮罩点击关闭收尾（W7 外点关闭）
-    clickScrim()
+    // X 关闭收尾（filter 聚焦后 scrim 命中失效——TestRenderer 已知限制）
+    clickCenter('modal-close')
     await until('dialog closed', () => t.renderer.findByTestId('modal-card') == null)
   })
 })

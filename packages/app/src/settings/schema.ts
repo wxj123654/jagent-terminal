@@ -39,6 +39,8 @@ export function migrateLegacySettings(input: unknown): unknown {
 const TerminalPresetSchema = z.object({
   id: z.string(),
   label: z.string(),
+  /** 展示描述（新建会话弹窗行第二行；可选） */
+  description: z.string().optional(),
   builtin: z.boolean(),
   /** 留空 = 系统默认 shell */
   program: z.string().optional(),

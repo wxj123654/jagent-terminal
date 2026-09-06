@@ -22,21 +22,26 @@ import type { ReactNode } from 'react'
 import { Icon } from './Icon'
 import { COLORS, FONT } from './tokens'
 
+/** 卡片目标高（可缺省 = 内容自适应；设了则列表区独立滚动——原型 tool-dialog 固定高形态） */
 export function Modal({
   width,
+  height,
   children,
   onClose,
 }: {
   /** 卡片目标宽（px；内容区自带 padding） */
   width: number
+  /** 卡片目标高（px；缺省内容自适应，anchored 高随内容） */
+  height?: number
   children: ReactNode
   /** Esc / 点击遮罩 → 关闭（调用方通常 setShow(false)） */
   onClose: () => void
 }) {
   const { width: vw, height: vh } = useWindowSize()
+  const cardHeight = height ? Math.min(height, vh - 48) : undefined
   // 居中（窗口比卡片窄时贴边防御——测试窗口 800×600 场景）
   const x = Math.max((vw - width) / 2, 12)
-  const y = Math.max((vh - 360) / 2, 12)
+  const y = cardHeight ? Math.max((vh - cardHeight) / 2, 12) : Math.max((vh - 360) / 2, 12)
 
   // 覆盖层定位：absolute 四边 0。W7 实测：GPUIX absolute 需要最近定位
   // 祖先 relative，否则塌缩 0×0——本组件要求挂载点在有 relative 的容器
@@ -79,6 +84,7 @@ export function Modal({
           display: 'flex',
           flexDirection: 'column',
           width,
+          height: cardHeight,
           maxHeight: vh - 48,
           backgroundColor: COLORS.inputBg,
           borderWidth: 1,

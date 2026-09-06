@@ -31,12 +31,15 @@ export function SelectField({
   disabled = false,
   onChange,
   testId,
+  width = 220,
 }: {
   value: string
   options: SelectOption[]
   disabled?: boolean
   onChange: (next: string) => void
   testId: string
+  /** 宽度：数字 = 固定 px；'fill' = 撑满容器（弹窗表单） */
+  width?: number | 'fill'
 }): ReactElement {
   const [focused, setFocused] = useState(false)
   const current = options.find((o) => o.value === value)
@@ -58,7 +61,7 @@ export function SelectField({
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          width: 220,
+          width: width === 'fill' ? '100%' : width,
           height: 28,
           paddingLeft: 9,
           paddingRight: 6,

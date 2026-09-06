@@ -11,6 +11,8 @@ export type TerminalPreset = {
   /** 内置固定为 claude/pi/codex/amp/shell；自定义任意唯一串 */
   id: string
   label: string
+  /** 展示描述（新建会话弹窗行第二行；原型 tools[].description。可选——自定义预设常无） */
+  description?: string
   /** 内置不可删、id 不可改；复制内置 → builtin:false */
   builtin: boolean
   /** 留空 = 系统默认 shell */
@@ -25,11 +27,41 @@ export type TerminalPreset = {
 
 /** 五个内置预设（布局契约 §6；E2 预设）。 */
 export const BUILTIN_PRESETS: TerminalPreset[] = [
-  { id: 'claude', label: 'Claude Code', builtin: true, initCommand: 'claude' },
-  { id: 'pi', label: 'Pi', builtin: true, initCommand: 'pi' },
-  { id: 'codex', label: 'Codex', builtin: true, initCommand: 'codex' },
-  { id: 'amp', label: 'Amp', builtin: true, program: 'amp', env: { AMP_FORCE_BEL: '1' } },
-  { id: 'shell', label: 'Shell', builtin: true },
+  {
+    id: 'pi',
+    label: 'Pi',
+    builtin: true,
+    initCommand: 'pi',
+    description: '在项目中对话、读写代码、调用工具',
+  },
+  {
+    id: 'claude',
+    label: 'Claude Code',
+    builtin: true,
+    initCommand: 'claude',
+    description: '使用 Claude Code 的终端界面',
+  },
+  {
+    id: 'codex',
+    label: 'Codex',
+    builtin: true,
+    initCommand: 'codex',
+    description: '使用 Codex CLI 的终端界面',
+  },
+  {
+    id: 'amp',
+    label: 'Amp',
+    builtin: true,
+    program: 'amp',
+    env: { AMP_FORCE_BEL: '1' },
+    description: '使用 Amp 的终端界面',
+  },
+  {
+    id: 'shell',
+    label: 'Shell',
+    builtin: true,
+    description: '运行命令、脚本和开发服务',
+  },
 ]
 
 export function builtinPresetOf(id: string): TerminalPreset | undefined {

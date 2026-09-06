@@ -58,172 +58,153 @@ export function ToolDialog({
     fn()
   }
 
-  const rowStyle = {
-    display: 'flex',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingLeft: 8,
-    paddingRight: 8,
-    borderRadius: 4,
-    cursor: 'pointer',
-    hover: { backgroundColor: COLORS.surface },
-  } as const
+  // 分组（原型 option-group-label）：AI 编程 = agent 类预设（initCommand/
+  // program 且非 shell）；终端工具 = 其余 + 自定义。分组仅展示层语义。
+  const agentPresets = presets.filter((p) => p.id !== 'shell')
+  const termPresets = presets.filter((p) => p.id === 'shell')
+  const showAgentGroup = presets.some((p) => p.id !== 'shell')
 
   return (
-    <Modal width={440} onClose={onClose}>
+    <Modal width={460} onClose={onClose} height={560}>
       <ModalHeading title="新建会话" onClose={onClose} />
       <ModalBody>
-        {/* 目标工作区 + cwd（原型契约：菜单明确展示目标工作区与 cwd） */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+        {/* 目标工作区 + cwd（原型 tool-context：48px label 列 + 撑满 select；
+            cwd 缩进对齐 select 内容列） */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            marginBottom: 4,
+          }}
+        >
           {workspaces.length > 1 ? (
             <SelectField
               testId="tool-dialog-workspace"
               value={workspace?.id ?? ''}
               options={workspaces.map((w) => ({ value: w.id, label: w.name }))}
               onChange={setWorkspaceId}
+              width="fill"
             />
-          ) : null}
-          {workspace ? (
-            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Icon name="folder" size={11} color={COLORS.accent} />
+          ) : workspace ? (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                minWidth: 0,
+              }}
+            >
+              <Icon name="folder" size={12} color={COLORS.accent} />
               <text
                 style={{
-                  fontSize: 10,
-                  fontFamily: FONT.mono,
-                  color: COLORS.muted,
+                  fontSize: 12,
+                  fontFamily: FONT.ui,
+                  color: COLORS.textBright,
                   whiteSpace: 'nowrap',
                   textOverflow: 'ellipsis',
                   overflow: 'hidden',
                 }}
               >
-                cwd {workspace.path}
+                {workspace.name}
               </text>
             </div>
           ) : null}
         </div>
+        {workspace ? (
+          <text
+            style={{
+              fontSize: 10,
+              fontFamily: FONT.mono,
+              color: COLORS.muted,
+              whiteSpace: 'nowrap',
+              textOverflow: 'ellipsis',
+              overflow: 'hidden',
+              marginBottom: 10,
+            }}
+          >
+            cwd {workspace.path}
+          </text>
+        ) : null}
 
-        {/* 筛选 */}
-        <div style={{ marginBottom: 8 }} testId="tool-dialog-filter-row">
+        {/* 筛选（原型 tool-search：全宽，24px 侧距） */}
+        <div style={{ marginBottom: 6 }}>
           <TextInput
             testId="tool-dialog-filter"
             value={filter}
             onChange={setFilter}
             placeholder="搜索工具…"
+            width="fill"
           />
         </div>
 
-        {/* 工具列表（滚动区） */}
+        {/* 工具列表（原型 tool-options：独立滚动区 + 分组标签） */}
         <div
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: 2,
+            flexGrow: 1,
+            minHeight: 0,
             overflowY: 'scroll',
-            minHeight: 120,
-            maxHeight: 260,
+            marginTop: 4,
+            marginBottom: 4,
           }}
         >
-          {presets.map((p) => (
-            <div
+          {showAgentGroup ? <GroupLabel label="AI 编程" /> : null}
+          {agentPresets.map((p) => (
+            <ToolRow
               key={p.id}
-              tabIndex={0}
               testId={`tool-preset-${p.id}`}
-              onClick={pick(() => void store.spawnFromPreset(p.id, workspace?.id))}
-              style={{ ...rowStyle, height: 30 }}
-            >
-              <Icon name="terminal" size={12} color={COLORS.terminalKind} />
-              <text
-                style={{
-                  fontSize: 12,
-                  fontFamily: FONT.ui,
-                  color: COLORS.text,
-                  flexShrink: 0,
-                  pointerEvents: 'none',
-                }}
-              >
-                {p.label}
-              </text>
-              <text
-                style={{
-                  fontSize: 10,
-                  fontFamily: FONT.mono,
-                  color: COLORS.muted,
-                  whiteSpace: 'nowrap',
-                  textOverflow: 'ellipsis',
-                  overflow: 'hidden',
-                  pointerEvents: 'none',
-                }}
-              >
-                {[p.program, ...(p.args ?? [])].filter(Boolean).join(' ') || p.initCommand || ''}
-              </text>
-            </div>
+              icon="terminal"
+              iconColor={COLORS.terminalKind}
+              name={p.label}
+              description={p.description}
+              command={
+                [p.program, ...(p.args ?? [])].filter(Boolean).join(' ') || p.initCommand || ''
+              }
+              recommended={p.id === 'pi'}
+              onPick={pick(() => void store.spawnFromPreset(p.id, workspace?.id))}
+            />
           ))}
 
-          {!empty ? (
-            <div
-              style={{
-                height: 1,
-                backgroundColor: COLORS.borderSubtle,
-                marginTop: 4,
-                marginBottom: 4,
-              }}
+          {termPresets.length > 0 || !showAgentGroup ? <GroupLabel label="终端工具" /> : null}
+          {termPresets.map((p) => (
+            <ToolRow
+              key={p.id}
+              testId={`tool-preset-${p.id}`}
+              icon="terminal"
+              iconColor={COLORS.terminalKind}
+              name={p.label}
+              description={p.description}
+              command={
+                [p.program, ...(p.args ?? [])].filter(Boolean).join(' ') || p.initCommand || ''
+              }
+              onPick={pick(() => void store.spawnFromPreset(p.id, workspace?.id))}
             />
-          ) : null}
+          ))}
 
-          <div
-            tabIndex={0}
+          {/* New Chat + ACP：归「终端工具」组尾（原型自定义命令位 = footer；ACP 是其原生对应物） */}
+          <ToolRow
             testId="new-chat"
-            onClick={pick(() => workspace && store.createChat(workspace.id))}
-            style={{ ...rowStyle, height: 30 }}
-          >
-            <Icon name="chat" size={12} color={COLORS.accent} />
-            <text
-              style={{
-                fontSize: 12,
-                fontFamily: FONT.ui,
-                color: COLORS.textBright,
-                pointerEvents: 'none',
-              }}
-            >
-              New Chat
-            </text>
-          </div>
-
+            icon="chat"
+            iconColor={COLORS.accent}
+            name="New Chat"
+            description="应用内对话面（非终端）"
+            onPick={pick(() => workspace && store.createChat(workspace.id))}
+          />
           {acpAgents.map((a) => (
-            <div
+            <ToolRow
               key={a.id}
-              tabIndex={0}
               testId={`new-acp-${a.id}`}
-              onClick={pick(() => workspace && store.createAcpThread(a.id, a.label, workspace.id))}
-              style={{ ...rowStyle, height: 30 }}
-            >
-              <Icon name="acp" size={12} color={COLORS.acpKind} />
-              <text
-                style={{
-                  fontSize: 12,
-                  fontFamily: FONT.ui,
-                  color: COLORS.text,
-                  flexShrink: 0,
-                  pointerEvents: 'none',
-                }}
-              >
-                {a.label}
-              </text>
-              <text
-                style={{
-                  fontSize: 10,
-                  fontFamily: FONT.mono,
-                  color: COLORS.muted,
-                  whiteSpace: 'nowrap',
-                  textOverflow: 'ellipsis',
-                  overflow: 'hidden',
-                  pointerEvents: 'none',
-                }}
-              >
-                {agentCommandSummary(a)}
-              </text>
-            </div>
+              icon="acp"
+              iconColor={COLORS.acpKind}
+              name={a.label}
+              description="ACP agent"
+              command={agentCommandSummary(a)}
+              onPick={pick(() => workspace && store.createAcpThread(a.id, a.label, workspace.id))}
+            />
           ))}
 
           {empty ? (
@@ -232,7 +213,11 @@ export function ToolDialog({
                 fontSize: 11,
                 fontFamily: FONT.ui,
                 color: COLORS.muted,
-                padding: 8,
+                paddingLeft: 12,
+                paddingRight: 12,
+                paddingTop: 16,
+                paddingBottom: 16,
+                textAlign: 'center',
               }}
             >
               没有匹配工具。自定义命令可在设置的 ACP 分区添加。
@@ -241,5 +226,150 @@ export function ToolDialog({
         </div>
       </ModalBody>
     </Modal>
+  )
+}
+
+/** 分组标签（原型 option-group-label：11px muted，上距 8） */
+function GroupLabel({ label }: { label: string }) {
+  return (
+    <text
+      style={{
+        fontSize: 11,
+        fontFamily: FONT.ui,
+        color: COLORS.muted,
+        paddingLeft: 12,
+        paddingTop: 8,
+        paddingBottom: 4,
+        pointerEvents: 'none',
+      }}
+    >
+      {label}
+    </text>
+  )
+}
+
+/** 工具行（原型 .tool-option 三列：20 图标 | 名称+描述（minWidth 0）| 右侧命令码。
+ *  高 44（原 56 微收——无描述时自然 36）；hover 抬底） */
+function ToolRow({
+  testId,
+  icon,
+  iconColor,
+  name,
+  description,
+  command,
+  recommended = false,
+  onPick,
+}: {
+  testId: string
+  icon: 'terminal' | 'chat' | 'acp'
+  iconColor: string
+  name: string
+  description?: string
+  command?: string
+  recommended?: boolean
+  onPick: () => void
+}) {
+  return (
+    <div
+      tabIndex={0}
+      testId={testId}
+      onClick={onPick}
+      onKeyDown={(e) => {
+        if (e.key === 'enter' || e.key === 'space') onPick()
+      }}
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        minHeight: 36,
+        paddingLeft: 12,
+        paddingRight: 12,
+        marginTop: 1,
+        marginBottom: 1,
+        borderRadius: 6,
+        cursor: 'pointer',
+        hover: { backgroundColor: COLORS.surface },
+      }}
+    >
+      <div style={{ display: 'flex', width: 20, justifyContent: 'center', flexShrink: 0 }}>
+        <Icon name={icon} size={13} color={iconColor} />
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          minWidth: 0,
+          flexGrow: 1,
+          gap: 1,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            minWidth: 0,
+          }}
+        >
+          <text
+            style={{
+              fontSize: 12,
+              fontFamily: FONT.ui,
+              color: COLORS.textBright,
+              flexShrink: 0,
+              pointerEvents: 'none',
+            }}
+          >
+            {name}
+          </text>
+          {recommended ? (
+            <text
+              style={{
+                fontSize: 10,
+                fontFamily: FONT.ui,
+                color: COLORS.accent,
+                flexShrink: 0,
+                pointerEvents: 'none',
+              }}
+            >
+              默认
+            </text>
+          ) : null}
+        </div>
+        {description ? (
+          <text
+            style={{
+              fontSize: 11,
+              fontFamily: FONT.ui,
+              color: COLORS.muted,
+              whiteSpace: 'normal',
+              minWidth: 0,
+              pointerEvents: 'none',
+            }}
+          >
+            {description}
+          </text>
+        ) : null}
+      </div>
+      {command ? (
+        <text
+          style={{
+            fontSize: 10,
+            fontFamily: FONT.mono,
+            color: COLORS.muted,
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+            maxWidth: 120,
+            textOverflow: 'ellipsis',
+            overflow: 'hidden',
+            pointerEvents: 'none',
+          }}
+        >
+          {command}
+        </text>
+      ) : null}
+    </div>
   )
 }

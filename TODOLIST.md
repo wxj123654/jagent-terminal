@@ -239,6 +239,11 @@
 - **e2e 写法坑**：①until 循环里 `prev` 必须在事件派发**前**取（after 结构死锁等下一次变化）；②describe 间不隔离——Phase W 用例不假设前面 describe 的 threads 池状态（retain 池有遗留），「最后 spawn 的」用 `.at(-1)` 定位；③单跑 `-t` 用例时依赖前置用例赋值的变量会 undefined——自包含或全 describe 跑。
 - **已知问题（未解，记录）**：terminal 元素在场时 GPUI 焦点在帧渲染后被抢回——`focusElement` + 后续 `simulateKeystrokes` 在 TestRenderer 下键击丢失（无 terminal 场景三条聚焦路径全通：autoFocus/focusElement+simulate/nativeSimulateKeystrokes 原子）。疑与 terminal paint 闭包 `handle_input` 每帧注册 InputHandler 有关。**真窗口 ⌘K 打字是否受影响待手验**——若真窗口也丢键，开专项修（gpuix/gpui 层）。打字进 query 的行为由 AgentPlane.test（无 terminal 场景）闭环锁定。
 
+### Phase W 结论区（W7.1，新建会话弹窗布局对齐原型）
+
+- **改动**：ToolDialog 按原型 tool-dialog 三列行重排——①工具行 `20px 图标 | 名称+描述两行（minWidth 0）| 右侧命令码`（minHeight 36，hover 抬底）；②分组标签「AI 编程 / 终端工具」（option-group-label 等价；pi/claude/codex/amp = AI 编程，shell+New Chat+ACP = 终端工具）；③pi 行「默认」徽标（recommended）；④弹窗固定高 560（Modal 新 height prop：min(height, vh-48)，列表区 flexGrow+overflowY 独立滚动——原型固定高形态）；⑤SelectField 新 width:'fill'（撑满），cwd 行单独一段（原型 tool-context small 等价）；⑥内置预设加 description 字段（TerminalPreset 可选 + zod schema 同步 + pi 排序提前——默认工具置顶，store.test 期望更新）。
+- **测试**：筛选用例收尾改 X 关闭（filter 聚焦后 scrim 命中失效——TestRenderer 已知限制复现）。app 188 + e2e 17 全绿；截图目检（分组/描述行/默认徽标/命令码右对齐）。
+
 ### Phase W 结论区（W7，弹窗形态恢复 + Toast）
 
 - **背景**：用户指出原型丰富的弹窗形态在落地时被收敛（W2「GPUIX 无居中模态原语」判断过时——anchored 支持 position 显式坐标 + deferred）。确认全面恢复弹窗 + toast。

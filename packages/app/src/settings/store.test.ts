@@ -119,8 +119,8 @@ describe('读盘容错（zod catch / prefault / 顶层兜底）', () => {
     const raw = JSON.stringify({ presets: { items: [{ id: 'x' }] } }) // 缺 label/builtin
     const { store } = await makeStore(raw)
     expect(store.get().presets.items.map((p) => p.id)).toEqual([
-      'claude',
       'pi',
+      'claude',
       'codex',
       'amp',
       'shell',
