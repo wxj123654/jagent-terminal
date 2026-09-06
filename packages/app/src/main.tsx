@@ -27,6 +27,11 @@ import { settingsKeyboard } from './surfaces/settingsKeyboard'
 import { narrowSessionEvent } from './threads/events'
 import { createNativeThreadDeps } from './threads/nativeDeps'
 import { createThreadStore } from './threads/store'
+import {
+  defaultWorkspace,
+  parseWorkspaceState,
+  serializeWorkspaceState,
+} from './threads/workspaces'
 import { inputFocus } from './ui/keyboard'
 import { PLATFORM } from './ui/platform'
 
@@ -40,7 +45,25 @@ const settingsStore = createSettingsStore(fsAdapter(join(homedir(), '.j-agent', 
 await settingsStore.init()
 
 // ── ThreadStore（native 依赖注入收口处；设置面先行）──
-const threadStore = createThreadStore(createNativeThreadDeps(settingsStore))
+// 工作区持久化（Phase W）：独立 state.json（含运行时态 expanded/lastSession，
+// 与用户设置的 settings.json 分文件）；threads 不持久化（PTY 重启即死）。
+// 首启空列表 → 默认工作区（当前目录）；parse 已容错坏 JSON/坏行
+const stateFile = fsAdapter(join(homedir(), '.j-agent', 'state.json'))
+const initialWorkspaces = parseWorkspaceState(await stateFile.read())
+const threadStore = createThreadStore(
+  {
+    ...createNativeThreadDeps(settingsStore),
+    persistWorkspaces: (ws) => {
+      void stateFile.write(serializeWorkspaceState(ws)).catch((e) => {
+        console.warn('state.json write failed:', e) // 非关键路径：丢一次恢复态不阻断 UI
+      })
+    },
+  },
+  {
+    initialWorkspaces:
+      initialWorkspaces.length > 0 ? initialWorkspaces : [defaultWorkspace(process.cwd())],
+  },
+)
 
 onSessionEvent((_err, e) => {
   // seam 边界窄化：未知 type 拒绝（events.ts）

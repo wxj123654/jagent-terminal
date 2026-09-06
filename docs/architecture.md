@@ -85,7 +85,9 @@ j-agent/
 │       │   │                          #   （ChatAgent seam + EchoAgent，T3.2）+
 │       │   │                          #   acp.ts（ACP v1 JSON-RPC 子进程客户端，
 │       │   │                          #   ChatAgent adapter，T3+.1）+
-│       │   │                          #   nativeDeps.ts（装配工厂）
+│       │   │                          #   nativeDeps.ts（装配工厂）+
+│       │   │                          #   workspaces.ts（工作区模型 + state.json
+│       │   │                          #   schema/序列化，Phase W）
 │       │   ├── surfaces/              #   registry + Terminal/Chat/Acp/Empty +
 │       │   │                          #   ConversationView（chat/acp 共享消息面）+
 │       │   │                          #   listEditorParts（列表分区共享编辑器件）+
@@ -308,8 +310,25 @@ export type ActiveTarget =             // 派生视图类型：从路由状态�
 
 export type ThreadState = {
   threads: Thread[]                 // 混排，创建序
+  workspaces: Workspace[]           // 工作区列表（Phase W；持久化经 deps.persistWorkspaces
+                                    //  → 装配层写 ~/.j-agent/state.json）
   lastUsedPreset: string | null     // 运行时态，不写 settings.json
 }                                   // active 不在此——导航唯一事实源是 router（§3.5）
+
+// threads/workspaces.ts（Phase W；交互契约 design/workspace-plane.md）
+export type Workspace = {
+  id: string                        // `w${uuid}`
+  name: string                      // 默认 = basename(path)
+  path: string                      // 项目目录（会话 cwd 继承源）
+  expanded: boolean                 // 侧栏展开态（点箭头仅切换，不激活）
+  lastSession: string | null        // 上次打开的 thread id（activate 归属会话时更新）
+  createdAt: number
+}
+// Thread 三类均含可选 workspaceId?: string（归属；平铺不嵌套——cycle 环形语义
+//  与事件定位 R4 不变，分组是派生视图 workspaceSessions(threads, wsId)）
+// 持久化：独立 state.json（含运行时态 expanded/lastSession——语义是「应用状态」
+//  非「用户设置」，与 settings.json 分文件）；threads 不持久化（PTY 重启即死）；
+//  parse 逐行容错（坏行剔除不炸全局）；首启空 → 装配层建默认工作区(process.cwd())
 ```
 
 `displayTitle(t)`（纯函数，threads/terminal.ts）：
@@ -335,6 +354,10 @@ type ThreadDeps = {
                                                 //  threads/acp.ts JSON-RPC 子进程连接
                                                 //  （读 settings.acpAgents；dispose 归
                                                 //  store close 调）
+  persistWorkspaces?: (ws: Workspace[]) => void // 工作区持久化（Phase W）：workspaces
+                                                //  任何变化后 fire（fire-and-forget；
+                                                //  装配层 = FileAdapter 写 state.json，
+                                                //  失败仅 warn）。不注入则跳过（测试面）
 }
 ```
 
@@ -345,7 +368,9 @@ type ThreadDeps = {
 persist middleware（写盘逻辑不合身，见 §6.2 file adapter）。
 
 ```ts
-function createThreadStore(deps: ThreadDeps): ThreadStore
+function createThreadStore(deps: ThreadDeps, opts?: ThreadStoreOptions): ThreadStore
+// ThreadStoreOptions = { initialWorkspaces?: Workspace[] }（装配层读盘后的初值；
+// 缺省空列表——W1 阶段旧 UI 调用点无工作区上下文，全部向后兼容）
 
 interface ThreadStore {
   getState(): ThreadState                      // 快照（不可变；zustand vanilla）
@@ -359,6 +384,13 @@ interface ThreadStore {
   close(id: string): void
   rename(id: string, title: string): void      // 写 customTitle → 冻结
   cycle(dir: 1 | -1): void                     // Ctrl-Tab 混排循环
+  // ── 工作区（Phase W）─────────────────────────────────────────────
+  addWorkspace(name: string, path: string): string  // 新建（空名回退 basename(path)）；返回 id
+  renameWorkspace(id: string, name: string): void  // 空串忽略（同 rename 纪律）
+  removeWorkspace(id: string): void                // 连带 close 归属会话（复用 close 单点）
+  activateWorkspace(id: string): void              // 恢复 lastSession（死 id/无 → 回起始页）；
+                                                   //  不改 expanded（点箭头仅展开/收起，分离）
+  toggleWorkspaceExpanded(id: string): void        // 展开/收起（持久化，不导航）
   onSessionEvent(e: SessionEvent): void        // 装配层专用：native → store
 }
 ```
@@ -367,7 +399,12 @@ interface ThreadStore {
 
 | 事件/方法 | 规则 |
 |---|---|
-| `spawnFromPreset` | 查 preset → `spawnSession({cwd, program, args, env, initCommand, scrollbackLines})` → push thread → `lastUsedPreset = presetId` → `activate` |
+| `spawnFromPreset` | 查 preset → `spawnSession({cwd, program, args, env, initCommand, scrollbackLines})` → push thread → `lastUsedPreset = presetId` → `activate`。cwd 继承链（W1）：`preset.cwd ?? workspace.path ?? process.cwd()`（preset 显式 cwd = 用户配置意图优先；显式 workspaceId 不存在 → throw） |
+| `activate(thread)`（W1 增补） | 会话带 workspaceId → 该工作区 `lastSession = thread.id`（实际变化才 fire persist） |
+| `addWorkspace` / `renameWorkspace` / `toggleWorkspaceExpanded` | CRUD 单点：改 workspaces → fire persistWorkspaces；rename 空串忽略；add 空名回退 basename(path) |
+| `removeWorkspace` | 连带 close 全部归属会话（destroySession/dispose/导航兑底复用 close 单点）→ 移除工作区行 → persist |
+| `activateWorkspace` | lastSession 的 thread 存在 → `activate(thread)`；死 id / 无 → `activate(null)`（工作区起始页；空态 UI 是 W2）；expanded 不动 |
+| `close`（W1 增补） | 移除行后：若是所属工作区 lastSession → 置 null + persist（「最后一个会话被移除回工作区起始页」的数据面） |
 | `activate(thread)` | `deps.navigate` 路由跳转（表面整块替换）；清该 thread `hasBell`（契约 §7：聚焦即清） |
 | `activate(settings)` / `null` | `deps.navigate(...)` 表面切换，threads 不动（后台 PTY 照跑、BEL 照落红点） |
 | `onSessionEvent(title)` | `customTitle` 存在则忽略（冻结）；否则写 `oscTitle` |

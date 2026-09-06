@@ -30,8 +30,9 @@
 | 2 ThreadStore 全规则 + settings-core/controls + SettingsView | ✅ 完成（T2.1–T2.7） |
 | 3 settings-presets + chat | ✅ 完成（T3.1+T3.2） |
 | 3+ settings-acp-advanced + ACP + 键位编辑 | ✅ 完成（T3+.1–T3+.3） |
+| W 工作区平面迁移 | ◑ W0/W1 完成；W2 侧栏 UI 待做 |
 
-**当前指针**：→ Phase W / W0（用户评审工作区原型 `design/workspace-plane.md`，通过后开工 W1）
+**当前指针**：→ Phase W / W2（侧栏 UI：工作区分组树 + 新建菜单 + 添加工作区对话框 + 搜索）
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -188,8 +189,18 @@
 
 > 锚点：`design/workspace-plane.html`（待评审方案）+ `design/PRODUCT.md` + `design/DESIGN.md`。原型已通过交互测试与独立审查（ship）；本 Phase 把工作区分组与多 TUI 会话模型落进 `packages/app`，不改变既有 PTY / `<terminal>` 架构（硬约束 2–4 不变）。**用户评审通过原型后才开工**。
 
-- [ ] **W0** 原型评审定稿：用户过一遍 `design/workspace-plane.md` 体验路径，确认工作区分组、工具清单（pi/[CC]/Codex CLI/Shell/lazygit/yazi/btop/自定义）与交互细节（恢复最近会话、草稿保留、空工作区引导）；补充「本地目录选择」为原生必做项（系统对话框，对应原型「浏览…」按钮）
-- [ ] **W1** 数据层：`threads/workspaces.ts`（Workspace：id/name/path/expanded/lastSession/sessions[]，会话归属工作区而非全局平铺）；ThreadStore 改造（spawnFromPreset 增 workspaceId、activateWorkspace 恢复 lastSession、工作区 CRUD）；持久化策略拍板（settings.json vs 独立 state.json——工作区含运行时态，倾向独立文件）；bun test 全规则用例迁移 + 新增工作区用例
+- [x] **W0** 原型评审定稿（2026-09-06 定稿）：两轮迭代验收（新建会话弹窗布局修复 + 本地目录选择「浏览…」）+ 用户放行开工 Phase W；「本地目录选择」已列为原生必做项（W3 目录选择 seam）；工具清单与交互细节以 `design/workspace-plane.md` 为准
+- [x] **W1** 数据层：`threads/workspaces.ts` + ThreadStore 工作区改造 + state.json 持久化——详见 Phase W 结论区
+
+### Phase W 结论区（W1，数据层）
+
+- **数据模型（拍板）**：平铺 + 归属字段，**不嵌套**——`Thread.workspaceId?`（可选：W1 旧 UI 调用点零改动，W2 迁移后全带），threads 保持混排创建序（Ctrl-Tab cycle 环形语义与事件定位 R4 不变），分组 = 派生视图 `workspaceSessions(threads, wsId)`（TODOLIST 原案「Workspace 含 sessions[]」按此落地）。`Workspace = {id/name/path/expanded/lastSession/createdAt}`。
+- **cwd 继承链（拍板）**：`preset.cwd ?? workspace.path ?? process.cwd()`——preset 显式 cwd = 用户配置意图优先；否则继承工作区目录（工具在项目目录里跑是工作区的存在意义）。显式传入的 workspaceId 不存在 → throw（三个创建入口同判）。
+- **持久化（拍板：独立 state.json）**：`~/.j-agent/state.json`，与 settings.json 分文件（工作区含运行时态 expanded/lastSession，语义是「应用状态」非「用户设置」）。threads 不持久化（PTY 重启即死，恢复行无意义）；lastSession 持久化后可能指向死 id——activateWorkspace 存在性校验兑底。复用 FileAdapter（原子写）；`ThreadDeps.persistWorkspaces?`（fire-and-forget，装配层注入，测试不注入则跳过）。**首启只读不写**（对齐 settings S3：不动工作区不落盘，重启重建同默认值）；state.json 为空/损坏 → 装配层建默认工作区 `defaultWorkspace(process.cwd())`（name = basename）。
+- **zod 容错坑（实测）**：`z.array(WorkspaceSchema).catch([])` 是**整组回退**——单行损坏会把全部工作区抹成空（默认工作区重建，用户改名/归属态全丢）。修法：array 元素层 `z.unknown()` + 逐行 `safeParse` 过滤（坏行剔除、坏字段 catch 回默认），单行坏不炸全局。
+- **store 规则增补**：activate 带 workspaceId 的 thread → `lastSession` 记录（实际变化才 persist，produce 同步执行用局部标记判 touch）；close 该会话 → lastSession 置 null（「最后一个会话被移除回工作区起始页」的数据面，空态 UI 是 W2）；removeWorkspace 连带 close 归属会话（复用 close 单点：destroy/dispose/导航兑底）；activateWorkspace 死 id/无 lastSession → activate(null)；toggleWorkspaceExpanded 只翻转不导航（点箭头与点行分离，原型契约）。
+- **main.tsx 装配**：state.json 读取在 settingsStore.init() 之后（同 await 装配期）；persistWorkspaces 失败仅 warn。真窗口冒烟：mount complete + 首启不写 state.json ✓；装配链路真盘写读往返（fsAdapter + serialize + parse）独立验证 ✓。
+- **测试面**：workspaces.test 8（parse 容错 4 + 往返 1 + 构造派生 3）+ store.test 新增 13（CRUD/persist 4 + 归属与 cwd 5 + activate/close/remove 4）；存量 31 用例零改动全过（向后兼容实证）。app 155 + e2e 12 + tsc/fmt/lint 全绿。architecture.md §1.1/§3.1/§3.2/§3.3 已同步。
 - [ ] **W2** 侧栏 UI：Sidebar 改工作区分组树（工作区行：图标+名称+会话数+「＋」新建；会话行继承现有 ThreadRow：红点/rename/exited）；「＋」打开工具选择菜单（anchored，含工具图标+命令摘要+自定义命令入口，展示目标工作区与 cwd）；「添加工作区」对话框（名称+目录，「浏览…」走原生目录选择对话框——需确认 gpuix 是否暴露 folder picker，无则 rust seam 补）；「⌕ 搜索会话」跨工作区搜索
 - [ ] **W3** 目录选择 seam：gpuix 层 API 盘点（有无 folder picker / dialog 导出）；无则 `packages/native` 增 `pickDirectory()`（macOS NSOpenPanel / Windows IFileDialog，走现有 run_host 通道），e2e 可注入 fake
 - [ ] **W4** 空态与键盘：空工作区引导（默认 pi 卡）；窄窗口抽屉（760px 断点对齐原型）；⌘K/Ctrl-K 搜索、Esc 层级与现有 keybindings.ts 合流（工作区面不劫持终端输入，硬约束 2 同源）
@@ -240,3 +251,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-06 · **工作区与多 TUI 交互原型**：用户确认独立 HTML + Codex 式工作区分组，新增 `design/workspace-plane.html`；工作区展开/切换、恢复最近会话、cwd 继承、pi/Claude Code/Codex CLI/Shell/lazygit/yazi/btop/自定义命令、新建/搜索/重命名/移除、BEL 示例清除、草稿保留及窄屏抽屉。全部模拟，不访问文件系统、不执行命令、不连接模型；未改原生应用与 `.refs`。`design/workspace-plane.test.mjs` 复用已有 Playwright + Chrome，10 组通过、0 运行时错误，截图覆盖桌面/紧凑/窄屏及工具关键状态；独立 reviewer 代行 finish-reviewer，结论 ship（原型范围）。设计记录位于 `design/PRODUCT.md`、`design/DESIGN.md`，操作说明 `design/workspace-plane.md`。检索返回 FAQ 落地页模板，不适用于本任务，未采用；保留既有深色系统。检测器 HTML parser 缺失降级 regex，不将空结果当完整认证。下一步：用户评审原型后，再决定正式工作区状态与原生 UI 落地。
 - 2026-09-06 · **原型两轮迭代**：①新建会话弹窗布局修复（用户报「元素有点乱」）：工具项与自定义命令统一 3 列网格对齐、弹窗框架固定高度仅列表内滚（消除筛选/空态跳动）、自定义命令拆入固定 footer 常驻、工作区行横排压紧 + cwd 单行省略；新增 `design/workspace-dialog.test.mjs` 回归（4 视口几何断言）。②添加工作区本地目录选择（用户要求「本地选择而不是输入」）：「浏览…」按钮，showDirectoryPicker 优先、webkitdirectory 回退（实测回退路径触发正常），选择后自动填路径与名称。下一步：任务拆分已进 TODOLIST Phase W（W0–W5），等用户评审原型后开工。
 - 2026-09-06 · **Phase 3+ 收官（T3+.3）**：§15 第 6 条锚点核对达成（JSON 实时视图与写盘同源 + e2e 第 12 用例锁定；「在编辑器中打开」darwin open 分支实测 + memory 无 path 不渲染）· 全量：app 134 + e2e 12（macOS 全绿）+ cargo 37 + tsc/fmt/lint 干净 + 真窗口冒烟 · 工作区原型补入库（design/ 6 文件 + .impeccable gitignore）· 下一步：Phase W W0（用户评审工作区原型）
+- 2026-09-06 · **Phase W 开工：W0 定稿 + W1 数据层完成**：W0 = 两轮迭代验收 + 用户放行 · W1 = threads/workspaces.ts（Workspace 类型 + state.json zod schema 逐行容错 + defaultWorkspace/workspaceSessions）+ ThreadStore 改造（平铺+workspaceId 归属不嵌套、cwd 链 preset.cwd→workspace.path→CWD、activateWorkspace 恢复 lastSession/死 id 回起始页、removeWorkspace 连锁 close、persistWorkspaces fire-and-forget）+ main.tsx state.json 装配（首启只读不写，空/损坏→默认工作区）· zod array.catch 整组回退坑（单行坏抹全部→逐行 safeParse）· 测试 workspaces 8 + store 13 新增，存量 31 零改动全过；app 155 + e2e 12 + tsc/fmt/lint 全绿 · 下一步：W2（侧栏工作区分组树 UI）

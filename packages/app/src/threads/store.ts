@@ -18,6 +18,7 @@ import type { ActiveTarget } from '../router'
 import type { ChatAgent, ChatMessage } from './chat'
 import type { TerminalSessionEvent } from './events'
 import type { TerminalPreset } from './presets'
+import { workspaceDisplayName, type Workspace } from './workspaces'
 
 // ── 类型（§3.1）──────────────────────────────────────────────────────
 
@@ -28,6 +29,8 @@ export type TerminalThread = {
   sessionId: number
   /** 对应 TerminalPreset.id（内置或自定义） */
   preset?: string
+  /** 归属工作区（Phase W；可选 = 旧调用点无上下文，W2 UI 迁移后全带） */
+  workspaceId?: string
   cwd: string
   /** 兜底标题用 */
   initCommand?: string
@@ -53,6 +56,8 @@ export type ChatThread = {
   messages: ChatMessage[]
   /** agent 回复进行中：composer 发送钮禁用 + 消息尾 thinking 占位 */
   pendingReply: boolean
+  /** 归属工作区（Phase W） */
+  workspaceId?: string
 }
 /** Phase 3+ 实装：外部 agent JSON-RPC 会话；消息面与 chat 同构（ConversationView 复用） */
 export type AcpThread = {
@@ -68,6 +73,8 @@ export type AcpThread = {
   pendingReply: boolean
   /** title 未被手改/首条消息改写（首条 user 消息自动改写的哨兵；rename 置 false） */
   autoTitle: boolean
+  /** 归属工作区（Phase W） */
+  workspaceId?: string
 }
 
 export type Thread = TerminalThread | ChatThread | AcpThread
@@ -75,6 +82,8 @@ export type Thread = TerminalThread | ChatThread | AcpThread
 export type ThreadState = {
   /** 混排，创建序 */
   threads: Thread[]
+  /** 工作区列表（Phase W；持久化经 deps.persistWorkspaces，装配层写 state.json） */
+  workspaces: Workspace[]
   /** 运行时态，不写 settings.json */
   lastUsedPreset: string | null
   // 注意：active 不在此——导航唯一事实源是 router（§3.5）
@@ -99,17 +108,25 @@ export type ThreadDeps = {
   /** 路由读侧（active 判定：bell 红点只打非 active、cycle 基准、close 先导航离开）。
    *  装配层注入（直接读 history）。未注入时：bell 视为非 active，close 保守先导航。 */
   activeThreadId?: () => string | null
+  /** 工作区持久化（Phase W）：workspaces 任何变化后 fire（fire-and-forget；
+   *  装配层写 state.json，失败仅 warn）。不注入则跳过（纯内存，测试面）。 */
+  persistWorkspaces?: (workspaces: Workspace[]) => void
+}
+
+/** 构造选项（Phase W）：装配层读盘后的初值（含首启默认工作区决策） */
+export type ThreadStoreOptions = {
+  initialWorkspaces?: Workspace[]
 }
 
 export interface ThreadStore {
   getState(): ThreadState
   subscribe(fn: () => void): () => void
-  spawnFromPreset(presetId: string): Promise<void>
+  spawnFromPreset(presetId: string, workspaceId?: string): Promise<void>
   /** 新建空 chat thread + activate（入口：+ 菜单固定项，T3.2） */
-  createChat(): void
+  createChat(workspaceId?: string): void
   /** 新建 ACP thread + activate（入口：+ 菜单 agent 项，T3+.1；label 来自
    *  调用方的 settings 快照——store 不读 settings） */
-  createAcpThread(agentId: string, label: string): void
+  createAcpThread(agentId: string, label: string, workspaceId?: string): void
   /** chat 发送状态机：空串/pending 中忽略；user 落列 → agent.send → assistant/error 落列 */
   sendChatMessage(threadId: string, text: string): void
   /** acp 发送状态机（与 chat 同构；连接惰性建立，agent 进程错误 → error 行） */
@@ -118,6 +135,18 @@ export interface ThreadStore {
   close(id: string): void
   rename(id: string, title: string): void
   cycle(dir: 1 | -1): void
+  // ── 工作区（Phase W；architecture.md §3 同步） ─────────────────
+  /** 新建工作区（name 空串回退 basename(path)）；返回 id。入口：添加工作区对话框（W2） */
+  addWorkspace(name: string, path: string): string
+  /** 重命名（空串忽略，同 rename 纪律） */
+  renameWorkspace(id: string, name: string): void
+  /** 移除工作区：连带 close 其全部会话（destroy/dispose/导航兑底同 close）+ 移除行 */
+  removeWorkspace(id: string): void
+  /** 切换工作区（点行）：恢复 lastSession（存在则 activate，否则回起始页 null）。
+   *  不改 expanded（点箭头仅展开/收起，与激活分离——原型契约） */
+  activateWorkspace(id: string): void
+  /** 展开/收起分组（持久化，不导航） */
+  toggleWorkspaceExpanded(id: string): void
   /** 装配层专用：native → store（经 events.ts 窄化后的判别联合） */
   onSessionEvent(e: TerminalSessionEvent): void
 }
@@ -130,19 +159,36 @@ let msgSeq = 0
 /** chat 默认标题（首条消息改写的哨兵值；rename 手改后不再改写） */
 export const CHAT_DEFAULT_TITLE = 'Chat'
 
-export function createThreadStore(deps: ThreadDeps): ThreadStore {
-  const store = createStore<ThreadState>(() => ({ threads: [], lastUsedPreset: null }))
+export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {}): ThreadStore {
+  const store = createStore<ThreadState>(() => ({
+    threads: [],
+    workspaces: opts.initialWorkspaces ?? [],
+    lastUsedPreset: null,
+  }))
   const set = (recipe: (s: ThreadState) => void) => store.setState(produce(recipe))
   const state = () => store.getState()
   /** acp thread → 连接实例（情建；close 时 dispose。不进 state——纯运行时资源） */
   const acpAgents = new Map<string, ChatAgent>()
+  /** workspaces 变化后统一持久化出口（fire-and-forget） */
+  const persist = () => deps.persistWorkspaces?.(state().workspaces)
   const activate = (target: ActiveTarget) => {
     // 契约 §7：聚焦即清 bell 红点
     if (target?.type === 'thread') {
+      let touchedWorkspace = false
       set((s) => {
         const t = s.threads.find((x) => x.id === target.id)
         if (t && t.kind === 'terminal' && t.hasBell) t.hasBell = false
+        // Phase W：会话聚焦 → 归属工作区 lastSession 记录（activateWorkspace 恢复源）
+        if (t?.workspaceId) {
+          const ws = s.workspaces.find((w) => w.id === t.workspaceId)
+          if (ws && ws.lastSession !== t.id) {
+            ws.lastSession = t.id
+            touchedWorkspace = true
+          }
+        }
       })
+      // produce 同步执行，set 返回时标记已定；仅 lastSession 实际变化才写盘
+      if (touchedWorkspace) persist()
     }
     // 表面整块替换；settings/null 不动 threads（后台 PTY 照跑）
     deps.navigate(target)
@@ -152,11 +198,15 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
     getState: state,
     subscribe: (fn) => store.subscribe(fn),
 
-    async spawnFromPreset(presetId) {
+    async spawnFromPreset(presetId, workspaceId) {
       const preset = deps.presetOf(presetId)
       if (!preset) throw new Error(`unknown preset: ${presetId}`)
+      const ws = workspaceId ? state().workspaces.find((w) => w.id === workspaceId) : undefined
+      if (workspaceId && !ws) throw new Error(`unknown workspace: ${workspaceId}`)
+      // cwd 继承链（Phase W 契约）：preset 显式 cwd（用户配置意图）→ 工作区目录 → 进程 CWD
+      const cwd = preset.cwd ?? ws?.path ?? process.cwd()
       const sessionId = await deps.spawnSession({
-        cwd: preset.cwd ?? process.cwd(), // 与 thread.cwd 同源（Rust None 回退也是进程 CWD，显式传保两端一致）
+        cwd, // 与 thread.cwd 同源（Rust None 回退也是进程 CWD，显式传保两端一致）
         program: preset.program,
         args: preset.args,
         env: preset.env,
@@ -167,11 +217,12 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
         id: `t${sessionId}`,
         sessionId,
         preset: preset.id,
-        cwd: preset.cwd ?? process.cwd(),
+        cwd,
         initCommand: preset.initCommand,
         status: 'running',
         hasBell: false,
         createdAt: Date.now(),
+        workspaceId: ws?.id,
       }
       set((s) => {
         s.threads.push(thread)
@@ -180,7 +231,8 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
       activate({ type: 'thread', id: thread.id })
     },
 
-    createChat() {
+    createChat(workspaceId) {
+      assertWorkspace(state(), workspaceId)
       const thread: ChatThread = {
         kind: 'chat',
         id: `c${crypto.randomUUID()}`,
@@ -188,6 +240,7 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
         createdAt: Date.now(),
         messages: [],
         pendingReply: false,
+        workspaceId,
       }
       set((s) => {
         s.threads.push(thread)
@@ -195,7 +248,8 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
       activate({ type: 'thread', id: thread.id })
     },
 
-    createAcpThread(agentId, label) {
+    createAcpThread(agentId, label, workspaceId) {
+      assertWorkspace(state(), workspaceId)
       const thread: AcpThread = {
         kind: 'acp',
         id: `a${crypto.randomUUID()}`,
@@ -205,6 +259,7 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
         messages: [],
         pendingReply: false,
         autoTitle: true,
+        workspaceId,
       }
       set((s) => {
         s.threads.push(thread)
@@ -240,7 +295,15 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
       }
       set((s) => {
         s.threads = s.threads.filter((t) => t.id !== id)
+        // Phase W：会话移除 → 若是所属工作区 lastSession 则清空（下一个
+        // activateWorkspace 回起始页；「最后一个会话被移除后回工作区起始页」
+        // 的数据面兑底，空态 UI 是 W2）
+        if (thread.workspaceId) {
+          const ws = s.workspaces.find((w) => w.id === thread.workspaceId)
+          if (ws && ws.lastSession === id) ws.lastSession = null
+        }
       })
+      persist()
     },
 
     rename(id, title) {
@@ -272,6 +335,66 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
             : threads.length - 1
           : (idx + dir + threads.length) % threads.length
       activate({ type: 'thread', id: threads[nextIdx].id })
+    },
+
+    // ── 工作区（Phase W）──────────────────────────────────────
+
+    addWorkspace(name, path) {
+      const ws: Workspace = {
+        id: `w${crypto.randomUUID()}`,
+        name: name.trim() || workspaceDisplayName(path),
+        path,
+        expanded: true,
+        lastSession: null,
+        createdAt: Date.now(),
+      }
+      set((s) => {
+        s.workspaces.push(ws)
+      })
+      persist()
+      return ws.id
+    },
+
+    renameWorkspace(id, name) {
+      if (!name.trim()) return // 空串忽略（同 rename 纪律）
+      set((s) => {
+        const ws = s.workspaces.find((w) => w.id === id)
+        if (ws) ws.name = name.trim()
+      })
+      persist()
+    },
+
+    removeWorkspace(id) {
+      if (!state().workspaces.some((w) => w.id === id)) return
+      // 连带 close 全部会话：destroySession/dispose/导航兑底都复用 close 单点
+      //（首个被 close 的 active thread 会先 activate(null)；后续 close 的
+      // routerPointsAt 已 false，不再额外导航）
+      for (const victim of state().threads.filter((t) => t.workspaceId === id)) {
+        this.close(victim.id)
+      }
+      set((s) => {
+        s.workspaces = s.workspaces.filter((w) => w.id !== id)
+      })
+      persist()
+    },
+
+    activateWorkspace(id) {
+      const ws = state().workspaces.find((w) => w.id === id)
+      if (!ws) return
+      // 恢复上次会话；已不存在（重启后 PTY 即死）或从未打开 → 回起始页。
+      // activate 内部会再写 lastSession（幂等，同 id 无害）
+      const target = ws.lastSession
+        ? state().threads.find((t) => t.id === ws.lastSession)
+        : undefined
+      activate(target ? { type: 'thread', id: target.id } : null)
+    },
+
+    toggleWorkspaceExpanded(id) {
+      set((s) => {
+        const ws = s.workspaces.find((w) => w.id === id)
+        if (ws) ws.expanded = !ws.expanded
+      })
+      persist()
     },
 
     onSessionEvent(e) {
@@ -326,6 +449,13 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
   /** active thread id（router 读侧；未注入时回退 null = 视为非 active） */
   function activeThreadId(): string | null {
     return deps.activeThreadId?.() ?? null
+  }
+
+  /** 显式传入的 workspaceId 必须存在（调用方 bug 早暴露；spawn 侧已内联同判） */
+  function assertWorkspace(s: ThreadState, id: string | undefined): void {
+    if (id != null && !s.workspaces.some((w) => w.id === id)) {
+      throw new Error(`unknown workspace: ${id}`)
+    }
   }
 
   /** 路由是否指向该 thread（close 的先导航离开判定；未注入时保守视为指向） */

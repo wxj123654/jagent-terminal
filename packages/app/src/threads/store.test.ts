@@ -13,6 +13,7 @@ import type { ChatAgent } from './chat'
 import { builtinPresetOf, type TerminalPreset } from './presets'
 import { createThreadStore, type ThreadDeps, type ThreadStore, type TerminalThread } from './store'
 import { displayTitle } from './terminal'
+import { defaultWorkspace } from './workspaces'
 
 /** 可控 fake ChatAgent：调用入队，测试手动 resolve/reject */
 function makeChatAgent() {
@@ -572,5 +573,202 @@ describe('acp: createAcpThread / sendAcpMessage（T3+.1）', () => {
     expect(t.messages[1]).toMatchObject({ role: 'assistant', error: true })
     expect(t.pendingReply).toBe(false)
     store.close(id2)
+  })
+})
+
+// ── 工作区（Phase W；design/workspace-plane.md 契约）──────────────────
+
+describe('工作区 CRUD 与持久化', () => {
+  let store: ThreadStore
+  let persisted: string[][] // 每次 persist 时的 workspaces id 快照
+  beforeEach(() => {
+    void router.navigate({ to: '/' })
+    persisted = []
+    store = createThreadStore(makeDeps().deps, {
+      initialWorkspaces: [{ ...defaultWorkspace('/w/one') }],
+    })
+  })
+
+  test('addWorkspace：入列表 + persist + 返回 id；空名回退 basename(path)', () => {
+    const id = store.addWorkspace('', '/w/my-proj')
+    const s = store.getState()
+    expect(s.workspaces).toHaveLength(2)
+    expect(s.workspaces[1]).toMatchObject({
+      id,
+      name: 'my-proj',
+      path: '/w/my-proj',
+      expanded: true,
+      lastSession: null,
+    })
+    expect(persisted).toHaveLength(0) // 未注入 persistWorkspaces → 不炸
+  })
+
+  test('renameWorkspace：改名；空串忽略；unknown no-op', () => {
+    const id0 = store.getState().workspaces[0]!.id
+    store.renameWorkspace(id0, '  改名  ')
+    expect(store.getState().workspaces[0]!.name).toBe('改名')
+    store.renameWorkspace(id0, '   ')
+    expect(store.getState().workspaces[0]!.name).toBe('改名')
+    store.renameWorkspace('w-void', 'x')
+    expect(store.getState().workspaces[0]!.name).toBe('改名')
+  })
+
+  test('persistWorkspaces：workspaces 每次变化后 fire（快照含变更）', () => {
+    const snapshots: string[][] = []
+    const st = createThreadStore(
+      makeDeps({ persistWorkspaces: (ws) => snapshots.push(ws.map((w) => w.name)) }).deps,
+      {
+        initialWorkspaces: [],
+      },
+    )
+    st.addWorkspace('a', '/a')
+    st.renameWorkspace(st.getState().workspaces[0]!.id, 'b')
+    st.toggleWorkspaceExpanded(st.getState().workspaces[0]!.id)
+    expect(snapshots).toEqual([['a'], ['b'], ['b']])
+  })
+
+  test('toggleWorkspaceExpanded：翻转 + 不导航', () => {
+    const id0 = store.getState().workspaces[0]!.id
+    expect(store.getState().workspaces[0]!.expanded).toBe(true)
+    store.toggleWorkspaceExpanded(id0)
+    expect(store.getState().workspaces[0]!.expanded).toBe(false)
+    expect(currentActiveThreadId()).toBeNull()
+  })
+})
+
+describe('工作区会话归属与 cwd 继承', () => {
+  let store: ThreadStore
+  beforeEach(() => {
+    void router.navigate({ to: '/' })
+    store = createThreadStore(makeDeps().deps, {
+      initialWorkspaces: [
+        defaultWorkspace('/w/proj'),
+        { ...defaultWorkspace('/w/other'), name: 'other' },
+      ],
+    })
+  })
+
+  test('spawnFromPreset(presetId, workspaceId)：cwd = workspace.path；thread 落归属；lastSession 记录', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    await store.spawnFromPreset('shell', wsId)
+    const t = store.getState().threads[0] as TerminalThread
+    expect(t.workspaceId).toBe(wsId)
+    expect(t.cwd).toBe('/w/proj')
+    expect(store.getState().workspaces[0]!.lastSession).toBe(t.id)
+  })
+
+  test('preset.cwd 优先于工作区目录（用户配置意图）；无工作区回退进程 CWD', async () => {
+    const custom: TerminalPreset = {
+      id: 'fixed-cwd',
+      label: '固定目录',
+      builtin: true,
+      cwd: '/preset/dir',
+    }
+    const store2 = createThreadStore(
+      makeDeps({ presetOf: (id) => (id === 'fixed-cwd' ? custom : builtinPresetOf(id)) }).deps,
+      { initialWorkspaces: [defaultWorkspace('/w/proj')] },
+    )
+    const wsId = store2.getState().workspaces[0]!.id
+    await store2.spawnFromPreset('fixed-cwd', wsId)
+    expect((store2.getState().threads[0] as TerminalThread).cwd).toBe('/preset/dir')
+    await store2.spawnFromPreset('shell')
+    expect((store2.getState().threads[1] as TerminalThread).cwd).toBe(process.cwd())
+    expect((store2.getState().threads[1] as TerminalThread).workspaceId).toBeUndefined()
+  })
+
+  test('unknown workspaceId：spawn / createChat / createAcpThread 均抛错', async () => {
+    await expect(store.spawnFromPreset('shell', 'w-void')).rejects.toThrow('unknown workspace')
+    expect(() => store.createChat('w-void')).toThrow('unknown workspace')
+    expect(() => store.createAcpThread('acp-codex', 'Codex', 'w-void')).toThrow('unknown workspace')
+    expect(store.getState().threads).toHaveLength(0)
+  })
+
+  test('createChat/createAcpThread 带归属：workspaceId 落值 + lastSession 更新', () => {
+    const wsId = store.getState().workspaces[1]!.id
+    store.createChat(wsId)
+    const c = store.getState().threads[0]!
+    expect(c.workspaceId).toBe(wsId)
+    expect(store.getState().workspaces[1]!.lastSession).toBe(c.id)
+    expect(store.getState().workspaces[0]!.lastSession).toBeNull()
+  })
+
+  test('activate 归属会话 → lastSession 跟随（含 cycle 路径）；重复 activate 不重复 persist', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    await store.spawnFromPreset('shell', wsId)
+    await store.spawnFromPreset('pi', wsId)
+    const [t1, t2] = store.getState().threads as TerminalThread[]
+    // 激活 t1（经 activate 面而非创建）→ lastSession 回写
+    store.activate({ type: 'thread', id: t1.id })
+    expect(store.getState().workspaces[0]!.lastSession).toBe(t1.id)
+    // cycle 也会更新（activate 单点）
+    store.cycle(1)
+    expect(currentActiveThreadId()).toBe(t2.id)
+    expect(store.getState().workspaces[0]!.lastSession).toBe(t2.id)
+  })
+})
+
+describe('activateWorkspace / close / removeWorkspace', () => {
+  let store: ThreadStore
+  beforeEach(() => {
+    void router.navigate({ to: '/' })
+    store = createThreadStore(makeDeps().deps, {
+      initialWorkspaces: [defaultWorkspace('/w/proj')],
+    })
+  })
+
+  test('activateWorkspace：恢复 lastSession；无/死 lastSession → 回起始页（null）', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    // 无 lastSession → 起始页
+    store.activateWorkspace(wsId)
+    expect(currentActiveThreadId()).toBeNull()
+    // 有 lastSession → 恢复
+    await store.spawnFromPreset('shell', wsId)
+    const tid = currentActiveThreadId()
+    void router.navigate({ to: '/' })
+    store.activateWorkspace(wsId)
+    expect(currentActiveThreadId()).toBe(tid)
+    // 死 id（会话已 close）→ 起始页
+    store.close(tid!)
+    store.activateWorkspace(wsId)
+    expect(currentActiveThreadId()).toBeNull()
+  })
+
+  test('close lastSession 指向的会话 → lastSession 清空（工作区起始页数据面）', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    await store.spawnFromPreset('shell', wsId)
+    const tid = store.getState().threads[0]!.id
+    expect(store.getState().workspaces[0]!.lastSession).toBe(tid)
+    store.close(tid)
+    expect(store.getState().workspaces[0]!.lastSession).toBeNull()
+  })
+
+  test('removeWorkspace：连带 close 归属会话（destroy + 导航兑底）+ 移除行', async () => {
+    const deps = makeDeps()
+    store = createThreadStore(deps.deps, {
+      initialWorkspaces: [defaultWorkspace('/w/a'), defaultWorkspace('/w/b')],
+    })
+    const [wa, wb] = store.getState().workspaces
+    await store.spawnFromPreset('shell', wa!.id)
+    await store.spawnFromPreset('shell', wb!.id)
+    expect(currentActiveThreadId()).toBe('t2') // 后建的 wb 会话 active
+    store.removeWorkspace(wa!.id)
+    expect(deps.destroyed).toEqual([1]) // 仅 wa 的会话销毁
+    expect(store.getState().threads.map((t) => t.id)).toEqual(['t2'])
+    expect(store.getState().workspaces.map((w) => w.id)).toEqual([wb!.id])
+    expect(currentActiveThreadId()).toBe('t2') // active 不在 wa → 不导航
+    // 移除含 active 会话的工作区 → 先导航兑底再清
+    store.removeWorkspace(wb!.id)
+    expect(deps.destroyed).toEqual([1, 2])
+    expect(currentActiveThreadId()).toBeNull()
+    expect(store.getState().threads).toHaveLength(0)
+    expect(store.getState().workspaces).toHaveLength(0)
+  })
+
+  test('removeWorkspace：无会话工作区仅移除行；unknown no-op', () => {
+    const wsId = store.getState().workspaces[0]!.id
+    store.removeWorkspace('w-void')
+    expect(store.getState().workspaces).toHaveLength(1)
+    store.removeWorkspace(wsId)
+    expect(store.getState().workspaces).toHaveLength(0)
   })
 })
