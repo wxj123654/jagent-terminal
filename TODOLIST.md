@@ -31,8 +31,9 @@
 | 3 settings-presets + chat | ✅ 完成（T3.1+T3.2） |
 | 3+ settings-acp-advanced + ACP + 键位编辑 | ✅ 完成（T3+.1–T3+.3） |
 | W 工作区平面迁移 | ✅ W0–W5 完成（含 ctrl-tab PTY 真 bug 修复）|
+| G Git 树（commit graph） | ✅ G1–G3 完成（docs/git-graph.md；只读 graph + workspace tab）|
 
-**当前指针**：→ Phase W 收官 ✅（W0–W5 全完成）· 待办：真窗口手验清单（W3 目录选择 / W4 抽屉+⌘K / W5 ⌘K terminal 在场打字）· Phase W+ 候选项见看板
+**当前指针**：→ Phase G 收官 ✅（G1–G3：只读 Git 图 + workspace tab + 键位；真机视觉验收待用户）· 待办：G4 另立设计（status/commit 面板）；真窗口手验清单（W3/W4/W5 + G 的 Ctrl+Shift+G 与键盘导航）
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -281,6 +282,22 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 
 ---
 
+## Phase G —— Git 树（commit graph；docs/git-graph.md）
+
+- [x] **G1** 数据层：`git/cli.ts`（Bun.spawn 流式 log + LineBuffer + findRepoRoot/showPatch）+ `git/graph.ts`（Zed GraphData::add_commits + to_commit_lines 的 TS 同构移植，含 would_overlap 修正）+ `git/format.ts`（%D 徽章解析 + 相对时间）+ tokens GRAPH_LANE_COLORS 色板
+- [x] **G2** 视图与集成：`git/store.ts`（GitGraphStore：mount 幂等/seq 代际/patch 时序丢弃）+ `git/graphSvg.ts`（行内 lane 几何 → 按色分组 svg）+ `git/components/GitGraphView.tsx`（工具条/虚拟列表/diff 详情列）+ `plane/WorkspacePage.tsx`（起始页/Git 图 tab）+ workspaces.paneTab 持久化 + keybindings（Ctrl+Shift+G + gitGraphKey 无修饰层 ↑↓/Enter/Esc/R）
+- [x] **G3** 打磨：视口跟随（ref 拿 virtual-list id + scrollToItem seam 注入链 App→Pane→WorkspacePage→GitGraphView）；6 万提交合成压测 0.02s/37.5MB heap/maxLanes=2/零 UNSET 残留；本仓真进程冒烟（流式 chunk/字段形状/顺序不变量）
+
+### Phase G 结论区
+
+- **不 vendor Zed crates**（6.5 万行 Rust 拖半棵依赖树且 UI 是 gpui-Rust）：拿三样——`git log --format=%H%x00%P%x00%D...` + --date-order 流式 chunk 512、lane 状态机逐行移植、光学参数。TS 层 Bun.spawn 直调 git CLI，native/Rust 零改动（D1）。
+- **gpuix 事实**：`<svg>` 单色叶子（每色一个 source 叠放，stroke=currentColor）；`<canvas>` 只有元素名无实现；`<diff>`/`<code>`/`<anchored>`/`<virtual-list>` 白捡；virtual-list 行由 gpui list 内部渲染，TestRenderer 拿不到行 bounds（nativeSimulateClick 不可达，点击管线真机验证）。
+- **useSyncExternalStore 纪律再次生效**：selector 返回对象字面量 → Maximum update depth exceeded（DiffDetail 初版踩坑，已改整 state + 现算）。
+- 合成压测两版拓扑错误（游离提交/sha 冲突）曾伪装成算法 bug——最小复现（10 提交 merge）先证算法正确再修数据。
+- 全绿：typecheck + fmt + lint + app 240（新增 graph 11 / format 2+ / cli 12 / store 9 / graphSvg 5 / GitGraphView 3 / keybindings 4）。
+
+---
+
 ## 会话日志（每 session 追加一行：日期 · 做了什么 · 下一步）
 
 - 2026-09-02 · 四份契约文档定稿（architecture.md 签名级）；TODOLIST.md 创建 · 下一步：Phase 0 T0.1
@@ -313,4 +330,6 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-06 · **W2 完成（侧栏 UI）**：Sidebar 改工作区分组树（WorkspaceList：WorkspaceGroup 行[箭头 toggle 不激活/点行恢复 lastSession/双击 rename/hover 移除] + ThreadRow indent 缩进 + 空工作区引导 + AddWorkspaceForm 内联表单）· ToolMenu（NewThreadButton 演化：目标工作区头 name+cwd + 预设/New Chat/ACP 全带 workspaceId）· 搜索（searchThreads 四路命中 + 结果行 suffix 工作区名）· uSES 快照稳定性坑（selector 新数组炸 → 稳定引用 + 渲染期现算）· e2e 迁移（装配默认工作区 + spawn 归属 + 菜单 testId）· WorkspaceList.test 9 + searchThreads 2 新增；app 166 + e2e 12 全绿 · 下一步：W3 目录选择 seam
 - 2026-09-06 · **W3 完成（目录选择 seam）**：gpuix 盘点零 dialog 导出 → packages/native/picker.rs 自建（mac NSOpenPanel 主线程模态 / win IFileOpenDialog detached STA；TSF NonBlocking 防 JS 线程死锁；windows crate features 零新增）· prop 注入链 main→App→Sidebar→WorkspaceList→AddWorkspaceForm（未注入隐藏按钮）· 浏览后填 path+空名自动 basename · WorkspaceList.test +1（fake picker 全路径）· app 167 + e2e 12 + cargo 37 全绿 · NSOpenPanel 真交互待用户真机验收 · 下一步：W4（⌘K/Ctrl-K + Esc 层级 + 窄窗口抽屉）
 - 2026-09-06 · **W4 完成（空态与键盘）**：keybindings 增 searchThreads（⌘K/Ctrl-K 聚焦侧栏搜索；keystrokeMatches 扩 cmd 语法；设置面不劫持；platform 修饰不写 PTY 零冲突）· Esc 层级定稿（编辑态→清 query→关抽屉→no-op；无元素级 blur API）· 窄窗口抽屉 760px（useWindowSize + 树序后画覆盖层 + 汉堡钮 Icon menu + scrim/Esc 关）· KeyCap 捕获格支持 cmd-· keybindings.test 5 + AgentPlane.test 3 · app 175 + e2e 12 全绿 · 下一步：W5（工作区面 e2e 收口）
+- 2026-09-10 · **Phase G 完成（Git 树只读 graph）**：调研 Zed git 三层（git CLI 数据层/git_store 协调层/git_ui 视图层 6.5 万行）→ 设计 docs/git-graph.md（用户拍板 workspace 内 tab + 一期只读）→ 落地 G1 数据层（cli.ts 流式 Bun.spawn + graph.ts lane 状态机同构移植 + format.ts）→ G2 视图（GitGraphStore/graphSvg 按色分组 svg/GitGraphView + WorkspacePage tab + workspaces.paneTab + Ctrl+Shift+G 与 gitGraphKey 键位层）→ G3 打磨（scrollToItem 视口跟随 seam 链、6 万提交压测 0.02s/maxLanes=2/零残留）· 全绿 typecheck/fmt/lint/app 240 · 坑：DiffDetail selector 对象字面量炸 uSES（改整 state）；合成数据拓扑错曾伪装算法 bug（最小复现先证清白）；TestRenderer 拿不到 virtual-list 行 bounds（点击管线真机验）· 下一步：用户真机验收（Ctrl+Shift+G → Git 图 tab），G4 status/commit 另立设计
+- 2026-09-10 · **Phase G 视觉自验收官**：TestRenderer captureScreenshot 两轮（graph + 选中详情）· **重大发现：gpuix `<virtual-list>`/`<diff scroll>` 列表元素不吃 flexGrow/absolute 对边拉伸，只认显式 height**（A–E 五组对照实验锁定；chat 的 ConversationView 消息区同构同病，真窗口行为待用户验证）· 修复：列表高度 = useWindowSize() 减已知 chrome（顶栏/tab 条/工具条/错误条），行宽 = 窗口宽 − 详情列，diff 体同理 · 详情列 `<diff>` 在 TestRenderer 不绘制（native custom element 同 markdown 限制）→ 一期自绘 DiffBody（逐行着色，文件头 muted/@@ accent/+绿/−红，---/+++ 前缀判断须先于 -/+）· lane 几何/merge 曲线/main 徽章/选中高亮/三列对齐截图全过 · 排障教训：连续 python 字符串补丁错位导致「实验状态漂移」（A–E 的 style 残留叠加），5 轮黑屏假象；二分时先核对文件实际状态再改 · app 240 + e2e 17 + typecheck + lint + fmt 全绿 · 待用户真机：Ctrl+Shift+G 实测 + chat 消息区是否同样需要高度修复
 - 2026-09-06 · **W5 完成（e2e 收口，Phase W 收官）**：原型清单全项对齐（草稿保留=PTY retain 不移植；工具筛选本轮补 ToolMenu 筛选框）· e2e 12→17（Phase W describe：归属/cycle/恢复/移除/⌘K 路由）· **ctrl-tab 真 bug 修复**（终端聚焦时被当 \\t 写 PTY → 会话切换失效；input.rs ctrl+tab 返 None 透传 root；cargo 38）· removeWorkspace 语义定稿（回起始页）· 已知问题记录：terminal 在场 GPUI 焦点帧后抢回（TestRenderer programmatic focus+打字丢键；真窗口待手验）· app 177 + e2e 17 全绿

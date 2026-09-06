@@ -31,6 +31,8 @@ export const COLORS = {
   accentSoft: 'rgba(97, 175, 239, 0.15)',
   /** 自定义徽章青（原型 --cyan） */
   cyan: '#56b6c2',
+  /** 琥珀（git tag 徽章 / lane 色板同源） */
+  amber: '#e5c07b',
   terminalKind: '#98c379',
   acpKind: '#c678dd',
   bell: '#e06c75',
@@ -39,6 +41,18 @@ export const COLORS = {
   /** exited 行：整行压灰（含文字） */
   exited: '#4b5262',
 } as const
+
+/** git graph lane 色板（docs/git-graph.md §3.2）：8 色轮转，One Dark 调和 */
+export const GRAPH_LANE_COLORS = [
+  '#61afef', // accent 蓝
+  '#98c379', // 绿
+  '#c678dd', // 紫
+  '#e5c07b', // 琥珀
+  '#56b6c2', // 青
+  '#e06c75', // 红
+  '#d19a66', // 橙
+  '#be5046', // 砖红
+] as const
 
 export const SIZES = {
   sidebarWidth: 248,

@@ -10,6 +10,7 @@
 
 import { useWindowSize } from '@gpuix/react'
 import { useEffect, useState } from 'react'
+import type { GitGraphStore } from '../git/store'
 import { useActiveTarget } from '../router'
 import type { SettingsStore } from '../settings/store'
 import type { ThreadStore } from '../threads/store'
@@ -48,12 +49,18 @@ export function App({
   settings,
   windowControls,
   pickDirectory,
+  gitStore,
+  scrollToItem,
 }: {
   store: ThreadStore
   settings: SettingsStore
   windowControls?: WindowControls
   /** 原生目录选择（W3；main.tsx 包装 native pickDirectory；缺省隐藏「浏览…」） */
   pickDirectory?: DirectoryPicker
+  /** Git 图 store（git-graph.md §4.2；装配层单例，测试可注假 deps） */
+  gitStore: GitGraphStore
+  /** 键盘导航视口跟随（renderer.scrollToItem；装配层注入） */
+  scrollToItem?: (elementId: number, index: number) => void
 }) {
   const title = useTitle(store)
   // 窄窗口抽屉（W4）：useWindowSize poll 100ms（TestRenderer 无窗口面时
@@ -82,7 +89,15 @@ export function App({
       dialog={dialogOpener}
     />
   )
-  const pane = <Pane store={store} settings={settings} dialog={dialogOpener} />
+  const pane = (
+    <Pane
+      store={store}
+      settings={settings}
+      dialog={dialogOpener}
+      gitStore={gitStore}
+      scrollToItem={scrollToItem}
+    />
+  )
   return (
     <div
       style={{

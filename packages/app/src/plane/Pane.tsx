@@ -10,6 +10,7 @@
  * kind——不进混排列表、不进 History）。
  */
 
+import type { GitGraphStore } from '../git/store'
 import { useActiveTarget } from '../router'
 import type { SettingsStore } from '../settings/store'
 import { EmptyPresets } from '../surfaces/EmptyPresets'
@@ -18,17 +19,23 @@ import { SettingsView } from '../surfaces/SettingsView'
 import type { ThreadStore } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
 import type { DialogOpener } from './DialogHost'
-import { WorkspaceEmpty } from './WorkspaceEmpty'
+import { WorkspacePage } from './WorkspacePage'
 
 export function Pane({
   store,
   settings,
   dialog,
+  gitStore,
+  scrollToItem,
 }: {
   store: ThreadStore
   settings: SettingsStore
   /** 弹窗入口（W7）：起始页「选择其他工具」 */
   dialog: DialogOpener
+  /** Git 图 store（git-graph.md §4.2；装配层单例注入） */
+  gitStore: GitGraphStore
+  /** 键盘导航视口跟随（renderer.scrollToItem；透传） */
+  scrollToItem?: (elementId: number, index: number) => void
 }) {
   const active = useActiveTarget()
   const thread = useThreadStore(store, (s) =>
@@ -41,7 +48,16 @@ export function Pane({
   if (active?.type === 'workspace') {
     const ws = store.getState().workspaces.find((w) => w.id === active.id)
     if (ws)
-      return <WorkspaceEmpty store={store} settings={settings} workspace={ws} dialog={dialog} />
+      return (
+        <WorkspacePage
+          store={store}
+          settings={settings}
+          workspace={ws}
+          dialog={dialog}
+          gitStore={gitStore}
+          scrollToItem={scrollToItem}
+        />
+      )
   }
   if (!thread) {
     // 空态预设卡：spawn 进第一个工作区（无工作区则不归属——防御；正常装配

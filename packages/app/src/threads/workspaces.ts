@@ -32,6 +32,8 @@ export type Workspace = {
   expanded: boolean
   /** 上次打开的 thread id（activate 归属会话时更新；close 该会话清空） */
   lastSession: string | null
+  /** 工作区内 tab（git-graph.md §4.1）：'home' = 起始页/会话，'git' = Git 图 */
+  paneTab: 'home' | 'git'
   createdAt: number
 }
 
@@ -43,6 +45,7 @@ const WorkspaceSchema = z.object({
   path: z.string().catch(''),
   expanded: z.boolean().catch(true),
   lastSession: z.string().nullable().catch(null),
+  paneTab: z.enum(['home', 'git']).catch('home'),
   createdAt: z.number().catch(0),
 })
 
@@ -98,6 +101,7 @@ export function defaultWorkspace(path: string, now: number = Date.now()): Worksp
     path,
     expanded: true,
     lastSession: null,
+    paneTab: 'home',
     createdAt: now,
   }
 }

@@ -152,6 +152,8 @@ export interface ThreadStore {
   activateWorkspace(id: string): void
   /** 展开/收起分组（持久化，不导航） */
   toggleWorkspaceExpanded(id: string): void
+  /** 工作区内 tab（git-graph.md §4.1）：'home'/'git'；持久化，不导航 */
+  setWorkspacePaneTab(id: string, tab: 'home' | 'git'): void
   /** 装配层专用：native → store（经 events.ts 窄化后的判别联合） */
   onSessionEvent(e: TerminalSessionEvent): void
 }
@@ -355,6 +357,7 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
         path,
         expanded: true,
         lastSession: null,
+        paneTab: 'home',
         createdAt: Date.now(),
       }
       set((s) => {
@@ -406,6 +409,14 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
       set((s) => {
         const ws = s.workspaces.find((w) => w.id === id)
         if (ws) ws.expanded = !ws.expanded
+      })
+      persist()
+    },
+
+    setWorkspacePaneTab(id, tab) {
+      set((s) => {
+        const ws = s.workspaces.find((w) => w.id === id)
+        if (ws && ws.paneTab !== tab) ws.paneTab = tab
       })
       persist()
     },

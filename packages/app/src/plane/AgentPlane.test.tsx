@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
+import { createGitGraphStore } from '../git/store'
 import { createGlobalKeydown } from '../keybindings'
 import { memoryAdapter } from '../settings/file'
 import { createSettingsStore, type SettingsStore } from '../settings/store'
@@ -44,7 +45,7 @@ function setup(width: number): { store: ThreadStore; settings: SettingsStore } {
     initialWorkspaces: [defaultWorkspace('/w/x')],
   })
   t = createTestRoot({ width, height: 700 })
-  t.render(createElement(App, { store, settings }))
+  t.render(createElement(App, { store, settings, gitStore: createGitGraphStore() }))
   t.renderer.flush()
   return { store, settings }
 }
@@ -129,7 +130,7 @@ describe('AgentPlane：⌘K/Ctrl-K 聚焦搜索 → 打字 → Esc（无 termina
       clearEscConsumed: () => {},
       keys: () => settings.get().keybindings,
     })
-    t.render(createElement(App, { store, settings }))
+    t.render(createElement(App, { store, settings, gitStore: createGitGraphStore() }))
     t.renderer.flush()
     await until2(() => sidebarKeyboard.searchInputId() != null)
 

@@ -49,6 +49,7 @@ describe('workspaces: parseWorkspaceState（state.json 读盘容错）', () => {
       path: '/a/b',
       expanded: false,
       lastSession: 't3',
+      paneTab: 'home',
       createdAt: 42,
     })
     expect(ws[1]?.expanded).toBe(true)

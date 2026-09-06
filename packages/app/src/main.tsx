@@ -21,6 +21,7 @@ import {
 } from '@jagent/native'
 
 import { appWindow } from './appWindow'
+import { createGitGraphStore } from './git/store'
 import { createGlobalKeydown } from './keybindings'
 import { App } from './plane/AgentPlane'
 import { dialogKeyboard } from './plane/dialogKeyboard'
@@ -76,6 +77,9 @@ onSessionEvent((_err, e) => {
   if (n) threadStore.onSessionEvent(n)
 })
 
+// ── GitGraphStore（git-graph.md §4.1；单例，mount 跟随 workspace tab）──
+const gitStore = createGitGraphStore()
+
 // ── 窗口（renderer 实例自持：`/` 全局聚焦需要 focusElement 命令面）──
 // 先建 renderer 再接键位层（闭包引用 renderer，声明顺序即初始化顺序）
 const renderer = appWindow.renderer({
@@ -108,6 +112,48 @@ const handleKeyDown = createGlobalKeydown({
     // W7 ⌘K/Ctrl-K：打开搜索会话弹窗（原型语义；原 W4 聚焦侧栏搜索框废弃）
     dialogKeyboard.openSearch()
   },
+  // Git 图键位（git-graph.md §4.3）：激活判定在此（workspace 路由 + paneTab）
+  openGitGraph: () => {
+    const active = activeTargetFromLocation(router.history.location.pathname)
+    const s = threadStore.getState()
+    const wsId =
+      active?.type === 'workspace'
+        ? active.id
+        : active?.type === 'thread'
+          ? s.threads.find((t) => t.id === active.id)?.workspaceId
+          : undefined
+    const id = wsId ?? s.workspaces[0]?.id
+    if (!id) return
+    threadStore.setWorkspacePaneTab(id, 'git')
+    threadStore.activate({ type: 'workspace', id })
+  },
+  gitGraphKey: (key) => {
+    const active = activeTargetFromLocation(router.history.location.pathname)
+    if (active?.type !== 'workspace') return false
+    const ws = threadStore.getState().workspaces.find((w) => w.id === active.id)
+    if (!ws || ws.paneTab !== 'git') return false
+    switch (key) {
+      case 'down':
+      case 'arrowdown':
+        gitStore.moveSelection(1)
+        return true
+      case 'up':
+      case 'arrowup':
+        gitStore.moveSelection(-1)
+        return true
+      case 'enter':
+        // 选中态即详情打开态（↑↓/点击已带），吃掉防透传
+        return true
+      case 'escape':
+        gitStore.select(null)
+        return true
+      case 'r':
+        gitStore.refresh()
+        return true
+      default:
+        return false
+    }
+  },
   inputFocused: () => inputFocus.any,
   settingsQuery: settingsKeyboard.query,
   escConsumed: settingsKeyboard.escConsumed,
@@ -120,7 +166,9 @@ appWindow.mount(
   <App
     store={threadStore}
     settings={settingsStore}
+    gitStore={gitStore}
     windowControls={windowControls}
+    scrollToItem={(elementId, index) => renderer.scrollToItem(elementId, index)}
     pickDirectory={() =>
       // native 面是回调式（TSF 两参契约）；装配层包装成 Promise（面板可能
       // 长时间开着——macOS runModal 阻塞 JS 线程，resolve 在模态结束后）

@@ -81,6 +81,13 @@ export function createGlobalKeydown(opts: {
   clearEscConsumed: () => void
   /** 聚焦工作区侧栏搜索框（W4 searchThreads；Sidebar ref → 模块态 id） */
   focusThreadSearch: () => void
+  /** Git 图打开时吃无修饰键（↑↓/enter/escape/r）；返回 true = 已消费。
+   *  激活判定在闭包内（workspace 路由 + paneTab==='git'）——非激活必返回 false
+   *  透传（硬约束 2：不吃 vim/claude 按键） */
+  gitGraphKey?: (key: string) => boolean
+  /** Ctrl+Shift+G（git-graph.md §4.3）：当前工作区切 Git 图 tab。一期硬编码
+   *  不进 settings.keybindings（T3+.2 四动作之外） */
+  openGitGraph?: () => void
   /** 键位真值（默认 DEFAULT_KEYBINDINGS；装配层注入 settings 读取——即时生效） */
   keys?: () => Keybindings
 }): GlobalKeydown {
@@ -94,6 +101,8 @@ export function createGlobalKeydown(opts: {
     escConsumed,
     clearEscConsumed,
     closeSettings,
+    gitGraphKey,
+    openGitGraph,
     keys,
   } = opts
   const kb = (): Keybindings => keys?.() ?? DEFAULT_KEYBINDINGS
@@ -118,6 +127,8 @@ export function createGlobalKeydown(opts: {
       focusThreadSearch()
       return
     }
+    // Git 图表面键（无修饰；非激活态闭包必返回 false → 透传）
+    if (!ctrl && !inSettings() && gitGraphKey?.(key)) return
     // 修饰键组合层（其余透传）
     if (!ctrl) return
     if (keystrokeMatches(kb().cycleNext, key, ctrl, shift)) {
@@ -129,6 +140,8 @@ export function createGlobalKeydown(opts: {
     } else if (keystrokeMatches(kb().toggleSettings, key, ctrl, shift)) {
       if (inSettings()) closeSettings()
       else store.activate({ type: 'settings' })
+    } else if (ctrl && shift && openGitGraph && key === 'g') {
+      openGitGraph()
     }
   }
 }

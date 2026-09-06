@@ -95,3 +95,84 @@ describe('searchThreads 层（⌘K/Ctrl-K）', () => {
     expect(n).toBe(1)
   })
 })
+
+describe('Git 图键位层（git-graph.md §4.3）', () => {
+  function makeGitHandler(over: {
+    inSettings?: () => boolean
+    gitGraphKey?: (key: string) => boolean
+    openGitGraph?: () => void
+  }) {
+    const calls = { cycle: 0 }
+    const keydown = createGlobalKeydown({
+      store: {
+        cycle: (d: number) => {
+          calls.cycle += d
+        },
+        // biome-ignore lint/suspicious/noExplicitAny: 测试桩
+        activate: (_t: any) => {},
+      },
+      inSettings: over.inSettings ?? (() => false),
+      focusSearch: () => {},
+      focusThreadSearch: () => {},
+      inputFocused: () => false,
+      settingsQuery: () => '',
+      escConsumed: () => false,
+      clearEscConsumed: () => {},
+      closeSettings: () => {},
+      gitGraphKey: over.gitGraphKey,
+      openGitGraph: over.openGitGraph,
+    })
+    return { keydown, calls }
+  }
+
+  test('gitGraphKey 返回 true → 消费（不透传不 cycle）', () => {
+    let eaten = 0
+    const { keydown, calls } = makeGitHandler({
+      gitGraphKey: (key) => {
+        if (key === 'down') {
+          eaten++
+          return true
+        }
+        return false
+      },
+    })
+    keydown('down', false, false)
+    expect(eaten).toBe(1)
+    // 未命中键透传（无修饰键不触发 cycle）
+    keydown('x', false, false)
+    expect(eaten).toBe(1)
+    expect(calls.cycle).toBe(0)
+  })
+
+  test('设置面打开时不吃（gitGraphKey 让位设置面生命周期键）', () => {
+    let n = 0
+    const { keydown } = makeGitHandler({
+      inSettings: () => true,
+      gitGraphKey: () => {
+        n++
+        return true
+      },
+    })
+    keydown('down', false, false)
+    expect(n).toBe(0)
+  })
+
+  test('ctrl-shift-g → openGitGraph（硬编码一期）', () => {
+    let n = 0
+    const { keydown } = makeGitHandler({ openGitGraph: () => (n += 1) })
+    keydown('g', true, true)
+    expect(n).toBe(1)
+    // 无 shift / 无 ctrl / 其他键不触发
+    keydown('g', true, false)
+    keydown('g', false, true)
+    keydown('h', true, true)
+    expect(n).toBe(1)
+  })
+
+  test('未注入 gitGraphKey/openGitGraph 时零影响（e2e 旧布线兼容）', () => {
+    const { keydown, calls } = makeGitHandler({})
+    keydown('down', false, false)
+    keydown('g', true, true)
+    expect(calls.cycle).toBe(0)
+  })
+})
