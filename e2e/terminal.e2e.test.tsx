@@ -30,7 +30,7 @@ import { installTerminalElement, destroyTerminalSession, onSessionEvent } from '
 import { createElement } from 'react'
 import { createGlobalKeydown, type GlobalKeydown } from '../packages/app/src/keybindings'
 import { App } from '../packages/app/src/plane/AgentPlane'
-import { sidebarKeyboard } from '../packages/app/src/plane/sidebarKeyboard'
+import { dialogKeyboard } from '../packages/app/src/plane/dialogKeyboard'
 import {
   currentActiveThreadId,
   router,
@@ -98,7 +98,12 @@ beforeAll(() => {
     // main.tsx render({ onEvent }) 的键位层挂点
     onKeyDown: (e) => {
       keyEvents.push(`${e.modifiers?.ctrl ? 'ctrl-' : ''}${e.key}`)
-      handleKeydown(e.key ?? '', e.modifiers?.ctrl ?? false, e.modifiers?.shift ?? false)
+      handleKeydown(
+        e.key ?? '',
+        e.modifiers?.ctrl ?? false,
+        e.modifiers?.shift ?? false,
+        e.modifiers?.cmd ?? false,
+      )
     },
   })
 
@@ -143,8 +148,8 @@ beforeAll(() => {
       if (id != null) t.renderer.focusElement(id)
     },
     focusThreadSearch: () => {
-      const id = sidebarKeyboard.searchInputId()
-      if (id != null) t.renderer.focusElement(id)
+      // W7 ⌘K/Ctrl-K：打开搜索会话弹窗（原型语义；W4 聚焦侧栏搜索框废弃）
+      dialogKeyboard.openSearch()
     },
     inputFocused: () => inputFocus.any,
     settingsQuery: settingsKeyboard.query,
@@ -779,19 +784,18 @@ describe('Phase W e2e: 工作区全链', () => {
   )
 
   test(
-    '⌘K/Ctrl-K 路由端到端：键事件到 root → 聚焦目标存在（terminal 在场不写 PTY）',
+    '⌘K/Ctrl-K 端到端：打开搜索会话弹窗（terminal 在场不写 PTY）',
     async () => {
-      // 已知问题（TODOLIST W5 结论区）：terminal 元素在场时 GPUI 焦点在
-      // 帧渲染后被抢回，programmatic focus + 打字在 TestRenderer 不成立
-      // ——打字进 query 的行为由 AgentPlane.test（无 terminal 场景）锁定。
-      // 这里锁路由层：cmd-k 到 root、focusThreadSearch 有目标、不写 PTY。
-      const sid = () => sidebarKeyboard.searchInputId()
-      await until('sidebar search mounted', () => sid() != null)
-
-      // 平台默认键位走真事件管线（root onKeyDown → handleKeydown）
+      // W7：⌘K → dialogKeyboard.openSearch()（模块态 → AgentPlane DialogHost）
+      // 键事件走真事件管线（root onKeyDown → handleKeydown）
       t.renderer.simulateKeystrokes(process.platform === 'darwin' ? 'cmd-k' : 'ctrl-k')
-      await new Promise((r) => setTimeout(r, 150))
-      expect(sid()).not.toBeNull() // focusThreadSearch 被调用且未抛
+      await until('search dialog visible', () => t.renderer.findByTestId('modal-card') != null)
+      expect(t.renderer.findByTestId('search-dialog-input') != null).toBe(true)
+      // 关闭收尾（X 钮；occlude 挡后续用例）
+      const closeBtn = t.renderer.findByTestId('modal-close')!
+      const cb = t.renderer.getElementBounds(closeBtn.id)!
+      t.renderer.nativeSimulateClick(cb[0] + cb[2] / 2, cb[1] + cb[3] / 2, 0)
+      await until('search dialog closed', () => t.renderer.findByTestId('modal-card') == null)
       // 无 PTY 泄漏：两工作区 shell 会话仍在（未被误关/误写崩溃）
       const terms = store.getState().threads.filter((x) => x.kind === 'terminal')
       expect(terms.length).toBeGreaterThanOrEqual(2)

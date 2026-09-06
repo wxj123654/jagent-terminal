@@ -10,7 +10,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
-import { createElement } from 'react'
+import { createElement, useState } from 'react'
 
 import { currentActiveThreadId, navigateTarget, router } from '../router'
 import { memoryAdapter } from '../settings/file'
@@ -18,6 +18,7 @@ import { createSettingsStore, type SettingsStore } from '../settings/store'
 import { builtinPresetOf } from '../threads/presets'
 import { createThreadStore, type ThreadStore } from '../threads/store'
 import { defaultWorkspace } from '../threads/workspaces'
+import { DialogHost } from './DialogHost'
 import { WorkspaceList } from './WorkspaceList'
 
 let t: TestRoot
@@ -25,6 +26,15 @@ let store: ThreadStore
 let settings: SettingsStore
 let wsA: string // 默认 expanded 工作区
 let wsB: string
+
+/** DialogHost 可控态镜像（测试读取用；真状态在 Harness useState——React
+ *  自调度 rerender。W7 教训：事件回调里手动 root.render 会打断渲染管线，
+ *  后续树渲染成空） */
+let dialogState: { kind: string; workspaceId?: string; threadId?: string } = { kind: 'none' }
+const mirror = (next: typeof dialogState) => {
+  dialogState = next
+  return next
+}
 
 /** query/picker 可变壳（Sidebar 的搜索框态 + main.tsx 的 picker 注入等价） */
 function Harness({
@@ -34,12 +44,37 @@ function Harness({
   query: string
   pickDirectory?: () => Promise<string | null>
 }) {
+  // dialog 状态在组件内（同类型 Harness 跨 t.render 保留——React diff 语义）
+  const [dialog, setDialog] = useState({ kind: 'none' } as typeof dialogState)
+  const open = (next: typeof dialogState) => setDialog(mirror(next))
+  const dialogOpener = {
+    openToolMenu: (workspaceId: string) => open({ kind: 'tool', workspaceId }),
+    openAddWorkspace: () => open({ kind: 'addWorkspace' }),
+    openSearch: () => open({ kind: 'search' }),
+    openManageSession: (threadId: string) => open({ kind: 'manageSession', threadId }),
+  }
   return (
-    <WorkspaceList store={store} settings={settings} query={query} pickDirectory={pickDirectory} />
+    <div
+      style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', minHeight: 0 }}
+    >
+      <WorkspaceList store={store} settings={settings} query={query} dialog={dialogOpener} />
+      {dialog.kind === 'none' ? null : (
+        <DialogHost
+          store={store}
+          settings={settings}
+          state={dialog as never}
+          setState={(next) => setDialog(mirror(next as typeof dialogState))}
+          pickDirectory={pickDirectory}
+        />
+      )}
+    </div>
   )
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0))
+const renderHarness = (props: { query: string; pickDirectory?: () => Promise<string | null> }) => {
+  t.render(createElement(Harness, props))
+}
 async function until(desc: string, pred: () => boolean, timeoutMs = 3000) {
   const start = Date.now()
   for (;;) {
@@ -49,12 +84,28 @@ async function until(desc: string, pred: () => boolean, timeoutMs = 3000) {
     t.renderer.flush()
   }
 }
+/** 输入框打字：nativeSimulateKeystrokes 自带 focus（keystroke → onChange 链） */
+function typeInto(testId: string, text: string) {
+  const el = t.renderer.findByTestId(testId)
+  if (!el) throw new Error(`element not found: ${testId}`)
+  t.renderer.nativeSimulateKeystrokes(el.id, text)
+  t.renderer.flush()
+}
+
 function clickCenter(testId: string) {
   const el = t.renderer.findByTestId(testId)
   if (!el) throw new Error(`element not found: ${testId}`)
   const b = t.renderer.getElementBounds(el.id)!
   t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2, 0)
   t.renderer.flush()
+}
+
+/** scrim 点击（带 blur 规避：GPUUIX input 聚焦中时 nativeSimulateClick
+ *  到 scrim 的命中被吞——W7 实测；先 blur 再点） */
+/** eslint-disable @typescript-eslint/no-explicit-any -- TestRenderer 无 blur 类型（native 有） */
+function clickScrim() {
+  ;(t.renderer as any).blur?.()
+  clickCenter('modal-scrim')
 }
 
 beforeAll(() => {
@@ -93,7 +144,7 @@ beforeEach(() => {
 
 describe('WorkspaceList：分组树', () => {
   test('两工作区行渲染（name + 展开箭头）；默认展开', async () => {
-    t.render(createElement(Harness, { query: '' }))
+    renderHarness({ query: '' })
     t.renderer.flush()
     await until('workspace rows visible', () => {
       const na = t.renderer.findByTestId(`workspace-name-${wsA}`)
@@ -106,7 +157,7 @@ describe('WorkspaceList：分组树', () => {
 
   test('归属会话行缩进渲染（x 偏移 > 工作区行）', async () => {
     await store.spawnFromPreset('shell', wsA)
-    t.render(createElement(Harness, { query: '' }))
+    renderHarness({ query: '' })
     t.renderer.flush()
     const tid = store.getState().threads[0]!.id
     await until('session row visible', () => t.renderer.findByTestId(`row-${tid}`) != null)
@@ -122,7 +173,7 @@ describe('WorkspaceList：分组树', () => {
   test('箭头 toggle：会话行隐现 + 不激活（路由不动）；点行 = 激活工作区', async () => {
     await store.spawnFromPreset('shell', wsA)
     const tid = store.getState().threads[0]!.id
-    t.render(createElement(Harness, { query: '' }))
+    renderHarness({ query: '' })
     t.renderer.flush()
     await until('session row visible', () => t.renderer.findByTestId(`row-${tid}`) != null)
 
@@ -142,52 +193,57 @@ describe('WorkspaceList：分组树', () => {
     t.renderer.flush()
   })
 
-  test('空工作区引导行（可点开工具菜单；对齐原型「创建第一个会话」）', async () => {
-    t.render(createElement(Harness, { query: '' }))
+  test('空工作区引导行（可点开新建会话弹窗；对齐原型「创建第一个会话」）', async () => {
+    renderHarness({ query: '' })
     t.renderer.flush()
     await until('beta empty hint', () =>
       t.renderer.getAllText().some((s) => s.includes('创建第一个会话')),
     )
-    // 点击引导行 → 打开该工作区的工具菜单（与行 ＋ 同一 menuOpen 链）；
-    // 结尾 pick 一项关闭（occlude 层吞点击，见 TODOLIST 已知问题——
-    // 菜单无外点/Esc 关闭，测试必须自收敛，否则吞掉后续用例的点击）
+    // 点击引导行 → 新建会话弹窗（目标 beta）；pick shell → spawn 归属 +
+    // 弹窗关闭（onClose 单点）
     clickCenter(`workspace-create-first-${wsB}`)
     await until(
-      'tool menu opens from empty-group hint',
-      () => t.renderer.findByTestId('tool-menu-target') != null,
+      'tool dialog opens from empty-group hint',
+      () => t.renderer.findByTestId('modal-card') != null,
     )
+    expect(t.renderer.getAllText().some((s) => s.startsWith('cwd'))).toBe(true)
+    expect(t.renderer.getAllText().some((s) => s === '/w/beta')).toBe(true)
     clickCenter('tool-preset-shell')
-    await until('spawned into beta from empty-group menu', () =>
+    await until('spawned into beta from dialog', () =>
       store.getState().threads.some((x) => x.kind === 'terminal' && x.workspaceId === wsB),
     )
+    await until('dialog closed after pick', () => t.renderer.findByTestId('modal-card') == null)
     const th = store.getState().threads.find((x) => x.kind === 'terminal' && x.workspaceId === wsB)
     store.close(th!.id)
     t.renderer.flush()
+    await new Promise((r) => setTimeout(r, 100))
+    t.renderer.flush()
+    console.log('POST-RENDER: texts=', JSON.stringify(t.renderer.getAllText().slice(0, 6)))
   })
 })
 
-describe('WorkspaceList：＋ 工具菜单', () => {
-  test('菜单打开：目标工作区头（name + path）+ 预设项 + New Chat + ACP agents', async () => {
-    t.render(createElement(Harness, { query: '' }))
+describe('WorkspaceList：＋ 新建会话弹窗（W7 ToolDialog）', () => {
+  test('弹窗打开：目标工作区 cwd + 预设项 + New Chat + ACP agents', async () => {
+    renderHarness({ query: '' })
     t.renderer.flush()
     clickCenter(`new-menu-${wsA}`)
-    await until('menu target visible', () => t.renderer.findByTestId('tool-menu-target') != null)
+    await until('dialog visible', () => t.renderer.findByTestId('modal-card') != null)
     // 目标头含 cwd（mono 路径）
     expect(t.renderer.getAllText().some((s) => s.includes('/w/alpha'))).toBe(true)
     // 内置预设 + 固定项 + 默认 2 ACP agent
     expect(t.renderer.findByTestId('tool-preset-shell') != null).toBe(true)
     expect(t.renderer.findByTestId('new-chat') != null).toBe(true)
     expect(t.renderer.findByTestId('new-acp-acp-codex') != null).toBe(true)
-    // 收尾关闭（toggle；后续用例自包含打开）
-    clickCenter(`new-menu-${wsA}`)
-    await until('menu closed', () => t.renderer.findByTestId('tool-menu-target') == null)
+    // 遮罩点击关闭（W7：外点关闭回归——W2 anchored 菜单无此路径）
+    clickScrim()
+    await until('dialog closed by scrim click', () => t.renderer.findByTestId('modal-card') == null)
   })
 
-  test('点预设项：spawn 带归属 + 菜单关闭', async () => {
-    t.render(createElement(Harness, { query: '' }))
+  test('点预设项：spawn 带归属 + 弹窗关闭', async () => {
+    renderHarness({ query: '' })
     t.renderer.flush()
     clickCenter(`new-menu-${wsA}`)
-    await until('menu open', () => t.renderer.findByTestId('tool-preset-shell') != null)
+    await until('dialog open', () => t.renderer.findByTestId('tool-preset-shell') != null)
     clickCenter('tool-preset-shell')
     await until('spawned with workspace', () => {
       const th = store.getState().threads.find((x) => x.kind === 'terminal')
@@ -195,16 +251,16 @@ describe('WorkspaceList：＋ 工具菜单', () => {
     })
     const th = store.getState().threads.find((x) => x.kind === 'terminal')!
     expect(th.kind === 'terminal' && th.cwd === '/w/alpha').toBe(true) // cwd 继承
-    await until('menu closed', () => t.renderer.findByTestId('tool-menu-target') == null)
+    await until('dialog closed', () => t.renderer.findByTestId('modal-card') == null)
     store.close(th.id)
     t.renderer.flush()
   })
 
   test('New Chat：createChat 带归属', async () => {
-    t.render(createElement(Harness, { query: '' }))
+    renderHarness({ query: '' })
     t.renderer.flush()
     clickCenter(`new-menu-${wsA}`)
-    await until('menu open', () => t.renderer.findByTestId('new-chat') != null)
+    await until('dialog open', () => t.renderer.findByTestId('new-chat') != null)
     clickCenter('new-chat')
     await until('chat created with workspace', () => {
       const c = store.getState().threads.find((x) => x.kind === 'chat')
@@ -216,30 +272,40 @@ describe('WorkspaceList：＋ 工具菜单', () => {
   })
 })
 
-describe('WorkspaceList：添加工作区', () => {
-  test('表单：路径必填 + 名称空回退 basename + 入列表', async () => {
-    t.render(createElement(Harness, { query: '' }))
+describe('WorkspaceList：添加工作区弹窗（W7 WorkspaceDialog）', () => {
+  test('校验：空/相对路径/重复目录报错；合法 → 入列表 + 弹窗关闭', async () => {
+    renderHarness({ query: '' })
     t.renderer.flush()
     clickCenter('add-workspace')
-    await until('form visible', () => t.renderer.findByTestId('add-workspace-form') != null)
+    await until('dialog visible', () => t.renderer.findByTestId('modal-card') != null)
 
-    // 空 path：submit 无效
-    clickCenter('add-workspace-submit')
+    // 全空：联合报错 + 不入列表
+    clickCenter('modal-action-添加工作区')
+    await until('both-empty error shown', () =>
+      t.renderer.getAllText().some((s) => s.includes('请填写名称或项目目录')),
+    )
     expect(store.getState().workspaces.some((w) => w.path === '/w/gamma')).toBe(false)
 
-    // 输入 path（名称空 → basename）
-    const nameInput = t.renderer.findByTestId('add-workspace-name')!
-    const nb = t.renderer.getElementBounds(nameInput.id)!
-    t.renderer.nativeSimulateClick(nb[0] + 10, nb[1] + 10)
-    t.renderer.simulateKeystrokes('自定义名')
-    const pathInput = t.renderer.findByTestId('add-workspace-path')!
-    const pb = t.renderer.getElementBounds(pathInput.id)!
-    t.renderer.nativeSimulateClick(pb[0] + 10, pb[1] + 10)
-    t.renderer.simulateKeystrokes('/w/gamma')
-    clickCenter('add-workspace-submit')
+    // 仅相对路径：绝对路径报错（name 填了避免联合分支）
+    typeInto('workspace-dialog-name', '临时')
+    typeInto('workspace-dialog-path', 'relative/path')
+    clickCenter('modal-action-添加工作区')
+    await until('absolute error shown', () =>
+      t.renderer.getAllText().some((s) => s.includes('绝对路径')),
+    )
 
+    // 合法：全新弹窗（X 钮关闭重开；scrim 在 input 曾聚焦后命中不可靠——
+    // W7 TestRenderer 已知限制，真窗口不受影响，见 TODOLIST）
+    clickCenter('modal-close')
+    await until('dialog closed', () => t.renderer.findByTestId('modal-card') == null)
+    clickCenter('add-workspace')
+    await until('dialog reopened', () => t.renderer.findByTestId('modal-card') != null)
+    typeInto('workspace-dialog-name', '自定义名')
+    typeInto('workspace-dialog-path', '/w/gamma')
+    clickCenter('modal-action-添加工作区')
     const added = store.getState().workspaces.find((w) => w.path === '/w/gamma')
     expect(added?.name).toBe('自定义名')
+    await until('dialog closed after add', () => t.renderer.findByTestId('modal-card') == null)
     await until(
       'new workspace row visible',
       () => t.renderer.findByTestId(`workspace-${added!.id}`) != null,
@@ -253,11 +319,11 @@ describe('WorkspaceList：搜索态', () => {
   test('query 命中：跨工作区结果行（标题/目录）+ 工作区名标注；无命中空态', async () => {
     await store.spawnFromPreset('shell', wsA) // cwd=/w/alpha
     await store.createChat(wsB) // beta
-    t.render(createElement(Harness, { query: '' }))
+    renderHarness({ query: '' })
     t.renderer.flush()
 
     // 目录命中（alpha）
-    t.render(createElement(Harness, { query: 'alpha' }))
+    renderHarness({ query: 'alpha' })
     t.renderer.flush()
     const shellId = store.getState().threads.find((x) => x.kind === 'terminal')!.id
     await until('search hit by dir', () => t.renderer.findByTestId(`row-${shellId}`) != null)
@@ -266,72 +332,81 @@ describe('WorkspaceList：搜索态', () => {
     expect(t.renderer.findByTestId(`row-${chatId}`)).toBeUndefined()
 
     // 工具命中（Chat）
-    t.render(createElement(Harness, { query: 'chat' }))
+    renderHarness({ query: 'chat' })
     t.renderer.flush()
     await until('search hit by tool', () => t.renderer.findByTestId(`row-${chatId}`) != null)
     expect(t.renderer.findByTestId(`row-${shellId}`)).toBeUndefined()
 
     // 无命中
-    t.render(createElement(Harness, { query: 'zzz-nope' }))
+    renderHarness({ query: 'zzz-nope' })
     t.renderer.flush()
     await until('empty state', () => t.renderer.getAllText().some((s) => s.includes('无匹配会话')))
 
     store.close(shellId)
     store.close(chatId)
+    // 树恢复常驻态（后续用例的 add-workspace 入口行需要）
+    renderHarness({ query: '' })
     t.renderer.flush()
   })
 })
 
-describe('WorkspaceList：浏览…（W3 目录选择）', () => {
+describe('WorkspaceList：浏览…（W3 目录选择，W7 弹窗形态）', () => {
   test('未注入 picker：按钮不渲染；注入后点击 → 填 path + 空名称自动 basename', async () => {
     // 未注入：无按钮
-    t.render(createElement(Harness, { query: '' }))
+    renderHarness({ query: '' })
     t.renderer.flush()
     clickCenter('add-workspace')
-    await until('form visible', () => t.renderer.findByTestId('add-workspace-form') != null)
-    expect(t.renderer.findByTestId('browse-directory')).toBeUndefined()
+    await until('dialog visible', () => t.renderer.findByTestId('modal-card') != null)
+    expect(t.renderer.findByTestId('workspace-dialog-browse')).toBeUndefined()
+    clickCenter('modal-close')
+    await until('closed', () => t.renderer.findByTestId('modal-card') == null)
 
-    // 注入 fake：选择 → path 填入 + name 自动 basename（表单在同构树上保持 open）
+    // 注入 fake：选择 → path 填入 + name 自动 basename
     let resolvePick: (p: string | null) => void = () => {}
     const fake = () =>
       new Promise<string | null>((r) => {
         resolvePick = r
       })
-    t.render(createElement(Harness, { query: '', pickDirectory: fake }))
+    renderHarness({ query: '', pickDirectory: fake })
     t.renderer.flush()
-    expect(t.renderer.findByTestId('browse-directory') != null).toBe(true)
-    clickCenter('browse-directory')
+    clickCenter('add-workspace')
+    await until('dialog visible again', () => t.renderer.findByTestId('modal-card') != null)
+    expect(t.renderer.findByTestId('workspace-dialog-browse') != null).toBe(true)
+    clickCenter('workspace-dialog-browse')
     resolvePick('/w/picked-proj')
     await until('path filled', () => {
-      const el = t.renderer.findByTestId('add-workspace-path')
+      const el = t.renderer.findByTestId('workspace-dialog-path')
       const v = el ? String(t.renderer.getElement(el.id)?.customProps?.value ?? '') : ''
       return v === '/w/picked-proj'
     })
     // 名称空 → basename 自动填
-    const nameEl = t.renderer.findByTestId('add-workspace-name')!
+    const nameEl = t.renderer.findByTestId('workspace-dialog-name')!
     const nameVal = String(t.renderer.getElement(nameEl.id)?.customProps?.value ?? '')
     expect(nameVal).toBe('picked-proj')
 
     // 取消路径：再次浏览取消 → 已填值不动
-    clickCenter('browse-directory')
+    clickCenter('workspace-dialog-browse')
     resolvePick(null)
     await until('idle after cancel', () => true)
-    const pathEl = t.renderer.findByTestId('add-workspace-path')!
+    const pathEl = t.renderer.findByTestId('workspace-dialog-path')!
     expect(String(t.renderer.getElement(pathEl.id)?.customProps?.value ?? '')).toBe(
       '/w/picked-proj',
     )
+    // 收尾关闭（occlude 挡后续用例）
+    clickCenter('modal-close')
+    await until('closed', () => t.renderer.findByTestId('modal-card') == null)
   })
 })
 
-describe('WorkspaceList：工具菜单筛选（W5 原型清单对齐）', () => {
-  test('筛选命中过滤列表；无匹配显示空态；Esc 清空', async () => {
-    t.render(createElement(Harness, { query: '' }))
+describe('WorkspaceList：新建会话弹窗筛选（W7）', () => {
+  test('筛选命中过滤列表；无匹配显示空态', async () => {
+    renderHarness({ query: '' })
     t.renderer.flush()
     clickCenter(`new-menu-${wsA}`)
-    await until('menu open', () => t.renderer.findByTestId('tool-menu-filter') != null)
+    await until('dialog open', () => t.renderer.findByTestId('tool-dialog-filter') != null)
 
     // 输入 she → 只剩 shell（label 命中；其他内置预设名不含）
-    const filterEl = t.renderer.findByTestId('tool-menu-filter')!
+    const filterEl = t.renderer.findByTestId('tool-dialog-filter')!
     t.renderer.nativeSimulateKeystrokes(filterEl.id, 'she')
     await until('filtered', () => {
       const shell = t.renderer.findByTestId('tool-preset-shell')
@@ -341,11 +416,31 @@ describe('WorkspaceList：工具菜单筛选（W5 原型清单对齐）', () => 
 
     // 无命中：空态提示（zzz 不命中任何 label/command）
     t.renderer.nativeSimulateKeystrokes(filterEl.id, 'zzz')
-    await until('empty state', () => t.renderer.getAllText().some((s) => s === '无匹配工具'))
+    await until('empty state', () =>
+      t.renderer.getAllText().some((s) => s.includes('没有匹配工具')),
+    )
 
-    // Esc 清空（层级内消费）→ 列表恢复
-    t.renderer.nativeSimulateKeyDown(filterEl.id, 'escape')
-    await until('restored', () => t.renderer.findByTestId('tool-preset-claude') != null)
-    clickCenter(`new-menu-${wsA}`) // 收尾关闭
+    // 遮罩点击关闭收尾（W7 外点关闭）
+    clickScrim()
+    await until('dialog closed', () => t.renderer.findByTestId('modal-card') == null)
+  })
+})
+
+describe('WorkspaceList：重复目录（W7 收尾用例）', () => {
+  test('重复目录报错（同 path 二次添加）', async () => {
+    renderHarness({ query: '' })
+    t.renderer.flush()
+    clickCenter('add-workspace')
+    await until('dialog visible', () => t.renderer.findByTestId('modal-card') != null)
+    typeInto('workspace-dialog-path', '/w/alpha')
+    const pathEl = t.renderer.findByTestId('workspace-dialog-path')!
+    console.log(
+      'typed value now:',
+      JSON.stringify(String(t.renderer.getElement(pathEl.id)?.customProps?.value ?? '')),
+    )
+    clickCenter('modal-action-添加工作区')
+    await until('dup error shown', () =>
+      t.renderer.getAllText().some((s) => s.includes('此目录已有工作区')),
+    )
   })
 })

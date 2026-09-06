@@ -3,7 +3,7 @@
  *
  * 真 createThreadStore（fake deps + 一个空工作区）+ 默认内置预设。
  * 覆盖：引导文案与快捷列表渲染 · 「新建 pi 会话」spawn 归属 ·
- * 「选择其他工具」打开 ToolMenu（目标工作区头）· 快捷项 spawn 归属。
+ * 「选择其他工具」打开新建会话弹窗（ToolDialog）· 快捷项 spawn 归属。
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
@@ -16,12 +16,52 @@ import { createSettingsStore, type SettingsStore } from '../settings/store'
 import { builtinPresetOf } from '../threads/presets'
 import { createThreadStore, type ThreadStore } from '../threads/store'
 import { defaultWorkspace } from '../threads/workspaces'
+import { DialogHost, type DialogState } from './DialogHost'
 import { WorkspaceEmpty } from './WorkspaceEmpty'
 
 let t: TestRoot
 let store: ThreadStore
 let settings: SettingsStore
 let wsId: string
+/** DialogHost 可控壳：dialogState 驱动四类弹窗（本测试只用 tool） */
+let dialogState: DialogState = { kind: 'none' }
+
+function Harness() {
+  const ws = store.getState().workspaces[0]!
+  return (
+    <div
+      style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', minHeight: 0 }}
+    >
+      <WorkspaceEmpty
+        store={store}
+        settings={settings}
+        workspace={ws}
+        dialog={{
+          openToolMenu: (workspaceId) => {
+            dialogState = { kind: 'tool', workspaceId }
+            rerender()
+          },
+          openAddWorkspace: () => {},
+          openSearch: () => {},
+          openManageSession: () => {},
+        }}
+      />
+      <DialogHost
+        store={store}
+        settings={settings}
+        state={dialogState}
+        setState={(next) => {
+          dialogState = next
+          rerender()
+        }}
+        pickDirectory={undefined}
+      />
+    </div>
+  )
+}
+/** 同一 root 重复 render = rerender（createTestRoot.render 即 root.render） */
+let rerender = () => t.render(createElement(Harness))
+const mount = () => rerender()
 
 const flush = () => new Promise((r) => setTimeout(r, 0))
 async function until(desc: string, pred: () => boolean, timeoutMs = 3000) {
@@ -75,13 +115,7 @@ beforeEach(() => {
 
 describe('WorkspaceEmpty：工作区起始页', () => {
   test('引导渲染：工作区名 + path + pi 主按钮 + 其余预设快捷行', async () => {
-    t.render(
-      createElement(WorkspaceEmpty, {
-        store,
-        settings,
-        workspace: store.getState().workspaces[0]!,
-      }),
-    )
+    mount()
     t.renderer.flush()
     await until('empty page visible', () =>
       t.renderer.getAllText().some((s) => s.includes('这个工作区还没有会话')),
@@ -95,13 +129,7 @@ describe('WorkspaceEmpty：工作区起始页', () => {
   })
 
   test('「新建 pi 会话」→ spawnFromPreset(pi, ws) + 激活', async () => {
-    t.render(
-      createElement(WorkspaceEmpty, {
-        store,
-        settings,
-        workspace: store.getState().workspaces[0]!,
-      }),
-    )
+    mount()
     t.renderer.flush()
     await until(
       'pi button visible',
@@ -115,29 +143,21 @@ describe('WorkspaceEmpty：工作区起始页', () => {
     expect(store.getState().lastUsedPreset).toBe('pi')
   })
 
-  test('「选择其他工具」→ ToolMenu 打开（目标工作区头）', async () => {
-    t.render(
-      createElement(WorkspaceEmpty, {
-        store,
-        settings,
-        workspace: store.getState().workspaces[0]!,
-      }),
-    )
+  test('「选择其他工具」→ 新建会话弹窗（ToolDialog；W7 形态）', async () => {
+    mount()
     t.renderer.flush()
     await until(
       'more-tools visible',
       () => t.renderer.findByTestId(`workspace-more-tools-${wsId}`) != null,
     )
     clickCenter(`workspace-more-tools-${wsId}`)
-    await until(
-      'tool menu target visible',
-      () => t.renderer.findByTestId('tool-menu-target') != null,
-    )
-    // 菜单内 pick 一项 → onClose 关菜单 + spawn 归属（选择路径）
+    await until('tool dialog visible', () => t.renderer.findByTestId('modal-card') != null)
+    // 弹窗内 pick 一项 → onClose 关闭 + spawn 归属（选择路径）
     clickCenter('tool-preset-shell')
-    await until('shell spawned from menu', () =>
+    await until('shell spawned from dialog', () =>
       store.getState().threads.some((x) => x.kind === 'terminal' && x.preset === 'shell'),
     )
+    await until('dialog closed', () => t.renderer.findByTestId('modal-card') == null)
     const fromMenu = store
       .getState()
       .threads.find((x) => x.kind === 'terminal' && x.preset === 'shell')
@@ -147,13 +167,7 @@ describe('WorkspaceEmpty：工作区起始页', () => {
   })
 
   test('快捷项 → spawn 归属（Shell）', async () => {
-    t.render(
-      createElement(WorkspaceEmpty, {
-        store,
-        settings,
-        workspace: store.getState().workspaces[0]!,
-      }),
-    )
+    mount()
     t.renderer.flush()
     await until(
       'shell quick visible',

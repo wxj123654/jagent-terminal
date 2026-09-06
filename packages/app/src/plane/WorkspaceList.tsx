@@ -22,10 +22,9 @@ import type { ThreadStore } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
 import { searchThreads } from '../threads/workspaces'
 import { Icon } from '../ui/Icon'
-import { TextInput } from '../ui/TextInput'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
+import type { DialogOpener } from './DialogHost'
 import { ThreadRow } from './ThreadRow'
-import { ToolMenu } from './ToolMenu'
 
 /** 会话行在分组下的缩进（视觉分组） */
 const SESSION_INDENT = 12
@@ -37,12 +36,13 @@ export function WorkspaceList({
   store,
   settings,
   query,
-  pickDirectory,
+  dialog,
 }: {
   store: ThreadStore
   settings: SettingsStore
   query: string
-  pickDirectory?: DirectoryPicker
+  /** 弹窗入口（W7）：行 ＋ / 空组引导 → 新建会话弹窗；底部 → 添加工作区弹窗 */
+  dialog: DialogOpener
 }) {
   const workspaces = useThreadStore(store, (s) => s.workspaces)
   const trimmed = query.trim()
@@ -53,9 +53,9 @@ export function WorkspaceList({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, overflowY: 'scroll' }}>
       {workspaces.map((ws) => (
-        <WorkspaceGroup key={ws.id} store={store} settings={settings} workspaceId={ws.id} />
+        <WorkspaceGroup key={ws.id} store={store} workspaceId={ws.id} dialog={dialog} />
       ))}
-      <AddWorkspaceForm store={store} pickDirectory={pickDirectory} />
+      <AddWorkspaceEntry onOpen={() => dialog.openAddWorkspace()} />
     </div>
   )
 }
@@ -64,12 +64,12 @@ export function WorkspaceList({
 
 function WorkspaceGroup({
   store,
-  settings,
   workspaceId,
+  dialog,
 }: {
   store: ThreadStore
-  settings: SettingsStore
   workspaceId: string
+  dialog: DialogOpener
 }) {
   const ws = useThreadStore(store, (s) => s.workspaces.find((w) => w.id === workspaceId))
   // 会话 id 串（顺序/增删粒度）；行内容 ThreadRow 自订
@@ -79,7 +79,6 @@ function WorkspaceGroup({
       .map((t) => t.id)
       .join(','),
   )
-  const [menuOpen, setMenuOpen] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [draft, setDraft] = useState('')
   const [hovered, setHovered] = useState(false)
@@ -215,16 +214,16 @@ function WorkspaceGroup({
         >
           {sessions.length}
         </text>
-        {/* ＋：工具菜单（目标工作区；抑制行激活） */}
+        {/* ＋：新建会话弹窗（目标工作区；抑制行激活） */}
         <div
           tabIndex={0}
           testId={`new-menu-${ws.id}`}
           onClick={() => {
             skipRow.current = true
-            setMenuOpen(!menuOpen)
+            dialog.openToolMenu(ws.id)
           }}
           onKeyDown={(e) => {
-            if (e.key === 'enter' || e.key === 'space') setMenuOpen(!menuOpen)
+            if (e.key === 'enter' || e.key === 'space') dialog.openToolMenu(ws.id)
           }}
           style={{
             display: 'flex',
@@ -263,19 +262,16 @@ function WorkspaceGroup({
         ) : null}
       </div>
 
-      {menuOpen ? (
-        <ToolMenu
-          store={store}
-          settings={settings}
-          workspace={ws}
-          onClose={() => setMenuOpen(false)}
-        />
-      ) : null}
-
       {ws.expanded ? (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           {sessions.map((id) => (
-            <ThreadRow key={id} id={id} store={store} indent={SESSION_INDENT} />
+            <ThreadRow
+              key={id}
+              id={id}
+              store={store}
+              indent={SESSION_INDENT}
+              onManage={dialog.openManageSession}
+            />
           ))}
           {sessions.length === 0 ? (
             /* 空组引导（原型 empty-group）：可点按钮直接开工具菜单，
@@ -283,9 +279,9 @@ function WorkspaceGroup({
             <div
               tabIndex={0}
               testId={`workspace-create-first-${ws.id}`}
-              onClick={() => setMenuOpen(true)}
+              onClick={() => dialog.openToolMenu(ws.id)}
               onKeyDown={(e) => {
-                if (e.key === 'enter' || e.key === 'space') setMenuOpen(true)
+                if (e.key === 'enter' || e.key === 'space') dialog.openToolMenu(ws.id)
               }}
               style={{
                 display: 'flex',
@@ -318,226 +314,44 @@ function WorkspaceGroup({
   )
 }
 
-// ── 添加工作区（内联表单；「浏览…」目录选择 = W3）───────────────────
+// ── 添加工作区（入口行；表单 = W7 添加工作区弹窗）──────────────────
 
-function AddWorkspaceForm({
-  store,
-  pickDirectory,
-}: {
-  store: ThreadStore
-  pickDirectory?: DirectoryPicker
-}) {
-  const [open, setOpen] = useState(false)
-  const [name, setName] = useState('')
-  const [path, setPath] = useState('')
-  const [picking, setPicking] = useState(false)
-
-  /** 「浏览…」：原生目录选择 → 填 path +（名称空时）自动填 basename（原型契约） */
-  const browse = () => {
-    if (!pickDirectory || picking) return
-    setPicking(true)
-    pickDirectory()
-      .then((picked) => {
-        if (picked) {
-          setPath(picked)
-          if (!name.trim()) {
-            const base = picked.split(/[\\/]/).filter(Boolean).pop()
-            if (base) setName(base)
-          }
-        }
-      })
-      .finally(() => setPicking(false))
-  }
-
-  const submit = () => {
-    if (!path.trim()) return // 目录必填；名称空 → basename 兜底（store 单点）
-    store.addWorkspace(name.trim(), path.trim())
-    setOpen(false)
-    setName('')
-    setPath('')
-  }
-
-  if (!open) {
-    return (
-      <div
-        tabIndex={0}
-        testId="add-workspace"
-        onClick={() => setOpen(true)}
-        onKeyDown={(e) => {
-          if (e.key === 'enter' || e.key === 'space') setOpen(true)
-        }}
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 6,
-          height: 26,
-          marginTop: 4,
-          marginBottom: 4,
-          marginLeft: SIZES.rowMarginX,
-          marginRight: SIZES.rowMarginX,
-          paddingLeft: 4 + 16 + 12,
-          borderRadius: SIZES.rowRadius,
-          cursor: 'pointer',
-          hover: { backgroundColor: COLORS.surface },
-        }}
-      >
-        <Icon name="plus" size={11} color={COLORS.muted} />
-        <text
-          style={{
-            fontSize: 11,
-            fontFamily: FONT.ui,
-            color: COLORS.muted,
-            pointerEvents: 'none',
-          }}
-        >
-          添加工作区
-        </text>
-      </div>
-    )
-  }
-
+function AddWorkspaceEntry({ onOpen }: { onOpen: () => void }) {
   return (
     <div
-      testId="add-workspace-form"
+      tabIndex={0}
+      testId="add-workspace"
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'enter' || e.key === 'space') onOpen()
+      }}
       style={{
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: 'row',
+        alignItems: 'center',
         gap: 6,
-        marginTop: 6,
+        height: 26,
+        marginTop: 4,
+        marginBottom: 4,
         marginLeft: SIZES.rowMarginX,
         marginRight: SIZES.rowMarginX,
-        paddingLeft: 8,
-        paddingRight: 8,
-        paddingTop: 8,
-        paddingBottom: 8,
-        backgroundColor: COLORS.surface,
-        borderRadius: 6,
+        paddingLeft: 4 + 16 + 12,
+        borderRadius: SIZES.rowRadius,
+        cursor: 'pointer',
+        hover: { backgroundColor: COLORS.surface },
       }}
     >
-      <text style={{ fontSize: 10, fontFamily: FONT.ui, color: COLORS.muted }}>
-        名称（空 = 目录名）
-      </text>
-      <TextInput
-        testId="add-workspace-name"
-        value={name}
-        onChange={setName}
-        placeholder="my-project"
-      />
-      <div
+      <Icon name="plus" size={11} color={COLORS.muted} />
+      <text
         style={{
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          fontSize: 11,
+          fontFamily: FONT.ui,
+          color: COLORS.muted,
+          pointerEvents: 'none',
         }}
       >
-        <text style={{ fontSize: 10, fontFamily: FONT.ui, color: COLORS.muted }}>
-          目录（绝对路径）
-        </text>
-        {pickDirectory ? (
-          <div
-            tabIndex={0}
-            testId="browse-directory"
-            onClick={browse}
-            onKeyDown={(e) => {
-              if (e.key === 'enter' || e.key === 'space') browse()
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              height: 16,
-              paddingLeft: 6,
-              paddingRight: 6,
-              borderRadius: 3,
-              cursor: 'pointer',
-              opacity: picking ? 0.5 : 1,
-              hover: { backgroundColor: COLORS.surfaceHover },
-            }}
-          >
-            <text
-              style={{
-                fontSize: 10,
-                fontFamily: FONT.ui,
-                color: COLORS.accent,
-                pointerEvents: 'none',
-              }}
-            >
-              浏览…
-            </text>
-          </div>
-        ) : null}
-      </div>
-      <TextInput
-        testId="add-workspace-path"
-        value={path}
-        onChange={setPath}
-        onSubmit={submit}
-        placeholder="/Users/you/project"
-        mono
-      />
-      <div style={{ display: 'flex', flexDirection: 'row', gap: 6 }}>
-        <div
-          tabIndex={0}
-          testId="add-workspace-submit"
-          onClick={submit}
-          onKeyDown={(e) => {
-            if (e.key === 'enter' || e.key === 'space') submit()
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: 22,
-            paddingLeft: 10,
-            paddingRight: 10,
-            borderRadius: 4,
-            backgroundColor: path.trim() ? COLORS.accent : COLORS.surfaceHover,
-            cursor: path.trim() ? 'pointer' : 'default',
-          }}
-        >
-          <text
-            style={{
-              fontSize: 11,
-              fontFamily: FONT.ui,
-              color: COLORS.textBright,
-              pointerEvents: 'none',
-            }}
-          >
-            添加
-          </text>
-        </div>
-        <div
-          tabIndex={0}
-          testId="add-workspace-cancel"
-          onClick={() => setOpen(false)}
-          onKeyDown={(e) => {
-            if (e.key === 'enter' || e.key === 'space') setOpen(false)
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: 22,
-            paddingLeft: 10,
-            paddingRight: 10,
-            borderRadius: 4,
-            hover: { backgroundColor: COLORS.surfaceHover },
-            cursor: 'pointer',
-          }}
-        >
-          <text
-            style={{
-              fontSize: 11,
-              fontFamily: FONT.ui,
-              color: COLORS.muted,
-              pointerEvents: 'none',
-            }}
-          >
-            取消
-          </text>
-        </div>
-      </div>
+        添加工作区
+      </text>
     </div>
   )
 }

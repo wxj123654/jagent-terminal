@@ -17,9 +17,19 @@ import { getSurface } from '../surfaces/registry'
 import { SettingsView } from '../surfaces/SettingsView'
 import type { ThreadStore } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
+import type { DialogOpener } from './DialogHost'
 import { WorkspaceEmpty } from './WorkspaceEmpty'
 
-export function Pane({ store, settings }: { store: ThreadStore; settings: SettingsStore }) {
+export function Pane({
+  store,
+  settings,
+  dialog,
+}: {
+  store: ThreadStore
+  settings: SettingsStore
+  /** 弹窗入口（W7）：起始页「选择其他工具」 */
+  dialog: DialogOpener
+}) {
   const active = useActiveTarget()
   const thread = useThreadStore(store, (s) =>
     active?.type === 'thread' ? s.threads.find((t) => t.id === active.id) : undefined,
@@ -30,7 +40,8 @@ export function Pane({ store, settings }: { store: ThreadStore; settings: Settin
   // 死 id（工作区已删，removeWorkspace 兑底前的一瞬）→ 落全局空态兜底
   if (active?.type === 'workspace') {
     const ws = store.getState().workspaces.find((w) => w.id === active.id)
-    if (ws) return <WorkspaceEmpty store={store} settings={settings} workspace={ws} />
+    if (ws)
+      return <WorkspaceEmpty store={store} settings={settings} workspace={ws} dialog={dialog} />
   }
   if (!thread) {
     // 空态预设卡：spawn 进第一个工作区（无工作区则不归属——防御；正常装配

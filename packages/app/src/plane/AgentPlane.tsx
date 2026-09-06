@@ -9,14 +9,17 @@
  */
 
 import { useWindowSize } from '@gpuix/react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useActiveTarget } from '../router'
 import type { SettingsStore } from '../settings/store'
 import type { ThreadStore } from '../threads/store'
 import { displayTitle } from '../threads/terminal'
 import { useThreadStore } from '../threads/useThreadStore'
 import { PLATFORM } from '../ui/platform'
+import { ToastHost } from '../ui/Toast'
 import { COLORS, FONT } from '../ui/tokens'
+import { DialogHost, type DialogState } from './DialogHost'
+import { dialogKeyboard } from './dialogKeyboard'
 import { Pane } from './Pane'
 import { Sidebar, SidebarHeader } from './Sidebar'
 import { TitleBar, type WindowControls } from './TitleBar'
@@ -58,15 +61,28 @@ export function App({
   const { width } = useWindowSize()
   const narrow = width < NARROW_BREAKPOINT
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // 弹窗中枢（W7）：四类弹窗单一显示源，入口经 dialog 回调打开。
+  // ⌘K 挂点：装配层 focusThreadSearch → dialogKeyboard.openSearch()
+  const [dialog, setDialog] = useState<DialogState>({ kind: 'none' })
+  const dialogOpener = {
+    openToolMenu: (workspaceId: string) => setDialog({ kind: 'tool', workspaceId }),
+    openAddWorkspace: () => setDialog({ kind: 'addWorkspace' }),
+    openSearch: () => setDialog({ kind: 'search' }),
+    openManageSession: (threadId: string) => setDialog({ kind: 'manageSession', threadId }),
+  }
+  useEffect(() => {
+    dialogKeyboard.register(dialogOpener)
+    return () => dialogKeyboard.register(null)
+  }, [])
   const sidebar = (
     <Sidebar
       store={store}
       settings={settings}
-      pickDirectory={pickDirectory}
       onEscEmpty={narrow ? () => setDrawerOpen(false) : undefined}
+      dialog={dialogOpener}
     />
   )
-  const pane = <Pane store={store} settings={settings} />
+  const pane = <Pane store={store} settings={settings} dialog={dialogOpener} />
   return (
     <div
       style={{
@@ -152,6 +168,16 @@ export function App({
             {pane}
           </>
         )}
+        {/* 弹窗（W7）：全屏遮罩 + 居中卡（deferred 画在一切之上）；
+            Toast 右下角浮条 */}
+        <DialogHost
+          store={store}
+          settings={settings}
+          state={dialog}
+          setState={setDialog}
+          pickDirectory={pickDirectory}
+        />
+        <ToastHost />
       </div>
     </div>
   )

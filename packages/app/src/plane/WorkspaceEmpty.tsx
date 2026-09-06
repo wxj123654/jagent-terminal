@@ -12,29 +12,29 @@
  * 按钮）+ 其余预设快捷行。pi 预设被删时 primary 隐藏（防御，仅菜单）。
  */
 
-import { useState } from 'react'
-
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
 import type { ThreadStore, Workspace } from '../threads/store'
 import { Icon } from '../ui/Icon'
 import { COLORS, FONT } from '../ui/tokens'
-import { ToolMenu } from './ToolMenu'
+import type { DialogOpener } from './DialogHost'
 
 export function WorkspaceEmpty({
   store,
   settings,
   workspace,
+  dialog,
 }: {
   store: ThreadStore
   settings: SettingsStore
   workspace: Workspace
+  /** 弹窗入口（W7）：「选择其他工具」→ 新建会话弹窗 */
+  dialog: DialogOpener
 }) {
   const snap = useSettings(settings)
   const presets = snap.presets.items
   const pi = presets.find((p) => p.id === 'pi')
   const quickPicks = presets.filter((p) => p.id !== 'pi')
-  const [menuOpen, setMenuOpen] = useState(false)
 
   const actionStyle = {
     display: 'flex',
@@ -138,15 +138,14 @@ export function WorkspaceEmpty({
               </text>
             </div>
           ) : null}
-          {/* 「选择其他工具」：anchored 到本容器（按钮 bounds）→ 复用
-              ToolMenu（预设 + New Chat + ACP，全带 workspaceId 归属） */}
+          {/* 「选择其他工具」：W7 起改打开新建会话弹窗（DialogHost 单点） */}
           <div style={{ display: 'flex' }}>
             <div
               tabIndex={0}
               testId={`workspace-more-tools-${workspace.id}`}
-              onClick={() => setMenuOpen((v) => !v)}
+              onClick={() => dialog.openToolMenu(workspace.id)}
               onKeyDown={(e) => {
-                if (e.key === 'enter' || e.key === 'space') setMenuOpen((v) => !v)
+                if (e.key === 'enter' || e.key === 'space') dialog.openToolMenu(workspace.id)
               }}
               style={{
                 ...actionStyle,
@@ -168,14 +167,6 @@ export function WorkspaceEmpty({
               </text>
               <Icon name="chevronDown" size={11} color={COLORS.muted} />
             </div>
-            {menuOpen ? (
-              <ToolMenu
-                store={store}
-                settings={settings}
-                workspace={workspace}
-                onClose={() => setMenuOpen(false)}
-              />
-            ) : null}
           </div>
         </div>
 

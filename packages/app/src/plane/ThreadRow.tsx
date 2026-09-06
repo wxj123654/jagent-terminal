@@ -9,8 +9,8 @@
  * - 标题四级兜底（displayTitle），单行 ellipsis（完整标题 tooltip → Phase 2 ui/Tooltip）
  * - hasBell && 非 active → bell 图标（Phase W 对齐原型 session-state；早期红点形态废弃）
  * - exited → 灰行 + 已退出微标签
- * - 「…」管理菜单：hover/focus/active 可见（键盘可达性，契约 §10）→
- *   重命名 / 移除会话（anchored deferred，画在列表之上）；键盘 Delete 直删保留
+ * - 「…」按钮：hover/focus/active 可见（键盘可达性，契约 §10）→ 打开
+ *   管理会话弹窗（W7 SessionDialog，重命名/移除）；键盘 Delete 直删保留
  * - 双击标题（clickCount===2）→ 行内 rename → customTitle 冻结
  * - active 行左缘 2px accent 指示条（贴行外侧，不占文字宽）
  *
@@ -40,6 +40,7 @@ export function ThreadRow({
   store,
   indent = 0,
   suffix,
+  onManage,
 }: {
   id: string
   store: ThreadStore
@@ -47,12 +48,13 @@ export function ThreadRow({
   indent?: number
   /** 尾部附注（搜索结果行显示工作区名；静默装饰） */
   suffix?: string
+  /** 「…」→ 管理会话弹窗（W7；WorkspaceGroup 传 dialog.openManageSession） */
+  onManage?: (threadId: string) => void
 }) {
   const thread = useThreadStore(store, (s) => s.threads.find((t) => t.id === id))
   const active = useActiveTarget()
   const [hovered, setHovered] = useState(false)
   const [editing, setEditing] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
   const [draft, setDraft] = useState('')
 
   if (!thread) return null
@@ -103,10 +105,7 @@ export function ThreadRow({
         // Esc：管理菜单开 → 先关菜单；编辑态 → 取消
         if (e.key === 'delete' || e.key === 'backspace') store.close(id)
         else if (e.key === 'enter') store.activate({ type: 'thread', id })
-        else if (e.key === 'escape') {
-          if (menuOpen) setMenuOpen(false)
-          else if (editing) setEditing(false)
-        }
+        else if (e.key === 'escape' && editing) setEditing(false)
       }}
       style={{
         position: 'relative',
@@ -233,16 +232,14 @@ export function ThreadRow({
         </text>
       ) : null}
 
-      {/* 「…」管理菜单（对齐原型 session-more：重命名/移除；hover/active
-          可见。anchored 到本行 bounds，deferred 画在列表之上）。键盘等价：
-          双击/F2 语义的重命名保留在行交互，Delete 直删保留 */}
+      {/* 「…」→ 管理会话弹窗（W7）；hover/active 可见（键盘可达性） */}
       {showMenu ? (
         <div
           testId={`manage-thread-${id}`}
           tabIndex={0}
-          onClick={() => setMenuOpen((v) => !v)}
+          onClick={() => onManage?.(id)}
           onKeyDown={(e) => {
-            if (e.key === 'enter' || e.key === 'space') setMenuOpen((v) => !v)
+            if (e.key === 'enter' || e.key === 'space') onManage?.(id)
           }}
           style={{
             display: 'flex',
@@ -260,97 +257,6 @@ export function ThreadRow({
       ) : (
         <div style={{ width: 0, height: 18, flexShrink: 0 }} />
       )}
-
-      {menuOpen ? (
-        <anchored
-          side="bottom"
-          align="end"
-          gap={2}
-          deferred
-          occlude
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            backgroundColor: COLORS.inputBg,
-            borderWidth: 1,
-            borderColor: COLORS.borderSubtle,
-            borderRadius: 6,
-            padding: 4,
-            minWidth: 120,
-          }}
-        >
-          <div
-            tabIndex={0}
-            testId={`rename-thread-${id}`}
-            onClick={() => {
-              setMenuOpen(false)
-              startRename()
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'enter' || e.key === 'space') {
-                setMenuOpen(false)
-                startRename()
-              }
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              height: 24,
-              paddingLeft: 8,
-              paddingRight: 8,
-              borderRadius: 4,
-              cursor: 'pointer',
-              hover: { backgroundColor: COLORS.surface },
-            }}
-          >
-            <text
-              style={{
-                fontSize: 12,
-                fontFamily: FONT.ui,
-                color: COLORS.text,
-                pointerEvents: 'none',
-              }}
-            >
-              重命名
-            </text>
-          </div>
-          <div
-            tabIndex={0}
-            testId={`close-thread-${id}`}
-            onClick={() => {
-              setMenuOpen(false)
-              store.close(id)
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'enter' || e.key === 'space') {
-                setMenuOpen(false)
-                store.close(id)
-              }
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              height: 24,
-              paddingLeft: 8,
-              paddingRight: 8,
-              borderRadius: 4,
-              cursor: 'pointer',
-              hover: { backgroundColor: COLORS.surface },
-            }}
-          >
-            <text
-              style={{
-                fontSize: 12,
-                fontFamily: FONT.ui,
-                color: COLORS.bell,
-                pointerEvents: 'none',
-              }}
-            >
-              移除会话
-            </text>
-          </div>
-        </anchored>
-      ) : null}
     </div>
   )
 }

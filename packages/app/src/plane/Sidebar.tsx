@@ -17,9 +17,10 @@ import { inputFocus } from '../ui/keyboard'
 import type { AppPlatform } from '../ui/platform'
 import { TRAFFIC_LIGHT_WIDTH } from '../ui/platform'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
+import type { DialogOpener } from './DialogHost'
 import { sidebarKeyboard } from './sidebarKeyboard'
 import { useTitleBarDrag, type WindowControls } from './TitleBar'
-import { WorkspaceList, type DirectoryPicker } from './WorkspaceList'
+import { WorkspaceList } from './WorkspaceList'
 
 /**
  * 顶栏左段：AGENT 标识 + 线程切换 hint。mac 上给红绿灯让位（Zed：
@@ -87,14 +88,15 @@ export function SidebarHeader({
 export function Sidebar({
   store,
   settings,
-  pickDirectory,
   onEscEmpty,
+  dialog,
 }: {
   store: ThreadStore
   settings: SettingsStore
-  pickDirectory?: DirectoryPicker
   /** Esc 层级最低层（W4）：query 空 + Esc → 窄窗口抽屉关闭（宽窗口 no-op） */
   onEscEmpty?: () => void
+  /** 弹窗入口（W7）：⌘K 搜索/添加工作区 */
+  dialog: DialogOpener
 }) {
   const [query, setQuery] = useState('')
 
@@ -165,12 +167,7 @@ export function Sidebar({
         />
       </div>
 
-      <WorkspaceList
-        store={store}
-        settings={settings}
-        query={query}
-        pickDirectory={pickDirectory}
-      />
+      <WorkspaceList store={store} settings={settings} query={query} dialog={dialog} />
 
       {/* Footer：设置入口（Ctrl-, 同效，见 main.tsx 键位层） */}
       <div

@@ -35,7 +35,8 @@ export function TextInput({
   /** enter 提交（命令类输入） */
   onSubmit?: (next: string) => void
   testId: string
-  width?: number
+  /** 宽度：数字 = 固定 px；'fill' = 撑满容器（弹窗表单） */
+  width?: number | 'fill'
 }): ReactElement {
   const [focused, setFocused] = useState(false)
 
@@ -45,7 +46,7 @@ export function TextInput({
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
-        width,
+        width: width === 'fill' ? '100%' : width,
         height: 28,
         paddingLeft: 9,
         paddingRight: 9,

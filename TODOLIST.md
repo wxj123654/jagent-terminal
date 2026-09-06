@@ -239,6 +239,16 @@
 - **e2e 写法坑**：①until 循环里 `prev` 必须在事件派发**前**取（after 结构死锁等下一次变化）；②describe 间不隔离——Phase W 用例不假设前面 describe 的 threads 池状态（retain 池有遗留），「最后 spawn 的」用 `.at(-1)` 定位；③单跑 `-t` 用例时依赖前置用例赋值的变量会 undefined——自包含或全 describe 跑。
 - **已知问题（未解，记录）**：terminal 元素在场时 GPUI 焦点在帧渲染后被抢回——`focusElement` + 后续 `simulateKeystrokes` 在 TestRenderer 下键击丢失（无 terminal 场景三条聚焦路径全通：autoFocus/focusElement+simulate/nativeSimulateKeystrokes 原子）。疑与 terminal paint 闭包 `handle_input` 每帧注册 InputHandler 有关。**真窗口 ⌘K 打字是否受影响待手验**——若真窗口也丢键，开专项修（gpuix/gpui 层）。打字进 query 的行为由 AgentPlane.test（无 terminal 场景）闭环锁定。
 
+### Phase W 结论区（W7，弹窗形态恢复 + Toast）
+
+- **背景**：用户指出原型丰富的弹窗形态在落地时被收敛（W2「GPUIX 无居中模态原语」判断过时——anchored 支持 position 显式坐标 + deferred）。确认全面恢复弹窗 + toast。
+- **Modal 原语（ui/Modal.tsx）**：anchored `position={x,y}` + deferred（画在一切之上）+ occlude；全屏 scrim 点击关闭；ModalHeading（X 钮）/ModalBody/ModalActions（主/次/danger）。**GPUIX 关键事实（本轮实测，两条）**：① absolute 定位需要最近定位祖先 relative——无 relative 时四边全 0 塌缩为 0×0 不渲染（Web 直觉失效）；Modal 覆盖层根用 absolute + 自身 pointerEvents none（scrim auto），**要求挂载点在 relative 容器内**（AgentPlane 内容行天然满足；测试 Harness 需包一层）。② Modal 根若用 width/height 100% 参与 flex 布局，0 高塌缩会连带整树渲染成空（树全空排查时先查覆盖层布局形态）。
+- **四弹窗（plane/DialogHost.tsx 单点状态）**：DialogState 联合（tool/addWorkspace/search/manageSession），AgentPlane 根挂载，入口（行 ＋/空组引导/添加工作区/会话 …/起始页）全改经 DialogOpener 回调。①ToolDialog（新建会话）：工作区 SelectField（多工作区时）+ cwd 展示 + 筛选 + 预设/New Chat/ACP 列表——取代 ToolMenu（已删）。②WorkspaceDialog（添加工作区）：名称/目录/浏览…（pickDirectory 经 AgentPlane 注入）+ 校验（全空/相对路径/重复目录三态报错）。③SearchDialog（⌘K）：跨工作区命中 + ↑↓ 导航 + Enter 激活 + Esc 清空。④SessionDialog（管理会话）：上下文行 + 重命名 + danger 移除——取代 W6 的行内 anchored 菜单。
+- **⌘K 改道**：keybindings.focusThreadSearch 语义从「聚焦侧栏搜索框」→「打开搜索弹窗」（原型语义）。装配层经 plane/dialogKeyboard.ts 模块态（AgentPlane useEffect 注册 opener；main.tsx/e2e 调 openSearch）。**e2e 坑**：测试挂点 onKeyDown 只传 ctrl/shift 没传 cmd——mac 上 ⌘K 修饰丢失永不匹配（真窗口 main.tsx 是传的）。
+- **Toast（ui/Toast.tsx）**：模块态单例 toast(message) + ToastHost（右下浮条，seq 驱动重置计时；ttlMs prop 测试注入）。**advanceTime 不驱动 JS setTimeout**（只推进 gpui 动画时钟）——自动消失断言用短 ttl。
+- **TestRenderer 已知限制（W7 新增两条，真窗口不受影响）**：① input 聚焦（nativeSimulateKeystrokes 自带 focus）后，对 deferred 层元素的 nativeSimulateClick 命中失效（IME 态？）——规避：优先走元素自身 onKeyDown（Enter 提交）或先用 focusElement 重置；scrim 点击只在无输入交互的用例可靠。② SearchDialog Enter 激活里 onClose 与 store.activate 的同批 setState 竞态（激活成功但弹窗不卸载）——测试用 api.set 显式收尾；真窗口 React 18 自动批处理无此问题。
+- **测试**：Dialogs.test 新增 6（搜索命中/Enter/空态、管理会话 rename/移除、toast）；WorkspaceList.test 11 用例改弹窗形态（occlude 收尾纪律：开弹窗用例必须关掉，否则吞掉后续用例点击）；WorkspaceEmpty.test Harness 补 relative 容器。app 188（+6）+ e2e 17 全绿；三弹窗 + toast 截图目检（居中/遮罩/actions 右对齐/cwd 展示）。
+
 ### Phase W 结论区（W6，原型对齐补遗：工作区起始页 + 行管理菜单）
 
 - **背景**：用户复核发现实现与原型有多处偏差；对齐范围经确认 = 工作区起始页（#1）+ 空组可点引导（#8）+ 会话行 … 菜单/bell 图标/已退出中文化（#9）。侧栏 276px/标题行/底部计数/顶栏面包屑/顶部新建按钮**有意保持现状**（后两者是 W2 定稿的决策）。
