@@ -109,7 +109,7 @@ crates/jagent-terminal/      终端栈（model/pool/pty/view/view/render）—�
 ## 待执行（动态验证，静态结论 → 数据证实）
 
 - [x] **P1 基础设施**：✅ 2026-09-08 性能 HUD 上线（设置 → 高级 → 性能指标 HUD）：标题栏右上角实时显示绘制帧率/单次 paint 均值与峰值/CPU/RSS（500ms 轮询；crates perf 原子打点 + napi takePaintPerf + ui/PerfHud）。P1 基准可直接用它目测；脚本化采样后续补充
-- [x] **P1 基础设施 v2（整 app 测绘）**：✅ 2026-09-08 HUD 升级为双层数据面——整 app 帧面接 GPUIX 内建 profiler（gpuix-native 依赖 gpui 时已开 `profiler` feature，编译进 .node；`Window::draw` 全程被 WindowProfiler 计时，最近 1000 帧直方图）：`getDebugFrameOverlayStats` 差分 frames 得**整 app 重绘帧率**（build+layout+paint 全树），p90/max 得**整帧耗时**；终端 paint 打点降为子项 `term`（归因面）。同时新增 `advanced.frameOverlay`（GPUIX 屏幕帧覆盖层，full 模式整帧直方图可视化，与 HUD 同源）。零 Rust 改动、零 .refs 补丁。语义：本窗无新帧时 draw 读数显示 0（滚动窗历史不值新帧）
+- [x] **P1 基础设施 v2（整 app 测绘）**：✅ 2026-09-08 HUD 升级为双层数据面——整 app 帧面接 GPUIX 内建 profiler（gpuix-native 依赖 gpui 时已开 `profiler` feature，编译进 .node；`Window::draw` 全程被 WindowProfiler 计时，最近 1000 帧直方图）：`getDebugFrameOverlayStats` 差分 frames 得**整 app 重绘帧率**（build+layout+paint 全树），p90/max 得**整帧耗时**；终端 paint 打点降为子项 `term`（归因面）。同时新增 `advanced.frameOverlay`（GPUIX 屏幕帧覆盖层，full 模式整帧直方图可视化，与 HUD 同源）。零 Rust 改动、零 .refs 补丁。语义：draw p90/max 每采样窗读后即清（resetDebugFrameOverlayStats 清样本保 frames 计数）——读数为本窗（500ms）内新帧的 p90/max；不做的话低帧率下启动期大帧会冻结在滚动窗 max 里（实测 4fps 下 98ms 假峰长期不衰，用户报「一直不动」）
 - [ ] **P1 基准**：大窗口（200×60）高吞吐（`cat` 大文件 / `yes`）下 paint 成本测量（HUD 目测 + PresentMon 或 Rust Instant 采样脚本化）。产出：每帧 ms 数 @窗口尺寸，验证是否逼近 16.7ms
 - [x] **P2 基准**：✅ 2026-09-08 完成（.tmp/perf-bench-typing.ts，脚本保留可重跑；跑法：`cp .tmp/perf-bench-typing.ts e2e/__bench.ts && cd e2e && bun run __bench.ts`，跑完删）。结果：打字成本线性增长 0.20→2.11ms/键（10→2000 条）；意外发现 retained 全量注册（P2b）
 - [ ] **P2a/P2b 实施**：ConversationView 重构（composer 下沉 + visibleRange 窗口化），bench 脚本复测对比

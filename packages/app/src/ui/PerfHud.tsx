@@ -9,9 +9,10 @@
  * - fps：**整 app 重绘帧率**（GPUIX Window::draw 次数 / 采样窗秒数——
  *   build+layout+paint 一整帧计一次，覆盖全部 UI 而非仅终端）。
  *   gpui 按需重绘——空闲时 0 是「零重绘省电」的证明，不是故障。
- * - draw p90/max：**整帧耗时**毫秒（GPUIX 内建 profiler 直方图，最近
- *   1000 帧滚动窗；本窗无新帧时显示 0 避免旧值误导）。这是「整个 app
- *   渲染压力」的直接读数——含 JS 提交后的 Rust build/layout/paint 全程。
+ * - draw p90/max：**整帧耗时**毫秒（GPUIX 内建 profiler；采样器每窗读后
+ *   即清 reset——读数是本采样窗（500ms）内新帧的 p90/max，无新帧时 0。
+ *   不清的话低帧率下启动期大帧会冻结在滚动窗 max 里几分钟）。这是「整
+ *   个 app 渲染压力」的直接读数——含 JS 提交后的 Rust build/layout/paint 全程。
  * - term 均值/峰值：终端 paint 子系统耗时（TerminalRenderer::paint
  *   打点，本窗均值 / 本窗最大）——整帧中的大头归因项。
  * - cpu：bun 进程整体占用（含 napi .node 内的 Rust 渲染线程）。
