@@ -40,17 +40,17 @@
 
 ## 验证
 
-`workspace-plane.test.mjs` 复用环境中已有的 Playwright 和 Chrome，不往仓库引入依赖：
+`workspace-plane.check.mjs` 复用环境中已有的 Playwright 和 Chrome，不往仓库引入依赖：
 
 ```sh
 # 如果当前 Node 环境能解析 playwright：
-node design/workspace-plane.test.mjs
+node design/workspace-plane.check.mjs
 
 # 或显式指定现有安装的入口：
-PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node design/workspace-plane.test.mjs
+PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node design/workspace-plane.check.mjs
 
 # 只测交互，不重新截图：
-CAPTURE=0 PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node design/workspace-plane.test.mjs
+CAPTURE=0 PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node design/workspace-plane.check.mjs
 ```
 
 默认产物位于 gitignore 的 `.pi/workspace-prototype/review/`，也可通过 `ARTIFACT_DIR` 指定目录。
