@@ -17,14 +17,13 @@ import { useState } from 'react'
 
 import type { AcpAgent } from '../settings/schema'
 import type { SettingsStore } from '../settings/store'
-import { useSettings } from '../settings/useSettings'
+import { useSettings, useSettingsValue } from '../settings/useSettings'
 import { presetCommandSummary } from '../threads/presets'
 import type { ThreadStore, Workspace } from '../threads/store'
 import { workspaceDisplayName } from '../threads/workspaces'
 import { Icon } from '../ui/Icon'
 import { inputFocus } from '../ui/keyboard'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
-
 function agentCommandSummary(a: AcpAgent): string {
   return [a.command, ...a.args].filter(Boolean).join(' ')
 }
@@ -41,6 +40,9 @@ export function ToolMenu({
   onClose: () => void
 }) {
   const snap = useSettings(settings)
+  // 菜单上限跟随侧栏宽（appearance.sidebarWidth）：单值订阅，拖滑块时
+  // 只重渲染本菜单
+  const sidebarWidth = useSettingsValue(settings, (s) => s.appearance.sidebarWidth)
   // 工具筛选（W5；原型清单「工具筛选」）：label/command/args 子串命中
   const [filter, setFilter] = useState('')
   const lower = filter.trim().toLowerCase()
@@ -72,8 +74,8 @@ export function ToolMenu({
         borderRadius: 6,
         padding: 4,
         // anchored 不支持 inset 拉伸：内容宽 + 上限 = 侧栏内宽
-        minWidth: SIZES.sidebarWidth - SIZES.rowMarginX * 2,
-        maxWidth: SIZES.sidebarWidth - SIZES.rowMarginX * 2,
+        minWidth: sidebarWidth - SIZES.rowMarginX * 2,
+        maxWidth: sidebarWidth - SIZES.rowMarginX * 2,
       }}
     >
       {/* 头部：目标工作区 + cwd（原型契约：菜单明确展示目标工作区与 cwd） */}

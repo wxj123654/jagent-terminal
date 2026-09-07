@@ -51,7 +51,7 @@ describe('TitleBar · mac', () => {
       createElement(
         'div',
         { style: { display: 'flex', flexDirection: 'row', width: '100%', height: 34 } },
-        createElement(SidebarHeader, { platform: 'mac', windowControls: wc }),
+        createElement(SidebarHeader, { platform: 'mac', windowControls: wc, width: 248 }),
         createElement(TitleBar, { title: 'j-agent', platform: 'mac', windowControls: wc }),
       ),
     )
@@ -107,7 +107,7 @@ describe('TitleBar · win', () => {
       createElement(
         'div',
         { style: { display: 'flex', flexDirection: 'row', width: '100%', height: 34 } },
-        createElement(SidebarHeader, { platform: 'win', windowControls: wc }),
+        createElement(SidebarHeader, { platform: 'win', windowControls: wc, width: 248 }),
         createElement(TitleBar, { title: 'j-agent', platform: 'win', windowControls: wc }),
       ),
     )
@@ -140,7 +140,7 @@ describe('TitleBar · linux', () => {
       createElement(
         'div',
         { style: { display: 'flex', flexDirection: 'row', width: '100%', height: 34 } },
-        createElement(SidebarHeader, { platform: 'linux', windowControls: wc }),
+        createElement(SidebarHeader, { platform: 'linux', windowControls: wc, width: 248 }),
         createElement(TitleBar, { title: 'j-agent', platform: 'linux', windowControls: wc }),
       ),
     )

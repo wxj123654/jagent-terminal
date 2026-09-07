@@ -12,6 +12,7 @@ import { useWindowSize } from '@gpuix/react'
 import { useState } from 'react'
 import { useActiveTarget } from '../router'
 import type { SettingsStore } from '../settings/store'
+import { useSettingsValue } from '../settings/useSettings'
 import type { ThreadStore } from '../threads/store'
 import { displayTitle } from '../threads/terminal'
 import { useThreadStore } from '../threads/useThreadStore'
@@ -53,6 +54,9 @@ export function App({
   // fallback 800×600 → 宽窗口态，测试零影响）
   const { width } = useWindowSize()
   const narrow = width < NARROW_BREAKPOINT
+  // 侧栏宽（appearance.sidebarWidth，200–400）：顶栏左段 / 抽屉面板与内容行
+  // 侧栏共用一个订阅点，值经 props 下流（依赖注入纪律，组件内不重复订阅）
+  const sidebarWidth = useSettingsValue(settings, (s) => s.appearance.sidebarWidth)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const sidebar = (
     <Sidebar
@@ -87,7 +91,7 @@ export function App({
           borderColor: COLORS.border,
         }}
       >
-        <SidebarHeader platform={PLATFORM} windowControls={windowControls} />
+        <SidebarHeader platform={PLATFORM} windowControls={windowControls} width={sidebarWidth} />
         <TitleBar
           title={title}
           platform={PLATFORM}
@@ -132,7 +136,7 @@ export function App({
                     left: 0,
                     top: 0,
                     bottom: 0,
-                    width: 248,
+                    width: sidebarWidth,
                     display: 'flex',
                     flexDirection: 'column',
                   }}

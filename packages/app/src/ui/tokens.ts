@@ -39,6 +39,8 @@ export const COLORS = {
 } as const
 
 export const SIZES = {
+  // 默认侧栏宽；运行时以 settings.appearance.sidebarWidth（200–400）为准——
+  // 布局面（Sidebar/SidebarHeader/ToolMenu/AgentPlane drawer）经 useSettingsValue 消费
   sidebarWidth: 248,
   rowHeight: 28,
   rowMarginX: 6,
