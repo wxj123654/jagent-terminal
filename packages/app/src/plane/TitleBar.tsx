@@ -23,6 +23,7 @@
  */
 
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 
 import { Icon } from '../ui/Icon'
 import type { AppPlatform } from '../ui/platform'
@@ -140,6 +141,7 @@ export function TitleBar({
   narrow,
   drawerOpen,
   onToggleDrawer,
+  trailing,
 }: {
   title: string
   platform: AppPlatform
@@ -148,6 +150,8 @@ export function TitleBar({
   narrow?: boolean
   drawerOpen?: boolean
   onToggleDrawer?: () => void
+  /** 右上角尾部插槽（性能 HUD 等；元素零依赖，数据源由调用方装配）。win 下落在窗口控制三键左侧，mac/linux 靠 title 后的右侧空白 */
+  trailing?: ReactNode
 }) {
   const drag = useTitleBarDrag(windowControls)
   return (
@@ -214,6 +218,8 @@ export function TitleBar({
       >
         {title}
       </text>
+      {/* 尾部插槽（HUD）：win 下在三键左侧；mac/linux 靠 title 后的右侧空白 */}
+      {trailing ?? null}
       {/* win：三键靠右（space-between：title 左、按钮右） */}
       {platform === 'win' && <WindowsWindowControls />}
     </div>

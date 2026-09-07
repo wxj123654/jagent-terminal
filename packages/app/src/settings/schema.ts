@@ -129,6 +129,9 @@ export const RawSettingsSchema = z.looseObject({
   advanced: section(
     z.object({
       gpuBackend: z.enum(['auto', 'metal', 'dx12', 'vulkan']).catch('auto'),
+      /** 性能 HUD：开启后标题栏右侧显示 FPS/绘制耗时/CPU/内存
+       * （数据源 crates/jagent-terminal perf 原子打点；500ms 轮询） */
+      perfHud: z.boolean().catch(false),
     }),
   ),
 })
@@ -295,5 +298,13 @@ export const SETTING_DEFS: SettingDef[] = [
         { value: 'metal', label: 'Metal' },
       ],
     },
+  },
+  {
+    path: 'advanced.perfHud',
+    section: 'advanced',
+    label: '性能指标 HUD',
+    description:
+      '在标题栏右上角显示 FPS、绘制耗时、CPU 与内存（500ms 刷新；绘制统计来自终端渲染管线）',
+    control: { type: 'toggle' },
   },
 ]

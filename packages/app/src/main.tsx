@@ -18,6 +18,7 @@ import {
   installTerminalElement,
   onSessionEvent,
   pickDirectory as pickDirectoryNative,
+  takePaintPerf,
 } from '@jagent/native'
 
 import { appWindow } from './appWindow'
@@ -38,7 +39,42 @@ import {
   serializeWorkspaceState,
 } from './threads/workspaces'
 import { inputFocus } from './ui/keyboard'
+import type { PerfSample, PerfSource } from './ui/PerfHud'
 import { PLATFORM } from './ui/platform'
+
+// ── 性能 HUD 采样器（native 收口：takePaintPerf 在此唯一可见）──
+// 首次 sample 建基线（Δ=0）；此后每次调用用与上次的时间差/计数差算速率
+// 与均值；cpu 用 process.cpuUsage 差分（含 napi .node 内 Rust 线程，同进程）。
+function createPerfSource(): PerfSource {
+  const base = takePaintPerf()
+  let last = {
+    at: performance.now(),
+    cpu: process.cpuUsage(),
+    count: base.count,
+    totalNs: base.totalNs,
+  }
+  return {
+    sample(): PerfSample {
+      const snap = takePaintPerf()
+      const now = performance.now()
+      const cpu = process.cpuUsage()
+      const dtMs = Math.max(now - last.at, 1)
+      const dCount = Math.max(snap.count - last.count, 0)
+      const dNs = Math.max(snap.totalNs - last.totalNs, 0)
+      const cpuPct = ((cpu.user - last.cpu.user + cpu.system - last.cpu.system) / 1e6 / dtMs) * 100
+      const memMB = process.memoryUsage().rss / 1048576
+      const out = {
+        fps: dCount / (dtMs / 1000),
+        paintAvgMs: dCount > 0 ? dNs / 1e6 / dCount : 0,
+        paintMaxMs: snap.maxNs / 1e6,
+        cpuPct,
+        memMB,
+      }
+      last = { at: now, cpu, count: snap.count, totalNs: snap.totalNs }
+      return out
+    },
+  }
+}
 
 // ── seam 装配（顺序敏感：先注册元素，再开窗）──────────────────────────
 installTerminalElement()
@@ -129,6 +165,7 @@ appWindow.mount(
         pickDirectoryNative((_err, path) => resolve(path ?? null))
       })
     }
+    perfSource={createPerfSource()}
   />,
   {
     onEvent: (event) => {

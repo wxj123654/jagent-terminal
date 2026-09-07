@@ -603,6 +603,18 @@ export declare function notifyDesktop(title: string, body: string, sound: boolea
 export declare function onSessionEvent(cb: (err: null, e: import('./index').SessionEvent) => void): void
 
 /**
+ * 绘制统计快照（性能 HUD 数据源；docs/perf-analysis.md）。
+ * `count`/`totalNs` 为进程生命期累计（调用方差分得速率/均值）；
+ * `maxNs` 是自上次调用以来的单次峰值（读后即清）。
+ * 直接读无锁原子——不走 GPUI host 通道，任意线程可调。
+ */
+export interface PaintPerfJs {
+  count: number
+  totalNs: number
+  maxNs: number
+}
+
+/**
  * Native folder picker (W3). Callback contract mirrors `onSessionEvent`:
  * payload is the SECOND argument — `pickDirectory((_err, path) => ...)`.
  * `path === null` = cancelled / unavailable. On macOS the modal loop runs
@@ -635,3 +647,5 @@ export interface SpawnOptionsJs {
   initCommand?: string
   scrollbackLines?: number
 }
+
+export declare function takePaintPerf(): PaintPerfJs

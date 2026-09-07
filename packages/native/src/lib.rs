@@ -36,7 +36,7 @@ use gpui::BorrowAppContext;
 use element::TerminalElementFactory;
 use gpuix_native::custom_elements::register_global_factory;
 use jagent_terminal::pool::{SessionEvent as RustSessionEvent, set_session_event_fn};
-use jagent_terminal::{SpawnOptions, TerminalPool};
+use jagent_terminal::{SpawnOptions, TerminalPool, perf};
 
 /// Register the `<terminal>` element factory with GPUIX. Must run before the
 /// renderer is initialized (`main.tsx` calls it at startup, before
@@ -183,4 +183,25 @@ pub fn pick_directory(cb: ThreadsafeFunction<Option<String>>) {
     picker::pick_directory(Box::new(move |path| {
         cb.call(Ok(path), ThreadsafeFunctionCallMode::NonBlocking);
     }));
+}
+
+/// 绘制统计快照（性能 HUD 数据源；docs/perf-analysis.md）。
+/// `count`/`totalNs` 为进程生命期累计（调用方差分得速率/均值）；
+/// `maxNs` 是自上次调用以来的单次峰值（读后即清）。
+/// 直接读无锁原子——不走 GPUI host 通道，任意线程可调。
+#[napi(object)]
+pub struct PaintPerfJs {
+    pub count: f64,
+    pub total_ns: f64,
+    pub max_ns: f64,
+}
+
+#[napi]
+pub fn take_paint_perf() -> PaintPerfJs {
+    let s = perf::take_paint_perf();
+    PaintPerfJs {
+        count: s.count as f64,
+        total_ns: s.ns_total as f64,
+        max_ns: s.ns_max as f64,
+    }
 }
