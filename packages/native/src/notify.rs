@@ -79,12 +79,9 @@ mod imp {
         xml.LoadXml(&HSTRING::from(toast_xml(title, body, sound)))?;
 
         let toast = ToastNotification::CreateToastNotification(&xml)?;
-        // SAFETY: static-class factory call; AUMID is our own registered id.
         let notifier: ToastNotifier =
-            unsafe { ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(AUMID))? };
-        // SAFETY: hands the toast to the platform; `toast` stays alive here
-        // until the call returns.
-        unsafe { notifier.Show(&toast) }
+            ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(AUMID))?;
+        notifier.Show(&toast)
     }
 
     /// Claim the AUMID for this process and (re)write the Start-Menu shortcut.

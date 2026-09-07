@@ -243,7 +243,7 @@ describe('schema 一致性（§6.3）', () => {
     })
     expect(d.appearance).toEqual({ theme: 'one-dark', sidebarWidth: 248 })
     expect(d.acpAgents).toHaveLength(2)
-    expect(d.advanced).toEqual({ gpuBackend: 'auto' })
+    expect(d.advanced).toEqual({ gpuBackend: 'auto', perfHud: false, frameOverlay: false })
   })
 })
 

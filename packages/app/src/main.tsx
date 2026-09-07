@@ -18,9 +18,10 @@ import {
   installTerminalElement,
   onSessionEvent,
   pickDirectory as pickDirectoryNative,
+  takePaintPerf,
 } from '@jagent/native'
 
-import { appWindow } from './appWindow'
+import { appWindow, type AppRenderer } from './appWindow'
 import { createGitGraphStore } from './git/store'
 import { createGlobalKeydown } from './keybindings'
 import { App } from './plane/AgentPlane'
@@ -39,7 +40,67 @@ import {
   serializeWorkspaceState,
 } from './threads/workspaces'
 import { inputFocus } from './ui/keyboard'
+import type { PerfSample, PerfSource } from './ui/PerfHud'
 import { PLATFORM } from './ui/platform'
+
+// ── 性能 HUD 采样器（native 收口：takePaintPerf / getDebugFrameOverlayStats
+// 在此唯一可见）──
+// 两层数据面：
+// 1. 整 app 帧面：GPUIX 内建 profiler（gpui `profiler` feature，编译进 .node）
+//    对每次 Window::draw（build+layout+paint 全程）计时。直方图默认是
+//    「最近 1000 帧」滚动窗——低帧率下滚动极慢，启动期大帧会冻结在 max
+//    里几分钟（实测 4fps 下 98ms 假峰长期不衰）。因此每窗读后即调
+//    resetDebugFrameOverlayStats（清样本、保 frames 计数）：p90/max 变成
+//    「本采样窗（500ms）内帧」的读数，与 terminal paint 峰值同语义；
+//    差分帧率不受影响。若同时开着屏幕覆盖层，覆盖层读数也同步变实时窗。
+// 2. 终端 paint 子系统面：takePaintPerf（crates/jagent-terminal 打点）。
+// 首次 sample 建基线（Δ=0）；此后每次调用用与上次的时间差/计数差算速率
+// 与均值；cpu 用 process.cpuUsage 差分（含 napi .node 内 Rust 线程，同进程）。
+function createPerfSource(renderer: AppRenderer): PerfSource {
+  const base = takePaintPerf()
+  const frameBase = renderer.getDebugFrameOverlayStats?.()
+  renderer.resetDebugFrameOverlayStats?.() // 基线窗从零起算（清启动期样本）
+  let last = {
+    at: performance.now(),
+    cpu: process.cpuUsage(),
+    count: base.count,
+    totalNs: base.totalNs,
+    frames: frameBase?.frames ?? 0,
+  }
+  return {
+    sample(): PerfSample {
+      const snap = takePaintPerf()
+      const now = performance.now()
+      const cpu = process.cpuUsage()
+      const dtMs = Math.max(now - last.at, 1)
+      const dCount = Math.max(snap.count - last.count, 0)
+      const dNs = Math.max(snap.totalNs - last.totalNs, 0)
+      const frame = renderer.getDebugFrameOverlayStats?.()
+      const dFrames = Math.max((frame?.frames ?? last.frames) - last.frames, 0)
+      const cpuPct = ((cpu.user - last.cpu.user + cpu.system - last.cpu.system) / 1e6 / dtMs) * 100
+      const memMB = process.memoryUsage().rss / 1048576
+      const out = {
+        fps: dFrames / (dtMs / 1000),
+        // 本采样窗内新帧的 p90/max（读后即清；窗内无新帧时直方图为空 → 0）
+        drawP90Ms: dFrames > 0 ? (frame?.p90Ms ?? 0) : 0,
+        drawMaxMs: dFrames > 0 ? (frame?.maxMs ?? 0) : 0,
+        paintAvgMs: dCount > 0 ? dNs / 1e6 / dCount : 0,
+        paintMaxMs: snap.maxNs / 1e6,
+        cpuPct,
+        memMB,
+      }
+      last = {
+        at: now,
+        cpu,
+        count: snap.count,
+        totalNs: snap.totalNs,
+        frames: frame?.frames ?? last.frames,
+      }
+      renderer.resetDebugFrameOverlayStats?.() // 下一窗从零起算
+      return out
+    },
+  }
+}
 
 // ── seam 装配（顺序敏感：先注册元素，再开窗）──────────────────────────
 installTerminalElement()
@@ -93,6 +154,24 @@ const renderer = appWindow.renderer({
   // Server decorations（WM 标题栏在上，TitleBar 退化为内容导航条）
   titlebarTransparent: PLATFORM !== 'linux',
 })
+
+// ── 屏幕帧 overlay（advanced.frameOverlay：GPUIX 内建调试覆盖层）──
+// 整帧耗时直方图的屏幕可视化（full 模式画在场景之上，profiler feature 已编
+// 译进 .node）。设置开关即时切换；初值启动应用一次。仅 subscribed 变化时
+// 才调 native（settingsStore.subscribe 是全量回调，需自行去重）。
+let appliedOverlay: string | null = null
+const applyFrameOverlay = () => {
+  const mode = settingsStore.get().advanced.frameOverlay ? 'full' : 'hidden'
+  if (mode === appliedOverlay) return
+  appliedOverlay = mode
+  try {
+    renderer.setDebugFrameOverlay(mode)
+  } catch {
+    appliedOverlay = null // native 面未就绪/失败：置空允许下次订阅重试
+  }
+}
+settingsStore.subscribe(applyFrameOverlay)
+applyFrameOverlay()
 
 // ── 全局键位层（keybindings.ts：main/e2e 共用语义；布线在此）──
 // ── 窗口控制 seam（TitleBar 注入；闭包 renderer）──
@@ -176,6 +255,7 @@ appWindow.mount(
         pickDirectoryNative((_err, path) => resolve(path ?? null))
       })
     }
+    perfSource={createPerfSource(renderer)}
   />,
   {
     onEvent: (event) => {

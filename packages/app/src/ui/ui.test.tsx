@@ -259,13 +259,17 @@ describe('RangeInput', () => {
     )
 
     const [x, y, w, h] = boundsOf('rng')
-    // 轨道 50% → 300
+    // 轨道 50% → 300（down 首值即时 emit）
     t.renderer.nativeSimulateMouseDown(x + w / 2, y + h / 2)
     expect(calls).toEqual([300])
 
-    // 拖到 25% → 250
+    // 拖到 25% 再 24%：拖动中合帧，同帧窗内两次 move 合并为尾值 248；
+    // mouseup 尾缘 flush 落定
     t.renderer.nativeSimulateMouseMove(x + w * 0.25, y + h / 2, 0)
-    expect(calls).toEqual([300, 250])
+    t.renderer.nativeSimulateMouseMove(x + w * 0.24, y + h / 2, 0)
+    expect(calls).toEqual([300])
+    t.renderer.nativeSimulateMouseUp(x + w * 0.24, y + h / 2)
+    expect(calls).toEqual([300, 248])
   })
 })
 

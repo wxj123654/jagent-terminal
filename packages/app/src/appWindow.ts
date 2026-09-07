@@ -10,7 +10,7 @@ import {
 import { applyWindowAppearance } from '@jagent/native'
 import type { ReactNode } from 'react'
 
-type AppRenderer = ReturnType<typeof createRenderer>
+export type AppRenderer = ReturnType<typeof createRenderer>
 
 export type AppWindowHost = {
   createRenderer: typeof createRenderer
@@ -44,6 +44,10 @@ export function createAppWindow(host: AppWindowHost = nativeHost) {
       loop?.stop()
       loop = undefined
       host.resetRender()
+    } catch {
+      // Last window closed: GPUI already exited, so resetRender's unmount
+      // hits "GPUI application is not initialized" from applyBatch. Swallow
+      // it so the onTerminated caller can still reach host.terminate().
     } finally {
       stopping = false
     }

@@ -1,5 +1,6 @@
 /**
- * Sidebar — 左栏（布局契约 §2/§3：248px 固定宽）。
+ * Sidebar — 左栏（布局契约 §2/§3；宽度 = appearance.sidebarWidth，
+ * 200–400，设置 → 外观 → 侧栏宽度拖拽实时写回）。
  *
  * Phase W2 起结构：搜索框（跨工作区搜会话；Esc 清空）→ WorkspaceList
  * （工作区分组树 + 添加工作区；新建入口 = 工作区行 ＋ 的 ToolMenu）→
@@ -11,6 +12,7 @@
 import { useState } from 'react'
 
 import type { SettingsStore } from '../settings/store'
+import { useSettingsValue } from '../settings/useSettings'
 import type { ThreadStore } from '../threads/store'
 import { Icon } from '../ui/Icon'
 import { inputFocus } from '../ui/keyboard'
@@ -26,20 +28,24 @@ import { WorkspaceList } from './WorkspaceList'
  * 顶栏左段：AGENT 标识 + 线程切换 hint。mac 上给红绿灯让位（Zed：
  * sidebar 打开时 TRAFFIC_LIGHT_PADDING 在这一段，TitleBar 段不加）；
  * mac 同样可拖窗口（TitleBar 同款 armed+move 模式）；win 标 drag 区。
+ * 宽 = 侧栏宽（AgentPlane 从 settings 订阅后传入，与内容行对齐）。
  */
 export function SidebarHeader({
   platform,
   windowControls,
+  width,
 }: {
   platform: AppPlatform
   windowControls?: WindowControls
+  /** 与内容行侧栏同宽（appearance.sidebarWidth） */
+  width: number
 }) {
   const drag = useTitleBarDrag(windowControls)
   return (
     <div
       testId="sidebar-header"
       style={{
-        width: SIZES.sidebarWidth,
+        width,
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'row',
@@ -99,11 +105,14 @@ export function Sidebar({
   dialog: DialogOpener
 }) {
   const [query, setQuery] = useState('')
+  // 宽度单值订阅：设置页拖滑块时只重渲染侧栏（不碰会话树）；
+  // 其他 patch（如主题）因 selector 值稳定而不触发重渲染
+  const width = useSettingsValue(settings, (s) => s.appearance.sidebarWidth)
 
   return (
     <div
       style={{
-        width: SIZES.sidebarWidth,
+        width,
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',

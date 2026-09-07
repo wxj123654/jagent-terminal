@@ -152,7 +152,11 @@ describe('SettingsView · core（§15 1/2/4 部分）', () => {
     expect(t.renderer.findByTestId('kb-reset-toggleSettings')).toBeDefined()
     click('kb-reset-toggleSettings')
     t.renderer.flush()
-    expect(texts().includes('ctrl-k')).toBe(false)
+    // 平台无关断言：toggleSettings 行恢复默认 ctrl-,，同绑警示行消失。
+    // （searchThreads 常驻行在 win 默认就是 ctrl-k，全文搜索 'ctrl-k'
+    // 在 Windows 上恒 true，不可用作 reset 后的断言。）
+    expect(texts().includes('ctrl-,')).toBe(true)
+    expect(texts().includes('同绑 ctrl-k')).toBe(false)
     expect(t.renderer.findByTestId('kb-reset-toggleSettings')).toBeUndefined()
     // 设置真值面
     expect(settingsStore.get().keybindings.toggleSettings).toBe('ctrl-,')

@@ -16,11 +16,13 @@
 //! element module here.
 
 pub mod model;
+pub mod perf;
 pub mod pool;
 pub mod pty;
 pub mod view;
 
 pub use model::{Event, TerminalModel, TerminalStyle};
+pub use perf::{PaintPerfSnapshot, take_paint_perf};
 pub use pool::{SessionEvent, SessionEventFn, TerminalPool};
 pub use pty::SpawnOptions;
 pub use view::{ColorPalette, TerminalRenderer, TerminalView, keystroke_to_bytes};

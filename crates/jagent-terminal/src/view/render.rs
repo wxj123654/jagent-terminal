@@ -62,6 +62,7 @@
 use crate::view::box_drawing;
 use crate::view::colors::ColorPalette;
 use crate::model::SessionListener;
+use crate::perf::PaintGuard;
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::{Column, Line, Point as AlacPoint};
 use alacritty_terminal::term::Term;
@@ -594,6 +595,9 @@ impl TerminalRenderer {
         window: &mut Window,
         _cx: &mut App,
     ) {
+        // 性能 HUD 打点：作用域结束（含提前返回）自动记录本次 paint 耗时
+        // （docs/perf-analysis.md P1 的测量面；零锁原子，纳秒级开销）。
+        let _paint_guard = PaintGuard::now();
         // Get terminal dimensions
         let grid = term.grid();
         let num_lines = grid.screen_lines();

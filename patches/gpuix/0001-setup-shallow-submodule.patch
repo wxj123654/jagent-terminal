@@ -1,0 +1,9 @@
+diff --git a/.gitmodules b/.gitmodules
+index a5311aa..2c47050 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -2,3 +2,4 @@
+ 	path = zed
+ 	url = https://github.com/remorses/zed.git
+ 	branch = gpuix
++	shallow = true

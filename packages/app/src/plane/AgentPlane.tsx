@@ -13,9 +13,12 @@ import { useEffect, useState } from 'react'
 import type { GitGraphStore } from '../git/store'
 import { useActiveTarget } from '../router'
 import type { SettingsStore } from '../settings/store'
+import { useSettingsValue } from '../settings/useSettings'
 import type { ThreadStore } from '../threads/store'
 import { displayTitle } from '../threads/terminal'
 import { useThreadStore } from '../threads/useThreadStore'
+import type { PerfSource } from '../ui/PerfHud'
+import { PerfHud } from '../ui/PerfHud'
 import { PLATFORM } from '../ui/platform'
 import { ToastHost } from '../ui/Toast'
 import { COLORS, FONT } from '../ui/tokens'
@@ -51,6 +54,7 @@ export function App({
   pickDirectory,
   gitStore,
   scrollToItem,
+  perfSource,
 }: {
   store: ThreadStore
   settings: SettingsStore
@@ -61,12 +65,19 @@ export function App({
   gitStore: GitGraphStore
   /** 键盘导航视口跟随（renderer.scrollToItem；装配层注入） */
   scrollToItem?: (elementId: number, index: number) => void
+  /** 性能 HUD 数据源（main.tsx 装配：takePaintPerf + process CPU/MEM 采样器；不传则 HUD 不挂载） */
+  perfSource?: PerfSource
 }) {
   const title = useTitle(store)
   // 窄窗口抽屉（W4）：useWindowSize poll 100ms（TestRenderer 无窗口面时
   // fallback 800×600 → 宽窗口态，测试零影响）
   const { width } = useWindowSize()
   const narrow = width < NARROW_BREAKPOINT
+  // 侧栏宽（appearance.sidebarWidth，200–400）：顶栏左段 / 抽屉面板与内容行
+  // 侧栏共用一个订阅点，值经 props 下流（依赖注入纪律，组件内不重复订阅）
+  const sidebarWidth = useSettingsValue(settings, (s) => s.appearance.sidebarWidth)
+  // 性能 HUD（advanced.perfHud）：单值订阅——开关切换才重渲染顶栏行
+  const perfHud = useSettingsValue(settings, (s) => s.advanced.perfHud)
   const [drawerOpen, setDrawerOpen] = useState(false)
   // 弹窗中枢（W7）：四类弹窗单一显示源，入口经 dialog 回调打开。
   // ⌘K 挂点：装配层 focusThreadSearch → dialogKeyboard.openSearch()
@@ -122,7 +133,7 @@ export function App({
           borderColor: COLORS.border,
         }}
       >
-        <SidebarHeader platform={PLATFORM} windowControls={windowControls} />
+        <SidebarHeader platform={PLATFORM} windowControls={windowControls} width={sidebarWidth} />
         <TitleBar
           title={title}
           platform={PLATFORM}
@@ -130,6 +141,7 @@ export function App({
           narrow={narrow}
           drawerOpen={drawerOpen}
           onToggleDrawer={narrow ? () => setDrawerOpen((v) => !v) : undefined}
+          trailing={perfHud && perfSource ? <PerfHud source={perfSource} /> : null}
         />
       </div>
       {/* 内容行。窄窗口时 Pane 先、抽屉（Sidebar+scrim）后——GPUI 按树序
@@ -167,7 +179,7 @@ export function App({
                     left: 0,
                     top: 0,
                     bottom: 0,
-                    width: 248,
+                    width: sidebarWidth,
                     display: 'flex',
                     flexDirection: 'column',
                   }}

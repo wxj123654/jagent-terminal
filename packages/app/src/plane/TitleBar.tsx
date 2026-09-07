@@ -23,6 +23,7 @@
  */
 
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 
 import { Icon } from '../ui/Icon'
 import type { AppPlatform } from '../ui/platform'
@@ -68,8 +69,13 @@ export function useTitleBarDrag(wc: WindowControls | undefined): DragProps {
   }
 }
 
-/** Windows 右上三键（Zed WindowsWindowControls：36px 宽全高，系统处理点击） */
-const WIN_CAPTION_FONT = '"Segoe Fluent Icons", "Segoe MDL2 Assets"'
+/** Windows 右上三键（Zed WindowsWindowControls：36px 宽全高，系统处理点击）
+ *  gpui 的 font_family 是单名：direct_write.rs 的 GetMatchingFonts 按
+ *  精确 family 名查找，无 CSS 引号/逗号列表解析——列表会整体查不到并
+ *  fallback 到内嵌字体，私有区 glyph（U+E921…）无字形成豆腐块。
+ *  Segoe MDL2 Assets 自 Win10 起自带且 Win11 保留，含所需 glyph；
+ *  Segoe Fluent Icons 仅 Win11 有，不作首选。 */
+const WIN_CAPTION_FONT = 'Segoe MDL2 Assets'
 
 function WindowsCaptionButton({
   area,
@@ -135,6 +141,7 @@ export function TitleBar({
   narrow,
   drawerOpen,
   onToggleDrawer,
+  trailing,
 }: {
   title: string
   platform: AppPlatform
@@ -143,6 +150,8 @@ export function TitleBar({
   narrow?: boolean
   drawerOpen?: boolean
   onToggleDrawer?: () => void
+  /** 右上角尾部插槽（性能 HUD 等；元素零依赖，数据源由调用方装配）。win 下落在窗口控制三键左侧，mac/linux 靠 title 后的右侧空白 */
+  trailing?: ReactNode
 }) {
   const drag = useTitleBarDrag(windowControls)
   return (
@@ -209,6 +218,8 @@ export function TitleBar({
       >
         {title}
       </text>
+      {/* 尾部插槽（HUD）：win 下在三键左侧；mac/linux 靠 title 后的右侧空白 */}
+      {trailing ?? null}
       {/* win：三键靠右（space-between：title 左、按钮右） */}
       {platform === 'win' && <WindowsWindowControls />}
     </div>
