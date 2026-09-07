@@ -1,8 +1,8 @@
 # j-agent Git 树（commit graph）设计
 
-状态：**G1–G3 已落地**（2026-09-10；集成位置=workspace 内 tab、一期=只读 graph，经用户确认。实装：`packages/app/src/git/*` + `plane/WorkspacePage.tsx` + keybindings git 层；测试 app 全量 240 绿。G4 另立设计）  
+状态：**G1–G3 已落地**；**G4 视图对齐 vscode-git-graph 已落地**（行内 CDV / 右键 git actions / find / mute / 表头）。实装：`packages/app/src/git/*` + `plane/WorkspacePage.tsx` + keybindings git 层。  
 依据：Zed `crates/git` + `crates/project/git_store.rs` + `crates/git_ui/git_graph.rs`（pin 8b94def 源码调研）· architecture.md §0/§1.2 分层纪律  
-参考：Zed git graph 的 lane 算法与数据协议（本设计的主要移植来源）
+参考：Zed git graph 的 lane 算法与数据协议（本设计的主要移植来源）；UI 对齐 [mhutchie/vscode-git-graph](https://github.com/mhutchie/vscode-git-graph)（原型 [`design/git-graph-v2.html`](../design/git-graph-v2.html)）。**不要**引入 crates.io `git-graph`；git actions 继续 spawn CLI。
 
 ---
 
@@ -55,7 +55,7 @@ git/* 不被 ui/ 依赖；git/components 消费 ui/tokens、ui/Badge
 
 ```ts
 /** 一期 log 格式：Zed 三字段 + 一期直接带的展示字段（见 §6 优化记录） */
-const LOG_FORMAT = '--format=%H%x00%P%x00%D%x00%h%x00%an%x00%at%x00%s'
+const LOG_FORMAT = '--format=%H%x00%P%x00%D%x00%h%x00%an%x00%ae%x00%at%x00%cn%x00%ce%x00%s'
 
 export interface GraphCommit {
   sha: string            // %H 全 sha（oid 键）
@@ -63,7 +63,10 @@ export interface GraphCommit {
   refNames: string[]     // %D 逗号+空格切；detached HEAD / 普通提交为 []
   shortSha: string       // %h
   authorName: string     // %an
+  authorEmail: string    // %ae
   timestamp: number      // %at 秒
+  committerName: string  // %cn
+  committerEmail: string // %ce
   subject: string        // %s
 }
 
@@ -76,8 +79,11 @@ export function spawnGitLog(
 /** repo root 检测：git rev-parse --show-toplevel；非 repo → null */
 export async function findRepoRoot(cwd: string): Promise<string | null>
 
-/** 单提交 patch（选中看 diff 用）：git show --format= --patch <sha> */
-export async function showPatch(cwd: string, sha: string): Promise<string>
+/** 提交说明正文（选中 CDV 用）：git log -1 --format=%b <sha>；%b 含换行，不进 log 流 */
+export async function showCommitBody(cwd: string, sha: string): Promise<string>
+
+/** 单提交变更文件（CDV 文件树）：git show --numstat --format= */
+export async function listChangedFiles(cwd: string, sha: string): Promise<ChangedFile[]>
 ```
 
 实现要点：
@@ -85,7 +91,7 @@ export async function showPatch(cwd: string, sha: string): Promise<string>
 - `Bun.spawn(['git', 'log', LOG_FORMAT, '--date-order', ...], { cwd, stdout: 'pipe', stderr: 'pipe' })`；`--date-order`（Zed LogOrder 默认）。
 - stdout 用 `ReadableStream` + `TextDecoder({ stream: true })` 手写行缓冲：**禁止** `await new Response(...).text()` 全量拼接（10 万行级 repo 会先卡后爆内存）。
 - **chunk 大小 512 行**（Zed GRAPH_CHUNK_SIZE 同量级意图：首屏快、避免 setState 风暴）。
-- 行格式注意：`%D` 为空时产生连续两个 `\x00`；subject 可含逗号但不含 `\x00`/`\n`；坏行（字段数 < 7）丢弃不炸。
+- 行格式注意：`%D` 为空时产生连续两个 `\x00`；subject 可含逗号但不含 `\x00`/`\n`；坏行（字段数 < 10）丢弃不炸。`%b` 含换行，**不进** log 流，选中时 `showCommitBody` 另拉。
 - `git` 不在 PATH / 非 repo / 退出码非 0：`done` resolve `{ ok: false, error }`，视图显示空态或错误条，不 throw 到 UI。
 - 取消：cancel() kill 子进程并丢弃未 flush 行缓冲。视图卸载/切 workspace 时必调（PTY 会话不因切 tab 死，但 log 流应该死——见 §5.3 生命周期）。
 
@@ -221,10 +227,13 @@ merge 曲线（Curve 段，onRow=本行）:
 | `origin/*` 等远程 | muted 字无边框 |
 | `tag: v*` | amber 字（COLORS cyan/amber 体系，用 `#e5c07b`） |
 
-### 3.4 选中与 diff 查看
+### 3.4 选中与行内详情（CDV）
 
-- 行点击 / Enter → `store.select(sha)`，Pane 右侧推入 360px 详情列（workspace tab 内布局：`row` 方向 graph 列 + 详情列）。
-- 详情列：`showPatch(sha)` 结果喂 **自绘 DiffBody**（逐行 text 着色：文件头 muted、@@ accent、+ 绿 − 红、context 默认；nowrap + 外层横滚）。原因：gpuix `<diff>` 是 native custom element，TestRenderer 不绘制其内容（同 markdown 限制，2026-09-10 实测），且 `<virtual-list>`/`<diff scroll>` 这类列表元素**不吃 flexGrow/absolute 拉伸，只认显式 height**——git 图列表与 diff 体均用 `useWindowSize()` 减已知 chrome 计算高度（G4 真机验证 `<diff>` 后可评估换回）。
+对齐 [vscode-git-graph](https://github.com/mhutchie/vscode-git-graph) 行内展开（原型 `design/git-graph-v2.html`）：
+
+- 行点击 / Enter → `store.select(sha)`，在该提交**下方插入**独立 CDV 行（`virtual-list` 定高，不能把同一行撑开）；Graph 列竖线由 `buildGapGraphics` 穿过。高度 `CDV_H=224`。
+- **左栏 summary**（50%，`overflow:hidden`）：`Commit / Parents / Author / Committer / Date` 标签列（固定 82px）+ 值 ellipsis；Parents 全 sha、accent 下划线、点击跳转；其下 subject + `showCommitBody` 正文（`whiteSpace:normal`，父级 `minWidth:0`）。**不渲染 raw patch**——GPUI 按树序绘制，nowrap 长 diff 会盖住右栏。
+- **右栏文件树**：`listChangedFiles` → 单子目录折叠为 `src / pages`；folder/file 图标；统计 `(+N | -M)`（绿/红），二进制 `BIN`。
 - Esc → clearSelection。
 
 ---
@@ -253,7 +262,7 @@ workspace route 时：
 
 | 键 | 行为 |
 |---|---|
-| `Ctrl+Shift+G` | 当前 workspace → 切到 Git 图 tab（全局层，keybindings.ts 挂载） |
+| `Ctrl+Shift+G` / 顶栏 Git 图标 | 当前工作区（会话归属 / 已激活 / 第一个）切 Git 图 tab（`store.openGitGraph`，TitleBar trailing `titlebar-git`） |
 | `↑/↓` | Git 图内移动选中行（virtual-list scrollTo 跟随） |
 | `Enter` / 点击 | 选中并打开 diff 详情 |
 | `Esc` | 关 diff 详情 → 清选中 |
@@ -286,7 +295,8 @@ workspace route 时：
 - **G1 数据层**：cli.ts + graph.ts + format.ts + 全部单测（纯逻辑，先立稳算法）。
 - **G2 视图**：GitGraphView/GraphRow/graphSvg + workspace tab 集成 + 键盘导航 + diff 详情列。
 - **G3 打磨**：流式进度、错误条、refresh、大 repo 性能验证（jagent 自仓 ~2k 提交 + zed 仓 ~40k 提交实测）。
-- **G4（另立设计）**：status/stage/commit 面板（Zed git_panel 移植）、branch picker、lazy 详情流（graph 行与详情分离，Zed CommitDataReader 模式——一期把 %h/%an/%at/%s 直接带在 log 流里是简化，~150B/行，2 万提交 ~3MB 可接受；超过 5 万提交的 repo 再上懒加载）。
+- **G4（本轮）**：vscode-git-graph 对齐——行内 CDV（summary + 文件树，`extraBelow` 图线穿过）、右键 git actions（`cli.runGit` + 危险操作 Modal 确认）、find widget、mute 非线性提交、表头列、分支下拉 / 远程开关 / fetch。不引入 git-graph crate。
+- **G5（另立）**：status/stage/commit 面板（Zed git_panel 移植）、列宽拖拽、lazy 详情流（超过 5 万提交再上）。
 
 ## 7. 决策记录
 

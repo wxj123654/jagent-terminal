@@ -1,0 +1,907 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<title>j-agent · Git Graph 原型 v2（vscode-git-graph 对齐）</title>
+<style>
+/* ============ tokens（jagent ui/tokens.ts 同源，One Dark） ============ */
+:root {
+  color-scheme: dark;
+  --app: #282c34;
+  --pane: #1e2127;
+  --sidebar: #21252b;
+  --terminal: #1a1d23;
+  --surface: #2c313a;
+  --input-bg: #1b1d23;
+  --hover: #2c313a;
+  --selected: #323844;
+  --text: #abb2bf;
+  --bright: #d7dae0;
+  --muted: #5c6370;
+  --accent: #61afef;
+  --accent-soft: rgba(97, 175, 239, 0.15);
+  --cyan: #56b6c2;
+  --amber: #e5c07b;
+  --red: #e06c75;
+  --green: #98c379;
+  --purple: #c678dd;
+  --border: #3e4451;
+  --border-strong: rgba(128, 128, 128, 0.5);
+  --row-h: 26px;
+  --ui: -apple-system, "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
+  --mono: "SF Mono", Menlo, Consolas, "JetBrains Mono", monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh; padding: 32px;
+  display: grid; place-items: center;
+  background: #101216; color: var(--text);
+  font: 13px/1.45 var(--ui);
+}
+h1, h2, p, ul { margin: 0; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.mono { font-family: var(--mono); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #3d4350; border-radius: 5px; border: 2px solid var(--pane); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ============ 窗口 mockup（贴 jagent：titlebar + workspace tab 条） ============ */
+.window {
+  width: min(1240px, 100%); height: min(840px, 100%); min-height: 0;
+  border: 1px solid #363c47; border-radius: 11px; overflow: hidden;
+  background: var(--pane); box-shadow: 0 24px 72px #0007;
+  display: flex; flex-direction: column;
+}
+.titlebar {
+  height: 40px; flex-shrink: 0; display: flex; align-items: center;
+  background: var(--sidebar); border-bottom: 1px solid #181a1f; padding-left: 14px;
+}
+.traffic { display: flex; gap: 8px; }
+.traffic i { width: 11px; height: 11px; border-radius: 50%; background: #ff6058; }
+.traffic i:nth-child(2) { background: #febc2e; }
+.traffic i:nth-child(3) { background: #28c840; }
+.window-location { padding-left: 20px; font-size: 12px; color: var(--muted); }
+.prototype-tag {
+  margin-left: auto; margin-right: 14px; font-size: 11px; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px;
+}
+.tabbar {
+  height: 30px; flex-shrink: 0; display: flex; align-items: stretch;
+  background: var(--terminal); border-bottom: 1px solid #181a1f; padding: 0 6px;
+}
+.tab {
+  display: flex; align-items: center; gap: 8px; padding: 0 14px; font-size: 12px;
+  color: var(--muted); border-right: 1px solid #181a1f;
+}
+.tab.active { background: var(--pane); color: var(--bright); box-shadow: inset 0 2px 0 var(--accent); }
+.tab svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+
+/* ============ Git Graph 视图 ============ */
+.gg { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* ---- 控件条（vgg #controls） ---- */
+.controls {
+  height: 34px; flex-shrink: 0; display: flex; align-items: center; gap: 4px;
+  padding: 0 10px 0 12px; border-bottom: 1px solid var(--border-strong);
+  background: var(--pane); position: relative; z-index: 6;
+}
+.ctl-label { font-size: 12px; color: var(--muted); }
+.branch-btn {
+  display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text);
+  padding: 3px 8px; border-radius: 4px;
+}
+.branch-btn:hover { background: var(--hover); color: var(--bright); }
+.branch-btn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.remote-toggle {
+  display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted);
+  padding: 3px 8px; border-radius: 4px; margin-left: 4px;
+}
+.remote-toggle:hover { background: var(--hover); }
+.checkbox {
+  width: 13px; height: 13px; border: 1px solid var(--border); border-radius: 3px;
+  display: inline-flex; align-items: center; justify-content: center; background: var(--input-bg);
+}
+.checkbox.on { background: var(--accent); border-color: var(--accent); }
+.checkbox.on::after { content: "✓"; font-size: 10px; color: #16212d; font-weight: 700; }
+.ctl-spacer { flex: 1; }
+.icon-btn {
+  width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 5px; color: var(--muted);
+}
+.icon-btn:hover { background: var(--hover); color: var(--bright); }
+.icon-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---- 滚动区 + 表格 ---- */
+.scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; position: relative; outline: none; }
+.scroll-shadow {
+  position: sticky; top: 0; height: 0; z-index: 5; pointer-events: none;
+  box-shadow: 0 -6px 6px -6px #000a; opacity: 0; transition: opacity 120ms;
+}
+.scroll-shadow.active { opacity: 1; }
+#commitTable { width: 100%; border-collapse: collapse; table-layout: fixed; position: relative; z-index: 1; }
+#commitGraph { position: absolute; left: 0; z-index: 2; pointer-events: none; }
+#commitGraph circle { pointer-events: all; cursor: pointer; }
+th, td { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; text-align: left; }
+thead th {
+  font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.4px;
+  height: 26px; padding: 0 8px; border-bottom: 1px solid var(--border-strong);
+  position: sticky; top: 0; background: var(--pane); z-index: 4;
+  user-select: none;
+}
+col.c-graph { width: 92px; }
+col.c-desc { width: auto; }
+col.c-author { width: 130px; }
+col.c-date { width: 96px; }
+col.c-sha { width: 88px; }
+.resize-handle {
+  position: absolute; right: 0; top: 0; bottom: 0; width: 7px; cursor: col-resize;
+}
+.resize-handle:hover, .resize-handle.dragging { background: rgba(97, 175, 239, 0.35); }
+tbody tr.commit { height: var(--row-h); cursor: pointer; }
+tbody tr.commit td { font-size: 12.5px; padding: 0 8px; line-height: 24px; }
+tbody tr.commit:hover { background: rgba(128, 128, 128, 0.13); }
+tbody tr.commit.selected { background: rgba(128, 128, 128, 0.24); }
+tbody tr.commit.selected:hover { background: rgba(128, 128, 128, 0.32); }
+td.cell-desc { display: flex; align-items: center; gap: 0; min-width: 0; }
+/* mute 只压提交信息/作者/日期，徽章保持可读（vgg 同款） */
+tr.commit.mute .msg,
+tr.commit.mute td.cell-author,
+tr.commit.mute td.cell-date { opacity: 0.45; }
+.head-dot {
+  width: 6px; height: 6px; border: 2px solid var(--lane-color, var(--accent));
+  border-radius: 6px; margin-right: 6px; flex-shrink: 0;
+}
+.msg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+tr.commit.selected .msg { color: var(--bright); font-weight: 600; }
+td.cell-author { color: var(--text); }
+td.cell-date { color: var(--muted); }
+td.cell-sha { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+td.cell-sha:hover { color: var(--accent); }
+td.cell-graph { position: relative; }
+
+/* ---- ref 徽章（vgg .gitRef） ---- */
+.ref {
+  display: inline-flex; align-items: center; height: 18px; margin: 2px 4px 2px 0;
+  border: 1px solid rgba(128, 128, 128, 0.75); border-radius: 5px;
+  font-size: 11px; line-height: 18px; flex-shrink: 0; background: rgba(128, 128, 128, 0.15);
+  overflow: hidden; vertical-align: middle;
+}
+.ref .ref-ico {
+  width: 15px; height: 15px; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--ref-color, var(--muted)); flex-shrink: 0; margin: 1px;
+}
+.ref .ref-ico svg { width: 11px; height: 11px; fill: var(--pane); stroke: none; }
+.ref .ref-name { padding: 0 5px 0 3px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.ref.head .ref-name { font-weight: 700; }
+.ref.head { border-color: var(--ref-color, var(--accent)); }
+.ref.remote .ref-name { color: var(--muted); font-style: italic; }
+.ref.remote { border-style: dashed; }
+.ref.tag { color: var(--amber); }
+.ref.tag .ref-ico { background: var(--amber); }
+.ref:hover { background: rgba(128, 128, 128, 0.28); }
+.ref.remote-branch-tag .ref-ico { background: var(--muted); }
+body.hide-remote .ref.remote { display: none; }
+
+/* ---- 行内详情 CDV（vgg #cdv.inline） ---- */
+tr.cdv-row td {
+  background: rgba(128, 128, 128, 0.09);
+  border-top: 1px solid rgba(128, 128, 128, 0.25);
+  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+  padding: 0; cursor: default;
+}
+/* graph 列留空：SVG 线穿过展开带，文字从 Description 列起 */
+tr.cdv-row td.cell-graph { background: rgba(128, 128, 128, 0.06); }
+.cdv { display: flex; align-items: stretch; height: 224px; position: relative; }
+.cdv-summary {
+  width: 50%; min-width: 0; overflow-y: auto; padding: 10px 12px;
+  border-right: 1px solid rgba(128, 128, 128, 0.2); user-select: text;
+}
+.cdv-summary h3 { font-size: 13px; color: var(--bright); font-weight: 600; }
+.cdv-meta { margin: 8px 0; display: grid; grid-template-columns: 64px 1fr; row-gap: 3px; font-size: 12px; }
+.cdv-meta dt { color: var(--muted); }
+.cdv-meta dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cdv-meta .link { color: var(--accent); cursor: pointer; }
+.cdv-meta .link:hover { text-decoration: underline; }
+.sig { display: inline-flex; align-items: center; gap: 4px; color: var(--green); font-size: 11px; }
+.sig svg { width: 12px; height: 12px; fill: var(--green); }
+.cdv-body { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(128, 128, 128, 0.18); font-size: 12px; color: var(--text); white-space: pre-wrap; font-family: var(--ui); }
+.cdv-files { flex: 1; min-width: 0; overflow-y: auto; padding: 8px 10px 8px 0; user-select: none; }
+.cdv-files ul { list-style: none; padding-left: 18px; margin: 0; }
+.cdv-files > ul { padding-left: 8px; }
+.cdv-files li { margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.cdv-files .dir { cursor: pointer; color: var(--text); }
+.cdv-files .dir:hover { color: var(--bright); }
+.cdv-files .dir svg { width: 11px; height: 11px; fill: var(--muted); margin-right: 4px; vertical-align: -1px; }
+.cdv-files .file { color: var(--cyan); cursor: pointer; }
+.cdv-files .file:hover { text-decoration: underline; }
+.stat-add { color: var(--green); font-size: 11px; margin-left: 8px; font-family: var(--mono); }
+.stat-del { color: var(--red); font-size: 11px; font-family: var(--mono); }
+.cdv-divider { width: 6px; cursor: col-resize; flex-shrink: 0; }
+.cdv-divider:hover { background: rgba(128, 128, 128, 0.25); }
+.cdv-close {
+  position: absolute; right: 6px; top: 4px; width: 22px; height: 22px; border-radius: 4px;
+  color: var(--muted); display: flex; align-items: center; justify-content: center;
+}
+.cdv-close:hover { background: rgba(128, 128, 128, 0.3); color: var(--bright); }
+
+/* ---- find widget（vgg #findWidget） ---- */
+.find-widget {
+  position: absolute; right: 22px; top: 4px; z-index: 30;
+  display: flex; align-items: center; gap: 4px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 6px;
+  padding: 3px 6px; box-shadow: 0 6px 20px #0008;
+}
+.find-widget[hidden] { display: none; }
+.find-widget input {
+  width: 220px; background: var(--input-bg); color: var(--bright);
+  border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; font: 12px var(--ui);
+  outline: none;
+}
+.find-widget input:focus { border-color: var(--accent); }
+.find-count { font-size: 11px; color: var(--muted); min-width: 44px; text-align: center; }
+.find-nav { width: 20px; height: 20px; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.find-nav:hover { background: var(--hover); color: var(--bright); }
+tr.commit.find-current td { background: rgba(97, 175, 239, 0.22); outline: 1px solid var(--accent); outline-offset: -1px; }
+tr.flash td { animation: flash-commit 0.9s ease-out; }
+@keyframes flash-commit {
+  0% { background: rgba(97, 175, 239, 0.45); }
+  35% { background: rgba(97, 175, 239, 0.18); }
+  55% { background: rgba(97, 175, 239, 0.4); }
+  100% { background: transparent; }
+}
+
+/* ---- tooltip（hover 圆点） ---- */
+.tooltip {
+  position: fixed; z-index: 50; pointer-events: none;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 6px;
+  padding: 5px 9px; font-size: 12px; box-shadow: 0 6px 20px #0008; max-width: 340px;
+}
+.tooltip[hidden] { display: none; }
+.tooltip .tt-head { color: var(--bright); }
+.tooltip .tt-sha { font-family: var(--mono); color: var(--accent); margin-right: 6px; }
+
+/* ---- context menu / dropdown（vgg contextMenu.css） ---- */
+.menu {
+  position: fixed; z-index: 60; min-width: 220px;
+  background: #252930; border: 1px solid var(--border-strong); border-radius: 6px;
+  padding: 4px; box-shadow: 0 8px 28px #000a; display: flex; flex-direction: column;
+}
+.menu[hidden] { display: none; }
+.menu-item {
+  display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 4px;
+  font-size: 12.5px; color: var(--text); text-align: left; white-space: nowrap;
+}
+.menu-item:hover { background: var(--accent); color: #16212d; }
+.menu-item:hover .menu-sub, .menu-item:hover .menu-key { color: #16212d; }
+.menu-item .menu-key { margin-left: auto; font-size: 11px; color: var(--muted); padding-left: 24px; }
+.menu-item.danger { color: var(--red); }
+.menu-item.danger:hover { background: var(--red); color: #fff; }
+.menu-item[disabled] { opacity: 0.4; pointer-events: none; }
+.menu-item .check { width: 14px; flex-shrink: 0; color: var(--accent); }
+.menu-item:hover .check { color: #16212d; }
+.menu-sep { height: 1px; background: rgba(128, 128, 128, 0.35); margin: 4px 8px; }
+.menu-ico { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; flex-shrink: 0; }
+.menu-title { font-size: 11px; color: var(--muted); padding: 3px 10px 1px; }
+
+/* ---- toast ---- */
+.toast {
+  position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%);
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 6px;
+  color: var(--bright); font-size: 12px; padding: 7px 14px; z-index: 80;
+  box-shadow: 0 8px 24px #000a; display: flex; gap: 8px; align-items: center;
+  font-family: var(--mono); opacity: 0; transition: opacity 150ms, transform 150ms;
+}
+.toast.show { opacity: 1; }
+.toast .tk { color: var(--green); }
+</style>
+</head>
+<body>
+
+<div class="window">
+  <div class="titlebar">
+    <div class="traffic"><i></i><i></i><i></i></div>
+    <div class="window-location">jagent-terminal — Git Graph</div>
+    <div class="prototype-tag">原型 v2 · vscode-git-graph 对齐</div>
+  </div>
+  <div class="tabbar">
+    <div class="tab">
+      <svg viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
+      终端
+    </div>
+    <div class="tab active">
+      <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M6 8.4v7.2M8.4 6h6a4 4 0 0 1 4 4v4a4 4 0 0 1-4 4h-6"/></svg>
+      Git Graph
+    </div>
+  </div>
+
+  <div class="gg">
+    <!-- 控件条 -->
+    <div class="controls">
+      <span class="ctl-label">分支</span>
+      <button class="branch-btn" id="branchBtn">
+        main
+        <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <button class="remote-toggle" id="remoteToggle">
+        <span class="checkbox on"></span>显示远程分支
+      </button>
+      <span class="ctl-spacer"></span>
+      <button class="icon-btn" id="findBtn" title="查找提交 (⌘F)">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      </button>
+      <button class="icon-btn" title="设置（后续版本）" onclick="toast('tk', '设置面板：后续版本提供')">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h0a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h0a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v0a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
+      </button>
+      <button class="icon-btn" id="fetchBtn" title="拉取远端更新">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v6m0 6v6"/><path d="M18.7 7.5l-4.2 2.5M9.5 14l-4.2 2.5"/></svg>
+      </button>
+      <button class="icon-btn" id="refreshBtn" title="刷新">
+        <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+      </button>
+      <!-- find widget -->
+      <div class="find-widget" id="findWidget" hidden>
+        <input id="findInput" placeholder="查找提交（哈希 / 提交信息）" spellcheck="false" />
+        <span class="find-count" id="findCount">0/0</span>
+        <button class="find-nav" id="findPrev" title="上一个 (⇧Enter)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 15l-6-6-6 6"/></svg>
+        </button>
+        <button class="find-nav" id="findNext" title="下一个 (Enter)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <button class="find-nav" id="findClose" title="关闭 (Esc)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 滚动区 -->
+    <div class="scroll" id="scroll">
+      <div class="scroll-shadow" id="scrollShadow"></div>
+      <svg id="commitGraph" xmlns="http://www.w3.org/2000/svg"></svg>
+      <table id="commitTable">
+        <colgroup>
+          <col class="c-graph"><col class="c-desc"><col class="c-author"><col class="c-date"><col class="c-sha">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Graph</th>
+            <th style="position:relative">Description<div class="resize-handle" data-col="desc"></div></th>
+            <th style="position:relative">Author<div class="resize-handle" data-col="author"></div></th>
+            <th style="position:relative">Date<div class="resize-handle" data-col="date"></div></th>
+            <th style="position:relative">Sha<div class="resize-handle" data-col="sha"></div></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip" hidden></div>
+<div class="menu" id="ctxMenu" hidden></div>
+<div class="toast" id="toastEl"><span class="tk">$</span><span id="toastText"></span></div>
+
+<script>
+/* =====================================================================
+ * 原型数据：模拟 jagent-terminal 提交历史（3 lane：main / feat-ime / fix-titlebar）
+ * 新 → 旧。parents 按 sha 引用。
+ * ===================================================================== */
+const COMMITS = [
+  { sha: 'f9e3a21', parents: ['7c2d94b'], refs: ['HEAD -> main'], author: 'wxj', date: '2 小时前', subject: 'git graph: 表头列宽拖拽与行内详情', body: '对齐 vscode-git-graph 的表格交互：\n- 表头列宽可拖拽（Description/Author/Date/Sha）\n- 点击提交行内展开详情（summary + 文件树分栏）\n- 非线性提交淡化显示' },
+  { sha: '7c2d94b', parents: ['e8b1c76'], refs: ['origin/main'], author: 'wxj', date: '5 小时前', subject: 'settings: 侧栏宽度持久化 (200–400)' },
+  { sha: 'e8b1c76', parents: ['3a9f5d2'], refs: [], author: 'wxj', date: '8 小时前', subject: 'fix: 切换 workspace 时取消未完成的 log 流' },
+  { sha: '3a9f5d2', parents: ['b7e4c09', 'b1f6e42'], refs: [], author: 'wxj', date: '1 天前', subject: "Merge branch 'feat/ime' into main" },
+  { sha: 'b7e4c09', parents: ['c6d8022'], refs: [], author: 'wxj', date: '1 天前', subject: 'perf: 虚拟列表 estimatedItemHeight 校准' },
+  { sha: 'c6d8022', parents: ['9a5b3f1'], refs: [], author: 'wxj', date: '2 天前', subject: 'docs: git-graph 设计文档（lane 状态机）' },
+  { sha: '9a5b3f1', parents: ['2f8c66d', '5e9d0a3'], refs: [], author: 'wxj', date: '2 天前', subject: "Merge branch 'fix/titlebar' into main" },
+  { sha: '2f8c66d', parents: ['d4e7a19'], refs: [], author: 'wxj', date: '3 天前', subject: 'chore: 依赖版本联网核实（crates.io / npm）' },
+  { sha: 'd4e7a19', parents: ['a3c952b'], refs: ['tag: v0.2.0'], author: 'wxj', date: '3 天前', subject: 'release: v0.2.0 终端 + 工作区' },
+  { sha: 'b1f6e42', parents: ['8e0c1d4'], refs: ['feat/ime', 'origin/feat/ime'], author: 'wxj', date: '1 天前', subject: 'feat(ime): 候选窗定位 = 光标 bounds + cell 偏移', body: 'bounds_for_range 返回光标 bounds 加 cell_width × utf16 起始偏移，\n组合期间隐藏硬件光标，marked_text 带下划线 + 背景覆盖。' },
+  { sha: '8e0c1d4', parents: ['6f2a8b7'], refs: [], author: 'wxj', date: '2 天前', subject: 'fix(ime): marked_text 下划线背景覆盖' },
+  { sha: '6f2a8b7', parents: ['a3c952b'], refs: [], author: 'wxj', date: '3 天前', subject: 'wip(ime): inputContext 派发链路' },
+  { sha: 'a3c952b', parents: ['91e7d0c'], refs: [], author: 'wxj', date: '4 天前', subject: 'terminal: 字体默认值平台化 (Menlo / Consolas)' },
+  { sha: '91e7d0c', parents: ['0b4f68e'], refs: [], author: 'wxj', date: '4 天前', subject: 'refactor: PTY 会话生命周期与 tab 解耦' },
+  { sha: '5e9d0a3', parents: ['4c8b1f6'], refs: ['fix/titlebar'], author: 'wxj', date: '2 天前', subject: 'fix(titlebar): 红绿灯让位宽度 Darwin ≥ 25 (78px)' },
+  { sha: '4c8b1f6', parents: ['0b4f68e'], refs: [], author: 'wxj', date: '3 天前', subject: 'fix(titlebar): DarkAqua appearance 设置时机' },
+  { sha: '0b4f68e', parents: ['7d3e5c9'], refs: [], author: 'wxj', date: '5 天前', subject: 'render: paint 行索引减 display_offset 支持回滚' },
+  { sha: '7d3e5c9', parents: ['2a9f8e1'], refs: ['tag: v0.1.0'], author: 'wxj', date: '5 天前', subject: 'release: v0.1.0 首个可用版本' },
+  { sha: '2a9f8e1', parents: ['8c4d7b2'], refs: [], author: 'wxj', date: '6 天前', subject: 'feat: <anchored> 浮层菜单（deferred 层绘制）' },
+  { sha: '8c4d7b2', parents: ['1e6a0f5'], refs: [], author: 'wxj', date: '6 天前', subject: 'feat: workspace 多 tab 条' },
+  { sha: '1e6a0f5', parents: ['0d9c3e8'], refs: [], author: 'wxj', date: '1 周前', subject: 'fix: 流式 TextDecoder 分块行缓冲' },
+  { sha: '0d9c3e8', parents: ['b5a2f17'], refs: [], author: 'wxj', date: '1 周前', subject: 'feat: git log 流式解析 (%x00 分字段)' },
+  { sha: 'b5a2f17', parents: [], refs: [], author: 'wxj', date: '2 周前', subject: 'init: 仓库初始化' },
+];
+
+/* 详情文件树（部分提交定制，缺省用通用占位） */
+const FILES = {
+  'f9e3a21': [
+    { path: 'packages/app/src/git/components/GitGraphView.tsx', a: 142, d: 38 },
+    { path: 'packages/app/src/git/graphSvg.ts', a: 12, d: 4 },
+    { path: 'packages/app/src/git/cli.ts', a: 0, d: 2 },
+    { path: 'docs/git-graph.md', a: 86, d: 2 },
+  ],
+  '3a9f5d2': [
+    { path: 'packages/app/src/view/input.rs', a: 214, d: 0 },
+    { path: 'packages/app/src/view.rs', a: 96, d: 12 },
+    { path: 'packages/app/src/view/render.rs', a: 58, d: 3 },
+  ],
+  'b1f6e42': [
+    { path: 'packages/app/src/view.rs', a: 44, d: 6 },
+    { path: 'packages/app/src/view/render.rs', a: 31, d: 1 },
+  ],
+  '5e9d0a3': [
+    { path: 'packages/native/src/host.rs', a: 18, d: 2 },
+    { path: 'patches/gpuix/0003-render-loop.patch', a: 9, d: 1 },
+  ],
+};
+
+const LANE_COLORS = ['#61afef', '#98c379', '#c678dd', '#e5c07b', '#56b6c2', '#e06c75', '#d19a66', '#be5046'];
+const ROW_H = 26, LANE_W = 13, PAD_X = 8, MIN_LANES = 6, R = 3.5;
+
+/* =====================================================================
+ * lane 布局：git/graph.ts（Zed GraphData）的浏览器原型同构——
+ * parent0 继承 lane（直线）；parent1+ 开新 lane；等 parent 的 lane 在其行收尾。
+ * ===================================================================== */
+const UNSET = Number.MAX_SAFE_INTEGER;
+const rows = [], edges = [];
+const laneStates = [], laneColors = new Map();
+const parentToLanes = new Map();
+let nextColor = 0;
+const laneX = (l) => PAD_X + l * LANE_W + LANE_W / 2;
+const laneColor = (l) => laneColors.get(l) ?? 0;
+const firstEmpty = () => {
+  const i = laneStates.findIndex((s) => s === null);
+  if (i >= 0) return i;
+  laneStates.push(null);
+  return laneStates.length - 1;
+};
+
+COMMITS.forEach((c, i) => {
+  const waiting = parentToLanes.get(c.sha);
+  const lane = waiting ? Math.min(...waiting) : firstEmpty();
+  if (!laneColors.has(lane)) laneColors.set(lane, nextColor++ % LANE_COLORS.length);
+
+  // 收尾：等待本 sha 的 lane 全部画边到此
+  if (waiting) {
+    parentToLanes.delete(c.sha);
+    for (const from of waiting) {
+      const st = laneStates[from];
+      laneStates[from] = null;
+      edges.push({
+        from: st.fromCol,
+        to: lane,
+        r0: st.row,
+        r1: i,
+        color: st.color ?? laneColor(lane),
+        merge: !!st.merge,
+      });
+    }
+  }
+  // 开支：parent0 继承本 lane；parent1+ 从本提交圆点弯到新 lane（Zed startingCol = commitLane）
+  if (c.parents.length > 0) {
+    laneStates[lane] = { row: i, fromCol: lane, color: laneColor(lane), merge: false };
+    parentToLanes.set(c.parents[0], [...(parentToLanes.get(c.parents[0]) ?? []), lane]);
+    for (const p of c.parents.slice(1)) {
+      const nl = firstEmpty();
+      laneStates[nl] = { row: i, fromCol: lane, color: null, merge: true };
+      parentToLanes.set(p, [...(parentToLanes.get(p) ?? []), nl]);
+    }
+  }
+  rows.push({ ...c, lane, colorIdx: laneColor(lane), index: i });
+});
+const MAX_LANES = Math.max(...rows.map((r) => r.lane)) + 1;
+const GRAPH_W = LANE_W * Math.max(MIN_LANES, MAX_LANES) + PAD_X * 2;
+const HEAD_ROW = 0;
+const CDV_H = 224;
+/** HEAD 第一父链（含 HEAD 自身与根提交）。侧枝（feat/ime、fix/titlebar）mute。 */
+const firstParentChain = new Set();
+{
+  const bySha = new Map(COMMITS.map((c) => [c.sha, c]));
+  let sha = COMMITS[0].sha;
+  while (sha && !firstParentChain.has(sha)) {
+    firstParentChain.add(sha);
+    sha = bySha.get(sha)?.parents[0];
+  }
+}
+
+/* =====================================================================
+ * 表格渲染
+ * ===================================================================== */
+const tbody = document.getElementById('tbody');
+const BRANCH_SVG = '<svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="4"/><circle cx="6" cy="18" r="4"/><path d="M6 10v4M10 6h5a3 3 0 0 1 3 3v5"/></svg>';
+const TAG_SVG = '<svg viewBox="0 0 24 24"><path d="M3 3h8l10 10-8 8L3 11V3z"/><circle cx="8" cy="8" r="1.6"/></svg>';
+const REMOTE_SVG = '<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.6"/><circle cx="5" cy="19" r="2.6"/><circle cx="19" cy="19" r="2.6"/><path d="M12 7.6v4M12 11.6L6.2 17M12 11.6l5.8 5.4"/></svg>';
+
+function refBadge(ref) {
+  let kind = 'branch', name = ref;
+  if (ref === 'HEAD -> main') return `<span class="ref head" data-ref="main" style="--ref-color:${LANE_COLORS[rows[HEAD_ROW].colorIdx]}"><span class="ref-ico">${BRANCH_SVG}</span><span class="ref-name">main</span></span>`;
+  if (ref.startsWith('tag: ')) { kind = 'tag'; name = ref.slice(5); return `<span class="ref ${kind}" data-tag="${name}"><span class="ref-ico">${TAG_SVG}</span><span class="ref-name">${name}</span></span>`; }
+  if (ref.startsWith('origin/')) { const short = ref.slice(7); return `<span class="ref remote remote-branch-tag" data-remote="${short}"><span class="ref-ico">${REMOTE_SVG}</span><span class="ref-name">${ref}</span></span>`; }
+  const row = rows.find((r) => r.refs.includes(ref));
+  const color = row ? LANE_COLORS[row.colorIdx] : '#5c6370';
+  return `<span class="ref" data-branch="${name}" style="--ref-color:${color}"><span class="ref-ico">${BRANCH_SVG}</span><span class="ref-name">${name}</span></span>`;
+}
+
+function fileTreeHtml(files) {
+  // 按目录嵌套
+  const root = { dirs: {}, files: [] };
+  for (const f of files) {
+    const parts = f.path.split('/');
+    let node = root;
+    parts.forEach((p, i) => {
+      if (i === parts.length - 1) node.files.push({ ...f, name: p });
+      else { node.dirs[p] ??= { dirs: {}, files: [] }; node = node.dirs[p]; }
+    });
+  }
+  const render = (n) => {
+    let h = '<ul>';
+    for (const [d, child] of Object.entries(n.dirs)) {
+      h += `<li class="dir" data-open="1"><svg viewBox="0 0 24 24"><path d="M4 6h16v14H4zM4 6l4-4h8l4 4"/></svg>${d}${render(child)}</li>`;
+    }
+    for (const f of n.files) {
+      h += `<li><span class="file">${f.name}</span><span class="stat-add">+${f.a}</span><span class="stat-del">-${f.d}</span></li>`;
+    }
+    return h + '</ul>';
+  };
+  return render(root);
+}
+
+function rowHtml(r) {
+  const badges = r.refs.map(refBadge).join('');
+  const mute = firstParentChain.has(r.sha) ? '' : ' mute';
+  const selected = selectedSha === r.sha ? ' selected' : '';
+  const headDot = r.index === HEAD_ROW ? `<span class="head-dot" style="--lane-color:${LANE_COLORS[r.colorIdx]}"></span>` : '';
+  return `<tr class="commit${mute}${selected}" data-sha="${r.sha}" data-index="${r.index}">
+    <td class="cell-graph"></td>
+    <td class="cell-desc desc-text">${headDot}${badges}<span class="msg">${r.subject}</span></td>
+    <td class="cell-author">${r.author}</td>
+    <td class="cell-date">${r.date}</td>
+    <td class="cell-sha" title="点击复制哈希">${r.sha}</td>
+  </tr>`;
+}
+
+let selectedSha = null;
+function renderTable() {
+  tbody.innerHTML = rows.map(rowHtml).join('');
+  if (selectedSha) insertCdv(selectedSha);
+}
+
+/* ---- 行内详情（CDV） ---- */
+function insertCdv(sha) {
+  removeCdv();
+  const r = rows.find((x) => x.sha === sha);
+  if (!r) return;
+  const tr = tbody.querySelector(`tr[data-sha="${sha}"]`);
+  if (!tr) return;
+  const files = FILES[sha] ?? [{ path: 'README.md', a: 2, d: 0 }];
+  const parents = r.parents.map((p) => {
+    const pr = rows.find((x) => x.sha === p);
+    return pr ? `<span class="link" data-jump="${p}">${p}</span>` : `<span class="mono">${p.slice(0, 7)}</span>`;
+  }).join(' ');
+  const cdvTr = document.createElement('tr');
+  cdvTr.className = 'cdv-row';
+  cdvTr.innerHTML = `<td class="cell-graph"></td><td colspan="4" style="position:relative">
+    <button class="cdv-close" title="关闭 (Esc)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="cdv">
+      <div class="cdv-summary">
+        <h3>${r.subject}</h3>
+        <dl class="cdv-meta">
+          <dt>哈希</dt><dd><span class="mono" style="color:var(--accent)">${r.sha}</span></dd>
+          <dt>作者</dt><dd>${r.author} &lt;wxj@jagent.dev&gt;</dd>
+          <dt>日期</dt><dd>${r.date} · 2026-09-12 21:34 +0800</dd>
+          <dt>父提交</dt><dd>${parents}</dd>
+          <dt>签名</dt><dd><span class="sig"><svg viewBox="0 0 24 24"><path d="M12 2l7 4v6c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6z"/></svg>已验证（模拟）</span></dd>
+        </dl>
+        ${r.body ? `<div class="cdv-body">${r.body}</div>` : ''}
+      </div>
+      <div class="cdv-divider" id="cdvDivider"></div>
+      <div class="cdv-files">${fileTreeHtml(files)}</div>
+    </div>
+  </td>`;
+  tr.after(cdvTr);
+  cdvTr.querySelector('.cdv-close').onclick = () => select(null);
+  cdvTr.querySelectorAll('[data-jump]').forEach((el) => el.onclick = () => select(el.dataset.jump));
+  cdvTr.querySelectorAll('.dir').forEach((el) => el.onclick = (e) => {
+    e.stopPropagation();
+    const ul = el.querySelector('ul');
+    if (ul) ul.style.display = ul.style.display === 'none' ? '' : 'none';
+  });
+  // summary | files 分栏拖宽
+  const divider = cdvTr.querySelector('#cdvDivider');
+  divider.onmousedown = (e) => {
+    e.preventDefault();
+    const summary = cdvTr.querySelector('.cdv-summary');
+    const startX = e.clientX, startW = summary.offsetWidth;
+    const move = (ev) => { summary.style.width = Math.min(Math.max(240, startW + ev.clientX - startX), cdvTr.offsetWidth - 240) + 'px'; };
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+  };
+}
+function removeCdv() { tbody.querySelectorAll('tr.cdv-row').forEach((t) => t.remove()); }
+
+function select(sha, scroll = true) {
+  selectedSha = sha;
+  tbody.querySelectorAll('tr.commit').forEach((tr) => tr.classList.toggle('selected', tr.dataset.sha === sha));
+  if (sha) insertCdv(sha); else removeCdv();
+  renderGraph();
+  if (sha && scroll) {
+    const tr = tbody.querySelector(`tr[data-sha="${sha}"]`);
+    tr?.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+/* =====================================================================
+ * 整列 SVG：shadow 分离层（背景色粗垫底）→ 彩线 → 圆点（HEAD 空心）
+ * ===================================================================== */
+function cdvHeight() {
+  const el = tbody.querySelector('tr.cdv-row');
+  return el ? el.getBoundingClientRect().height : 0;
+}
+function rowY(index) {
+  const selectedIndex = selectedSha ? rows.find((r) => r.sha === selectedSha)?.index ?? -1 : -1;
+  const extra = selectedSha && index > selectedIndex ? cdvHeight() : 0;
+  return index * ROW_H + ROW_H / 2 + extra;
+}
+function renderGraph() {
+  const svg = document.getElementById('commitGraph');
+  const theadH = document.querySelector('thead').offsetHeight;
+  const extra = selectedSha ? cdvHeight() : 0;
+  const H = rows.length * ROW_H + extra;
+  svg.setAttribute('width', GRAPH_W);
+  svg.setAttribute('height', H);
+  svg.style.top = theadH + 'px';
+  const y = rowY;
+  const edgePath = (e) => {
+    const x0 = laneX(e.from), x1 = laneX(e.to), y0 = y(e.r0), y1 = y(e.r1);
+    if (x0 === x1) return `M ${x0} ${y0} L ${x1} ${y1}`;
+    if (e.merge) {
+      // 从 merge 提交圆点弯到新 lane（下一行），再垂直落到分支头
+      const yBend = y(Math.min(e.r0 + 1, e.r1));
+      const mid = (y0 + yBend) / 2;
+      const curve = `M ${x0} ${y0} C ${x0} ${mid}, ${x1} ${mid}, ${x1} ${yBend}`;
+      return yBend === y1 ? curve : `${curve} L ${x1} ${y1}`;
+    }
+    // 会合：垂直走到父提交上一行，再弯进父提交圆点
+    const yBend = y(Math.max(e.r1 - 1, e.r0));
+    const mid = (yBend + y1) / 2;
+    if (yBend === y0) return `M ${x0} ${y0} C ${x0} ${mid}, ${x1} ${mid}, ${x1} ${y1}`;
+    return `M ${x0} ${y0} L ${x0} ${yBend} C ${x0} ${mid}, ${x1} ${mid}, ${x1} ${y1}`;
+  };
+  const PANE = '#1e2127';
+  // 1. shadow 层：交叉分离
+  let shadow = edges.map((e) => `<path d="${edgePath(e)}" fill="none" stroke="${PANE}" stroke-width="5"/>`).join('');
+  // 2. 彩线
+  let lines = edges.map((e) => `<path d="${edgePath(e)}" fill="none" stroke="${LANE_COLORS[e.color]}" stroke-width="1.6" stroke-linecap="round"/>`).join('');
+  // 3. 圆点（背景描边分离 + HEAD 空心）
+  let circles = rows.map((r) => {
+    const cx = laneX(r.lane), cy = y(r.index), c = LANE_COLORS[r.colorIdx];
+    if (r.index === HEAD_ROW) return `<circle class="node" data-sha="${r.sha}" cx="${cx}" cy="${cy}" r="${R}" fill="${PANE}" stroke="${c}" stroke-width="2"/>`;
+    return `<circle class="node" data-sha="${r.sha}" cx="${cx}" cy="${cy}" r="${R}" fill="${c}" stroke="${PANE}" stroke-width="2"/>`;
+  }).join('');
+  svg.innerHTML = shadow + lines + circles;
+  svg.querySelectorAll('.node').forEach((el) => {
+    el.addEventListener('click', () => select(el.dataset.sha));
+    el.addEventListener('mouseenter', (ev) => showTooltip(ev, el.dataset.sha));
+    el.addEventListener('mouseleave', hideTooltip);
+  });
+}
+
+/* ---- tooltip ---- */
+const tooltip = document.getElementById('tooltip');
+function showTooltip(ev, sha) {
+  const r = rows.find((x) => x.sha === sha);
+  if (!r) return;
+  const refs = r.refs.length ? '<br>' + r.refs.map(refBadge).join('') : '';
+  tooltip.innerHTML = `<div class="tt-head"><span class="tt-sha">${r.sha}</span>${r.subject}</div>${refs}`;
+  tooltip.hidden = false;
+  const pad = 12;
+  let x = ev.clientX + pad, yTop = ev.clientY - 8;
+  if (x + tooltip.offsetWidth > innerWidth - 8) x = ev.clientX - tooltip.offsetWidth - pad;
+  tooltip.style.left = x + 'px'; tooltip.style.top = yTop + 'px';
+}
+function hideTooltip() { tooltip.hidden = true; }
+
+/* =====================================================================
+ * 右键菜单（git actions —— 全部经 spawn git CLI，与 vgg 架构一致）
+ * ===================================================================== */
+const ctxMenu = document.getElementById('ctxMenu');
+function openMenu(x, yTop, title, items) {
+  ctxMenu.innerHTML = (title ? `<div class="menu-title">${title}</div>` : '') + items.map((it) => {
+    if (it === '-') return '<div class="menu-sep"></div>';
+    return `<button class="menu-item ${it.danger ? 'danger' : ''}" data-cmd="${it.cmd ?? ''}" ${it.disabled ? 'disabled' : ''}>
+      <span class="check">${it.checked ? '✓' : ''}</span>${it.label}${it.key ? `<span class="menu-key">${it.key}</span>` : ''}</button>`;
+  }).join('');
+  ctxMenu.hidden = false;
+  const mw = ctxMenu.offsetWidth, mh = ctxMenu.offsetHeight;
+  ctxMenu.style.left = Math.min(x, innerWidth - mw - 8) + 'px';
+  ctxMenu.style.top = Math.min(yTop, innerHeight - mh - 8) + 'px';
+  ctxMenu.querySelectorAll('.menu-item').forEach((b) => b.onclick = () => {
+    ctxMenu.hidden = true;
+    if (b.dataset.cmd) toast('$', b.dataset.cmd);
+  });
+}
+function closeMenus() { ctxMenu.hidden = true; branchMenu.hidden = true; }
+
+function commitMenu(x, yTop, r) {
+  openMenu(x, yTop, `${r.sha} · ${r.subject.slice(0, 24)}`, [
+    { label: '检出到此提交', cmd: `git checkout ${r.sha}`, disabled: r.index === HEAD_ROW },
+    { label: '检出此提交（分离 HEAD）', cmd: `git checkout --detach ${r.sha}` },
+    '-',
+    { label: '从此提交创建分支…', cmd: `git branch <name> ${r.sha}`, key: '⌃B' },
+    { label: '从此提交创建标签…', cmd: `git tag <name> ${r.sha}` },
+    { label: '复制提交哈希', cmd: `# 已复制 ${r.sha}`, key: '⌃C' },
+    '-',
+    { label: 'Cherry Pick 到当前分支', cmd: `git cherry-pick ${r.sha}` },
+    { label: '还原提交', cmd: `git revert ${r.sha}` },
+    { label: '丢弃提交', cmd: `git drop ${r.sha}`, danger: true },
+    '-',
+    { label: '合并进当前分支', cmd: `git merge ${r.sha}` },
+    { label: '将当前分支变基到此提交', cmd: `git rebase ${r.sha}` },
+    { label: '重置当前分支到此提交（--soft）', cmd: `git reset --soft ${r.sha}` },
+    { label: '重置当前分支到此提交（--mixed）', cmd: `git reset --mixed ${r.sha}` },
+    { label: '重置当前分支到此提交（--hard）', cmd: `git reset --hard ${r.sha}`, danger: true },
+  ]);
+}
+function branchMenuItems(name, isCurrent) {
+  return [
+    { label: `检出 ${name}`, cmd: `git checkout ${name}`, disabled: isCurrent, checked: isCurrent },
+    { label: '拉取…', cmd: `git pull origin ${name}` },
+    { label: '推送…', cmd: `git push origin ${name}` },
+    '-',
+    { label: '合并进当前分支', cmd: `git merge ${name}` },
+    { label: `变基当前分支到 ${name}…`, cmd: `git rebase ${name}` },
+    '-',
+    { label: '重命名…', cmd: `git branch -m ${name} <new>` },
+    { label: '删除…', cmd: `git branch -d ${name}`, danger: true },
+  ];
+}
+function remoteMenuItems(name) {
+  return [
+    { label: `检出为新分支 ${name}`, cmd: `git checkout -b ${name} origin/${name}` },
+    { label: '拉取…', cmd: `git pull origin ${name}` },
+    '-',
+    { label: '合并进当前分支', cmd: `git merge origin/${name}` },
+    { label: '删除远程分支…', cmd: `git push origin --delete ${name}`, danger: true },
+  ];
+}
+function tagMenuItems(name) {
+  return [
+    { label: '检出此标签（分离 HEAD）', cmd: `git checkout ${name}` },
+    '-',
+    { label: '在此提交创建标签…', cmd: `git tag <name>` },
+    { label: '推送标签…', cmd: `git push origin ${name}` },
+    { label: '删除标签…', cmd: `git tag -d ${name}`, danger: true },
+    { label: '复制标签名', cmd: `# 已复制 ${name}` },
+  ];
+}
+
+tbody.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const refEl = e.target.closest('.ref');
+  if (refEl) {
+    if (refEl.dataset.branch) return openMenu(e.clientX, e.clientY, `分支 ${refEl.dataset.branch}`, branchMenuItems(refEl.dataset.branch, refEl.dataset.branch === 'main'));
+    if (refEl.dataset.remote) return openMenu(e.clientX, e.clientY, `远程 origin/${refEl.dataset.remote}`, remoteMenuItems(refEl.dataset.remote));
+    if (refEl.dataset.tag) return openMenu(e.clientX, e.clientY, `标签 ${refEl.dataset.tag}`, tagMenuItems(refEl.dataset.tag));
+    if (refEl.dataset.ref) return openMenu(e.clientX, e.clientY, `分支 ${refEl.dataset.ref}`, branchMenuItems(refEl.dataset.ref, true));
+  }
+  const tr = e.target.closest('tr.commit');
+  if (tr) commitMenu(e.clientX, e.clientY, rows[+tr.dataset.index]);
+});
+
+/* ---- 行点击 / sha 复制 ---- */
+tbody.addEventListener('click', (e) => {
+  const shaTd = e.target.closest('.cell-sha');
+  if (shaTd) { toast('#', `已复制 ${shaTd.textContent}`); return; }
+  const fileEl = e.target.closest('.file');
+  if (fileEl) { toast('$', `git show <sha> -- ${fileEl.textContent}（原型）`); return; }
+  const tr = e.target.closest('tr.commit');
+  if (tr) select(tr.dataset.sha === selectedSha ? null : tr.dataset.sha, false);
+});
+
+/* =====================================================================
+ * find widget
+ * ===================================================================== */
+const findWidget = document.getElementById('findWidget'), findInput = document.getElementById('findInput');
+let findMatches = [], findIdx = -1;
+function openFind() { findWidget.hidden = false; findInput.focus(); findInput.select(); }
+function closeFind() { findWidget.hidden = true; tbody.querySelectorAll('.find-current').forEach((t) => t.classList.remove('find-current')); }
+function runFind() {
+  const q = findInput.value.trim().toLowerCase();
+  tbody.querySelectorAll('.find-current').forEach((t) => t.classList.remove('find-current'));
+  findMatches = q ? rows.filter((r) => r.subject.toLowerCase().includes(q) || r.sha.startsWith(q)) : [];
+  findIdx = findMatches.length ? 0 : -1;
+  document.getElementById('findCount').textContent = `${findMatches.length ? 1 : 0}/${findMatches.length}`;
+  if (findMatches.length) gotoFindMatch(0);
+}
+function gotoFindMatch(dir = 1) {
+  if (!findMatches.length) return;
+  if (dir !== 0) findIdx = (findIdx + dir + findMatches.length) % findMatches.length;
+  document.getElementById('findCount').textContent = `${findIdx + 1}/${findMatches.length}`;
+  const sha = findMatches[findIdx].sha;
+  select(sha);
+  const tr = tbody.querySelector(`tr[data-sha="${sha}"]`);
+  tr.classList.remove('flash'); void tr.offsetWidth; tr.classList.add('flash');
+  tr.scrollIntoView({ block: 'center' });
+}
+document.getElementById('findBtn').onclick = openFind;
+document.getElementById('findClose').onclick = closeFind;
+document.getElementById('findNext').onclick = () => gotoFindMatch(1);
+document.getElementById('findPrev').onclick = () => gotoFindMatch(-1);
+findInput.addEventListener('input', runFind);
+findInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); gotoFindMatch(e.shiftKey ? -1 : 1); }
+  if (e.key === 'Escape') { e.preventDefault(); closeFind(); findInput.blur(); }
+});
+window.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); openFind(); }
+  if (e.key === 'Escape' && !findWidget.hidden) { closeFind(); return; }
+  if (e.key === 'Escape') { closeMenus(); select(null, false); }
+});
+
+/* ---- 分支下拉 / 远程开关 / fetch / refresh ---- */
+const branchMenu = ctxMenu; // 复用同一菜单容器
+document.getElementById('branchBtn').onclick = (e) => {
+  e.stopPropagation();
+  const rect = e.currentTarget.getBoundingClientRect();
+  openMenu(rect.left, rect.bottom + 4, '检出分支', [
+    { label: 'main', checked: true, cmd: '# 已在 main' },
+    { label: 'feat/ime', cmd: 'git checkout feat/ime' },
+    { label: 'fix/titlebar', cmd: 'git checkout fix/titlebar' },
+    '-',
+    { label: '创建新分支…', cmd: 'git branch <name>' },
+  ]);
+};
+document.getElementById('remoteToggle').onclick = function () {
+  this.querySelector('.checkbox').classList.toggle('on');
+  document.body.classList.toggle('hide-remote');
+};
+document.getElementById('fetchBtn').onclick = () => toast('$', 'git fetch --all --prune');
+document.getElementById('refreshBtn').onclick = function () {
+  this.style.opacity = '0.4';
+  setTimeout(() => (this.style.opacity = ''), 600);
+  toast('$', 'git log --date-order（刷新）');
+};
+
+/* ---- 列宽拖拽 ---- */
+document.querySelectorAll('.resize-handle').forEach((h) => {
+  h.addEventListener('mousedown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    h.classList.add('dragging');
+    const col = document.querySelector(`col.c-${h.dataset.col}`);
+    const startX = e.clientX, startW = col.getBoundingClientRect().width;
+    const move = (ev) => { col.style.width = Math.max(48, startW + ev.clientX - startX) + 'px'; };
+    const up = () => { h.classList.remove('dragging'); window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+  });
+});
+
+/* ---- 全局关闭浮层 / scroll shadow ---- */
+window.addEventListener('click', (e) => { if (!e.target.closest('.menu') && !e.target.closest('#branchBtn')) closeMenus(); });
+window.addEventListener('blur', hideTooltip);
+const scrollEl = document.getElementById('scroll');
+scrollEl.addEventListener('scroll', () => {
+  document.getElementById('scrollShadow').classList.toggle('active', scrollEl.scrollTop > 0);
+});
+
+/* ---- toast ---- */
+let toastTimer;
+function toast(prefix, text) {
+  const el = document.getElementById('toastEl');
+  el.querySelector('.tk').textContent = prefix;
+  document.getElementById('toastText').textContent = text;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+/* ---- 启动 ---- */
+renderTable();
+renderGraph();
+requestAnimationFrame(() => { renderGraph(); select('3a9f5d2', false); }); // 待布局稳定后重算 SVG 偏移
+</script>
+</body>
+</html>
