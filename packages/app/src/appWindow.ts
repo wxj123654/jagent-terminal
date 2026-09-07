@@ -10,7 +10,7 @@ import {
 import { applyWindowAppearance } from '@jagent/native'
 import type { ReactNode } from 'react'
 
-type AppRenderer = ReturnType<typeof createRenderer>
+export type AppRenderer = ReturnType<typeof createRenderer>
 
 export type AppWindowHost = {
   createRenderer: typeof createRenderer

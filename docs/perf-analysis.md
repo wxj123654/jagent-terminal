@@ -109,6 +109,7 @@ crates/jagent-terminal/      终端栈（model/pool/pty/view/view/render）—�
 ## 待执行（动态验证，静态结论 → 数据证实）
 
 - [x] **P1 基础设施**：✅ 2026-09-08 性能 HUD 上线（设置 → 高级 → 性能指标 HUD）：标题栏右上角实时显示绘制帧率/单次 paint 均值与峰值/CPU/RSS（500ms 轮询；crates perf 原子打点 + napi takePaintPerf + ui/PerfHud）。P1 基准可直接用它目测；脚本化采样后续补充
+- [x] **P1 基础设施 v2（整 app 测绘）**：✅ 2026-09-08 HUD 升级为双层数据面——整 app 帧面接 GPUIX 内建 profiler（gpuix-native 依赖 gpui 时已开 `profiler` feature，编译进 .node；`Window::draw` 全程被 WindowProfiler 计时，最近 1000 帧直方图）：`getDebugFrameOverlayStats` 差分 frames 得**整 app 重绘帧率**（build+layout+paint 全树），p90/max 得**整帧耗时**；终端 paint 打点降为子项 `term`（归因面）。同时新增 `advanced.frameOverlay`（GPUIX 屏幕帧覆盖层，full 模式整帧直方图可视化，与 HUD 同源）。零 Rust 改动、零 .refs 补丁。语义：本窗无新帧时 draw 读数显示 0（滚动窗历史不值新帧）
 - [ ] **P1 基准**：大窗口（200×60）高吞吐（`cat` 大文件 / `yes`）下 paint 成本测量（HUD 目测 + PresentMon 或 Rust Instant 采样脚本化）。产出：每帧 ms 数 @窗口尺寸，验证是否逼近 16.7ms
 - [x] **P2 基准**：✅ 2026-09-08 完成（.tmp/perf-bench-typing.ts，脚本保留可重跑；跑法：`cp .tmp/perf-bench-typing.ts e2e/__bench.ts && cd e2e && bun run __bench.ts`，跑完删）。结果：打字成本线性增长 0.20→2.11ms/键（10→2000 条）；意外发现 retained 全量注册（P2b）
 - [ ] **P2a/P2b 实施**：ConversationView 重构（composer 下沉 + visibleRange 窗口化），bench 脚本复测对比
@@ -119,3 +120,4 @@ crates/jagent-terminal/      终端栈（model/pool/pty/view/view/render）—�
 - 2026-09-08 · 全模块静态分析首轮 + P2 动态基准：8 模块 32 项过筛；确认 P1×1（render.rs 零缓存）、P2a×1（draft 顶层，bench 证实线性增长 10.3x）、P2b×1（virtual-list JS/retained 层未窗口化，bench 意外发现）；观察项×5，上游/已知记录×3。P1 基准与修复待执行。
 - 2026-09-08 · 范围收缩（用户拍板）：只看本仓代码，`.refs/gpuix` 移出分析范围（模块 8 整节移除，问题清单剔除上游项）；P1/P2a/P2b 的问题与修法已确认全部落在本仓文件，无需碰外部依赖。
 - 2026-09-08 · 性能 HUD 上线（advanced.perfHud）：crates/jagent-terminal perf.rs 原子打点（PaintGuard RAII 挂在 TerminalRenderer::paint）→ napi takePaintPerf（直读原子，不走 host 通道）→ main.tsx 采样器（差分 fps/均值 + cpuUsage/mem）→ ui/PerfHud（500ms 轮询，seam 注入零 native 依赖）→ TitleBar trailing 插槽（win 三键左侧/mac 右侧空白）。全链测试绿（Rust 单测 + PerfHud 3 + app 180 + e2e 17；debug→release 已切回）。
+- 2026-09-08 · HUD v2 整 app 测绘：发现 GPUIX 上游已内建整帧 profiler（gpui `profiler` feature + Window::draw 计时 + 1000 帧直方图，napi 已导出 getDebugFrameOverlayStats/setDebugFrameOverlay，@gpuix/react 类型面已带）——HUD 纯 JS 升级：fps 语义升级为整 app 重绘帧率（frames 差分），新增 draw p90/max 整帧耗时行，terminal paint 降为 term 子项；新增 advanced.frameOverlay 屏幕覆盖层开关（main.tsx 订阅 settings 去 重后调 setDebugFrameOverlay）。settings-ui.md §6/分表/§10 同步。app 180 全绿。P1 基准测量可直接读 draw p90/max。

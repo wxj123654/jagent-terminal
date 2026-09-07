@@ -157,6 +157,8 @@ type Settings = {
   acpAgents: AcpAgent[]          // { id, label, command, args[] }
   advanced: {
     gpuBackend: "auto" | "metal" | "dx12" | "vulkan"   // 默认 auto
+    perfHud: boolean            // 默认 false（性能 HUD）
+    frameOverlay: boolean       // 默认 false（屏幕帧覆盖层）
   }
 }
 ```
@@ -179,7 +181,7 @@ type Settings = {
 | Appearance | `appearance.sidebarWidth` | `248` | 200–400；拖拽实时写回 |
 | Keybindings | —（只读） | — | 见 §9；可编辑 Phase 3 |
 | ACP | `acpAgents[]` | 2 示例 | JSON-RPC 子进程命令；凭证走 shell 环境 |
-| Advanced | `advanced.gpuBackend` | `"auto"` | GPUIX fork 的后端选择 |
+| Advanced | `advanced.gpuBackend` / `advanced.perfHud` / `advanced.frameOverlay` | `"auto"` / `false` / `false` | GPU 后端；性能 HUD（整 app 帧率/整帧耗时 + 终端 paint + CPU/内存）；GPUIX 屏幕帧覆盖层 |
 
 **不进 settings.json 的运行时状态**：`lastUsedPreset`、各 thread 的 `hasBell` / `oscTitle` / `status`、窗口位置——由 ThreadStore / 本地 state 持有；当前激活表面由路由承载（`/thread/$id` · `/settings` · `/`，见 `docs/architecture.md` §3.5），不再单独存 `activeThreadId`。理由：设置是用户意图，运行时是机器记忆；后者频繁自动变化，混入 JSON 会制造无意义 diff。
 
@@ -259,6 +261,8 @@ Keybindings（第一期只读表）：
 ## 10. Advanced 分区
 
 - `advanced.gpuBackend` 下拉
+- `advanced.perfHud` 开关：标题栏性能 HUD（整 app 帧率/整帧 p90/max、终端 paint、CPU/内存）
+- `advanced.frameOverlay` 开关：GPUIX 内建屏幕帧覆盖层（整帧直方图可视化，与 HUD 数字同源）
 - **settings.json 实时视图**：只读代码块展示当前序列化 JSON，任何修改即时反映——证明「JSON 是事实源、UI 是表单视图」
 - 「在编辑器中打开 settings.json」按钮
 - 诊断信息（只读）：版本、GPUIX fork pin 说明、平台（Windows / ConPTY）

@@ -28,6 +28,8 @@ afterAll(() => {
 
 const SAMPLE_A: PerfSample = {
   fps: 0,
+  drawP90Ms: 0,
+  drawMaxMs: 0,
   paintAvgMs: 0,
   paintMaxMs: 0,
   cpuPct: 1.2,
@@ -35,6 +37,8 @@ const SAMPLE_A: PerfSample = {
 }
 const SAMPLE_B: PerfSample = {
   fps: 60,
+  drawP90Ms: 4.2,
+  drawMaxMs: 11.8,
   paintAvgMs: 2.5,
   paintMaxMs: 9.8,
   cpuPct: 12.4,
@@ -77,13 +81,15 @@ describe('PerfHud · 数据面', () => {
     t.renderer.flush()
     expect(calls()).toBe(1)
 
-    // 初始：空闲态（0fps / cpu 1% / mem 88MB）
+    // 初始：空闲态（0fps / draw 0 / cpu 1% / mem 88MB）
     await untilText('0fps')
+    expect(t.renderer.getAllText().some((s) => s.includes('draw 0.0/0.0ms'))).toBe(true)
     expect(t.renderer.getAllText().some((s) => s.includes('88MB'))).toBe(true)
 
-    // 轮询到 B：fps/paint/峰值都刷新
+    // 轮询到 B：整帧 fps / draw p90/max / term 均值与峰值都刷新
     await untilText('60fps')
-    expect(t.renderer.getAllText().some((s) => s.includes('2.5/9.8ms'))).toBe(true)
+    expect(t.renderer.getAllText().some((s) => s.includes('draw 4.2/11.8ms'))).toBe(true)
+    expect(t.renderer.getAllText().some((s) => s.includes('term 2.5/9.8ms'))).toBe(true)
     expect(calls()).toBeGreaterThanOrEqual(2)
   })
 

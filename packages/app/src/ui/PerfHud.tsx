@@ -1,13 +1,19 @@
 /**
  * ui/PerfHud.tsx — 性能指标 HUD（advanced.perfHud 开启时挂在标题栏右上角）。
  *
- * 数据源经 PerfSource seam 注入（native 收口纪律：takePaintPerf 的导入
- * 只出现在 main.tsx 装配层；本组件纯 TS 可测——AgentPlane.test 注入 fake）。
+ * 数据源经 PerfSource seam 注入（native 收口纪律：takePaintPerf /
+ * getDebugFrameOverlayStats 的导入只出现在 main.tsx 装配层；本组件纯 TS
+ * 可测——AgentPlane.test 注入 fake）。
  *
- * 指标语义：
- * - fps：终端绘制帧率（TerminalRenderer::paint 次数 / 采样窗秒数）。
+ * 指标语义（两层数据面）：
+ * - fps：**整 app 重绘帧率**（GPUIX Window::draw 次数 / 采样窗秒数——
+ *   build+layout+paint 一整帧计一次，覆盖全部 UI 而非仅终端）。
  *   gpui 按需重绘——空闲时 0 是「零重绘省电」的证明，不是故障。
- * - paint 均值/峰值：单次 paint 的毫秒耗时（本窗均值 / 本窗最大）。
+ * - draw p90/max：**整帧耗时**毫秒（GPUIX 内建 profiler 直方图，最近
+ *   1000 帧滚动窗；本窗无新帧时显示 0 避免旧值误导）。这是「整个 app
+ *   渲染压力」的直接读数——含 JS 提交后的 Rust build/layout/paint 全程。
+ * - term 均值/峰值：终端 paint 子系统耗时（TerminalRenderer::paint
+ *   打点，本窗均值 / 本窗最大）——整帧中的大头归因项。
  * - cpu：bun 进程整体占用（含 napi .node 内的 Rust 渲染线程）。
  * - mem：进程 RSS。
  */
@@ -17,13 +23,17 @@ import type { ReactElement } from 'react'
 
 import { COLORS, FONT } from './tokens'
 
-/** 一次采样的快照（main.tsx 采样器产出；数字均为本窗差分值） */
+/** 一次采样的快照（main.tsx 采样器产出；数字均为本窗差分/滚动窗读数） */
 export type PerfSample = {
-  /** 绘制帧/秒（本窗差分；空闲 0） */
+  /** 整 app 重绘帧/秒（GPUIX frames 差分；空闲 0） */
   fps: number
-  /** 单次 paint 均值 ms（本窗；无绘制时 0） */
+  /** 整帧 draw p90 ms（GPUIX 最近 1000 帧直方图；本窗无新帧时 0） */
+  drawP90Ms: number
+  /** 整帧 draw 最大 ms（同一直方图；本窗无新帧时 0） */
+  drawMaxMs: number
+  /** 终端 paint 均值 ms（本窗；无绘制时 0） */
   paintAvgMs: number
-  /** 本窗单次 paint 峰值 ms */
+  /** 本窗终端 paint 峰值 ms */
   paintMaxMs: number
   /** 进程 CPU 占用 %（含 Rust 线程；可能 >100 = 多核） */
   cpuPct: number
@@ -61,7 +71,8 @@ export function PerfHud({ source }: { source: PerfSource }): ReactElement {
         userSelect: 'none',
       }}
     >
-      {`${s.fps.toFixed(0)}fps · paint ${s.paintAvgMs.toFixed(1)}/${s.paintMaxMs.toFixed(1)}ms · cpu ${s.cpuPct.toFixed(0)}% · mem ${s.memMB.toFixed(0)}MB`}
+      {`${s.fps.toFixed(0)}fps · draw ${s.drawP90Ms.toFixed(1)}/${s.drawMaxMs.toFixed(1)}ms · term ${s.paintAvgMs.toFixed(1)}/${s.paintMaxMs.toFixed(1)}ms · cpu ${s.cpuPct.toFixed(0)}% · mem ${s.memMB.toFixed(0)}MB`}
     </text>
   )
 }
+// draw/term 各自均值-峰值语义见文件头注：draw=整帧 p90/滚动窗 max，term=本窗均值/峰值。

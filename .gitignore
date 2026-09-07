@@ -27,3 +27,6 @@ Thumbs.db
 
 # impeccable skill 设计工具工作产物
 design/.impeccable/
+
+# 会话临时产物（bench 脚本/分析报告等）
+.tmp/

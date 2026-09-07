@@ -129,9 +129,12 @@ export const RawSettingsSchema = z.looseObject({
   advanced: section(
     z.object({
       gpuBackend: z.enum(['auto', 'metal', 'dx12', 'vulkan']).catch('auto'),
-      /** 性能 HUD：开启后标题栏右侧显示 FPS/绘制耗时/CPU/内存
-       * （数据源 crates/jagent-terminal perf 原子打点；500ms 轮询） */
+      /** 性能 HUD：开启后标题栏右侧显示整 app 帧率/整帧耗时/终端 paint/CPU/内存
+       * （GPUIX 内建 profiler 整帧直方图 + 终端 paint 打点两层；500ms 轮询） */
       perfHud: z.boolean().catch(false),
+      /** 屏幕帧覆盖层：GPUIX 内建调试 overlay（整帧 p90/p99/max 可视化，
+       * full 模式画在场景之上）；与 HUD 的数字同源（getDebugFrameOverlayStats） */
+      frameOverlay: z.boolean().catch(false),
     }),
   ),
 })
@@ -304,7 +307,14 @@ export const SETTING_DEFS: SettingDef[] = [
     section: 'advanced',
     label: '性能指标 HUD',
     description:
-      '在标题栏右上角显示 FPS、绘制耗时、CPU 与内存（500ms 刷新；绘制统计来自终端渲染管线）',
+      '在标题栏右上角显示整 app 帧率、整帧耗时（p90/max）、终端 paint 与 CPU/内存（500ms 刷新；整帧行来自 GPUIX profiler，term 行来自终端渲染管线）',
+    control: { type: 'toggle' },
+  },
+  {
+    path: 'advanced.frameOverlay',
+    section: 'advanced',
+    label: '屏幕帧覆盖层',
+    description: 'GPUIX 内建调试 overlay：把整帧耗时直方图直接画在画面上（与 HUD 数字同源）',
     control: { type: 'toggle' },
   },
 ]
