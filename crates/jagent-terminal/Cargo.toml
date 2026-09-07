@@ -27,7 +27,7 @@ anyhow = "1"
 futures = "0.3"
 
 # Same crate GPUI uses. The example sets DPI awareness at runtime instead of
-# shipping an exe manifesto (mirrors gpuix-native).
+# shipping an exe manifest (mirrors gpuix-native).
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_HiDpi"] }
 
