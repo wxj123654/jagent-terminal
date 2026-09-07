@@ -3,7 +3,7 @@
  *
  * GPUIX 的 `<svg>` 是叶子元素：整体源码经 `source` prop 交给 gpui 解析，
  * tint 取 style.color。图标集：chat 圆环点 / terminal 竖条 / acp 折线 /
- * gear / close / plus / chevronDown。24×24 viewBox，stroke 风格（lucide 同系）。
+ * gear / close / minimize / maximize / plus / chevronDown。24×24 viewBox，stroke 风格（lucide 同系）。
  */
 
 import type { ReactElement } from 'react'
@@ -28,8 +28,12 @@ const SOURCES = {
   gear: strokeSvg(
     '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
   ),
-  /** close：行关闭 */
+  /** close：行关闭 / Linux CSD 关闭 */
   close: strokeSvg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
+  /** minimize：Linux CSD 最小化 */
+  minimize: strokeSvg('<path d="M5 12h14"/>'),
+  /** maximize：Linux CSD 最大化（空心方框） */
+  maximize: strokeSvg('<rect x="5" y="5" width="14" height="14" rx="1"/>'),
   /** plus：新建 */
   plus: strokeSvg('<path d="M5 12h14"/><path d="M12 5v14"/>'),
   /** chevronDown：预设菜单展开 / select 下拉 */
