@@ -295,8 +295,23 @@ export function TitleBar({
           {title}
         </text>
       </div>
-      {/* 尾部插槽（HUD）：win 下在三键左侧；mac/linux 靠 title 后的右侧空白 */}
-      {trailing ?? null}
+      {/* 尾部插槽（Git 图 / HUD）：win 下在三键左侧。整条标 drag 时必须
+          pointerEvents auto，否则 HTCAPTION 抢在按钮前（窗口控制三键同款）。 */}
+      {trailing ? (
+        <div
+          testId="titlebar-trailing"
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            flexShrink: 0,
+            pointerEvents: 'auto',
+            paddingRight: 4,
+          }}
+        >
+          {trailing}
+        </div>
+      ) : null}
       {/* win：三键靠右（space-between：title 左、按钮右）；linux CSD 同布局 */}
       {platform === 'win' && <WindowsWindowControls />}
       {platform === 'linux' && <LinuxWindowControls windowControls={windowControls} />}

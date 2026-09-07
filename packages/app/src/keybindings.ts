@@ -127,8 +127,8 @@ export function createGlobalKeydown(opts: {
       focusThreadSearch()
       return
     }
-    // Git 图表面键（无修饰；非激活态闭包必返回 false → 透传）
-    if (!ctrl && !inSettings() && gitGraphKey?.(key)) return
+    // Git 图表面键（无修饰；输入框聚焦时透传，否则吃 vim/终端键）
+    if (!ctrl && !inSettings() && !inputFocused() && gitGraphKey?.(key)) return
     // 修饰键组合层（其余透传）
     if (!ctrl) return
     if (keystrokeMatches(kb().cycleNext, key, ctrl, shift)) {

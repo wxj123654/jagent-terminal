@@ -155,10 +155,11 @@ export function App({
             <>
               <IconButton
                 name="gitBranch"
-                label="Git 图 (Ctrl+Shift+G)"
+                label="Git 图"
                 testId="titlebar-git"
                 size={13}
                 hitSize={28}
+                tooltip={false}
                 onClick={() => store.openGitGraph()}
               />
               <ErrorIndicator onOpen={dialogOpener.openErrors} />

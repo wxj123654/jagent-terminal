@@ -785,4 +785,18 @@ describe('activateWorkspace / close / removeWorkspace', () => {
     store.removeWorkspace(wsId)
     expect(store.getState().workspaces).toHaveLength(0)
   })
+
+  test('openGitGraph：切 paneTab=git 并激活工作区（无工作区 no-op）', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    expect(store.getState().workspaces[0]!.paneTab).toBe('home')
+    store.openGitGraph()
+    expect(store.getState().workspaces[0]!.paneTab).toBe('git')
+    expect(currentActiveWorkspaceId()).toBe(wsId)
+    await store.spawnFromPreset('shell', wsId)
+    expect(currentActiveThreadId()).toBeTruthy()
+    store.setWorkspacePaneTab(wsId, 'home')
+    store.openGitGraph()
+    expect(store.getState().workspaces[0]!.paneTab).toBe('git')
+    expect(currentActiveWorkspaceId()).toBe(wsId)
+  })
 })

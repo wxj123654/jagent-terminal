@@ -99,6 +99,7 @@ describe('searchThreads 层（⌘K/Ctrl-K）', () => {
 describe('Git 图键位层（git-graph.md §4.3）', () => {
   function makeGitHandler(over: {
     inSettings?: () => boolean
+    inputFocused?: () => boolean
     gitGraphKey?: (key: string) => boolean
     openGitGraph?: () => void
   }) {
@@ -114,7 +115,7 @@ describe('Git 图键位层（git-graph.md §4.3）', () => {
       inSettings: over.inSettings ?? (() => false),
       focusSearch: () => {},
       focusThreadSearch: () => {},
-      inputFocused: () => false,
+      inputFocused: over.inputFocused ?? (() => false),
       settingsQuery: () => '',
       escConsumed: () => false,
       clearEscConsumed: () => {},
@@ -153,6 +154,20 @@ describe('Git 图键位层（git-graph.md §4.3）', () => {
         return true
       },
     })
+    keydown('down', false, false)
+    expect(n).toBe(0)
+  })
+
+  test('输入框聚焦时不吃 gitGraphKey（查找框打字）', () => {
+    let n = 0
+    const { keydown } = makeGitHandler({
+      inputFocused: () => true,
+      gitGraphKey: () => {
+        n++
+        return true
+      },
+    })
+    keydown('r', false, false)
     keydown('down', false, false)
     expect(n).toBe(0)
   })

@@ -10,6 +10,7 @@ import { createElement } from 'react'
 
 import { createGitGraphStore } from '../git/store'
 import { createGlobalKeydown } from '../keybindings'
+import { navigateTarget } from '../router'
 import { memoryAdapter } from '../settings/file'
 import { createSettingsStore, type SettingsStore } from '../settings/store'
 import { createThreadStore, type ThreadStore, type ThreadDeps } from '../threads/store'
@@ -35,6 +36,7 @@ function makeDeps(): ThreadDeps {
     kill: () => {},
     presetOf: () => undefined,
     bellClear: () => {},
+    navigate: navigateTarget,
     // biome-ignore lint/suspicious/noExplicitAny: 测试桩
   } as never as ThreadDeps
 }
@@ -64,6 +66,16 @@ function key(testId: string, k: string) {
   t.renderer.nativeSimulateKeyDown(el.id, k)
   t.renderer.flush()
 }
+
+describe('AgentPlane：顶栏 Git 图按钮', () => {
+  test('titlebar-git 点击 → paneTab=git 并激活工作区', () => {
+    const { store } = setup(800)
+    expect(t.renderer.findByTestId('titlebar-git') != null).toBe(true)
+    expect(store.getState().workspaces[0]!.paneTab).toBe('home')
+    click('titlebar-git')
+    expect(store.getState().workspaces[0]!.paneTab).toBe('git')
+  })
+})
 
 describe('AgentPlane：窄窗口抽屉（W4）', () => {
   test('宽窗口（800px）：无汉堡钮，sidebar 常驻（session-search 在树中）', () => {
