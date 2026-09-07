@@ -85,9 +85,10 @@ const renderer = appWindow.renderer({
   height: 760,
   minWidth: 720,
   minHeight: 480,
-  // 自绘顶栏（plane/TitleBar.tsx）：mac/win 隐系统条；linux 保持
-  // Server decorations（WM 标题栏在上，TitleBar 退化为内容导航条）
-  titlebarTransparent: PLATFORM !== 'linux',
+  // 自绘顶栏（plane/TitleBar.tsx）：三平台均隐系统条；linux 另请求
+  // Client decorations（CSD），TitleBar 承担拖拽 + 最小化/最大化/关闭。
+  titlebarTransparent: true,
+  ...(PLATFORM === 'linux' ? { windowDecorations: 'client' as const } : {}),
 })
 
 // ── 全局键位层（keybindings.ts：main/e2e 共用语义；布线在此）──
@@ -95,6 +96,9 @@ const renderer = appWindow.renderer({
 const windowControls: WindowControls = {
   startMove: () => void renderer.startWindowMove(),
   doubleClick: () => void renderer.titlebarDoubleClick(),
+  minimize: () => void renderer.minimizeWindow?.(),
+  maximize: () => void renderer.titlebarDoubleClick(),
+  close: () => void renderer.closeWindow?.(),
 }
 const handleKeyDown = createGlobalKeydown({
   store: threadStore,
