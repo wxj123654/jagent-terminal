@@ -44,6 +44,10 @@ export function createAppWindow(host: AppWindowHost = nativeHost) {
       loop?.stop()
       loop = undefined
       host.resetRender()
+    } catch {
+      // Last window closed: GPUI already exited, so resetRender's unmount
+      // hits "GPUI application is not initialized" from applyBatch. Swallow
+      // it so the onTerminated caller can still reach host.terminate().
     } finally {
       stopping = false
     }
