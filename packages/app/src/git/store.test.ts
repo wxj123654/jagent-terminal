@@ -48,7 +48,10 @@ const c = (sha: string, parents: string[]): GraphCommit => ({
   refNames: [],
   shortSha: sha.slice(0, 7),
   authorName: 'a',
+  authorEmail: 'a@x',
   timestamp: 0,
+  committerName: 'a',
+  committerEmail: 'a@x',
   subject: `s-${sha}`,
 })
 
@@ -65,10 +68,13 @@ function makeDeps(
     spawnGitLog: () => {
       throw new Error('测试应覆写 spawnGitLog')
     },
-    showPatch: async (_cwd, sha) => {
+    showCommitBody: async (_cwd, sha) => {
       patches.push(sha)
-      return `PATCH-${sha}`
+      return `BODY-${sha}`
     },
+    listChangedFiles: async () => [],
+    listBranches: async () => [{ name: 'main', current: true }],
+    runGit: async () => '',
   }
   return { ...deps, ...over, roots, patches }
 }
@@ -157,7 +163,7 @@ describe('GitGraphStore.select / moveSelection', () => {
     store.select('b')
     await until()
     expect(store.getState().selectedSha).toBe('b')
-    expect(store.getState().patch).toBe('PATCH-b')
+    expect(store.getState().body).toBe('BODY-b')
     expect(deps.patches).toEqual(['b'])
 
     store.select(null)
@@ -166,19 +172,19 @@ describe('GitGraphStore.select / moveSelection', () => {
     expect(deps.patches).toEqual(['b'])
   })
 
-  test('快速换选：旧 patch 迟到不覆盖新选中', async () => {
+  test('快速换选：旧 body 迟到不覆盖新选中', async () => {
     const { streams, spawn } = fakeStream()
     const deps = makeDeps()
     deps.spawnGitLog = spawn
-    // showPatch：a 慢（手动放行），b 立即
+    // showCommitBody：a 慢（手动放行），b 立即
     let releaseA: (p: string) => void = () => {}
-    deps.showPatch = async (_cwd, sha) => {
+    deps.showCommitBody = async (_cwd, sha) => {
       if (sha === 'a') {
         return new Promise<string>((resolve) => {
           releaseA = resolve
         })
       }
-      return `PATCH-${sha}`
+      return `BODY-${sha}`
     }
     const store = createGitGraphStore(deps)
     store.mount('/w1')
@@ -190,11 +196,11 @@ describe('GitGraphStore.select / moveSelection', () => {
     store.select('a')
     store.select('b')
     await until()
-    expect(store.getState().patch).toBe('PATCH-b')
-    releaseA('PATCH-a-LATE')
+    expect(store.getState().body).toBe('BODY-b')
+    releaseA('BODY-a-LATE')
     await until()
     expect(store.getState().selectedSha).toBe('b')
-    expect(store.getState().patch).toBe('PATCH-b')
+    expect(store.getState().body).toBe('BODY-b')
   })
 
   test('moveSelection：首行起步 / 越界钳制', async () => {
@@ -248,5 +254,80 @@ describe('GitGraphStore.refresh / unmount', () => {
     await until()
     expect(store.getState().status).toBe('idle')
     expect(store.getState().rows).toHaveLength(0)
+  })
+})
+
+describe('GitGraphStore.files / find / runAction', () => {
+  test('select 加载 files；muteShas 排除第一父链', async () => {
+    const { streams, spawn } = fakeStream()
+    const deps = makeDeps({
+      listChangedFiles: async (_cwd, sha) => [
+        { path: `${sha}.ts`, added: 1, deleted: 0 },
+      ],
+    })
+    deps.spawnGitLog = spawn
+    const store = createGitGraphStore(deps)
+    store.mount('/w1')
+    await until()
+    streams[0]!.onChunk([
+      c('f', ['e', 'd']),
+      c('e', ['c']),
+      c('d', ['b']),
+      c('c', ['b']),
+      c('b', ['a']),
+      c('a', []),
+    ])
+    streams[0]!.finish(true)
+    await until()
+    expect(store.getState().muteShas.has('d')).toBe(true)
+    expect(store.getState().muteShas.has('f')).toBe(false)
+    store.select('f')
+    await until()
+    expect(store.getState().files).toEqual([
+      { path: 'f.ts', added: 1, deleted: 0 },
+    ])
+  })
+
+  test('find 按 subject/sha 命中并跳到第一条', async () => {
+    const { streams, spawn } = fakeStream()
+    const deps = makeDeps()
+    deps.spawnGitLog = spawn
+    const store = createGitGraphStore(deps)
+    store.mount('/w1')
+    await until()
+    streams[0]!.onChunk([c('abc111', []), c('def222', [])])
+    streams[0]!.finish(true)
+    await until()
+    store.find('def')
+    expect(store.getState().findQuery).toBe('def')
+    expect(store.getState().findMatches).toEqual(['def222'])
+    expect(store.getState().selectedSha).toBe('def222')
+    store.find('')
+    expect(store.getState().findMatches).toEqual([])
+  })
+
+  test('runAction 成功后 refresh；失败写入 actionError', async () => {
+    const { streams, spawn } = fakeStream()
+    const ran: string[][] = []
+    const deps = makeDeps({
+      runGit: async (_cwd, args) => {
+        ran.push(args)
+        if (args[0] === 'checkout' && args[1] === 'boom')
+          throw new Error('pathspec boom')
+        return ''
+      },
+    })
+    deps.spawnGitLog = spawn
+    const store = createGitGraphStore(deps)
+    store.mount('/w1')
+    await until()
+    streams[0]!.onChunk([c('a', [])])
+    streams[0]!.finish(true)
+    await until()
+    await store.runAction(['checkout', 'feat'])
+    expect(ran[0]).toEqual(['checkout', 'feat'])
+    expect(streams).toHaveLength(2) // refresh 重跑 log
+    await store.runAction(['checkout', 'boom'])
+    expect(store.getState().actionError).toBe('pathspec boom')
   })
 })
