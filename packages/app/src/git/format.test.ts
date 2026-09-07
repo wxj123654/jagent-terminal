@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { parseRefNames, relativeTime } from './format'
+import { formatCommitDate, parseRefNames, relativeTime } from './format'
 
 describe('parseRefNames', () => {
   test('空串 → 空数组', () => {
@@ -12,7 +12,9 @@ describe('parseRefNames', () => {
   })
 
   test('HEAD -> branch', () => {
-    expect(parseRefNames('HEAD -> main')).toEqual([{ kind: 'head', label: 'main' }])
+    expect(parseRefNames('HEAD -> main')).toEqual([
+      { kind: 'head', label: 'main' },
+    ])
   })
 
   test('detached HEAD', () => {
@@ -20,22 +22,28 @@ describe('parseRefNames', () => {
   })
 
   test('本地分支', () => {
-    expect(parseRefNames('feature/x')).toEqual([{ kind: 'remote', label: 'feature/x' }])
+    expect(parseRefNames('feature/x')).toEqual([
+      { kind: 'remote', label: 'feature/x' },
+    ])
     expect(parseRefNames('main')).toEqual([{ kind: 'branch', label: 'main' }])
   })
 
   test('远程 / tag', () => {
-    expect(parseRefNames('origin/main')).toEqual([{ kind: 'remote', label: 'origin/main' }])
+    expect(parseRefNames('origin/main')).toEqual([
+      { kind: 'remote', label: 'origin/main' },
+    ])
     expect(parseRefNames('tag: v1.0')).toEqual([{ kind: 'tag', label: 'v1.0' }])
   })
 
   test('多装饰混合保序', () => {
-    expect(parseRefNames('HEAD -> dev, origin/dev, tag: v0.9.0, main')).toEqual([
-      { kind: 'head', label: 'dev' },
-      { kind: 'remote', label: 'origin/dev' },
-      { kind: 'tag', label: 'v0.9.0' },
-      { kind: 'branch', label: 'main' },
-    ])
+    expect(parseRefNames('HEAD -> dev, origin/dev, tag: v0.9.0, main')).toEqual(
+      [
+        { kind: 'head', label: 'dev' },
+        { kind: 'remote', label: 'origin/dev' },
+        { kind: 'tag', label: 'v0.9.0' },
+        { kind: 'branch', label: 'main' },
+      ],
+    )
   })
 })
 
@@ -59,5 +67,15 @@ describe('relativeTime（now 注入，确定性）', () => {
 
   test('未来时间钳到 刚刚', () => {
     expect(relativeTime(NOW / 1000 + 120, NOW)).toBe('刚刚')
+  })
+})
+
+describe('formatCommitDate', () => {
+  test('固定时区给出 vscode-git-graph 风格绝对时间', () => {
+    // 2026-05-29 20:15:57 +0800
+    const sec = Date.parse('2026-05-29T20:15:57+08:00') / 1000
+    expect(formatCommitDate(sec, 'Asia/Shanghai')).toBe(
+      'Fri May 29 2026 20:15:57 GMT+0800 (中国标准时间)',
+    )
   })
 })

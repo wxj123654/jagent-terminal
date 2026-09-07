@@ -20,7 +20,8 @@ export function parseRefNames(raw: string): RefDecor[] {
     .split(', ')
     .filter(Boolean)
     .map((part) => {
-      if (part.startsWith('HEAD -> ')) return { kind: 'head', label: part.slice(8) }
+      if (part.startsWith('HEAD -> '))
+        return { kind: 'head', label: part.slice(8) }
       if (part === 'HEAD') return { kind: 'head', label: 'HEAD' }
       if (part.startsWith('tag: ')) return { kind: 'tag', label: part.slice(5) }
       if (part.includes('/')) return { kind: 'remote', label: part }
@@ -32,7 +33,10 @@ export function parseRefNames(raw: string): RefDecor[] {
  * 相对时间（git graph 行尾用）。粗粒度中文短句，与 Zed 的 "2 hours ago"
  * 同信息量。now 可注入（测试确定性）。
  */
-export function relativeTime(unixSec: number, nowMs: number = Date.now()): string {
+export function relativeTime(
+  unixSec: number,
+  nowMs: number = Date.now(),
+): string {
   const s = Math.max(0, Math.floor(nowMs / 1000) - unixSec)
   if (s < 60) return '刚刚'
   const m = Math.floor(s / 60)
@@ -44,4 +48,63 @@ export function relativeTime(unixSec: number, nowMs: number = Date.now()): strin
   const mo = Math.floor(d / 30)
   if (mo < 12) return `${mo} 个月前`
   return `${Math.floor(mo / 12)} 年前`
+}
+
+const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
+const MONTH = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n)
+}
+
+/**
+ * vscode-git-graph 风格绝对时间：
+ * `Fri May 29 2026 20:15:57 GMT+0800 (中国标准时间)`
+ * timeZone 可注入（测试确定性）；缺省用运行时本地时区。
+ */
+export function formatCommitDate(unixSec: number, timeZone?: string): string {
+  const d = new Date(unixSec * 1000)
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: timeZone ?? undefined,
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+    timeZoneName: 'longOffset',
+  })
+  const parts = Object.fromEntries(
+    fmt.formatToParts(d).map((p) => [p.type, p.value]),
+  ) as Record<string, string>
+  const weekday = parts.weekday ?? WEEKDAY[d.getUTCDay()]
+  const month = parts.month ?? MONTH[d.getUTCMonth()]
+  const day = parts.day ?? pad2(d.getUTCDate())
+  const year = parts.year ?? String(d.getUTCFullYear())
+  const hour = parts.hour ?? pad2(d.getUTCHours())
+  const minute = parts.minute ?? pad2(d.getUTCMinutes())
+  const second = parts.second ?? pad2(d.getUTCSeconds())
+  const offsetRaw = parts.timeZoneName ?? 'GMT+0000'
+  // longOffset → "GMT+08:00"；vgg 无冒号
+  const offset = offsetRaw.replace(/GMT([+-])(\d{2}):?(\d{2})/, 'GMT$1$2$3')
+  const tzName =
+    offset.includes('+0800') || offset.includes('+08')
+      ? '中国标准时间'
+      : offsetRaw.replace(/^GMT/, '').trim() || 'Local'
+  return `${weekday} ${month} ${day} ${year} ${hour}:${minute}:${second} ${offset} (${tzName})`
 }

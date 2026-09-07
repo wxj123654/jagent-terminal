@@ -266,3 +266,16 @@ export class GitGraphData {
     }
   }
 }
+
+/** HEAD（log 首行）沿第一父链走到根。侧枝（merge 第二父及祖先）不在集合内 → mute。 */
+export function firstParentChain(commits: readonly GraphCommit[]): Set<string> {
+  const chain = new Set<string>()
+  if (commits.length === 0) return chain
+  const bySha = new Map(commits.map((c) => [c.sha, c]))
+  let sha: string | undefined = commits[0]!.sha
+  while (sha && !chain.has(sha)) {
+    chain.add(sha)
+    sha = bySha.get(sha)?.parents[0]
+  }
+  return chain
+}

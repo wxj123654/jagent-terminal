@@ -9,17 +9,24 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { GraphCommit } from './cli'
-import { GitGraphData } from './graph'
+import { GitGraphData, firstParentChain } from './graph'
 
 /** 快捷构造：sha 用短代号，parents 引用其它代号 */
-function c(sha: string, parents: string[], refNames: string[] = []): GraphCommit {
+function c(
+  sha: string,
+  parents: string[],
+  refNames: string[] = [],
+): GraphCommit {
   return {
     sha,
     parents,
     refNames,
     shortSha: sha.slice(0, 7),
     authorName: 'a',
+    authorEmail: 'a@x',
     timestamp: 0,
+    committerName: 'a',
+    committerEmail: 'a@x',
     subject: `subject ${sha}`,
   }
 }
@@ -65,7 +72,12 @@ describe('GitGraphData fork + merge', () => {
     const dLine = g.lines[1]
     expect(dLine.childColumn).toBe(0)
     expect(dLine.rowSpan).toEqual([0, 2])
-    expect(dLine.segments[0]).toEqual({ kind: 'curve', toColumn: 1, onRow: 1, merge: true })
+    expect(dLine.segments[0]).toEqual({
+      kind: 'curve',
+      toColumn: 1,
+      onRow: 1,
+      merge: true,
+    })
     expect(dLine.segments[1]).toEqual({ kind: 'straight', toRow: 2 })
     // merge 支线色 = parent（d）所在 lane 的色 = lane1 缓存色
     expect(dLine.colorIdx).toBe(g.rows[2].colorIdx)
@@ -101,7 +113,12 @@ describe('GitGraphData fork + merge', () => {
     const hRow = g.rows[6]
     expect(hRow.lane).toBe(0)
     const xLine = g.lines.find((l) => l.rowSpan[0] === 6 && l.childColumn === 0)
-    expect(xLine?.segments[0]).toEqual({ kind: 'curve', toColumn: 1, onRow: 7, merge: true })
+    expect(xLine?.segments[0]).toEqual({
+      kind: 'curve',
+      toColumn: 1,
+      onRow: 7,
+      merge: true,
+    })
     expect(g.maxLanes).toBe(2)
   })
 })
@@ -118,19 +135,36 @@ describe('GitGraphData would_overlap 修正', () => {
     // 曲线不能横穿 → 落回 lane1，再在 row2 checkout 到 lane0
     const eLine = g.lines.find((l) => l.rowSpan[0] === 0 && l.rowSpan[1] === 2)
     expect(eLine).toBeDefined()
-    expect(eLine!.segments[0]).toEqual({ kind: 'curve', toColumn: 1, onRow: 1, merge: true })
+    expect(eLine!.segments[0]).toEqual({
+      kind: 'curve',
+      toColumn: 1,
+      onRow: 1,
+      merge: true,
+    })
     // Zed 语义：on_row < ending_row 时先补直线到 ending_row-1，再 checkout 接驳
     expect(eLine!.segments[1]).toEqual({ kind: 'straight', toRow: 1 })
-    expect(eLine!.segments[2]).toEqual({ kind: 'curve', toColumn: 0, onRow: 2, merge: false })
+    expect(eLine!.segments[2]).toEqual({
+      kind: 'curve',
+      toColumn: 0,
+      onRow: 2,
+      merge: false,
+    })
   })
 
   test('无遮挡时不修正：曲线直接落到 commit lane', () => {
     //   h3(merge g3,e3) row0 lane0(g3) + lane1(e3 支线)
     //   e3 ← d3         row1 commit_lane = 1（等 e3 的只有支线自己）
     const g = new GitGraphData()
-    g.addCommits([c('h3', ['g3', 'e3']), c('e3', ['d3']), c('g3', ['d3']), c('d3', [])])
+    g.addCommits([
+      c('h3', ['g3', 'e3']),
+      c('e3', ['d3']),
+      c('g3', ['d3']),
+      c('d3', []),
+    ])
     const e3Line = g.lines.find((l) => l.rowSpan[0] === 0 && l.rowSpan[1] === 1)
-    expect(e3Line?.segments).toEqual([{ kind: 'curve', toColumn: 1, onRow: 1, merge: true }])
+    expect(e3Line?.segments).toEqual([
+      { kind: 'curve', toColumn: 1, onRow: 1, merge: true },
+    ])
   })
 })
 
@@ -182,6 +216,19 @@ describe('GitGraphData 边界', () => {
     expect(g.rows).toHaveLength(0)
     expect(g.lines).toHaveLength(0)
     expect(g.maxLanes).toBe(0)
+  })
+
+  test('firstParentChain：HEAD 第一父链含根；侧枝排除', () => {
+    const commits = [
+      c('f', ['e', 'd']),
+      c('e', ['c']),
+      c('d', ['b']),
+      c('c', ['b']),
+      c('b', ['a']),
+      c('a', []),
+    ]
+    expect([...firstParentChain(commits)]).toEqual(['f', 'e', 'c', 'b', 'a'])
+    expect(firstParentChain([])).toEqual(new Set())
   })
 
   test('根提交不延伸 lane（parents 空 → lane 空闲）', () => {

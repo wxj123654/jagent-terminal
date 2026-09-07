@@ -7,7 +7,16 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { LineBuffer, findRepoRoot, parseLogLine, spawnGitLog } from './cli'
+import {
+  LineBuffer,
+  findRepoRoot,
+  parseBranches,
+  parseChangedFiles,
+  parseLogLine,
+  runGit,
+  showCommitBody,
+  spawnGitLog,
+} from './cli'
 
 const enc = new TextEncoder()
 
@@ -21,7 +30,10 @@ describe('parseLogLine', () => {
       'HEAD -> main, tag: v1.0',
       'abcdef1',
       'wxj',
+      'wxj@jagent.dev',
       '1800000000',
+      'wxj',
+      'wxj@jagent.dev',
       'fix: 解析崩溃',
     ].join('\x00')
     expect(parseLogLine(line)).toEqual({
@@ -30,13 +42,27 @@ describe('parseLogLine', () => {
       refNames: ['HEAD -> main', 'tag: v1.0'],
       shortSha: 'abcdef1',
       authorName: 'wxj',
+      authorEmail: 'wxj@jagent.dev',
       timestamp: 1800000000,
+      committerName: 'wxj',
+      committerEmail: 'wxj@jagent.dev',
       subject: 'fix: 解析崩溃',
     })
   })
 
   test('空 %D（连续 \\x00）→ refNames []；root 提交 parents []', () => {
-    const line = [sha, '', '', 'abcdef1', 'wxj', '1800000000', 'init'].join('\x00')
+    const line = [
+      sha,
+      '',
+      '',
+      'abcdef1',
+      'wxj',
+      'a@b.c',
+      '1800000000',
+      'wxj',
+      'a@b.c',
+      'init',
+    ].join('\x00')
     const parsed = parseLogLine(line)
     expect(parsed?.refNames).toEqual([])
     expect(parsed?.parents).toEqual([])
@@ -45,19 +71,38 @@ describe('parseLogLine', () => {
   test('merge 提交双 parent', () => {
     const p1 = '1'.repeat(40)
     const p2 = '2'.repeat(40)
-    const parsed = parseLogLine([sha, `${p1} ${p2}`, '', 'abcdef1', 'w', '0', 'm'].join('\x00'))
+    const parsed = parseLogLine(
+      [
+        sha,
+        `${p1} ${p2}`,
+        '',
+        'abcdef1',
+        'w',
+        'w@x',
+        '0',
+        'w',
+        'w@x',
+        'm',
+      ].join('\x00'),
+    )
     expect(parsed?.parents).toEqual([p1, p2])
   })
 
   test('subject 含逗号不误切（逗号只在 %D 分隔用）', () => {
-    const parsed = parseLogLine([sha, '', '', 'abcdef1', 'w', '0', 'a, b, c'].join('\x00'))
+    const parsed = parseLogLine(
+      [sha, '', '', 'abcdef1', 'w', 'w@x', '0', 'w', 'w@x', 'a, b, c'].join(
+        '\x00',
+      ),
+    )
     expect(parsed?.subject).toBe('a, b, c')
   })
 
   test('坏行丢弃：空行 / 字段不足 / 空 sha', () => {
     expect(parseLogLine('')).toBeNull()
     expect(parseLogLine('only-three\x00fields\x00here')).toBeNull()
-    expect(parseLogLine('\x00p\x00\x00s\x00a\x00t\x00subj')).toBeNull()
+    expect(
+      parseLogLine('\x00p\x00\x00s\x00a\x00e\x00t\x00cn\x00ce\x00subj'),
+    ).toBeNull()
   })
 })
 
@@ -85,6 +130,37 @@ describe('LineBuffer 流式行缓冲', () => {
     expect(lb.push(raw.slice(0, mid))).toEqual([])
     expect(lb.push(raw.slice(mid))).toEqual(['中文提交'])
     expect(lb.flush()).toEqual(['next'])
+  })
+})
+
+describe('parseChangedFiles', () => {
+  test('numstat 三列：增/删/路径', () => {
+    const raw = ['12\t4\tsrc/a.ts', '0\t3\tdocs/x.md', ''].join('\n')
+    expect(parseChangedFiles(raw)).toEqual([
+      { path: 'src/a.ts', added: 12, deleted: 4 },
+      { path: 'docs/x.md', added: 0, deleted: 3 },
+    ])
+  })
+
+  test('二进制用 -\t- ；坏行丢弃', () => {
+    const raw = ['-\t-\ticon.png', 'not-a-numstat-line', '1\t1\tok.ts'].join(
+      '\n',
+    )
+    expect(parseChangedFiles(raw)).toEqual([
+      { path: 'icon.png', added: null, deleted: null },
+      { path: 'ok.ts', added: 1, deleted: 1 },
+    ])
+  })
+})
+
+describe('parseBranches', () => {
+  test('HEAD 标记 current；空行忽略', () => {
+    const raw = ['main\x00*', 'feat/ime\x00', '', 'fix/titlebar\x00'].join('\n')
+    expect(parseBranches(raw)).toEqual([
+      { name: 'main', current: true },
+      { name: 'feat/ime', current: false },
+      { name: 'fix/titlebar', current: false },
+    ])
   })
 })
 
@@ -118,12 +194,23 @@ describe('真进程冒烟（本仓）', () => {
     expect(all[0]!.sha).toMatch(/^[0-9a-f]{40}$/)
     expect(all[0]!.shortSha.length).toBeGreaterThanOrEqual(7)
     expect(all[0]!.authorName.length).toBeGreaterThan(0)
+    expect(all[0]!.authorEmail.includes('@')).toBe(true)
+    expect(all[0]!.committerName.length).toBeGreaterThan(0)
     expect(all[0]!.timestamp).toBeGreaterThan(1_500_000_000)
     // log 顺序不变量：每行的 parent 一定在其后出现（或跨 chunk 也成立——全量合并后检查）
     const seen = new Set<string>()
     for (const commit of all) seen.add(commit.sha)
     const firstWithParents = all.find((x) => x!.parents.length > 0)!
     expect(seen.has(firstWithParents!.parents[0])).toBe(true)
+  })
+
+  test('showCommitBody 返回 %b 正文（可空）', async () => {
+    const root = await findRepoRoot(import.meta.dir)
+    expect(root).toBeTruthy()
+    const sha = (await runGit(root!, ['rev-parse', 'HEAD'])).trim()
+    const body = await showCommitBody(root!, sha)
+    expect(typeof body).toBe('string')
+    expect(body.includes('\0')).toBe(false)
   })
 
   test('spawnGitLog 非 repo → ok:false', async () => {
