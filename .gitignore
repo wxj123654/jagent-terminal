@@ -11,6 +11,8 @@ node_modules/
 # napi 原生二进制（index.js/index.d.ts 是生成物但入库，供 TS 类型用）
 packages/native/*.node
 packages/native/*.dll
+# napi 换二进制时的临时残留（旧 .node 重命名中转）
+packages/native/*retired*
 
 # 打包产物（bun run build）
 dist/

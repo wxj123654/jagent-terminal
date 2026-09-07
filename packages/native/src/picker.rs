@@ -71,11 +71,13 @@ mod imp {
 
 #[cfg(windows)]
 mod imp {
-    use windows::core::{Interface, HSTRING, PCWSTR};
     use windows::Win32::System::Com::{
         CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
     };
-    use windows::Win32::UI::Shell::{FileOpenDialog, IFileOpenDialog, SIGDN_FILESYNCHRONOUS};
+    use windows::Win32::UI::Shell::{
+        FileOpenDialog, FILEOPENDIALOGOPTIONS, FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS,
+        IFileOpenDialog, SIGDN_FILESYSPATH,
+    };
 
     use super::PickCallback;
 
@@ -87,10 +89,11 @@ mod imp {
 
     fn open_dialog() -> Option<String> {
         unsafe {
-            // S_FALSE (already initialized) is an ok outcome; only real
-            // failures bail. We never CoUninitialize on S_FALSE.
-            if let Err(e) = CoInitializeEx(None, COINIT_APARTMENTTHREADED) {
-                eprintln!("pick_directory: CoInitializeEx failed: {e}");
+            // CoInitializeEx returns a bare HRESULT in windows-rs 0.61;
+            // S_FALSE (already initialized) is an ok outcome.
+            let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            if hr.is_err() {
+                eprintln!("pick_directory: CoInitializeEx failed: {hr}");
                 return None;
             }
             let dialog: IFileOpenDialog =
@@ -102,30 +105,25 @@ mod imp {
                     }
                 };
             // Keep the stock options; only add folder-picking + filesystem.
-            let mut opts = windows::Win32::UI::Shell::FOS::default();
-            if dialog.GetOptions(&mut opts).is_err() {
-                opts = windows::Win32::UI::Shell::FOS::default();
-            }
-            let _ = dialog.SetOptions(
-                opts | windows::Win32::UI::Shell::FOS_PICKFOLDERS
-                    | windows::Win32::UI::Shell::FOS_FORCEFILESYSTEM,
-            );
-            if let Err(e) = dialog.Show() {
-                // HRESULT_FROM_WIN32(ERROR_CANCELLED) is just "user cancelled".
-                let _ = e;
+            // (GetOptions takes no args and returns the options in 0.61.)
+            let opts: FILEOPENDIALOGOPTIONS = dialog.GetOptions().unwrap_or_default();
+            let _ = dialog.SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+            if dialog.Show(None).is_err() {
+                // Includes ERROR_CANCELLED — user closed the dialog.
                 return None;
             }
             let item = match dialog.GetResult() {
                 Ok(i) => i,
                 Err(_) => return None,
             };
-            let name: HSTRING = match item.GetDisplayName(SIGDN_FILESYNCHRONOUS) {
+            // SIGDN_FILESYNCHRONOUS is absent from windows-rs 0.61 metadata;
+            // SIGDN_FILESYSPATH requests the same filesystem path, which every
+            // item from an FOS_FORCEFILESYSTEM dialog is guaranteed to have.
+            let name = match item.GetDisplayName(SIGDN_FILESYSPATH) {
                 Ok(n) => n,
                 Err(_) => return None,
             };
-            let _ = name.clone();
-            let pcw = PCWSTR(name.as_ptr());
-            let s = pcw.to_string().ok()?;
+            let s = name.to_string().ok()?;
             // Release COM on the way out (we did initialize above).
             let _ = windows::Win32::System::Com::CoUninitialize();
             Some(s)
