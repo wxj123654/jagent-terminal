@@ -19,6 +19,8 @@ gpuix-native = { path = "../../.refs/gpuix/packages/native", default-features = 
 jagent-terminal = { path = "../../crates/jagent-terminal" }
 gpui = { path = "../../.refs/gpuix/zed/crates/gpui", default-features = false, features = [
     "font-kit",
+    "wayland",
+    "x11",
 ] }
 
 napi = { version = "3", default-features = false, features = [

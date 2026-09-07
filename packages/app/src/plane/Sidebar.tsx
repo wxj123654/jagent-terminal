@@ -27,7 +27,7 @@ import { WorkspaceList } from './WorkspaceList'
 /**
  * 顶栏左段：AGENT 标识 + 线程切换 hint。mac 上给红绿灯让位（Zed：
  * sidebar 打开时 TRAFFIC_LIGHT_PADDING 在这一段，TitleBar 段不加）；
- * mac 同样可拖窗口（TitleBar 同款 armed+move 模式）；win 标 drag 区。
+ * mac/linux 可拖窗口（TitleBar 同款 armed+move 模式）；win 标 drag 区。
  * 宽 = 侧栏宽（AgentPlane 从 settings 订阅后传入，与内容行对齐）。
  */
 export function SidebarHeader({
@@ -60,7 +60,7 @@ export function SidebarHeader({
         userSelect: 'none',
         ...(platform === 'win' ? { windowControlArea: 'drag' as const } : {}),
       }}
-      {...(platform === 'mac' ? drag : {})}
+      {...(platform === 'mac' || platform === 'linux' ? drag : {})}
     >
       <text
         testId="sidebar-header-label"

@@ -29,6 +29,9 @@ function controlsSpy() {
   const wc: WindowControls = {
     startMove: () => calls.push('move'),
     doubleClick: () => calls.push('zoom'),
+    minimize: () => calls.push('min'),
+    maximize: () => calls.push('max'),
+    close: () => calls.push('close'),
   }
   return { wc, calls }
 }
@@ -131,10 +134,10 @@ describe('TitleBar · win', () => {
   })
 })
 
-// ── linux：纯内容导航条（系统标题栏在上）────────────────────────────
+// ── linux：CSD（Client decorations）——拖拽 + 右侧三键 JS 回调 ────────
 
 describe('TitleBar · linux', () => {
-  test('无三键、无 drag 事件（windowControls 不触发）', () => {
+  test('三键存在；拖拽区 mousedown+move → startMove；按钮 onClick 触发 seam', () => {
     const { wc, calls } = controlsSpy()
     t.render(
       createElement(
@@ -146,12 +149,33 @@ describe('TitleBar · linux', () => {
     )
     t.renderer.flush()
 
-    expect(t.renderer.findByTestId('titlebar-close')).toBeUndefined()
-    expect(t.renderer.findByTestId('titlebar-min')).toBeUndefined()
+    for (const area of ['min', 'max', 'close'] as const) {
+      const b = boundsOf(`titlebar-${area}`)
+      expect(b[2]).toBe(36)
+      expect(b[3]).toBe(34)
+    }
+    const close = boundsOf('titlebar-close')
+    expect(close[0] + close[2]).toBe(900)
 
-    const bar = boundsOf('titlebar')
-    t.renderer.nativeSimulateMouseDown(bar[0] + 10, bar[1] + 17, 0)
-    t.renderer.nativeSimulateMouseMove(bar[0] + 20, bar[1] + 20, 0)
-    expect(calls).toEqual([])
+    // 拖拽挂在 titlebar-drag（不含三键）：mousedown + move → startMove
+    const drag = boundsOf('titlebar-drag')
+    const cx = drag[0] + Math.min(40, drag[2] / 2)
+    const cy = drag[1] + drag[3] / 2
+    t.renderer.nativeSimulateMouseDown(cx, cy, 0)
+    t.renderer.nativeSimulateMouseMove(cx + 5, cy + 3, 0)
+    t.renderer.nativeSimulateMouseUp(cx + 5, cy + 3, 0)
+    expect(calls).toEqual(['move'])
+
+    // 点击 close → JS seam（非 Windows NC 路径）
+    t.renderer.nativeSimulateClick(close[0] + 18, close[1] + 17, 0)
+    expect(calls).toEqual(['move', 'close'])
+
+    const min = boundsOf('titlebar-min')
+    t.renderer.nativeSimulateClick(min[0] + 18, min[1] + 17, 0)
+    expect(calls).toEqual(['move', 'close', 'min'])
+
+    const max = boundsOf('titlebar-max')
+    t.renderer.nativeSimulateClick(max[0] + 18, max[1] + 17, 0)
+    expect(calls).toEqual(['move', 'close', 'min', 'max'])
   })
 })

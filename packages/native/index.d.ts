@@ -73,6 +73,10 @@ export declare class GpuixRenderer {
    * per the system preference, other platforms toggle maximize.
    */
   titlebarDoubleClick(): void
+  /** Minimize the window (Linux CSD caption button; also usable elsewhere). */
+  minimizeWindow(): void
+  /** Close the window (Linux CSD caption button). */
+  closeWindow(): void
   focusElement(elementId: number): void
   /** Move focus to the next GPUI tab stop. */
   focusNext(): void
@@ -530,6 +534,12 @@ export interface WindowOptions {
   transparent?: boolean
   /** Hide the native titlebar so the app can draw chrome under the traffic lights. */
   titlebarTransparent?: boolean
+  /**
+   * `"client"` | `"server"`. Linux/X11/Wayland window decorations. Client
+   * asks the WM to omit its title bar so the app can draw CSD chrome.
+   * Ignored on macOS/Windows. Defaults to server-side decorations.
+   */
+  windowDecorations?: string
   /**
    * `"opaque"` | `"transparent"` | `"blurred"`. `transparent: true` is the
    * same as `"transparent"` when this is unset.

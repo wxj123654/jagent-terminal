@@ -11,5 +11,14 @@ declare module '@gpuix/react' {
   interface NativeRenderer {
     startWindowMove?(): void
     titlebarDoubleClick?(): void
+    minimizeWindow?(): void
+    closeWindow?(): void
+  }
+}
+
+declare module '@gpuix/native' {
+  interface WindowOptions {
+    /** `"client"` | `"server"`. Linux CSD; ignored on macOS/Windows. */
+    windowDecorations?: 'client' | 'server'
   }
 }

@@ -5,7 +5,8 @@
  * .refs/gpuix/zed 源码定稿，详见 plane/TitleBar.tsx 头注释）：
  * - mac：titlebarTransparent，红绿灯系统画，内容延伸到标题栏区
  * - win：无系统条（WS_SYSMENU|WS_THICKFRAME），drag/三键走命中测试
- * - linux：默认 Server decorations（WM 标题栏在上），无自绘窗口控制
+ * - linux：Client decorations（CSD）——请求 WM 去掉系统标题栏；TitleBar
+ *   自绘拖拽 + 最小化/最大化/关闭（windowDecorations: "client"）
  */
 
 import { release } from 'node:os'

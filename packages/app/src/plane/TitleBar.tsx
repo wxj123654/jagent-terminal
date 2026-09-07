@@ -15,8 +15,10 @@
  *   BlockMouse 命中盒把外层 drag 区从命中链切断，否则 HTCAPTION
  *   抢在按钮前（gpui hit_test 倒序遇 BlockMouse 即停；Zed 的
  *   WindowsCaptionButton 同款 .occlude()）。
- * - linux：默认 Server decorations（系统标题栏在上），本行是纯内容
- *   导航条——无 drag 标记、无窗口按钮。
+ * - linux：Client decorations（CSD）——请求 WM 去掉系统标题栏；
+ *   拖拽区在标题文本段（不盖住右侧三键；gpuix JS 无 stopPropagation，
+ *   不能靠冒泡切断）；三键 JS onClick → minimize/maximize/close
+ *   （对齐 Zed platform_linux WindowControl）。
  *
  * title 由 AgentPlane 注入（当前线程 displayTitle / 设置 / 'j-agent'），
  * 本组件零 store 依赖，测试直接传字符串。
@@ -33,6 +35,10 @@ import { COLORS, FONT, SIZES } from '../ui/tokens'
 export type WindowControls = {
   startMove(): void
   doubleClick(): void
+  /** Linux CSD caption buttons（mac/win 可缺省） */
+  minimize?(): void
+  maximize?(): void
+  close?(): void
 }
 
 type DragProps = {
@@ -134,6 +140,59 @@ function WindowsWindowControls() {
   )
 }
 
+/** Linux CSD 右上三键：JS onClick（Zed platform_linux） */
+function LinuxCaptionButton({
+  area,
+  icon,
+  close,
+  onPress,
+}: {
+  area: 'min' | 'max' | 'close'
+  icon: 'minimize' | 'maximize' | 'close'
+  close?: boolean
+  onPress?: () => void
+}) {
+  return (
+    <div
+      testId={`titlebar-${area}`}
+      onClick={() => onPress?.()}
+      style={{
+        width: 36,
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        pointerEvents: 'auto',
+        cursor: 'pointer',
+        color: COLORS.text,
+        hover: close
+          ? { backgroundColor: '#E81120', color: '#ffffff' }
+          : { backgroundColor: COLORS.surface, color: COLORS.textBright },
+        active: close
+          ? { backgroundColor: '#c50f1d', color: 'rgba(255,255,255,0.85)' }
+          : { backgroundColor: COLORS.surfaceHover },
+      }}
+    >
+      <Icon name={icon} size={12} />
+    </div>
+  )
+}
+
+function LinuxWindowControls({ windowControls }: { windowControls?: WindowControls }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'row', height: '100%', flexShrink: 0 }}>
+      <LinuxCaptionButton area="min" icon="minimize" onPress={() => windowControls?.minimize?.()} />
+      <LinuxCaptionButton area="max" icon="maximize" onPress={() => windowControls?.maximize?.()} />
+      <LinuxCaptionButton
+        area="close"
+        icon="close"
+        close
+        onPress={() => windowControls?.close?.()}
+      />
+    </div>
+  )
+}
+
 export function TitleBar({
   title,
   platform,
@@ -154,6 +213,9 @@ export function TitleBar({
   trailing?: ReactNode
 }) {
   const drag = useTitleBarDrag(windowControls)
+  // linux：拖拽挂在标题段（不含右侧三键）；mac：整条可拖（无右侧按钮）
+  const dragOnBar = platform === 'mac'
+  const dragOnTitle = platform === 'linux'
   return (
     <div
       testId="titlebar"
@@ -172,9 +234,11 @@ export function TitleBar({
         userSelect: 'none',
         ...(platform === 'win'
           ? { windowControlArea: 'drag' as const, justifyContent: 'space-between' }
-          : {}),
+          : platform === 'linux'
+            ? { justifyContent: 'space-between' }
+            : {}),
       }}
-      {...(platform === 'mac' ? drag : {})}
+      {...(dragOnBar ? drag : {})}
     >
       {narrow ? (
         <div
@@ -198,30 +262,44 @@ export function TitleBar({
           <Icon name="menu" size={13} color={drawerOpen ? COLORS.accent : COLORS.text} />
         </div>
       ) : null}
-      <text
-        testId="titlebar-title"
+      <div
+        testId="titlebar-drag"
         style={{
-          pointerEvents: 'none',
-          marginLeft: 12,
-          marginRight: platform === 'win' ? 0 : 12,
-          marginTop: 1,
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
           minWidth: 0,
           flexGrow: 1,
-          fontSize: 12,
-          fontFamily: FONT.ui,
-          fontWeight: '500',
-          color: COLORS.text,
-          whiteSpace: 'nowrap',
-          textOverflow: 'ellipsis',
-          overflow: 'hidden',
+          height: '100%',
         }}
+        {...(dragOnTitle ? drag : {})}
       >
-        {title}
-      </text>
+        <text
+          testId="titlebar-title"
+          style={{
+            pointerEvents: 'none',
+            marginLeft: 12,
+            marginRight: platform === 'win' || platform === 'linux' ? 0 : 12,
+            marginTop: 1,
+            minWidth: 0,
+            flexGrow: 1,
+            fontSize: 12,
+            fontFamily: FONT.ui,
+            fontWeight: '500',
+            color: COLORS.text,
+            whiteSpace: 'nowrap',
+            textOverflow: 'ellipsis',
+            overflow: 'hidden',
+          }}
+        >
+          {title}
+        </text>
+      </div>
       {/* 尾部插槽（HUD）：win 下在三键左侧；mac/linux 靠 title 后的右侧空白 */}
       {trailing ?? null}
-      {/* win：三键靠右（space-between：title 左、按钮右） */}
+      {/* win：三键靠右（space-between：title 左、按钮右）；linux CSD 同布局 */}
       {platform === 'win' && <WindowsWindowControls />}
+      {platform === 'linux' && <LinuxWindowControls windowControls={windowControls} />}
     </div>
   )
 }
