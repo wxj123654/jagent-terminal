@@ -45,7 +45,9 @@ const SOURCES = {
     '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
   ),
   /** search：设置搜索框 */
-  search: strokeSvg('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'),
+  search: strokeSvg(
+    '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  ),
   /** copy：预设复制为自定义副本（settings-ui §7） */
   copy: strokeSvg(
     '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
@@ -56,12 +58,18 @@ const SOURCES = {
   ),
   /** chevronRight：预设行展开指示（原型 .chev） */
   chevronRight: strokeSvg('<path d="m9 18 6-6-6-6"/>'),
-  /** folder：工作区（Phase W；原型 workspace 图标） */
+  /** folder：工作区 / git 文件树目录 */
   folder: strokeSvg(
     '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
   ),
+  /** file：git 文件树叶子 */
+  file: strokeSvg(
+    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+  ),
   /** menu：窄窗口抽屉 toggle（W4 汉堡钮） */
-  menu: strokeSvg('<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>'),
+  menu: strokeSvg(
+    '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
+  ),
   /** bell：会话通知（Phase W 对齐原型 workspace-plane bell 图标） */
   bell: strokeSvg(
     '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>',
@@ -69,6 +77,18 @@ const SOURCES = {
   /** more：行内「…」管理菜单（Phase W 对齐原型 session-more） */
   more: strokeSvg(
     '<circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/>',
+  ),
+  /** gitBranch：顶栏 Git 图入口 / ref 徽章 */
+  gitBranch: strokeSvg(
+    '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M6 8.5v7"/><path d="M8.5 6h5.5a3 3 0 0 1 3 3v6"/>',
+  ),
+  /** tag：git tag 徽章 */
+  tag: strokeSvg(
+    '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5"/>',
+  ),
+  /** download：fetch 远端 */
+  download: strokeSvg(
+    '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/>',
   ),
 } as const
 
@@ -83,5 +103,10 @@ export function Icon({
   size?: number
   color?: string
 }): ReactElement {
-  return <svg source={SOURCES[name]} style={{ width: size, height: size, color, flexShrink: 0 }} />
+  return (
+    <svg
+      source={SOURCES[name]}
+      style={{ width: size, height: size, color, flexShrink: 0 }}
+    />
+  )
 }

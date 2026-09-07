@@ -345,6 +345,21 @@ describe('IconButton', () => {
     t.renderer.nativeSimulateMouseMove(x + w / 2, y + h / 2)
     expect(texts().includes('恢复默认')).toBe(true)
   })
+
+  test('tooltip=false 时 hover 不弹出气泡', () => {
+    t.render(
+      createElement(IconButton, {
+        name: 'gitBranch',
+        label: 'Git 图',
+        tooltip: false,
+        onClick: () => {},
+        testId: 'btn-no-tip',
+      }),
+    )
+    const [x, y, w, h] = boundsOf('btn-no-tip')
+    t.renderer.nativeSimulateMouseMove(x + w / 2, y + h / 2)
+    expect(texts().includes('Git 图')).toBe(false)
+  })
 })
 
 // ── SettingRow（声明式行）────────────────────────────────────────────
