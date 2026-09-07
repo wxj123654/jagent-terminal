@@ -39,7 +39,6 @@ export type PatchManifest = Readonly<Record<Suite, PatchEntry>>
 
 export const MANIFEST = {
   gpuix: {
-    '0001-setup-shallow-submodule.patch': ['.gitmodules'],
     '0002-jagent-native-seam.patch': [
       'packages/native/src/custom_elements/mod.rs',
       'packages/native/src/custom_elements/input.rs',
@@ -51,7 +50,7 @@ export const MANIFEST = {
   },
   'gpuix-zed': {
     '0001-gpui-workspace-root.patch': ['crates/gpui/Cargo.toml'],
-    '0002-window-visibility.patch': [
+    '0002-hide-offscreen-test-window.patch': [
       'crates/gpui/src/app/visual_test_context.rs',
       'crates/gpui_windows/src/window.rs',
     ],

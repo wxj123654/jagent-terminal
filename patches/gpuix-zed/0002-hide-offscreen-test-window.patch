@@ -20,44 +20,12 @@ index b983784..1dab274 100644
              },
              build_root,
 diff --git a/crates/gpui_windows/src/window.rs b/crates/gpui_windows/src/window.rs
-index 1a942ec..6d5ff5a 100644
+index 1a942ec..2f233f4 100644
 --- a/crates/gpui_windows/src/window.rs
 +++ b/crates/gpui_windows/src/window.rs
-@@ -556,11 +556,56 @@ impl WindowsWindow {
-             retrieve_window_placement(hwnd, display, params.bounds, &this.state.border_offset)?;
-         if params.show {
-             let mut placement = placement;
--            if !params.focus {
--                placement.showCmd = SW_SHOWNOACTIVATE.0 as u32;
--            }
-+            // A never-shown window seeds `showCmd` with `SW_SHOWDEFAULT`, and
-+            // `SetWindowPlacement` resolves that default through the process
-+            // `STARTUPINFO` — which a script runner (`bun run <script>`, npm
-+            // wrappers, ...) populates with `SW_HIDE`, leaving the window
-+            // created but invisible. Pin explicit commands so the parent
-+            // process can't veto the show.
-+            placement.showCmd = if params.focus {
-+                SW_SHOWNORMAL.0 as u32
-+            } else {
-+                SW_SHOWNOACTIVATE.0 as u32
-+            };
+@@ -561,6 +561,27 @@ impl WindowsWindow {
+             }
              unsafe { SetWindowPlacement(hwnd, &placement)? };
-+            // Script runners (`bun run <script>`, npm wrappers) spawn children
-+            // with `STARTUPINFO.wShowWindow = SW_HIDE`. `SetWindowPlacement`'s
-+            // `showCmd` alone does not reveal a never-shown window under that
-+            // starting state (observed: showCmd=SW_SHOWNORMAL, visible=0).
-+            // An explicit `ShowWindow` command ignores `STARTUPINFO`, so pin
-+            // the visibility here — the parent process cannot veto the show.
-+            unsafe {
-+                let _ = ShowWindow(
-+                    hwnd,
-+                    if params.focus {
-+                        SW_SHOWNORMAL
-+                    } else {
-+                        SW_SHOWNOACTIVATE
-+                    },
-+                );
-+            }
          } else {
 +            // Stay hidden, but apply the *requested* bounds. The window was
 +            // created with `CW_USEDEFAULT`, and `placement` above may have been

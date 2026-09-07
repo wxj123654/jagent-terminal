@@ -30,8 +30,7 @@ export 与 setup 复用 `scripts/refs-state.ts`，导出也拒绝 staged 或未�
   以及进程级工厂注册入口。终端实现本身留在 `packages/native/src/element.rs`。
 - `renderer.rs`、`test_renderer.rs`：宿主 App 调度及测试 App 入口。Win/Linux
   用 UI channel，macOS 用当前线程 ApplicationHandle，测试用 VisualTestState。
-- `renderer.rs`、`style.rs`：自绘标题栏原生方法及 WindowControlArea 命中支持；
-  WindowOptions.windowDecorations（client/server）+ minimizeWindow/closeWindow。
+- `renderer.rs`、`style.rs`：自绘标题栏原生方法及 WindowControlArea 命中支持。
   **本批只迁走 TS 声明，Rust 标题栏实现未迁移。**
 - `custom_elements/input.rs`：测量布局使用捕获的文本样式计算行高，而不是取
   已退出元素样式栈的 window 默认行高。caret、选区和 textarea 高度依赖此修复。
