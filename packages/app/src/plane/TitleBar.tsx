@@ -68,8 +68,13 @@ export function useTitleBarDrag(wc: WindowControls | undefined): DragProps {
   }
 }
 
-/** Windows 右上三键（Zed WindowsWindowControls：36px 宽全高，系统处理点击） */
-const WIN_CAPTION_FONT = '"Segoe Fluent Icons", "Segoe MDL2 Assets"'
+/** Windows 右上三键（Zed WindowsWindowControls：36px 宽全高，系统处理点击）
+ *  gpui 的 font_family 是单名：direct_write.rs 的 GetMatchingFonts 按
+ *  精确 family 名查找，无 CSS 引号/逗号列表解析——列表会整体查不到并
+ *  fallback 到内嵌字体，私有区 glyph（U+E921…）无字形成豆腐块。
+ *  Segoe MDL2 Assets 自 Win10 起自带且 Win11 保留，含所需 glyph；
+ *  Segoe Fluent Icons 仅 Win11 有，不作首选。 */
+const WIN_CAPTION_FONT = 'Segoe MDL2 Assets'
 
 function WindowsCaptionButton({
   area,
