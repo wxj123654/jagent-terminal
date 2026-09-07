@@ -5,8 +5,8 @@
   "main": "index.js",
   "types": "index.d.ts",
   "scripts": {
-    "build:debug": "napi build --platform",
-    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform && bun run ../../scripts/patch-native-dts.ts",
+    "build": "napi build --platform --release && bun run ../../scripts/patch-native-dts.ts",
     "artifacts": "napi artifacts"
   },
   "devDependencies": {

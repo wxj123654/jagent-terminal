@@ -12,9 +12,19 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+use jagent_terminal::HostPanic;
+
 /// Run `f` with GPUI app access and return its typed result. Picks the
 /// threaded host channel when the real renderer is live, otherwise falls
 /// back to the test renderer's thread-local state (e2e).
+///
+/// Panic safety (docs/error-management.md 方案 B 第 3 步): the closure is
+/// wrapped in `catch_unwind` so a panic inside host code cannot abort the
+/// GPUI thread / kill the process — it degrades into a typed error the napi
+/// layer maps to `ERR_NATIVE_PANIC`. The global panic hook (panic.rs) has
+/// already logged/notified by the time we catch. CAVEAT: after a caught
+/// panic the GPUI `App` may be in a dirty state; the session involved must
+/// be treated as unreliable (subsequent host ops may fail).
 pub(crate) fn run_host<T>(
     f: impl FnOnce(&mut gpui::App) -> anyhow::Result<T> + Send + 'static,
 ) -> anyhow::Result<T>
@@ -22,7 +32,15 @@ where
     T: Serialize + DeserializeOwned + Send + 'static,
 {
     let boxed = Box::new(move |cx: &mut gpui::App| {
-        f(cx).and_then(|t| serde_json::to_value(&t).map_err(|e| anyhow::anyhow!(e)))
+        // AssertUnwindSafe: &mut App is not unwind-safe by construction; we
+        // accept the dirty-state risk — the alternative (thread abort) is
+        // strictly worse. The error propagates to JS instead.
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(cx))) {
+            Ok(res) => res.and_then(|t| serde_json::to_value(&t).map_err(|e| anyhow::anyhow!(e))),
+            Err(payload) => Err(anyhow::Error::new(HostPanic(
+                crate::panic::panic_payload_str(&payload),
+            ))),
+        }
     });
     let json = dispatch(boxed)?;
     serde_json::from_value(json).map_err(|e| anyhow::anyhow!("host response decode failed: {e}"))

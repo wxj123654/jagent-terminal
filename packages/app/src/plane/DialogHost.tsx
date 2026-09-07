@@ -11,9 +11,12 @@
  * 注入（与 sidebarKeyboard/settingsKeyboard 同款纪律）。
  */
 
+import type { LastCrash } from '../errors/crashReport'
 import type { SettingsStore } from '../settings/store'
 import type { ThreadStore } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
+import { CrashDialog } from './CrashDialog'
+import { ErrorDialog } from './ErrorDialog'
 import { SearchDialog } from './SearchDialog'
 import { SessionDialog } from './SessionDialog'
 import { ToolDialog } from './ToolDialog'
@@ -26,6 +29,8 @@ export type DialogState =
   | { kind: 'addWorkspace' }
   | { kind: 'search' }
   | { kind: 'manageSession'; threadId: string }
+  | { kind: 'errors' }
+  | { kind: 'crash'; last: LastCrash }
 
 /** DialogHost 的打开接口（Sidebar 等入口消费） */
 export type DialogOpener = {
@@ -33,6 +38,7 @@ export type DialogOpener = {
   openAddWorkspace: () => void
   openSearch: () => void
   openManageSession: (threadId: string) => void
+  openErrors: () => void
 }
 
 export function DialogHost({
@@ -73,6 +79,10 @@ export function DialogHost({
       )
     case 'search':
       return <SearchDialog store={store} settings={settings} onClose={close} />
+    case 'errors':
+      return <ErrorDialog onClose={close} />
+    case 'crash':
+      return <CrashDialog last={state.last} onClose={close} />
     case 'manageSession':
       return <SessionDialog store={store} threadId={state.threadId} onClose={close} />
     default:

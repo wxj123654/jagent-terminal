@@ -21,20 +21,29 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use gpui::{App, Entity, Global};
 
+use crate::error::TerminalError;
 use crate::model::TerminalModel;
 use crate::pty::SpawnOptions;
 
 /// Cross-session events forwarded to the host (JS in Phase 1).
 #[derive(Debug, Clone)]
 pub enum SessionEvent {
-    Title { id: u64, title: String },
-    Bell { id: u64 },
+    Title {
+        id: u64,
+        title: String,
+    },
+    Bell {
+        id: u64,
+    },
     /// `code` is the child's exit status when known (`ChildExit`); `None`
     /// when only the stream-end `Exit` was observed.
-    Exit { id: u64, code: Option<i32> },
+    Exit {
+        id: u64,
+        code: Option<i32>,
+    },
 }
 
 /// Global sink for session events. Set once at startup; called from the
@@ -102,9 +111,9 @@ impl TerminalPool {
     }
 
     /// Kill the PTY, drop the entity, remove from the pool.
-    pub fn destroy(&mut self, id: u64, _cx: &mut App) -> Result<()> {
+    pub fn destroy(&mut self, id: u64, _cx: &mut App) -> Result<(), TerminalError> {
         let Some(entity) = self.sessions.remove(&id) else {
-            return Err(anyhow!("no terminal session {id}"));
+            return Err(TerminalError::SessionNotFound(id));
         };
         entity.read(_cx).shutdown();
         // Entity drops here; the gpui release machinery frees it.

@@ -75,7 +75,7 @@ export declare class GpuixRenderer {
   titlebarDoubleClick(): void
   /** Minimize the window (Linux CSD caption button; also usable elsewhere). */
   minimizeWindow(): void
-  /** Close the window (Linux CSD caption button). */
+  /** Close the window (Linux CSD caption button; also usable elsewhere). */
   closeWindow(): void
   focusElement(elementId: number): void
   /** Move focus to the next GPUI tab stop. */
@@ -535,7 +535,7 @@ export interface WindowOptions {
   /** Hide the native titlebar so the app can draw chrome under the traffic lights. */
   titlebarTransparent?: boolean
   /**
-   * `"client"` | `"server"`. Linux/X11/Wayland window decorations. Client
+   * 'client' | 'server'. Linux/X11/Wayland window decorations. Client
    * asks the WM to omit its title bar so the app can draw CSD chrome.
    * Ignored on macOS/Windows. Defaults to server-side decorations.
    */
@@ -573,6 +573,33 @@ export interface WindowSize {
  */
 export declare function applyWindowAppearance(): void
 
+/** monitor 结束原因（TSF payload；reason: 'dumped' | 'error'）。 */
+export interface CrashMonitorDone {
+  reason: string
+  detail?: string
+}
+
+export interface CrashMonitorOptionsJs {
+  socketPath: string
+  dumpDir: string
+  /** 保留的 .dmp 上限（含新写的；超出删最旧）。默认 5。 */
+  maxDumps?: number
+}
+
+export interface CrashReportingOptionsJs {
+  /**
+   * IPC socket 路径（macOS/Linux 为 UDS 路径，Windows 由 minidumper
+   * 映射为 named pipe）。调用方保证唯一（app 用 crash-<pid>.sock）。
+   */
+  socketPath: string
+  /** dump 与 crash.json 的目录（~/.j-agent/crashes）。 */
+  dumpDir: string
+  /** 会话 id（app 启动时生成；写进 crash.json）。 */
+  sessionId: string
+  /** 应用版本（写进 crash.json）。 */
+  appVersion: string
+}
+
 /**
  * Spawn a terminal session: PTY + model + pool registration. Resolves with
  * the sessionId that `<terminal sessionId>` binds to.
@@ -581,14 +608,31 @@ export declare function applyWindowAppearance(): void
  * access to VisualTestState (thread_local), and napi async fns run on the
  * tokio runtime — a different thread. The JS seam keeps its Promise shape
  * via a thin async wrapper at the injection site (main.tsx / e2e).
+ *
+ * Panic 边界（方案 B）：guarded catch_unwind——panic 变 JS throw
+ * （code ERR_NATIVE_PANIC），不再终止进程。
  */
 export declare function createTerminalSession(opts?: SpawnOptionsJs | undefined | null): number
 
 /**
+ * 触发真实崩溃验证报告链路。仅 test-support feature 构建导出。
+ * kind: "panic"（Rust panic → hook → abort）| "sigsegv"（native 段错误）。
+ */
+export declare function debugTriggerCrash(kind: string): void
+
+/**
  * Destroy a session: kill the PTY child, drop the model, remove from the
  * pool. Views still bound to it render the placeholder afterwards.
+ * Unknown id → throw with code ERR_TERMINAL_SESSION_NOT_FOUND.
  */
 export declare function destroyTerminalSession(sessionId: number): void
+
+/**
+ * 安装全局 Rust panic hook（方案 B）：panic.log 落盘 + onNativePanic 转发。
+ * `logDir` 传 null 则不写盘（仍转发 TSF）。幂等；建议在 renderer.init
+ * 之前调用（越早覆盖面越大）。
+ */
+export declare function installNativePanicHook(logDir?: string | undefined | null): void
 
 /**
  * Register the `<terminal>` element factory with GPUIX. Must run before the
@@ -599,11 +643,27 @@ export declare function destroyTerminalSession(sessionId: number): void
 export declare function installTerminalElement(): void
 
 /**
+ * JS 面事件（`onNativePanic` TSF payload，两参契约同 `SessionEvent`）。
+ * js_name 对齐 SessionEvent 命名（Event 后缀）。
+ */
+export interface NativePanicEvent {
+  message: string
+  thread: string
+  location?: string
+}
+
+/**
  * Show a desktop toast (Windows). Fire-and-forget on a detached thread:
  * failures log to stderr and never reject — notifications are a
  * non-critical path (bell → notify, settings.desktop gates the call).
  */
 export declare function notifyDesktop(title: string, body: string, sound: boolean): void
+
+/**
+ * 注册 Rust panic 转发（方案 B 第 4 步）：panic hook → JS 错误总线
+ * （level fatal）。TSF 协议同 `onSessionEvent`：payload 是第二个参数。
+ */
+export declare function onNativePanic(cb: (err: null, e: import('./index').NativePanicEvent) => void): void
 
 /**
  * Register the global session-event callback (once, at app startup).
@@ -635,6 +695,13 @@ export interface PaintPerfJs {
 export declare function pickDirectory(cb: (err: null, path: string | null) => void): void
 
 /**
+ * sidecar 装配：启动 minidumper Server（后台线程）等待主进程崩溃请求。
+ * dump 完成/失败 → TSF 回调（JS 侧 process.exit）。返回 false = socket
+ * 绑定失败（主进程会因连不上而降级）。JS 侧 stdin EOF 时直接 exit。
+ */
+export declare function runCrashMonitor(opts: CrashMonitorOptionsJs, onDone: (err: null, e: import('./index').CrashMonitorDone) => void): boolean
+
+/**
  * Global session event payload (R2): one channel for title/bell/exit,
  * delivered even when the element is unmounted (background PTY).
  */
@@ -644,6 +711,12 @@ export interface SessionEvent {
   title?: string
   code?: number
 }
+
+/**
+ * 主进程装配：连接 sidecar → 安装 crash 处理器 → 发 HELLO。
+ * 返回 false = sidecar 不可达（降级：panic hook 照装、无 dump）。
+ */
+export declare function setupCrashReporting(opts: CrashReportingOptionsJs): boolean
 
 /**
  * Mirror of `SpawnOptions` (Rust) — see architecture.md §2.3. Appearance

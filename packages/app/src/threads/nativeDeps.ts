@@ -17,6 +17,7 @@
 
 import { createTerminalSession, destroyTerminalSession, notifyDesktop } from '@jagent/native'
 
+import { trackNative } from '../errors/native'
 import { navigateTarget, currentActiveThreadId, currentActiveWorkspaceId } from '../router'
 import type { SettingsStore } from '../settings/store'
 import { createAcpConnection } from './acp'
@@ -35,11 +36,14 @@ export function createNativeThreadDeps(
 ): ThreadDeps {
   return {
     spawnSession: async (o) =>
-      createTerminalSession({
-        ...o,
-        scrollbackLines: o.scrollbackLines ?? settings.get().terminal.scrollbackLines,
-      }),
-    destroySession: async (id) => destroyTerminalSession(id),
+      trackNative('createTerminalSession', async () =>
+        createTerminalSession({
+          ...o,
+          scrollbackLines: o.scrollbackLines ?? settings.get().terminal.scrollbackLines,
+        }),
+      ),
+    destroySession: async (id) =>
+      trackNative('destroyTerminalSession', async () => destroyTerminalSession(id)),
     navigate: navigateTarget,
     activeThreadId: currentActiveThreadId,
     activeWorkspaceId: currentActiveWorkspaceId,

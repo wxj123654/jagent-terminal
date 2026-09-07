@@ -166,6 +166,9 @@ if (!SKIP_NATIVE) {
   if (crossNative) napiArgs.push('--target', platform.rust)
   if (process.platform === 'linux') napiArgs.push('--no-default-features')
   await runLive('bun', napiArgs, NATIVE_DIR)
+  // napi 会重写 index.d.ts，抹掉 gpuix 面手工维护的 CSD 类型（b786b4c
+  // 起就是手工回补——自动化掉这个坑）。幂等：已存在则跳过。
+  await runLive('bun', ['run', join('scripts', 'patch-native-dts.ts')], REPO_ROOT)
 } else {
   console.log(`── native: skipped (--skip-native)`)
 }

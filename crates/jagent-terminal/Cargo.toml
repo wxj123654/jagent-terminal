@@ -25,6 +25,10 @@ gpui_platform = { path = "../../.refs/gpuix/zed/crates/gpui_platform", default-f
 alacritty_terminal = "0.26"
 anyhow = "1"
 futures = "0.3"
+# 结构化错误（docs/error-management.md 方案 B）：napi 边界映射稳定
+# 错误码（ERR_TERMINAL_*），JS 侧按 error.code 分支。2.0.20 = crates.io
+# 最新正式版（2026-08-08 发布；联网核实过，非记忆值）。
+thiserror = "2.0.20"
 
 # Same crate GPUI uses. The example sets DPI awareness at runtime instead of
 # shipping an exe manifest (mirrors gpuix-native).

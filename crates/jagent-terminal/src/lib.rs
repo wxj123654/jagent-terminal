@@ -15,12 +15,14 @@
 //! (it must implement the gpuix `CustomElement` trait); there is no
 //! element module here.
 
+pub mod error;
 pub mod model;
 pub mod perf;
 pub mod pool;
 pub mod pty;
 pub mod view;
 
+pub use error::{HostPanic, TerminalError, terminal_error_code};
 pub use model::{Event, TerminalModel, TerminalStyle};
 pub use perf::{PaintPerfSnapshot, take_paint_perf};
 pub use pool::{SessionEvent, SessionEventFn, TerminalPool};

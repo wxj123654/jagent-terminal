@@ -108,8 +108,17 @@ export function Modal({
   )
 }
 
-/** 弹窗标题行（heading）：标题 + 关闭钮（对齐原型 dialog-heading） */
-export function ModalHeading({ title, onClose }: { title: string; onClose: () => void }) {
+/** 弹窗标题行（heading）：标题 + 可选尾插槽 + 关闭钮（对齐原型 dialog-heading） */
+export function ModalHeading({
+  title,
+  onClose,
+  trailing,
+}: {
+  title: string
+  onClose: () => void
+  /** 标题与关闭钮之间的插槽（ErrorDialog 清空钮等） */
+  trailing?: ReactNode
+}) {
   return (
     <div
       style={{
@@ -133,25 +142,28 @@ export function ModalHeading({ title, onClose }: { title: string; onClose: () =>
       >
         {title}
       </text>
-      <div
-        tabIndex={0}
-        testId="modal-close"
-        onClick={onClose}
-        onKeyDown={(e) => {
-          if (e.key === 'enter' || e.key === 'space') onClose()
-        }}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: 22,
-          height: 22,
-          borderRadius: 4,
-          cursor: 'pointer',
-          hover: { backgroundColor: COLORS.closeHover },
-        }}
-      >
-        <Icon name="close" size={13} color={COLORS.muted} />
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+        {trailing != null ? <div style={{ marginRight: 8 }}>{trailing}</div> : null}
+        <div
+          tabIndex={0}
+          testId="modal-close"
+          onClick={onClose}
+          onKeyDown={(e) => {
+            if (e.key === 'enter' || e.key === 'space') onClose()
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 22,
+            height: 22,
+            borderRadius: 4,
+            cursor: 'pointer',
+            hover: { backgroundColor: COLORS.closeHover },
+          }}
+        >
+          <Icon name="close" size={13} color={COLORS.muted} />
+        </div>
       </div>
     </div>
   )

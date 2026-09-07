@@ -64,7 +64,11 @@ mod imp {
             if utf8.is_null() {
                 return None;
             }
-            Some(std::ffi::CStr::from_ptr(utf8).to_string_lossy().into_owned())
+            Some(
+                std::ffi::CStr::from_ptr(utf8)
+                    .to_string_lossy()
+                    .into_owned(),
+            )
         }
     }
 }
@@ -72,11 +76,11 @@ mod imp {
 #[cfg(windows)]
 mod imp {
     use windows::Win32::System::Com::{
-        CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
+        CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
     };
     use windows::Win32::UI::Shell::{
-        FileOpenDialog, FILEOPENDIALOGOPTIONS, FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS,
-        IFileOpenDialog, SIGDN_FILESYSPATH,
+        FileOpenDialog, IFileOpenDialog, FILEOPENDIALOGOPTIONS, FOS_FORCEFILESYSTEM,
+        FOS_PICKFOLDERS, SIGDN_FILESYSPATH,
     };
 
     use super::PickCallback;

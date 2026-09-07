@@ -1,7 +1,7 @@
 # j-agent 统一错误管理方案设计
 
-> 状态：设计稿（未实施）
-> 日期：2026-09-08
+> 状态：**已实施**（方案 A + B + C + D）
+> 设计日期：2026-09-08 · 实施：2026-09-11
 > 背景问题：当前任何未捕获错误（JS 异常 / React render 错误 / unhandled rejection / Rust panic）
 > 都可能导致应用直接崩溃或窗口无声消失，且错误发生后无处可见、无处可查。
 
@@ -157,10 +157,51 @@ Zed 的核心洞察：崩溃后进程内什么都不可信，报告必须在进�
 | 工作量 | 小（~1-2 天） | 中（+2-3 天） | 大（+3-5 天） | 极小（半天） |
 | 改动范围 | packages/app | +crates/native/gpuix patch | +新进程+IPC | +脚本 |
 
-推荐路线（渐进）：
+推荐路线（渐进）——**已一次落地 A+B+C+D**（用户 2026-09-11 要求直接上 C）。
 
-1. **先做 A**——「有错误就崩溃」大概率是 #1-#3（JS 异常 / render 错误 / unhandled rejection），
-   A 直接消灭这一整类，且错误终于可见、可查、可修。这是所有后续方案的地基（B/C 的呈现层都复用 bus）。
-2. **接着做 B 的 1+2**（thiserror + catch_unwind）——Rust 侧错误结构化，收益立现；
-   B 的 3（run_host catch_unwind）单独验证 GPUI 线程行为后再上。
-3. **C 等有真实崩溃数据 / 用户上报需求再上**，D 可以随 A 顺手加。
+## 四、落地对照（2026-09-11）
+
+### 方案 A（`packages/app/src/errors/`）
+
+| 组件 | 文件 | 行为 |
+|---|---|---|
+| 错误总线 | `bus.ts` | `emitError` / 环形缓冲 1000 / `subscribeErrors` |
+| 全局守卫 | `guards.ts` | `uncaughtException` / `unhandledRejection` → 总线，进程保活 |
+| ErrorBoundary | `ErrorBoundary.tsx` | 三层：App 根 / pane / settings；retry 换 key |
+| 落盘 | `log.ts` | `~/.j-agent/logs/errors-YYYYMMDD.log`，保留 7 天 |
+| napi 收口 | `native.ts` | `trackNative` / `trackVoid` / `onNativePanic` |
+| 可见面 | `ErrorIndicator.tsx` + `plane/ErrorDialog.tsx` | 顶栏徽章 + 历史面板 |
+| Toast | `toastWire.ts` | error/fatal → 右下角 4s |
+
+### 方案 B（Rust 结构化 + panic 收编）
+
+- `crates/jagent-terminal/src/error.rs`：`TerminalError` / `HostPanic` + 稳定 `error.code`（`ERR_TERMINAL_*` / `ERR_NATIVE_PANIC`）
+- `packages/native/src/panic.rs`：全局 panic hook（`panic.log` + TSF）+ `guarded()` catch_unwind 罩住 create/destroy
+- `packages/native/src/host.rs`：`run_host` 闭包 `catch_unwind`，panic 变 `HostPanic` 而非 GPUI 线程 abort
+
+### 方案 C（进程外 minidump）
+
+```
+主进程                              sidecar
+setupCrashReporting  ──IPC──►  scripts/crash-handler.ts
+CrashHandler::attach            minidumper::Server
+panic hook → PANIC + ping       on_message / on_minidump_created
+abort / SEGV → request_dump     → ~/.j-agent/crashes/{jagent-*.dmp, crash.json}
+```
+
+- **独立 sidecar 入口**（`scripts/crash-handler.ts`）：dev 直接 bun 该脚本；发布形态 `<exe> --crash-handler`。**禁止** sidecar 再走 `main.tsx`（会再次 spawn 自己）。
+- **macOS IPC 名**：mach port **不能含 `/`**，用 `jagent.crash.<pid>`（`crashSocketName()`）。Linux/Windows 用路径 socket。
+- panic 路径：hook 里 `send_message(PANIC)` + `ping()`（ACK 保证 server 先处理 PANIC）再 `abort()`；sidecar 的 SIGNAL 不覆盖已有 PANIC。
+- 下次启动读 `crash.json` → `CrashDialog`（「上次会话异常退出」）。
+- 验证：`bun scripts/crash-smoke.ts panic|sigsegv`（本机 2026-09-11 两条均通过，产出 .dmp + crash.json）。
+
+依赖（crates.io 联网核实，禁止 beta）：`crash-handler 0.8.0` + `minidumper 0.11.0` + `thiserror 2.0.20`。
+
+### 方案 D（watchdog）
+
+`scripts/launcher.ts`：spawn app，非零退出 → 读日志尾部 → `notifyDesktop` → 3s 后重启；60s 内 ≥ 5 次放弃（防 crash-loop）。
+
+```
+bun scripts/launcher.ts            # dev
+bun scripts/launcher.ts --compiled # 发布二进制
+```

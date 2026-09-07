@@ -293,7 +293,9 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
       if (routerPointsAt(id)) {
         activate(thread.workspaceId ? { type: 'workspace', id: thread.workspaceId } : null)
       }
-      if (thread.kind === 'terminal') void deps.destroySession(thread.sessionId)
+      // destroySession 的 reject 已在 nativeDeps 的 trackNative 里进错误总线
+      // （emit 后 rethrow）；这里只防空 rejection（错误不再二次处理）。
+      if (thread.kind === 'terminal') deps.destroySession(thread.sessionId).catch(() => {})
       if (thread.kind === 'acp') {
         // 连接随行销毁（子进程 kill；释放失败不阻塞移除）
         const agent = acpAgents.get(id)

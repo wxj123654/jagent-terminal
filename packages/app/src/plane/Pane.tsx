@@ -10,6 +10,7 @@
  * kind——不进混排列表、不进 History）。
  */
 
+import { ErrorBoundary } from '../errors/ErrorBoundary'
 import type { GitGraphStore } from '../git/store'
 import { useActiveTarget } from '../router'
 import type { SettingsStore } from '../settings/store'
@@ -42,21 +43,28 @@ export function Pane({
     active?.type === 'thread' ? s.threads.find((t) => t.id === active.id) : undefined,
   )
 
-  if (active?.type === 'settings') return <SettingsView settings={settings} />
+  if (active?.type === 'settings')
+    return (
+      <ErrorBoundary area="settings">
+        <SettingsView settings={settings} />
+      </ErrorBoundary>
+    )
   // 工作区起始页（Phase W；原型「空工作区/会话移除后回退目的地」）。
   // 死 id（工作区已删，removeWorkspace 兑底前的一瞬）→ 落全局空态兜底
   if (active?.type === 'workspace') {
     const ws = store.getState().workspaces.find((w) => w.id === active.id)
     if (ws)
       return (
-        <WorkspacePage
-          store={store}
-          settings={settings}
-          workspace={ws}
-          dialog={dialog}
-          gitStore={gitStore}
-          scrollToItem={scrollToItem}
-        />
+        <ErrorBoundary area="pane">
+          <WorkspacePage
+            store={store}
+            settings={settings}
+            workspace={ws}
+            dialog={dialog}
+            gitStore={gitStore}
+            scrollToItem={scrollToItem}
+          />
+        </ErrorBoundary>
       )
   }
   if (!thread) {
@@ -68,5 +76,9 @@ export function Pane({
     )
   }
   const S = getSurface(thread.kind)
-  return <S thread={thread} store={store} settings={settings} />
+  return (
+    <ErrorBoundary area="pane">
+      <S thread={thread} store={store} settings={settings} />
+    </ErrorBoundary>
+  )
 }

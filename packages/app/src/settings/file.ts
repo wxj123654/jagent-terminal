@@ -9,6 +9,8 @@
 import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
+import { emitError } from '../errors/bus'
+
 export type FileAdapter = {
   /** 文件不存在返回 null；存在返回原文（坏 JSON 由调用方 parse 容错） */
   read(): Promise<string | null>
@@ -57,7 +59,12 @@ export async function openInSystemApp(p: string): Promise<void> {
       spawn('xdg-open', [p], { stdio: 'ignore', detached: true })?.unref()
     }
   } catch (e) {
-    console.warn('openInSystemApp failed:', e)
+    emitError({
+      level: 'warn',
+      kind: 'io',
+      message: `在系统中打开失败：${e instanceof Error ? e.message : String(e)}`,
+      context: 'openInSystemApp',
+    })
   }
 }
 

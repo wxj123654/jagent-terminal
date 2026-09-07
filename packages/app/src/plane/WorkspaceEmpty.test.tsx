@@ -44,6 +44,7 @@ function Harness() {
           openAddWorkspace: () => {},
           openSearch: () => {},
           openManageSession: () => {},
+          openErrors: () => {},
         }}
       />
       <DialogHost

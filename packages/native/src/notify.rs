@@ -28,20 +28,20 @@
 mod imp {
     use std::path::PathBuf;
 
+    use windows::core::{Interface, HSTRING};
     use windows::Data::Xml::Dom::XmlDocument;
-    use windows::UI::Notifications::{ToastNotification, ToastNotificationManager, ToastNotifier};
     use windows::Win32::Foundation::PROPERTYKEY;
     use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
     use windows::Win32::System::Com::{
-        CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
-        CoTaskMemFree, IPersistFile,
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, IPersistFile, CLSCTX_INPROC_SERVER,
+        COINIT_APARTMENTTHREADED,
     };
     use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
     use windows::Win32::UI::Shell::{
-        FOLDERID_Programs, IShellLinkW, KNOWN_FOLDER_FLAG, SHGetKnownFolderPath,
-        SetCurrentProcessExplicitAppUserModelID, ShellLink,
+        FOLDERID_Programs, IShellLinkW, SHGetKnownFolderPath,
+        SetCurrentProcessExplicitAppUserModelID, ShellLink, KNOWN_FOLDER_FLAG,
     };
-    use windows::core::{HSTRING, Interface};
+    use windows::UI::Notifications::{ToastNotification, ToastNotificationManager, ToastNotifier};
 
     /// Stable identity of j-agent for the Windows notification platform.
     const AUMID: &str = "dev.jagent.Terminal";

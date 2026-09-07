@@ -10,6 +10,8 @@
 
 import { useWindowSize } from '@gpuix/react'
 import { useEffect, useState } from 'react'
+import type { LastCrash } from '../errors/crashReport'
+import { ErrorIndicator } from '../errors/ErrorIndicator'
 import type { GitGraphStore } from '../git/store'
 import { useActiveTarget } from '../router'
 import type { SettingsStore } from '../settings/store'
@@ -17,6 +19,7 @@ import { useSettingsValue } from '../settings/useSettings'
 import type { ThreadStore } from '../threads/store'
 import { displayTitle } from '../threads/terminal'
 import { useThreadStore } from '../threads/useThreadStore'
+import { IconButton } from '../ui/IconButton'
 import type { PerfSource } from '../ui/PerfHud'
 import { PerfHud } from '../ui/PerfHud'
 import { PLATFORM } from '../ui/platform'
@@ -55,6 +58,7 @@ export function App({
   gitStore,
   scrollToItem,
   perfSource,
+  lastCrash,
 }: {
   store: ThreadStore
   settings: SettingsStore
@@ -67,6 +71,8 @@ export function App({
   scrollToItem?: (elementId: number, index: number) => void
   /** 性能 HUD 数据源（main.tsx 装配：takePaintPerf + process CPU/MEM 采样器；不传则 HUD 不挂载） */
   perfSource?: PerfSource
+  /** 上次会话崩溃残留（方案 C 启动提示；main.tsx 读 crash.json 注入） */
+  lastCrash?: LastCrash | null
 }) {
   const title = useTitle(store)
   // 窄窗口抽屉（W4）：useWindowSize poll 100ms（TestRenderer 无窗口面时
@@ -81,12 +87,16 @@ export function App({
   const [drawerOpen, setDrawerOpen] = useState(false)
   // 弹窗中枢（W7）：四类弹窗单一显示源，入口经 dialog 回调打开。
   // ⌘K 挂点：装配层 focusThreadSearch → dialogKeyboard.openSearch()
-  const [dialog, setDialog] = useState<DialogState>({ kind: 'none' })
+  // 启动崩溃提示（方案 C）：残留存在 → 初始即弹 crash dialog
+  const [dialog, setDialog] = useState<DialogState>(
+    lastCrash ? { kind: 'crash', last: lastCrash } : { kind: 'none' },
+  )
   const dialogOpener = {
     openToolMenu: (workspaceId: string) => setDialog({ kind: 'tool', workspaceId }),
     openAddWorkspace: () => setDialog({ kind: 'addWorkspace' }),
     openSearch: () => setDialog({ kind: 'search' }),
     openManageSession: (threadId: string) => setDialog({ kind: 'manageSession', threadId }),
+    openErrors: () => setDialog({ kind: 'errors' }),
   }
   useEffect(() => {
     dialogKeyboard.register(dialogOpener)
@@ -141,7 +151,20 @@ export function App({
           narrow={narrow}
           drawerOpen={drawerOpen}
           onToggleDrawer={narrow ? () => setDrawerOpen((v) => !v) : undefined}
-          trailing={perfHud && perfSource ? <PerfHud source={perfSource} /> : null}
+          trailing={
+            <>
+              <IconButton
+                name="gitBranch"
+                label="Git 图 (Ctrl+Shift+G)"
+                testId="titlebar-git"
+                size={13}
+                hitSize={28}
+                onClick={() => store.openGitGraph()}
+              />
+              <ErrorIndicator onOpen={dialogOpener.openErrors} />
+              {perfHud && perfSource ? <PerfHud source={perfSource} /> : null}
+            </>
+          }
         />
       </div>
       {/* 内容行。窄窗口时 Pane 先、抽屉（Sidebar+scrim）后——GPUI 按树序

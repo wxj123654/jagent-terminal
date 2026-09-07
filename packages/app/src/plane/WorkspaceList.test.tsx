@@ -52,6 +52,7 @@ function Harness({
     openAddWorkspace: () => open({ kind: 'addWorkspace' }),
     openSearch: () => open({ kind: 'search' }),
     openManageSession: (threadId: string) => open({ kind: 'manageSession', threadId }),
+    openErrors: () => open({ kind: 'errors' }),
   }
   return (
     <div

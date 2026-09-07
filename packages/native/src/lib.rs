@@ -18,9 +18,11 @@
 //! through the process-global UI command channel (see gpuix `run_on_gpuix`).
 
 mod appearance;
+mod crash;
 mod element;
 mod host;
 mod notify;
+mod panic;
 mod picker;
 
 use std::collections::HashMap;
@@ -35,8 +37,9 @@ use gpui::BorrowAppContext;
 
 use element::TerminalElementFactory;
 use gpuix_native::custom_elements::register_global_factory;
-use jagent_terminal::pool::{SessionEvent as RustSessionEvent, set_session_event_fn};
-use jagent_terminal::{SpawnOptions, TerminalPool, perf};
+use jagent_terminal::pool::{set_session_event_fn, SessionEvent as RustSessionEvent};
+use jagent_terminal::terminal_error_code;
+use jagent_terminal::{perf, HostPanic, SpawnOptions, TerminalError, TerminalPool};
 
 /// Register the `<terminal>` element factory with GPUIX. Must run before the
 /// renderer is initialized (`main.tsx` calls it at startup, before
@@ -128,8 +131,17 @@ pub fn on_session_event(cb: ThreadsafeFunction<SessionEvent>) {
     }));
 }
 
-fn host_error(e: anyhow::Error) -> Error {
-    Error::from_reason(format!("{e:#}"))
+fn host_error(e: anyhow::Error) -> napi::Error<String> {
+    // 错误码映射（docs/error-management.md 方案 B）：稳定 code → JS
+    // error.code。TerminalError 优先（typed），HostPanic 其次（panic 收编），
+    // 其余 host 链路错误统一 ERR_TERMINAL_HOST。
+    if let Some(te) = e.downcast_ref::<TerminalError>() {
+        return napi::Error::new(terminal_error_code(te).to_string(), format!("{te}"));
+    }
+    if let Some(hp) = e.downcast_ref::<HostPanic>() {
+        return napi::Error::new("ERR_NATIVE_PANIC".to_string(), format!("{hp}"));
+    }
+    napi::Error::new("ERR_TERMINAL_HOST".to_string(), format!("{e:#}"))
 }
 
 /// Spawn a terminal session: PTY + model + pool registration. Resolves with
@@ -139,29 +151,37 @@ fn host_error(e: anyhow::Error) -> Error {
 /// access to VisualTestState (thread_local), and napi async fns run on the
 /// tokio runtime — a different thread. The JS seam keeps its Promise shape
 /// via a thin async wrapper at the injection site (main.tsx / e2e).
+///
+/// Panic 边界（方案 B）：guarded catch_unwind——panic 变 JS throw
+/// （code ERR_NATIVE_PANIC），不再终止进程。
 #[napi]
-pub fn create_terminal_session(opts: Option<SpawnOptionsJs>) -> Result<f64> {
+pub fn create_terminal_session(opts: Option<SpawnOptionsJs>) -> Result<f64, String> {
     let spawn = to_spawn_options(opts);
-    let id = host::run_host(move |cx: &mut gpui::App| {
-        TerminalPool::init_global(cx);
-        cx.update_global::<TerminalPool, _>(|pool, cx| pool.create(spawn, cx))
-            .map_err(|e| anyhow::anyhow!("{e:#}"))
+    panic::guarded(move || {
+        let id = host::run_host(move |cx: &mut gpui::App| {
+            TerminalPool::init_global(cx);
+            cx.update_global::<TerminalPool, _>(|pool, cx| pool.create(spawn, cx))
+                .map_err(|e| anyhow::anyhow!("{e:#}"))
+        })
+        .map_err(host_error)?;
+        Ok(id as f64)
     })
-    .map_err(host_error)?;
-    Ok(id as f64)
 }
 
 /// Destroy a session: kill the PTY child, drop the model, remove from the
 /// pool. Views still bound to it render the placeholder afterwards.
+/// Unknown id → throw with code ERR_TERMINAL_SESSION_NOT_FOUND.
 #[napi]
-pub fn destroy_terminal_session(session_id: f64) -> Result<()> {
+pub fn destroy_terminal_session(session_id: f64) -> Result<(), String> {
     let id = session_id as u64;
-    host::run_host(move |cx: &mut gpui::App| {
-        cx.update_global::<TerminalPool, _>(|pool, cx| pool.destroy(id, cx))
-            .map_err(|e| anyhow::anyhow!("{e:#}"))
+    panic::guarded(move || {
+        host::run_host(move |cx: &mut gpui::App| {
+            cx.update_global::<TerminalPool, _>(|pool, cx| pool.destroy(id, cx))
+                .map_err(|e| anyhow::anyhow!("{e:#}"))
+        })
+        .map_err(host_error)?;
+        Ok(())
     })
-    .map_err(host_error)?;
-    Ok(())
 }
 
 /// Show a desktop toast (Windows). Fire-and-forget on a detached thread:
@@ -204,4 +224,19 @@ pub fn take_paint_perf() -> PaintPerfJs {
         total_ns: s.ns_total as f64,
         max_ns: s.ns_max as f64,
     }
+}
+
+/// 注册 Rust panic 转发（方案 B 第 4 步）：panic hook → JS 错误总线
+/// （level fatal）。TSF 协议同 `onSessionEvent`：payload 是第二个参数。
+#[napi(ts_args_type = "cb: (err: null, e: import('./index').NativePanicEvent) => void")]
+pub fn on_native_panic(cb: ThreadsafeFunction<panic::NativePanicJs>) {
+    panic::set_panic_tsf(cb);
+}
+
+/// 安装全局 Rust panic hook（方案 B）：panic.log 落盘 + onNativePanic 转发。
+/// `logDir` 传 null 则不写盘（仍转发 TSF）。幂等；建议在 renderer.init
+/// 之前调用（越早覆盖面越大）。
+#[napi]
+pub fn install_native_panic_hook(log_dir: Option<String>) {
+    panic::install_hook(log_dir.map(std::path::PathBuf::from));
 }

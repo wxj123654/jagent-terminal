@@ -15,13 +15,26 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import {
+  installNativePanicHook,
   installTerminalElement,
+  onNativePanic,
   onSessionEvent,
   pickDirectory as pickDirectoryNative,
   takePaintPerf,
 } from '@jagent/native'
 
 import { appWindow, type AppRenderer } from './appWindow'
+import { emitError } from './errors/bus'
+import {
+  CRASH_HANDLER_FLAG,
+  runCrashSidecar,
+  setupCrashReportingForApp,
+} from './errors/crashReport'
+import { ErrorBoundary } from './errors/ErrorBoundary'
+import { installGlobalGuards } from './errors/guards'
+import { installErrorLog } from './errors/log'
+import { registerNativePanicHandler } from './errors/native'
+import { wireErrorToasts } from './errors/toastWire'
 import { createGitGraphStore } from './git/store'
 import { createGlobalKeydown } from './keybindings'
 import { App } from './plane/AgentPlane'
@@ -102,6 +115,32 @@ function createPerfSource(renderer: AppRenderer): PerfSource {
   }
 }
 
+// ── 发布形态 sidecar 变道（方案 C）──
+// bun compile 后 sidecarSpawnArgs 走 `<exe> --crash-handler`。独立脚本
+// （dev）不经过本文件；本分支只服务发布二进制。runCrashSidecar 阻塞至
+// dump/EOF，永不返回——不会再走 setupCrashReportingForApp。
+if (process.argv.includes(CRASH_HANDLER_FLAG)) {
+  runCrashSidecar()
+}
+
+// ── 错误管理装配（docs/error-management.md 方案 A；最先做——后续任何装配
+// 错误都进总线而非无声崩溃）──
+// 全局守卫：uncaughtException/unhandledRejection → 总线，进程保活
+installGlobalGuards()
+// 落盘：~/.j-agent/logs/errors-YYYYMMDD.log（保留 7 天）
+installErrorLog()
+// error/fatal → 右下角 toast（4s）
+wireErrorToasts()
+// Rust panic 转发（方案 B）：TSF 先注册、hook 后装（hook 触发时读 TSF）
+registerNativePanicHandler(onNativePanic)
+installNativePanicHook(join(homedir(), '.j-agent', 'logs'))
+
+// ── 进程外崩溃报告（方案 C）：拉 sidecar + crash-handler + 读残留 ──
+// 在 renderer 开窗之前：崩溃保护越早生效越好。失败静默降级（panic
+// hook 照装，无 dump）。返回的残留用于启动提示（App prop 传入）。
+// 与 SettingsSections / packages/app/package.json 同步（resolveJsonModule 未开）
+const lastCrash = await setupCrashReportingForApp('0.1.0')
+
 // ── seam 装配（顺序敏感：先注册元素，再开窗）──────────────────────────
 installTerminalElement()
 
@@ -122,7 +161,13 @@ const threadStore = createThreadStore(
     ...createNativeThreadDeps(settingsStore),
     persistWorkspaces: (ws) => {
       void stateFile.write(serializeWorkspaceState(ws)).catch((e) => {
-        console.warn('state.json write failed:', e) // 非关键路径：丢一次恢复态不阻断 UI
+        // 非关键路径：丢一次恢复态不阻断 UI，但错误要可见（错误总线）
+        emitError({
+          level: 'warn',
+          kind: 'io',
+          message: `工作区状态写入失败：${e instanceof Error ? e.message : String(e)}`,
+          context: 'state.json write',
+        })
       })
     },
   },
@@ -195,21 +240,8 @@ const handleKeyDown = createGlobalKeydown({
     // W7 ⌘K/Ctrl-K：打开搜索会话弹窗（原型语义；原 W4 聚焦侧栏搜索框废弃）
     dialogKeyboard.openSearch()
   },
-  // Git 图键位（git-graph.md §4.3）：激活判定在此（workspace 路由 + paneTab）
-  openGitGraph: () => {
-    const active = activeTargetFromLocation(router.history.location.pathname)
-    const s = threadStore.getState()
-    const wsId =
-      active?.type === 'workspace'
-        ? active.id
-        : active?.type === 'thread'
-          ? s.threads.find((t) => t.id === active.id)?.workspaceId
-          : undefined
-    const id = wsId ?? s.workspaces[0]?.id
-    if (!id) return
-    threadStore.setWorkspacePaneTab(id, 'git')
-    threadStore.activate({ type: 'workspace', id })
-  },
+  // Git 图键位（git-graph.md §4.3）：与顶栏按钮共用 store.openGitGraph
+  openGitGraph: () => threadStore.openGitGraph(),
   gitGraphKey: (key) => {
     const active = activeTargetFromLocation(router.history.location.pathname)
     if (active?.type !== 'workspace') return false
@@ -246,21 +278,24 @@ const handleKeyDown = createGlobalKeydown({
 })
 
 appWindow.mount(
-  <App
-    store={threadStore}
-    settings={settingsStore}
-    gitStore={gitStore}
-    windowControls={windowControls}
-    scrollToItem={(elementId, index) => renderer.scrollToItem(elementId, index)}
-    pickDirectory={() =>
-      // native 面是回调式（TSF 两参契约）；装配层包装成 Promise（面板可能
-      // 长时间开着——macOS runModal 阻塞 JS 线程，resolve 在模态结束后）
-      new Promise<string | null>((resolve) => {
-        pickDirectoryNative((_err, path) => resolve(path ?? null))
-      })
-    }
-    perfSource={createPerfSource(renderer)}
-  />,
+  <ErrorBoundary area="root">
+    <App
+      store={threadStore}
+      settings={settingsStore}
+      gitStore={gitStore}
+      windowControls={windowControls}
+      scrollToItem={(elementId, index) => renderer.scrollToItem(elementId, index)}
+      pickDirectory={() =>
+        // native 面是回调式（TSF 两参契约）；装配层包装成 Promise（面板可能
+        // 长时间开着——macOS runModal 阻塞 JS 线程，resolve 在模态结束后）
+        new Promise<string | null>((resolve) => {
+          pickDirectoryNative((_err, path) => resolve(path ?? null))
+        })
+      }
+      perfSource={createPerfSource(renderer)}
+      lastCrash={lastCrash}
+    />
+  </ErrorBoundary>,
   {
     onEvent: (event) => {
       if (event.eventType === 'keyDown') {
