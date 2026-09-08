@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile, unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { git } from './refs-config'
-import { inspectPatchSuite, inspectRefs, type PatchSuite } from './refs-state'
+import { inspectPatchSuite, inspectRefs, normalizePatchText, type PatchSuite } from './refs-state'
 
 let dir: string
 let options: Parameters<typeof inspectRefs>[0]
@@ -57,6 +57,14 @@ const inspect = async () => (await inspectRefs(options)).join('\n')
 
 describe('refs-state', () => {
   test('accepts both pinned repositories with exact patches and build output', async () => {
+    expect(await inspectRefs(options)).toEqual([])
+  })
+
+  test('treats CRLF-normalized patch files as matching LF git diffs', async () => {
+    const patchPath = join(options.gpuix.patchDir, '0001.patch')
+    const lf = await Bun.file(patchPath).text()
+    await writeFile(patchPath, lf.replace(/\n/g, '\r\n'))
+    expect(normalizePatchText(await Bun.file(patchPath).text())).toBe(normalizePatchText(lf))
     expect(await inspectRefs(options)).toEqual([])
   })
 

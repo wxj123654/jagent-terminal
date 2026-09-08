@@ -1,0 +1,3 @@
+# Patch files must stay LF: Windows runners default to core.autocrlf=true,
+# which would otherwise rewrite them to CRLF and trip exact setup-refs checks.
+patches/**/*.patch text eol=lf

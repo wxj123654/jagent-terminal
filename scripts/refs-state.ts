@@ -8,6 +8,12 @@ export interface PatchSuite {
   manifest: PatchEntry
 }
 
+/** Windows CI checkout (core.autocrlf=true) may rewrite patch files to CRLF
+ * while `git diff` stays LF; compare on normalized newlines only. */
+export function normalizePatchText(text: string): string {
+  return text.replace(/\r\n/g, '\n')
+}
+
 /** Read-only inspection shared by setup and export. Never repairs a checkout:
  * old patches and user edits must be distinguished by the person exporting. */
 export async function inspectPatchSuite(suite: PatchSuite, comparePatches: boolean = true) {
@@ -45,7 +51,9 @@ export async function inspectPatchSuite(suite: PatchSuite, comparePatches: boole
     if (comparePatches) {
       const file = Bun.file(join(patchDir, name))
       if (!(await file.exists())) problems.push(`missing patch: ${name}`)
-      else if ((await file.text()) !== out) problems.push(`patch drift: ${name}`)
+      else if (normalizePatchText(await file.text()) !== normalizePatchText(out)) {
+        problems.push(`patch drift: ${name}`)
+      }
     }
   }
   return { problems, diffs }
