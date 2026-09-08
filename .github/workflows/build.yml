@@ -43,7 +43,7 @@ jobs:
             app-flag: ''
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
 
@@ -75,7 +75,7 @@ jobs:
             vulkan-validationlayers
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -85,13 +85,13 @@ jobs:
           restore-keys: |
             ${{ matrix.platform }}-cargo-
 
-      - name: Install JS dependencies
-        run: bun install
-
-      # 重建 .refs/gpuix（浅克隆 pin + 补丁 + zed submodule + build:react）；
-      # 幂等设计，未来若加 .refs 缓存可直接命中跳过
+      # @gpuix/react 是 file: 依赖到 .refs/gpuix（gitignore），必须先重建路径再 bun install。
+      # setup-refs 本身只跑本地 TS 脚本 + 在 .refs/gpuix 内 bun install/build:react，不依赖根 node_modules。
       - name: Setup refs (gpuix + zed + patches)
         run: bun run setup-refs
+
+      - name: Install JS dependencies
+        run: bun install
 
       - name: Build
         run: bun run build ${{ matrix.app-flag }}
@@ -102,7 +102,7 @@ jobs:
         run: cd dist/darwin-arm64 && ditto -c -k --keepParent JAgent.app JAgent.app.zip
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: jagent-${{ matrix.platform }}
           path: dist/${{ matrix.platform }}/*
