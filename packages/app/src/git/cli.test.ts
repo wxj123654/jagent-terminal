@@ -6,6 +6,8 @@
  */
 
 import { describe, expect, test } from 'bun:test'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 
 import {
   LineBuffer,
@@ -72,27 +74,14 @@ describe('parseLogLine', () => {
     const p1 = '1'.repeat(40)
     const p2 = '2'.repeat(40)
     const parsed = parseLogLine(
-      [
-        sha,
-        `${p1} ${p2}`,
-        '',
-        'abcdef1',
-        'w',
-        'w@x',
-        '0',
-        'w',
-        'w@x',
-        'm',
-      ].join('\x00'),
+      [sha, `${p1} ${p2}`, '', 'abcdef1', 'w', 'w@x', '0', 'w', 'w@x', 'm'].join('\x00'),
     )
     expect(parsed?.parents).toEqual([p1, p2])
   })
 
   test('subject 含逗号不误切（逗号只在 %D 分隔用）', () => {
     const parsed = parseLogLine(
-      [sha, '', '', 'abcdef1', 'w', 'w@x', '0', 'w', 'w@x', 'a, b, c'].join(
-        '\x00',
-      ),
+      [sha, '', '', 'abcdef1', 'w', 'w@x', '0', 'w', 'w@x', 'a, b, c'].join('\x00'),
     )
     expect(parsed?.subject).toBe('a, b, c')
   })
@@ -100,9 +89,7 @@ describe('parseLogLine', () => {
   test('坏行丢弃：空行 / 字段不足 / 空 sha', () => {
     expect(parseLogLine('')).toBeNull()
     expect(parseLogLine('only-three\x00fields\x00here')).toBeNull()
-    expect(
-      parseLogLine('\x00p\x00\x00s\x00a\x00e\x00t\x00cn\x00ce\x00subj'),
-    ).toBeNull()
+    expect(parseLogLine('\x00p\x00\x00s\x00a\x00e\x00t\x00cn\x00ce\x00subj')).toBeNull()
   })
 })
 
@@ -143,9 +130,7 @@ describe('parseChangedFiles', () => {
   })
 
   test('二进制用 -\t- ；坏行丢弃', () => {
-    const raw = ['-\t-\ticon.png', 'not-a-numstat-line', '1\t1\tok.ts'].join(
-      '\n',
-    )
+    const raw = ['-\t-\ticon.png', 'not-a-numstat-line', '1\t1\tok.ts'].join('\n')
     expect(parseChangedFiles(raw)).toEqual([
       { path: 'icon.png', added: null, deleted: null },
       { path: 'ok.ts', added: 1, deleted: 1 },
@@ -168,7 +153,11 @@ describe('真进程冒烟（本仓）', () => {
   test('findRepoRoot 向上命中 repo root', async () => {
     const root = await findRepoRoot(import.meta.dir)
     expect(root).toBeTruthy()
-    expect(root!.endsWith('jagent-terminal')).toBe(true)
+    // 平台/目录名无关：repo root = import.meta.dir 的祖先且含 .git
+    // （不硬编码 checkout 目录名；git 返回正斜杠而 import.meta.dir 是反斜杠，先归一）
+    expect(existsSync(join(root!, '.git'))).toBe(true)
+    const norm = (p: string) => p.replaceAll('\\', '/')
+    expect(norm(import.meta.dir).startsWith(norm(root!))).toBe(true)
   })
 
   test('不存在的 cwd → null', async () => {
