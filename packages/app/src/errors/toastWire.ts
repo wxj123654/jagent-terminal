@@ -6,7 +6,7 @@
  * main.tsx 装配一次；测试不接（Toast 有自身时序）。
  */
 
-import { toast } from '../ui/Toast'
+import { toast } from '@jagent/ui'
 import { subscribeErrors } from './bus'
 
 export function wireErrorToasts(): () => void {

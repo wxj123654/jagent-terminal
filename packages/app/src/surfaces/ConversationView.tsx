@@ -16,8 +16,8 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
 
+import { COLORS, FONT } from '@jagent/ui'
 import type { ChatMessage } from '../threads/chat'
-import { COLORS, FONT } from '../ui/tokens'
 
 export type ConversationViewProps = {
   pill: string

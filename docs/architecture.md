@@ -117,6 +117,8 @@ main.tsx ──> router.ts（路由树装配，不依赖任何业务模块）
 - `native` 的导入只允许出现在 `main.tsx`、`threads/nativeDeps.ts`（装配工厂，main 与 e2e 共用）与 `threads/store.ts` 的依赖注入参数类型里，及 `e2e/`（TestGpuixRenderer 环境）——跨语言 seam 的 JS 侧收口
 - `ui` 被所有人依赖，不依赖任何人
 
+**组件扩展方向**：见 [UI 组件扩展架构](./ui-extensions.md)。已确认以“补充 GPUIX，而非重新实现 GPUIX”为原则：React 包负责包装与组合，仅有实际原生缺口时新增可独立用于纯 GPUI 的 Rust 组件，通过宿主适配接入；两侧不要求一一对应。React 包 `@jagent/ui` 已落地（通用控件层已迁入，app `src/ui/` 只留业务组件），原生扩展尚未实施；唯一 native 宿主约束不变。
+
 ---
 
 ## 2. 跨语言 seam（本文核心增量）

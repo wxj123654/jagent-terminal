@@ -8,11 +8,9 @@
 
 import { useState } from 'react'
 
+import { Modal, ModalActions, ModalBody, ModalHeading, TextInput, COLORS, FONT } from '@jagent/ui'
 import type { ThreadStore } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
-import { Modal, ModalActions, ModalBody, ModalHeading } from '../ui/Modal'
-import { TextInput } from '../ui/TextInput'
-import { COLORS, FONT } from '../ui/tokens'
 
 export function SessionDialog({
   store,

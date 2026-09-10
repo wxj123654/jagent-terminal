@@ -23,6 +23,7 @@ import {
   takePaintPerf,
 } from '@jagent/native'
 
+import { inputFocus, PLATFORM } from '@jagent/ui'
 import { appWindow, type AppRenderer } from './appWindow'
 import { emitError } from './errors/bus'
 import {
@@ -52,9 +53,7 @@ import {
   parseWorkspaceState,
   serializeWorkspaceState,
 } from './threads/workspaces'
-import { inputFocus } from './ui/keyboard'
 import type { PerfSample, PerfSource } from './ui/PerfHud'
-import { PLATFORM } from './ui/platform'
 
 // ── 性能 HUD 采样器（native 收口：takePaintPerf / getDebugFrameOverlayStats
 // 在此唯一可见）──

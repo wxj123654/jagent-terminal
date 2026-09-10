@@ -11,13 +11,21 @@ import { useWindowSize } from '@gpuix/react'
 import type { PublicInstance } from '@gpuix/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
-import { Icon, type IconName } from '../../ui/Icon'
-import { IconButton } from '../../ui/IconButton'
-import { Modal, ModalActions, ModalBody, ModalHeading } from '../../ui/Modal'
-import { TextInput } from '../../ui/TextInput'
-import { toast } from '../../ui/Toast'
-import { Toggle } from '../../ui/Toggle'
-import { COLORS, FONT, GRAPH_LANE_COLORS, SIZES } from '../../ui/tokens'
+import type { IconName } from '@jagent/ui'
+import {
+  Icon,
+  IconButton,
+  Modal,
+  ModalActions,
+  ModalBody,
+  ModalHeading,
+  TextInput,
+  toast,
+  Toggle,
+  COLORS,
+  FONT,
+} from '@jagent/ui'
+import { GRAPH_LANE_COLORS, SIZES } from '../../tokens'
 import {
   branchMenuItems,
   commitMenuItems,

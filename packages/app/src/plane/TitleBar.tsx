@@ -27,9 +27,9 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 
-import { Icon } from '../ui/Icon'
-import type { AppPlatform } from '../ui/platform'
-import { COLORS, FONT, SIZES } from '../ui/tokens'
+import type { AppPlatform } from '@jagent/ui'
+import { Icon, COLORS, FONT } from '@jagent/ui'
+import { SIZES } from '../tokens'
 
 /** 窗口控制 seam（main.tsx 装配：闭包 renderer；测试注入 spy） */
 export type WindowControls = {

@@ -6,10 +6,9 @@
  * crash.json 关闭；dump 文件保留供复盘）。
  */
 
+import { Modal, ModalBody, ModalHeading, COLORS, FONT } from '@jagent/ui'
 import { CRASH_DIR, dismissLastCrash, type LastCrash } from '../errors/crashReport'
 import { openInSystemApp } from '../settings/file'
-import { Modal, ModalBody, ModalHeading } from '../ui/Modal'
-import { COLORS, FONT } from '../ui/tokens'
 
 function timeLabel(at?: number): string {
   if (!at) return '未知'

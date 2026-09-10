@@ -10,7 +10,7 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
-import { TRAFFIC_LIGHT_WIDTH } from '../ui/platform'
+import { TRAFFIC_LIGHT_WIDTH } from '@jagent/ui'
 import { SidebarHeader } from './Sidebar'
 import { TitleBar, type WindowControls } from './TitleBar'
 

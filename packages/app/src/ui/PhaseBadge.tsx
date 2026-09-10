@@ -5,7 +5,7 @@
 
 import type { ReactElement } from 'react'
 
-import { Badge } from './Badge'
+import { Badge } from '@jagent/ui'
 
 export function PhaseBadge({ phase, testId }: { phase: 2 | 3; testId?: string }): ReactElement {
   return (

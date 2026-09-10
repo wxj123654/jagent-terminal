@@ -1,9 +1,11 @@
 /**
- * ui/tokens.ts — 颜色 / 尺寸 tokens（agent-plane-layout.md §3，TS 常量形态）。
+ * tokens.ts — 通用视觉 tokens（ui-extensions.md §5 分类结果）。
  *
- * Zed One Dark 语义色 + 布局尺寸。Phase 1 定稿（architecture.md §5）；
+ * Zed One Dark 语义色 + 字体。Phase 1 定稿（architecture.md §5）；
  * Phase 2 的 settings appearance 分区若引入主题，再考虑升级为 store 注入。
- * 位置：ui/ 原子层（architecture §1.2「ui 被所有人依赖，不依赖任何人」）。
+ *
+ * app 域 tokens（布局尺寸 SIZES / git lane 色板 GRAPH_LANE_COLORS）不在这里——
+ * 它们留在 packages/app/src/tokens.ts。组件库只收「控件主题」级常量。
  */
 
 export const COLORS = {
@@ -40,31 +42,6 @@ export const COLORS = {
   borderSubtle: '#3e4451',
   /** exited 行：整行压灰（含文字） */
   exited: '#4b5262',
-} as const
-
-/** git graph lane 色板（docs/git-graph.md §3.2）：8 色轮转，One Dark 调和 */
-export const GRAPH_LANE_COLORS = [
-  '#61afef', // accent 蓝
-  '#98c379', // 绿
-  '#c678dd', // 紫
-  '#e5c07b', // 琥珀
-  '#56b6c2', // 青
-  '#e06c75', // 红
-  '#d19a66', // 橙
-  '#be5046', // 砖红
-] as const
-
-export const SIZES = {
-  // 默认侧栏宽；运行时以 settings.appearance.sidebarWidth（200–400）为准——
-  // 布局面（Sidebar/SidebarHeader/ToolMenu/AgentPlane drawer）经 useSettingsValue 消费
-  sidebarWidth: 248,
-  rowHeight: 28,
-  rowMarginX: 6,
-  rowPaddingX: 8,
-  rowRadius: 4,
-  activeBarWidth: 2,
-  /** 自绘顶栏高度（Zed platform_title_bar_height：非 Windows 为 max(1.75rem, 34px)） */
-  titleBarHeight: 34,
 } as const
 
 export const FONT = {

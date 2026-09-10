@@ -7,8 +7,8 @@
  * 权限以 markdown bullet/文本摘要随回复呈现，权限自动应答见 acp.ts 注记）。
  */
 
+import { COLORS } from '@jagent/ui'
 import type { AcpThread } from '../threads/store'
-import { COLORS } from '../ui/tokens'
 import { ConversationView } from './ConversationView'
 import type { SurfaceProps } from './registry'
 

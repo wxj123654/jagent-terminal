@@ -5,10 +5,10 @@
  * 设置里增删实时反映）。点击 → spawnFromPreset（内部更新 lastUsedPreset）。
  */
 
+import { COLORS, FONT } from '@jagent/ui'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
 import { presetCommandSummary } from '../threads/presets'
-import { COLORS, FONT } from '../ui/tokens'
 
 export function EmptyPresets({
   onPick,

@@ -16,10 +16,17 @@
 | `docs/architecture.md` | **代码实现契约**（模块/签名/依赖方向/测试面/Phase 映射 §10）。改动先读它 |
 | `docs/agent-plane-layout.md` | Agent Plane 布局契约（A 单 pane / C1 无顶栏 / D1 混排 / E2 预设） |
 | `docs/settings-ui.md` | 设置界面契约（S1–S5 / 7 分区 / §14 落地顺序 / §15 验收清单） |
+| `docs/ui-extensions.md` | UI 扩展架构：补充 GPUIX、不重写；React 包与可选纯 GPUI Rust 扩展边界。`@jagent/ui` 已落地（首批迁移完成） |
 | `docs/gpuix-zed-terminal-fusion.md` | 调研与硬约束（§4 硬约束 6：字节流不过 napi；GPUIX pin GPUI fork） |
 | `design/*.html` | HTML 原型（布局/设置/交互方案），样式对齐用 |
 
 **待评审工作区方案（不是实现契约）**：`design/workspace-plane.html`，操作说明 `design/workspace-plane.md`。用户已选择独立 HTML、Codex 式工作区分组；正式应用尚未迁移。落地拆解见下方 **Phase W（工作区平面迁移）**。
+
+## UI 组件扩展（首批迁移完成）
+
+- [x] 沉淀 `docs/ui-extensions.md`：复用 GPUIX；新增 Rust 能力可独立用于纯 GPUI；不要求 React/Rust 对等实现；保持唯一 native 宿主。
+- [x] 建立 `@jagent/ui`（packages/ui）：控件层 13 组件 + tokens(COLORS/FONT)/style/keyboard/platform 迁入（git mv 保留历史）；SettingRow/PhaseBadge/PerfHud + SIZES/GRAPH_LANE_COLORS 留 app；测试拆分（控件测试随迁、SettingRow.test 留 app）；全部 gate 绿（349 单测 + 17 e2e + tsc + fmt/lint + patches --check）；跨包 react/@gpuix/react 单实例验证。坑：workspace 消费方必须显式声明 `workspace:*` 依赖，否则 bun 不落 symlink（e2e 曾解析失败）。
+- [ ] 出现具体原生缺口后再设计 Rust 扩展，验证纯 GPUI 与 GPUIX 两条消费路径；不预建空库。
 
 ## 进度看板
 
@@ -347,3 +354,5 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-06 · **应用图标完成**：原创石墨底 `>` + 蓝色几何 `j`，SVG/九档 PNG/ICNS/ICO 入库，`bun run icons`（resvg 开发依赖）可复现，`design/app-icon.html` 深浅底+小尺寸预览；macOS `.app` 资源与 plist 接线、Windows `--windows-icon` + 跨宿主明确拒绝；12 图标 + 10 refs + 240 app 测试、tsc（含 scripts）、lint/fmt、macOS build/plist/字节比对/strict 签名/独立解码均通过。独立 reviewer 代行 finish-reviewer，结论 ship（资产与本机范围），无阻塞项；未改 .refs、未重编 Rust。下一步：用户视觉确认；Windows 发布前真机验证 Explorer 图标。
 - 2026-09-07 · **Windows 卡顿修复（滑块拖动 + settings.json 滚动）**：用户报拖「侧栏宽度」滑块与设置→高级 settings.json 滚动卡顿 · 三层根因：① **dev 一直在跑 debug .node**（build:debug 与 build 写同一 packages/native/*.node 互相覆盖，mtime 与 target/.../debug 一致实锤）→ 重建 release（38MB→19.5MB），构建模式陷阱存记忆 #54 ② RangeInput 每 mouseMove 全链提交（GPUIX immediate-mode 每帧全量 build+layout+paint；500-1000Hz 鼠标=每秒数百全帧）→ 拖动中 onChange 合帧 ≤60Hz（Bun 无 requestAnimationFrame 实测，setTimeout 尾缘 flush：帧窗外立即发/窗内挂 pending 新值覆盖/mouseup+mouseleave flush）+ onDown 缓存轨道 bounds（去掉每 move 一次 getElementBounds napi 往返）③ appearance.sidebarWidth 此前从未接线（SIZES.sidebarWidth 恒 248 死值，拖了只写盘 UI 不动）→ 接线：useSettingsValue(store, selector) 单值订阅桥（原始值稳定防任意 patch 重渲染整树）+ AgentPlane 单订阅点 props 下流（Sidebar/SidebarHeader 新 width prop/ToolMenu/drawer-panel）· 测试：RangeInput 拖拽断言适配合帧语义（同帧窗两次 move 合并尾值）+ SidebarHeader 测试补 width prop · tsc + oxfmt + oxlint + 204 单测 + 17 e2e 全绿 · settings.json 滚动 release 后待真机复评，仍卡则 JSON 视图虚拟化 · 性能画像存记忆 #55 · 下一步：真机验收拖动/滚动流畅度
 - 2026-09-11 · **Phase E 完成（统一错误管理 A+B+C+D）**：用户要求直接上方案 C（=A+B+进程外崩溃报告）顺手加 D。A：`packages/app/src/errors/` 总线+守卫+三层 ErrorBoundary+按日落盘+napi 收口+顶栏徽章/错误面板/Toast。B：`TerminalError`/`HostPanic` 稳定 error.code、`guarded()` catch_unwind、`run_host` 闭包 unwind 变 JS 错误、panic hook 写 panic.log + onNativePanic TSF。C：EmbarkStudios `crash-handler 0.8.0` + `minidumper 0.11.0`（crates.io 核实配套版）；独立 sidecar `scripts/crash-handler.ts`（dev）/`--crash-handler`（发布）——**禁止 sidecar 走 main.tsx**（会再 spawn 自己）；macOS IPC 名必须是无 `/` 的 mach port（`jagent.crash.<pid>`）；panic 路径 `send_message(PANIC)+ping()` 再 abort（否则 abort 太快丢掉 PANIC，crash.json.kind 变成 signal）。下次启动读 crash.json → CrashDialog。D：`scripts/launcher.ts` watchdog（非零退出读日志尾+notify+3s 重启，60s/5 次 crash-loop 保护）。验证：app 292 单测全绿；`bun scripts/crash-smoke.ts panic|sigsegv` 本机均产出 .dmp + crash.json。未改 .refs。下一步：真窗口手验错误徽章/崩溃提示；符号化 minidump 与 Sentry 上报另立。
+- **UI 组件扩展架构沉淀（文档任务）**：新增 `docs/ui-extensions.md` 并接入架构/看板索引；确认补充 GPUIX、不重写已有控件，新增 Rust 能力可纯 GPUI 复用但不要求 React/Rust 对等；记录注册 drain、事件声明与实现差异、跨包单实例等待验证项。本轮未创建包、未改代码或 `.refs`。
+- 2026-09-12 · **UI 组件扩展首批迁移（@jagent/ui 落地）**：按 docs/ui-extensions.md §7 实施 · 新包 packages/ui（@jagent/ui，main/types 直指 src/index.ts，bun 直跑 TS；依赖 react 19.2.8 + @gpuix/react file: 同 .refs 路径）· git mv 17 文件保留历史：Badge/Icon/IconButton/Modal/NumberInput/Popover(+test)/RangeInput/Select/Textarea/TextInput/Toast/Toggle/Tooltip/style/keyboard/platform(+test)/ui.test · tokens 拆分：COLORS/FONT 入 ui，SIZES/GRAPH_LANE_COLORS 留 app/src/tokens.ts（布局/git 域）· SettingRow/PhaseBadge/PerfHud 留 app（业务语义；SettingRow 改从 @jagent/ui 取控件）· ui.test 拆分：控件 15 用例随迁 ui 包，SettingRow 3 用例留 app（SettingRow.test.tsx，helpers 同源复制）· 一次性 codemod 改写 33 文件 import（处理后 ui 路径→@jagent/ui、tokens 按名分流、值/类型分组、ui 目录内 ./X 同规则）· e2e/package.json 补 @jagent/ui workspace:*（坑：bun 只给显式声明者落 symlink，否则 Cannot find module）· 单实例验证：ui/app 两包 react 与 @gpuix/react realpath 全等（.bun store 同实体）· gate：app+ui tsc、oxfmt/oxlint、根 bun test 349 全绿（=基线；一次 2 fail 为并行污染 flaky，stash 基线复跑定位非迁移引入）、e2e 17 全绿、export-patches --check 通过 · 文档回写 ui-extensions §6/§7 + architecture 1.2 + TODOLIST 索引 · 未动 .refs/.node

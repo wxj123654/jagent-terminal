@@ -13,8 +13,7 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
 
-import { Textarea } from '../ui/Textarea'
-import { COLORS, FONT } from '../ui/tokens'
+import { Textarea, COLORS, FONT } from '@jagent/ui'
 
 /** 编辑器字段行：label 列（名称 + key + 字段级蓝点）+ 控件 */
 export function FieldRow({

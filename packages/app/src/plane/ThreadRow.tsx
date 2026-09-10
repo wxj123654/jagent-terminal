@@ -23,12 +23,12 @@
 
 import { useState } from 'react'
 
+import { Icon, COLORS, FONT } from '@jagent/ui'
 import { useActiveTarget } from '../router'
 import type { ThreadStore, Thread } from '../threads/store'
 import { displayTitle } from '../threads/terminal'
 import { useThreadStore } from '../threads/useThreadStore'
-import { Icon } from '../ui/Icon'
-import { COLORS, FONT, SIZES } from '../ui/tokens'
+import { SIZES } from '../tokens'
 
 /** 行标题：terminal 走 displayTitle 四级兜底；chat/acp 用 title */
 export function rowTitle(thread: Thread): string {

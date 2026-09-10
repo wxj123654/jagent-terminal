@@ -17,12 +17,12 @@
 
 import { useRef, useState } from 'react'
 
+import { Icon, COLORS, FONT } from '@jagent/ui'
 import type { SettingsStore } from '../settings/store'
 import type { ThreadStore } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
 import { searchThreads } from '../threads/workspaces'
-import { Icon } from '../ui/Icon'
-import { COLORS, FONT, SIZES } from '../ui/tokens'
+import { SIZES } from '../tokens'
 import type { DialogOpener } from './DialogHost'
 import { ThreadRow } from './ThreadRow'
 
