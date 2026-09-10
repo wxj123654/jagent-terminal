@@ -20,9 +20,9 @@ setup 快速路径检查 gpuix pin、该 commit 中的 zed gitlink、两个仓�
 源码变更后仍须主动重建 dist/native（存在性检查不保证构建产物新鲜）。
 export 与 setup 复用 `scripts/refs-state.ts`，导出也拒绝 staged 或未管理改动。
 
-## 剩余补丁（3 份）
+## 剩余补丁（gpuix 2 份 + gpuix-zed 3 份）
 
-### gpuix/（pin `e948b20` @ remorses/gpuix）
+### gpuix/（pin `6b4be86` @ remorses/gpuix）
 
 `0002-jagent-native-seam.patch` 包含：
 
@@ -35,8 +35,20 @@ export 与 setup 复用 `scripts/refs-state.ts`，导出也拒绝 staged 或未�
 - `renderer.rs`：纵向 `overflow-y: scroll` 限制到输入轴，避免横向滚轮被转成纵向位移。
 - `custom_elements/input.rs`：测量布局使用捕获的文本样式计算行高，而不是取
   已退出元素样式栈的 window 默认行高。caret、选区和 textarea 高度依赖此修复。
+- `renderer.rs`、`custom_elements/mod.rs`、`custom_elements/input.rs`：元素盒记录
+  改走 `on_painted`（`track_own_bounds`），不再往每个宿主元素里塞一个
+  `absolute().size_full()` 子节点。子节点的删除本身在 `0003`。
 
-### gpuix-zed/（gpuix gitlink pin `8b94def` @ remorses/zed）
+`0003-record-bounds-via-paint.patch` 包含：
+
+- `automation.rs`、`text/paint.rs`：同一个记录机制的落点。`bounds_tracker` 作为
+  **布局子节点**会把 `content_size`（gpui 用子节点包围盒算）钉在元素自身尺寸上，
+  于是带 padding 的滚动容器永远多出 `padding` 总量的幽灵滚动量（内容不溢出也能
+  滚，滚到底还留一段空白）。改成 `on_painted` 报告同一个盒子、不参与布局。
+  回归测试：`e2e/scroll-chain.e2e.test.tsx` 最后一个用例（修复前实测多出
+  2×padding，红）。详见 `docs/nested-scroll-research.md` §7。
+
+### gpuix-zed/（gpuix gitlink pin `1f9d1cd` @ remorses/zed）
 
 | patch | 必要性 |
 |---|---|

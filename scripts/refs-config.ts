@@ -47,6 +47,10 @@ export const MANIFEST = {
       'packages/native/src/style.rs',
       'packages/native/src/test_renderer.rs',
     ],
+    '0003-record-bounds-via-paint.patch': [
+      'packages/native/src/automation.rs',
+      'packages/native/src/text/paint.rs',
+    ],
   },
   'gpuix-zed': {
     '0001-gpui-workspace-root.patch': ['crates/gpui/Cargo.toml'],

@@ -136,12 +136,52 @@ APZ `WheelBlockState`：
 2. 未实现 Chromium 的“方向变化且首个 GestureScrollUpdate 未被消费则断序列”启发式。
 3. DOM/JS 层 `onScroll` 本质是 wheel 回调，锁定被拒绝时仍会触发（与浏览器里 wheel 事件照常派发一致，但不要用它当“已滚动”信号）。
 
-## 7. 未验证事项与验证方法
+## 7. 幽灵滚动量：padding 被重复计入 `content_size`（2026-09-10 修复）
+
+**现象**：Git 图提交详情右栏（`git-cdv-files`，`padding: 10`）内容只有一行路径、
+完全不溢出，却能上下滚 20px（滚到底留一段空白）。带 padding 的滚动容器一律如此。
+
+**根因**（gpui 的算法 + 本项目 automation 层的组合）：
+
+1. gpui 用滚动容器**子节点的包围盒**算可滚动尺寸：
+   `content_size = child_max - child_min`（`crates/gpui/src/elements/div.rs` 的 prepaint），
+   再 `scroll_max = content_size + padding_size - bounds.size`（`Interactivity::scroll_max`）。
+2. automation 层为了给每个宿主元素记录盒子，往元素里塞了一个
+   `absolute().size_full()` 的 canvas 子节点（`packages/native/src/automation.rs` 的
+   `bounds_tracker`）。全尺寸子节点把 `content_size` 钉在元素自身尺寸上。
+3. 两条相加：内容不溢出时 `content_size == bounds.size`，于是
+   `scroll_max == padding_size` —— padding 被算了两遍，凭空多出 padding 总量的
+   可滚动范围；内容溢出时同样多报 padding 总量。
+
+最小复现（修复前实测；容器 300×200 + `padding: 10` → 正确值应为 `max(0, 子内容高 - 180)`）：
+
+| 子内容高 | 实测 `scroll_max.y` | 正确值 |
+| --- | --- | --- |
+| 20 / 50 / 180 | 20 | 0 |
+| 200 | 20 | 20 |
+| 300 | 120 | 120 |
+| 500 | 320 | 320 |
+
+`padding: 0` 时不出现（`scroll_max` 恰好为 0），`padding: 40` 时多出 80 —— 多出的量恒等于 padding 总和，
+与内容无关，这是判断该 bug 的特征。
+
+**修复**（`patches/gpuix/0003-record-bounds-via-paint.patch`）：盒子记录改走 gpui 的
+`on_painted`（`track_own_bounds` / `track_own_bounds_with`），不再新增布局子节点。
+随带把记录盒修正为元素自己的盒子（padding 只内缩子元素，不再整体偏移原点），
+所以 `getElementBounds` 现在返回真实布局盒 —— 对按 bounds 点击与断言的测试更正确。
+上游 `remorses/gpuix` 本身受影响（`bounds_tracker` 是上游代码，非本项目补丁），可作为
+上游 PR 反馈。
+
+**回归**：`e2e/scroll-chain.e2e.test.tsx` 的「padded scroll containers expose no phantom
+scroll range」（把全尺寸子节点塞回去即红：实测 `-20`）；`GitGraphView.test.tsx` 的 CDV
+用例断言右栏无滚动范围。
+
+## 8. 未验证事项与验证方法
 
 - 未在真实浏览器实测；未确认用户环境（Chrome/Firefox 版本、鼠标或触控板、是否 smooth scroll / scroll snap / iframe、`preventDefault()`、`contain`）。
 - 验证实验：同一嵌套 overflow 页面，在 Chrome/Firefox 记录 passive wheel 的 `target/clientX/clientY/delta/timeStamp` 与各容器 `scrollTop`；分别测：静止连滚、停顿 > 500 ms 后继续、位移 <10 与 ≥10 单位、移出子区域、反向滚、`auto/contain/none`。不要用 `dispatchEvent(new WheelEvent(...))` 合成事件推断默认滚动链。
 
-## 8. 来源
+## 9. 来源
 
 - W3C Wheel Events：<https://w3c.github.io/uievents/split/wheel-events.html>
 - CSS Overscroll Behavior：<https://drafts.csswg.org/css-overscroll-1/>

@@ -291,5 +291,12 @@ describe('GitGraphView 渲染与选中', () => {
     expect(texts()).toContain('name.ts')
     expect(texts()).toContain('+2')
     expect(texts()).toContain('-1')
+
+    // 文件树（一行路径）远短于右栏：padding 10 不该造出 20px 幽灵滚动范围
+    // （box 记录曾是 absolute().size_full() 子节点，把 content_size 撑到元素自身大小）。
+    t.renderer.scrollTo(files!.id, -100000, -100000)
+    const off = t.renderer.getScrollOffset(files!.id)!
+    expect(off[0]! + 0).toBe(0)
+    expect(off[1]! + 0).toBe(0)
   })
 })
