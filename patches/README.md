@@ -32,6 +32,7 @@ export 与 setup 复用 `scripts/refs-state.ts`，导出也拒绝 staged 或未�
   用 UI channel，macOS 用当前线程 ApplicationHandle，测试用 VisualTestState。
 - `renderer.rs`、`style.rs`：自绘标题栏原生方法及 WindowControlArea 命中支持。
   **本批只迁走 TS 声明，Rust 标题栏实现未迁移。**
+- `renderer.rs`：纵向 `overflow-y: scroll` 限制到输入轴，避免横向滚轮被转成纵向位移。
 - `custom_elements/input.rs`：测量布局使用捕获的文本样式计算行高，而不是取
   已退出元素样式栈的 window 默认行高。caret、选区和 textarea 高度依赖此修复。
 
@@ -40,7 +41,8 @@ export 与 setup 复用 `scripts/refs-state.ts`，导出也拒绝 staged 或未�
 | patch | 必要性 |
 |---|---|
 | `0001-gpui-workspace-root.patch` | gpui Cargo.toml 显式 `workspace = "../.."`，使外部 path 依赖按 zed 根继承 workspace 字段。项目侧替代方案尚未验证。 |
-| `0002-hide-offscreen-test-window.patch` | Windows offscreen 测试窗口用 `show:false`，并按原始 bounds 放置隐藏窗口，避免 clamp 和闪窗。macOS 保持上游行为。 |
+| `0002-hide-offscreen-test-window.patch` | Windows offscreen 测试窗口用 `show:false`，并按原始 bounds 放置隐藏窗口，避免 clamp 和闪窗。`show:true` 路径另加显式 `ShowWindow`，避免 `bun run` 注入的 `STARTUPINFO SW_HIDE` 把正式窗口吞掉。macOS 保持上游行为。 |
+| `0003-nested-scroll-chain.patch` | 嵌套滚动按浏览器式“输入序列锁定目标”消费滚轮：窗口级 `ScrollSequence`（`window.rs`）记录锁定容器 + 序列首个 wheel 位置，500ms 空闲、指针相对首个位置位移 ≥10px、modifier 变化、指针离开锁定容器或 `TouchPhase` 结束时开新序列；序列内只有锁定容器可动，到边界不交接。div 与 virtual-list 只在确实能移动时认领。详见 `docs/nested-scroll-research.md`。 |
 
 ## 已迁回项目（第一批）
 

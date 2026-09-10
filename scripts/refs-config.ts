@@ -54,6 +54,11 @@ export const MANIFEST = {
       'crates/gpui/src/app/visual_test_context.rs',
       'crates/gpui_windows/src/window.rs',
     ],
+    '0003-nested-scroll-chain.patch': [
+      'crates/gpui/src/elements/div.rs',
+      'crates/gpui/src/elements/list.rs',
+      'crates/gpui/src/window.rs',
+    ],
   },
 } as const satisfies PatchManifest
 

@@ -1,0 +1,373 @@
+diff --git a/crates/gpui/src/elements/div.rs b/crates/gpui/src/elements/div.rs
+index ff7e6c2..2d02213 100644
+--- a/crates/gpui/src/elements/div.rs
++++ b/crates/gpui/src/elements/div.rs
+@@ -2361,6 +2361,18 @@ impl Interactivity {
+             || window.is_inspector_picking(cx)
+     }
+ 
++    fn scroll_max(&self, bounds: Bounds<Pixels>, style: &Style, window: &Window) -> Point<Pixels> {
++        // Share the exact layout bounds and rounding with wheel consumption.
++        // Tiny Taffy rounding errors must not make an edge consume the wheel.
++        let padding = style
++            .padding
++            .to_pixels(bounds.size.into(), window.rem_size());
++        let padding_size = size(padding.left + padding.right, padding.top + padding.bottom);
++        Point::from(self.content_size + padding_size - bounds.size)
++            .map(|value| (value * 100.0).round() / 100.0)
++            .max(&Default::default())
++    }
++
+     fn clamp_scroll_position(
+         &self,
+         bounds: Bounds<Pixels>,
+@@ -2368,11 +2380,6 @@ impl Interactivity {
+         window: &mut Window,
+         _cx: &mut App,
+     ) -> Point<Pixels> {
+-        fn round_to_two_decimals(pixels: Pixels) -> Pixels {
+-            const ROUNDING_FACTOR: f32 = 100.0;
+-            (pixels * ROUNDING_FACTOR).round() / ROUNDING_FACTOR
+-        }
+-
+         if let Some(scroll_offset) = self.scroll_offset.as_ref() {
+             let mut scroll_to_bottom = false;
+             let mut tracked_scroll_handle = self
+@@ -2384,19 +2391,7 @@ impl Interactivity {
+                 scroll_to_bottom = mem::take(&mut scroll_handle_state.scroll_to_bottom);
+             }
+ 
+-            let rem_size = window.rem_size();
+-            let padding = style.padding.to_pixels(bounds.size.into(), rem_size);
+-            let padding_size = size(padding.left + padding.right, padding.top + padding.bottom);
+-            // The floating point values produced by Taffy and ours often vary
+-            // slightly after ~5 decimal places. This can lead to cases where after
+-            // subtracting these, the container becomes scrollable for less than
+-            // 0.00000x pixels. As we generally don't benefit from a precision that
+-            // high for the maximum scroll, we round the scroll max to 2 decimal
+-            // places here.
+-            let padded_content_size = self.content_size + padding_size;
+-            let scroll_max = Point::from(padded_content_size - bounds.size)
+-                .map(round_to_two_decimals)
+-                .max(&Default::default());
++            let scroll_max = self.scroll_max(bounds, style, window);
+             // Clamp scroll offset in case scroll max is smaller now (e.g., if children
+             // were removed or the bounds became larger).
+             let mut scroll_offset = scroll_offset.borrow_mut();
+@@ -2514,13 +2509,17 @@ impl Interactivity {
+                                                 );
+                                             }
+ 
++                                            // Bubble runs in reverse registration order:
++                                            // children, own wheel callbacks, default scroll.
++                                            self.paint_scroll_listener(
++                                                global_id, bounds, hitbox, &style, window, cx,
++                                            );
+                                             self.paint_mouse_listeners(
+                                                 hitbox,
+                                                 element_state.as_mut(),
+                                                 window,
+                                                 cx,
+                                             );
+-                                            self.paint_scroll_listener(hitbox, &style, window, cx);
+                                         }
+ 
+                                         self.paint_keyboard_listeners(window, cx);
+@@ -3249,22 +3248,28 @@ impl Interactivity {
+ 
+     fn paint_scroll_listener(
+         &self,
++        global_id: Option<&GlobalElementId>,
++        bounds: Bounds<Pixels>,
+         hitbox: &Hitbox,
+         style: &Style,
+         window: &mut Window,
+         _cx: &mut App,
+     ) {
+         if let Some(scroll_offset) = self.scroll_offset.clone() {
++            let scroll_max = self.scroll_max(bounds, style, window);
+             let ongoing_scroll = self.ongoing_scroll.clone();
+             let overflow = style.overflow;
+             let allow_concurrent_scroll = style.allow_concurrent_scroll;
+             let restrict_scroll_to_axis = style.restrict_scroll_to_axis;
++            let element_id = global_id.cloned();
+             let line_height = window.line_height();
+             let hitbox = hitbox.clone();
+             let current_view = window.current_view();
+             window.on_mouse_event(move |event: &ScrollWheelEvent, phase, window, cx| {
+                 if phase == DispatchPhase::Bubble && hitbox.should_handle_scroll(window) {
+                     let mut scroll_offset = scroll_offset.borrow_mut();
++                    scroll_offset.x = scroll_offset.x.clamp(-scroll_max.x, px(0.));
++                    scroll_offset.y = scroll_offset.y.clamp(-scroll_max.y, px(0.));
+                     let old_scroll_offset = *scroll_offset;
+                     let mut delta = event.delta.pixel_delta(line_height);
+ 
+@@ -3302,10 +3307,21 @@ impl Interactivity {
+                             delta_x = Pixels::ZERO;
+                         }
+                     }
+-                    scroll_offset.y += delta_y;
+-                    scroll_offset.x += delta_x;
+-                    if *scroll_offset != old_scroll_offset {
++                    let new_offset = point(
++                        (old_scroll_offset.x + delta_x).clamp(-scroll_max.x, px(0.)),
++                        (old_scroll_offset.y + delta_y).clamp(-scroll_max.y, px(0.)),
++                    );
++                    if new_offset != old_scroll_offset {
++                        // Browser-style scroll latching: a burst of wheel input keeps
++                        // targeting one container. Refusing the wheel here also keeps
++                        // ancestor scrollers from acting, so hitting an edge does not
++                        // hand off mid-burst; the next sequence re-picks a target.
++                        if !window.claim_scroll_wheel(element_id.as_ref(), bounds, event, true, cx) {
++                            return;
++                        }
++                        *scroll_offset = new_offset;
+                         cx.notify(current_view);
++                        cx.stop_propagation();
+                     }
+                 }
+             });
+diff --git a/crates/gpui/src/elements/list.rs b/crates/gpui/src/elements/list.rs
+index 55eb6c2..06f1d58 100644
+--- a/crates/gpui/src/elements/list.rs
++++ b/crates/gpui/src/elements/list.rs
+@@ -905,25 +905,45 @@ impl StateInner {
+ 
+     fn scroll(
+         &mut self,
++        id: Option<&GlobalElementId>,
++        bounds: Bounds<Pixels>,
++        event: &ScrollWheelEvent,
+         scroll_top: &ListOffset,
+         height: Pixels,
+         delta: Point<Pixels>,
+         current_view: EntityId,
+         window: &mut Window,
+         cx: &mut App,
+-    ) {
++    ) -> bool {
+         // Drop scroll events after a reset, since we can't calculate
+         // the new logical scroll top without the item heights
+         if self.reset {
+-            return;
++            return false;
+         }
+ 
+         let padding = self.last_padding.unwrap_or_default();
+         let scroll_max =
+             (self.items.summary().height + padding.top + padding.bottom - height).max(px(0.));
+-        let new_scroll_top = (self.scroll_top(scroll_top) - delta.y)
+-            .max(px(0.))
+-            .min(scroll_max);
++        // Apply the coalesced delta to the prepaint snapshot. Compare against
++        // the live offset so a same-frame wheel that already hit an edge does
++        // not keep consuming the event.
++        let snapshot_top = self.scroll_top(scroll_top);
++        let live_top = self
++            .logical_scroll_top
++            .as_ref()
++            .map(|offset| self.scroll_top(offset))
++            .unwrap_or(snapshot_top);
++        let new_scroll_top = (snapshot_top - delta.y).max(px(0.)).min(scroll_max);
++        if new_scroll_top == live_top {
++            return false;
++        }
++
++        // Browser-style scroll latching: while a container owns the wheel
++        // sequence no other container acts, so reaching an edge does not hand
++        // off mid-burst. A fresh sequence re-picks the target instead.
++        if !window.claim_scroll_wheel(id, bounds, event, true, cx) {
++            return false;
++        }
+ 
+         if self.alignment == ListAlignment::Bottom && new_scroll_top == scroll_max {
+             self.pending_scroll = None;
+@@ -965,6 +985,7 @@ impl StateInner {
+         }
+ 
+         cx.notify(current_view);
++        true
+     }
+ 
+     fn logical_scroll_top(&self) -> ListOffset {
+@@ -1621,7 +1642,7 @@ impl Element for List {
+ 
+     fn paint(
+         &mut self,
+-        _id: Option<&GlobalElementId>,
++        id: Option<&GlobalElementId>,
+         _inspector_id: Option<&InspectorElementId>,
+         bounds: Bounds<crate::Pixels>,
+         _: &mut Self::RequestLayoutState,
+@@ -1640,19 +1661,25 @@ impl Element for List {
+         let height = bounds.size.height;
+         let scroll_top = prepaint.layout.scroll_top;
+         let hitbox_id = prepaint.hitbox.id;
++        let element_id = id.cloned();
+         let mut accumulated_scroll_delta = ScrollDelta::default();
+         window.on_mouse_event(move |event: &ScrollWheelEvent, phase, window, cx| {
+             if phase == DispatchPhase::Bubble && hitbox_id.should_handle_scroll(window) {
+                 accumulated_scroll_delta = accumulated_scroll_delta.coalesce(event.delta);
+                 let pixel_delta = accumulated_scroll_delta.pixel_delta(px(20.));
+-                list_state.0.borrow_mut().scroll(
++                if list_state.0.borrow_mut().scroll(
++                    element_id.as_ref(),
++                    bounds,
++                    event,
+                     &scroll_top,
+                     height,
+                     pixel_delta,
+                     current_view,
+                     window,
+                     cx,
+-                )
++                ) {
++                    cx.stop_propagation();
++                }
+             }
+         });
+ 
+diff --git a/crates/gpui/src/window.rs b/crates/gpui/src/window.rs
+index 3ce13fd..acfee15 100644
+--- a/crates/gpui/src/window.rs
++++ b/crates/gpui/src/window.rs
+@@ -16,10 +16,11 @@ use crate::{
+     PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point,
+     PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams,
+     RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR,
+-    SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, SharedString, Size,
++    SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, ScrollWheelEvent, Shadow,
++    SharedString, Size,
+     StrikethroughStyle, Style, SubpixelSprite, SubscriberSet, Subscription, SystemWindowTab,
+     SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextRenderingMode, TextStyle,
+-    TextStyleRefinement, ThermalState, TransformationMatrix, Underline, UnderlineStyle,
++    TextStyleRefinement, ThermalState, TouchPhase, TransformationMatrix, Underline, UnderlineStyle,
+     WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations,
+     WindowInsets, WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, px, rems, size,
+     transparent_black,
+@@ -85,6 +86,39 @@ pub const DEFAULT_ADDITIONAL_WINDOW_SIZE: Size<Pixels> = Size {
+     height: Pixels(750.),
+ };
+ 
++/// Idle gap between wheel events that ends a wheel scroll sequence.
++///
++/// Mirrors Chromium's `kDefaultMouseWheelLatchingTransaction`: while wheel
++/// events keep arriving faster than this, they stay in one sequence and keep
++/// targeting the same scroll container.
++pub const SCROLL_SEQUENCE_IDLE_TIMEOUT: Duration = Duration::from_millis(500);
++
++/// Pointer travel, measured from the sequence's first wheel position, that ends
++/// a wheel scroll sequence.
++///
++/// Mirrors Chromium's `kWheelLatchingSlopRegion`. The reference point is the
++/// position of the first wheel event of the sequence, not the previous event.
++pub const SCROLL_SEQUENCE_POINTER_SLOP: Pixels = px(10.);
++
++/// The scroll container that owns the current burst of wheel input.
++///
++/// Browsers do not re-pick a scroll target for every wheel tick. A wheel
++/// transaction latches to one container and keeps scrolling it until the
++/// sequence ends (idle gap, pointer travel, modifier change, or a gesture phase
++/// boundary). While latched, a container that reaches its edge does not hand the
++/// remaining delta to an ancestor; the *next* sequence is what re-hits the
++/// pointer and can chain to an ancestor. See `docs/nested-scroll-research.md`.
++#[derive(Default)]
++struct ScrollSequence {
++    /// Identity of the latched container, with the bounds it had when latched.
++    /// The bounds keep a sequence from outliving a pointer that left it.
++    owner: Option<(GlobalElementId, Bounds<Pixels>)>,
++    /// Position and modifiers of the first wheel event in the sequence.
++    origin: Point<Pixels>,
++    modifiers: Modifiers,
++    last_event: Option<Instant>,
++}
++
+ /// Represents the two different phases when dispatching events.
+ #[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
+ pub enum DispatchPhase {
+@@ -1201,6 +1235,8 @@ pub struct Window {
+     pub(crate) pending_input_observers: SubscriberSet<(), AnyObserver>,
+     prompt: Option<RenderablePromptHandle>,
+     pub(crate) client_inset: Option<Pixels>,
++    /// Which scroll container owns the current wheel scroll sequence.
++    scroll_sequence: ScrollSequence,
+     /// The hitbox that has captured the pointer, if any.
+     /// While captured, mouse events route to this hitbox regardless of hit testing.
+     captured_hitbox: Option<HitboxId>,
+@@ -1891,6 +1927,7 @@ impl Window {
+             pending_input_observers: SubscriberSet::new(),
+             prompt: None,
+             client_inset: None,
++            scroll_sequence: ScrollSequence::default(),
+             image_cache_stack: Vec::new(),
+             captured_hitbox: None,
+             captured_identity: None,
+@@ -5284,6 +5321,68 @@ impl Window {
+         }
+     }
+ 
++    /// Whether this scroll container may consume `event`, latching it as the
++    /// owner of the current wheel scroll sequence if the sequence is fresh.
++    ///
++    /// `can_consume` reports whether the container could actually move on this
++    /// event. A container already at its edge never claims a sequence, so the
++    /// wheel is free to chain to an ancestor instead. Once a container owns the
++    /// sequence, other containers are refused: a single burst keeps scrolling
++    /// the same container (browser-style scroll latching) instead of handing off
++    /// to an ancestor mid-burst at the edge.
++    ///
++    /// Elements without an identity (no `GlobalElementId`) never claim the
++    /// sequence, so a container that cannot be latched never blocks one that
++    /// can; they are refused only while an identified container owns the burst.
++    pub fn claim_scroll_wheel(
++        &mut self,
++        id: Option<&GlobalElementId>,
++        bounds: Bounds<Pixels>,
++        event: &ScrollWheelEvent,
++        can_consume: bool,
++        cx: &App,
++    ) -> bool {
++        let now = cx.background_executor().now();
++        let sequence = &mut self.scroll_sequence;
++        let ended = matches!(event.touch_phase, TouchPhase::Ended | TouchPhase::Cancelled);
++
++        let continues = sequence.last_event.is_some_and(|last_event| {
++            now.duration_since(last_event) <= SCROLL_SEQUENCE_IDLE_TIMEOUT
++        }) && (event.position - sequence.origin).magnitude()
++            < f64::from(SCROLL_SEQUENCE_POINTER_SLOP)
++            && event.modifiers == sequence.modifiers;
++
++        if !continues {
++            sequence.owner = None;
++            sequence.origin = event.position;
++            sequence.modifiers = event.modifiers;
++        }
++
++        // A latched container only keeps the sequence while the pointer is still
++        // over it, so leaving a pane cannot strand the wheel on a stale owner.
++        if let Some((_, owner_bounds)) = &sequence.owner
++            && !owner_bounds.contains(&event.position)
++        {
++            sequence.owner = None;
++        }
++
++        let allowed = match &sequence.owner {
++            Some((owner, _)) => id.is_some_and(|id| owner == id),
++            None if can_consume => {
++                if let Some(id) = id {
++                    sequence.owner = Some((id.clone(), bounds));
++                }
++                true
++            }
++            None => false,
++        };
++
++        // A phase boundary ends the sequence once this event is handled, so the
++        // wheel it carries still reaches the owner that was latched for it.
++        sequence.last_event = if ended { None } else { Some(now) };
++        allowed
++    }
++
+     fn dispatch_mouse_event(&mut self, event: &dyn Any, cx: &mut App) {
+         let hit_test = self.rendered_frame.hit_test(self.mouse_position());
+         if hit_test != self.mouse_hit_test {

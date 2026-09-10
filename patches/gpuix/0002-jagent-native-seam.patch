@@ -89,7 +89,7 @@ index 36e7dae..f870d37 100644
      test,
      not(all(
 diff --git a/packages/native/src/renderer.rs b/packages/native/src/renderer.rs
-index 2ff9f51..202957f 100644
+index 2ff9f51..a4343fb 100644
 --- a/packages/native/src/renderer.rs
 +++ b/packages/native/src/renderer.rs
 @@ -358,6 +358,78 @@ enum KeyInput {
@@ -362,6 +362,15 @@ index 2ff9f51..202957f 100644
          if crate::style::should_occlude(style) {
              // BlockMouse (occlude) stops the hit test, so the parent scroller
              // never sees the wheel. HTML does not work that way: a wheel over
+@@ -4354,7 +4550,7 @@ pub(crate) fn build_host_container(
+                 .overflow_x_scroll()
+                 .restrict_scroll_to_axis();
+         } else if needs_scroll_y {
+-            el = el.overflow_y_scroll();
++            el = el.overflow_y_scroll().restrict_scroll_to_axis();
+         }
+ 
+         // Attach a persistent ScrollHandle when scrolling is enabled.
 diff --git a/packages/native/src/style.rs b/packages/native/src/style.rs
 index 732d455..52bdcca 100644
 --- a/packages/native/src/style.rs
