@@ -13,7 +13,7 @@ export const REFS_DIR = join(REPO_ROOT, '.refs')
 
 /** gpuix 上游仓库与 pin（浅克隆后 fetch 此 commit 并 detach）。 */
 export const GPUIX_REPO = 'https://github.com/remorses/gpuix'
-export const GPUIX_PIN = 'e948b20dddf1789ed2644e7bb8eb509a8bd4ecf9'
+export const GPUIX_PIN = '6b4be86952aa89cfe61bb573740aea33fef5c5c4'
 
 export const GPUIX_DIR = join(REFS_DIR, 'gpuix')
 export const ZED_DIR = join(GPUIX_DIR, 'zed')

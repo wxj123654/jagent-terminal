@@ -336,6 +336,11 @@ export declare class TestGpuixRenderer {
   getText(id: number): string | null
   /** Get the full tree as JSON for snapshot testing. */
   getTreeJson(): string
+  /**
+   * GPUI accessibility dump from the last painted frame.
+   * Empty until a11y is active; the test renderer turns that on at construct.
+   */
+  getA11yTree(): string
   /** Tree JSON with last-paint bounds. Used by the automation locators. */
   getAutomationTree(): string
   /** Last painted bounds for an element, or null if it was not painted. */

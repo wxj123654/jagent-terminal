@@ -340,8 +340,11 @@ describe('IconButton', () => {
     click('btn')
     expect(clicked).toBe(1)
 
-    // hover → Tooltip open（delay 0 立即）→ label 出现在 painted text
+    // hover → Tooltip open（delay 0 立即）→ label 出现在 painted text。
+    // 上游 click 改为 primary-button mouse-up 送达后，同元素内重复 move 不再
+    // 合成 mouseenter（与 DOM 语义一致），需从外部移入才触发 hover。
     const [x, y, w, h] = boundsOf('btn')
+    t.renderer.nativeSimulateMouseMove(x - 50, y - 50)
     t.renderer.nativeSimulateMouseMove(x + w / 2, y + h / 2)
     expect(texts().includes('恢复默认')).toBe(true)
   })
