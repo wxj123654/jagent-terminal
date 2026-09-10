@@ -28,10 +28,7 @@ export function nestChangedFiles(files: readonly ChangedFile[]): FileTreeNode {
 }
 
 /** 连续「单子目录、无文件」链折叠为 `a / b / c` */
-export function compactDir(
-  name: string,
-  node: FileTreeNode,
-): { name: string; node: FileTreeNode } {
+export function compactDir(name: string, node: FileTreeNode): { name: string; node: FileTreeNode } {
   const parts = [name]
   let n = node
   for (;;) {

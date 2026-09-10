@@ -261,9 +261,7 @@ describe('GitGraphStore.files / find / runAction', () => {
   test('select 加载 files；muteShas 排除第一父链', async () => {
     const { streams, spawn } = fakeStream()
     const deps = makeDeps({
-      listChangedFiles: async (_cwd, sha) => [
-        { path: `${sha}.ts`, added: 1, deleted: 0 },
-      ],
+      listChangedFiles: async (_cwd, sha) => [{ path: `${sha}.ts`, added: 1, deleted: 0 }],
     })
     deps.spawnGitLog = spawn
     const store = createGitGraphStore(deps)
@@ -283,9 +281,7 @@ describe('GitGraphStore.files / find / runAction', () => {
     expect(store.getState().muteShas.has('f')).toBe(false)
     store.select('f')
     await until()
-    expect(store.getState().files).toEqual([
-      { path: 'f.ts', added: 1, deleted: 0 },
-    ])
+    expect(store.getState().files).toEqual([{ path: 'f.ts', added: 1, deleted: 0 }])
   })
 
   test('find 按 subject/sha 命中并跳到第一条', async () => {
@@ -312,8 +308,7 @@ describe('GitGraphStore.files / find / runAction', () => {
     const deps = makeDeps({
       runGit: async (_cwd, args) => {
         ran.push(args)
-        if (args[0] === 'checkout' && args[1] === 'boom')
-          throw new Error('pathspec boom')
+        if (args[0] === 'checkout' && args[1] === 'boom') throw new Error('pathspec boom')
         return ''
       },
     })

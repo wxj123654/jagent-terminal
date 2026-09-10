@@ -68,9 +68,7 @@ function renderPage() {
       }
     },
     showCommitBody: async (_cwd, sha) => `BODY-${sha}`,
-    listChangedFiles: async (_cwd, sha) => [
-      { path: `${sha}.ts`, added: 2, deleted: 1 },
-    ],
+    listChangedFiles: async (_cwd, sha) => [{ path: `${sha}.ts`, added: 2, deleted: 1 }],
     listBranches: async () => [{ name: 'main', current: true }],
     runGit: async () => '',
   })

@@ -11,8 +11,7 @@
  */
 
 /** Zed 三字段 + 行内 CDV 元数据（email/committer 单行字段；body 含换行，选中时另拉） */
-const LOG_FORMAT =
-  '--format=%H%x00%P%x00%D%x00%h%x00%an%x00%ae%x00%at%x00%cn%x00%ce%x00%s'
+const LOG_FORMAT = '--format=%H%x00%P%x00%D%x00%h%x00%an%x00%ae%x00%at%x00%cn%x00%ce%x00%s'
 
 /** 流式回调的 chunk 大小（Zed GRAPH_CHUNK_SIZE 同量级：首屏快 + 避免 setState 风暴） */
 const CHUNK_SIZE = 512
@@ -93,10 +92,7 @@ export interface GitLogHandle {
   done: Promise<{ ok: boolean; error?: string }>
 }
 
-export function spawnGitLog(
-  cwd: string,
-  onChunk: (commits: GraphCommit[]) => void,
-): GitLogHandle {
+export function spawnGitLog(cwd: string, onChunk: (commits: GraphCommit[]) => void): GitLogHandle {
   let proc: Bun.Subprocess<'pipe', 'pipe', 'pipe'>
   try {
     proc = Bun.spawn(['git', 'log', LOG_FORMAT, '--date-order'], {
@@ -179,10 +175,7 @@ export async function findRepoRoot(cwd: string): Promise<string | null> {
       stdout: 'pipe',
       stderr: 'pipe',
     })
-    const [out, code] = await Promise.all([
-      new Response(proc.stdout).text(),
-      proc.exited,
-    ])
+    const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
     if (code !== 0) return null
     return out.trim() || null
   } catch {
@@ -202,8 +195,7 @@ export async function runGit(cwd: string, args: string[]): Promise<string> {
     new Response(proc.stderr).text(),
     proc.exited,
   ])
-  if (code !== 0)
-    throw new Error(err.trim() || `git ${args[0] ?? ''} exited with ${code}`)
+  if (code !== 0) throw new Error(err.trim() || `git ${args[0] ?? ''} exited with ${code}`)
   return out
 }
 
@@ -258,26 +250,14 @@ export async function showPatch(cwd: string, sha: string): Promise<string> {
 }
 
 /** 提交说明正文（%b，不含 subject）。多段以换行保留；无正文返回空串。 */
-export async function showCommitBody(
-  cwd: string,
-  sha: string,
-): Promise<string> {
+export async function showCommitBody(cwd: string, sha: string): Promise<string> {
   const raw = await runGit(cwd, ['log', '-1', '--format=%b', sha])
   return raw.replace(/\n+$/, '')
 }
 
 /** 单提交变更文件（行内详情文件树） */
-export async function listChangedFiles(
-  cwd: string,
-  sha: string,
-): Promise<ChangedFile[]> {
-  const raw = await runGit(cwd, [
-    'show',
-    '--format=',
-    '--numstat',
-    '--no-color',
-    sha,
-  ])
+export async function listChangedFiles(cwd: string, sha: string): Promise<ChangedFile[]> {
+  const raw = await runGit(cwd, ['show', '--format=', '--numstat', '--no-color', sha])
   return parseChangedFiles(raw)
 }
 

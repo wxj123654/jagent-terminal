@@ -12,9 +12,7 @@ describe('parseRefNames', () => {
   })
 
   test('HEAD -> branch', () => {
-    expect(parseRefNames('HEAD -> main')).toEqual([
-      { kind: 'head', label: 'main' },
-    ])
+    expect(parseRefNames('HEAD -> main')).toEqual([{ kind: 'head', label: 'main' }])
   })
 
   test('detached HEAD', () => {
@@ -22,28 +20,22 @@ describe('parseRefNames', () => {
   })
 
   test('本地分支', () => {
-    expect(parseRefNames('feature/x')).toEqual([
-      { kind: 'remote', label: 'feature/x' },
-    ])
+    expect(parseRefNames('feature/x')).toEqual([{ kind: 'remote', label: 'feature/x' }])
     expect(parseRefNames('main')).toEqual([{ kind: 'branch', label: 'main' }])
   })
 
   test('远程 / tag', () => {
-    expect(parseRefNames('origin/main')).toEqual([
-      { kind: 'remote', label: 'origin/main' },
-    ])
+    expect(parseRefNames('origin/main')).toEqual([{ kind: 'remote', label: 'origin/main' }])
     expect(parseRefNames('tag: v1.0')).toEqual([{ kind: 'tag', label: 'v1.0' }])
   })
 
   test('多装饰混合保序', () => {
-    expect(parseRefNames('HEAD -> dev, origin/dev, tag: v0.9.0, main')).toEqual(
-      [
-        { kind: 'head', label: 'dev' },
-        { kind: 'remote', label: 'origin/dev' },
-        { kind: 'tag', label: 'v0.9.0' },
-        { kind: 'branch', label: 'main' },
-      ],
-    )
+    expect(parseRefNames('HEAD -> dev, origin/dev, tag: v0.9.0, main')).toEqual([
+      { kind: 'head', label: 'dev' },
+      { kind: 'remote', label: 'origin/dev' },
+      { kind: 'tag', label: 'v0.9.0' },
+      { kind: 'branch', label: 'main' },
+    ])
   })
 })
 

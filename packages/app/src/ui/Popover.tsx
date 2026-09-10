@@ -12,8 +12,8 @@
  * 触发器的 side/align 留给后续。
  */
 
-import type { ReactNode } from 'react'
 import type { StyleDesc } from '@gpuix/react'
+import type { ReactNode } from 'react'
 
 import { COLORS, FONT } from './tokens'
 

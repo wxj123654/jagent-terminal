@@ -29,19 +29,9 @@ import {
 } from '../actions'
 import type { ChangedFile } from '../cli'
 import { compactDir, nestChangedFiles, type FileTreeNode } from '../fileTree'
-import {
-  formatCommitDate,
-  parseRefNames,
-  relativeTime,
-  type RefDecor,
-} from '../format'
+import { formatCommitDate, parseRefNames, relativeTime, type RefDecor } from '../format'
 import type { GraphRow } from '../graph'
-import {
-  buildGapGraphics,
-  buildRowGraphics,
-  graphColumnWidth,
-  ROW_HEIGHT,
-} from '../graphSvg'
+import { buildGapGraphics, buildRowGraphics, graphColumnWidth, ROW_HEIGHT } from '../graphSvg'
 import type { GitGraphStore } from '../store'
 import { useGitGraphStore } from '../useGitGraphStore'
 
@@ -78,9 +68,7 @@ function RefBadges({
   showRemote: boolean
   onAux: (d: RefDecor, e: { x?: number; y?: number }) => void
 }) {
-  const visible = showRemote
-    ? decors
-    : decors.filter((d) => d.kind !== 'remote')
+  const visible = showRemote ? decors : decors.filter((d) => d.kind !== 'remote')
   if (visible.length === 0) return null
   const lane = GRAPH_LANE_COLORS[colorIdx % GRAPH_LANE_COLORS.length]
   return (
@@ -95,12 +83,7 @@ function RefBadges({
     >
       {visible.map((d, i) => {
         const ico: IconName = d.kind === 'tag' ? 'tag' : 'gitBranch'
-        const icoBg =
-          d.kind === 'tag'
-            ? COLORS.amber
-            : d.kind === 'remote'
-              ? COLORS.muted
-              : lane
+        const icoBg = d.kind === 'tag' ? COLORS.amber : d.kind === 'remote' ? COLORS.muted : lane
         const border = d.kind === 'head' ? lane : COLORS.borderSubtle
         const color =
           d.kind === 'head'
@@ -220,11 +203,7 @@ function ellipsisText(
 
 function FileTree({ files }: { files: readonly ChangedFile[] }) {
   if (files.length === 0) {
-    return (
-      <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted }}>
-        无变更
-      </text>
-    )
+    return <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted }}>无变更</text>
   }
   const render = (n: FileTreeNode, key: string) => (
     <div key={key} style={{ paddingLeft: key ? 16 : 0, minWidth: 0 }}>
@@ -611,9 +590,7 @@ function GraphRowView({
         alignItems: 'center',
         minWidth: 0,
         backgroundColor: selected ? 'rgba(128,128,128,0.22)' : undefined,
-        hover: selected
-          ? undefined
-          : { backgroundColor: 'rgba(128,128,128,0.12)' },
+        hover: selected ? undefined : { backgroundColor: 'rgba(128,128,128,0.12)' },
         cursor: 'pointer',
       }}
     >
@@ -667,8 +644,7 @@ function GraphRowView({
               width: 6,
               height: 6,
               borderWidth: 2,
-              borderColor:
-                GRAPH_LANE_COLORS[row.colorIdx % GRAPH_LANE_COLORS.length],
+              borderColor: GRAPH_LANE_COLORS[row.colorIdx % GRAPH_LANE_COLORS.length],
               borderRadius: 6,
               marginRight: 6,
               flexShrink: 0,
@@ -970,8 +946,7 @@ export function GitGraphView({
     if (!s.selectedSha || !scrollToItem) return
     const commitIndex = s.rows.findIndex((r) => r.commit.sha === s.selectedSha)
     // 单选：CDV 插在选中提交之后，滚动对准提交行即可
-    if (commitIndex >= 0 && listRef.current)
-      scrollToItem(listRef.current.id, commitIndex)
+    if (commitIndex >= 0 && listRef.current) scrollToItem(listRef.current.id, commitIndex)
   }, [s.selectedSha, s.rows, scrollToItem])
   useEffect(() => {
     if (s.actionError) toast(s.actionError)
@@ -980,11 +955,7 @@ export function GitGraphView({
   const currentBranch = s.branches.find((b) => b.current)?.name ?? 'HEAD'
   const graphW = graphColumnWidth(s.maxLanes)
 
-  function openCommitMenu(
-    e: { x?: number; y?: number },
-    row: GraphRow,
-    index: number,
-  ) {
+  function openCommitMenu(e: { x?: number; y?: number }, row: GraphRow, index: number) {
     setMenu({
       x: e.x ?? 0,
       y: e.y ?? 0,
@@ -1084,11 +1055,7 @@ export function GitGraphView({
         >
           {repoLabel}
         </text>
-        <text
-          style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted }}
-        >
-          分支
-        </text>
+        <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted }}>分支</text>
         <div
           testId="git-branch"
           onClick={() => setBranchOpen((v) => !v)}
@@ -1129,9 +1096,7 @@ export function GitGraphView({
             onChange={(on) => store.setShowRemote(on)}
             testId="git-show-remote"
           />
-          <text
-            style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted }}
-          >
+          <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted }}>
             显示远程分支
           </text>
         </div>
@@ -1144,9 +1109,7 @@ export function GitGraphView({
             flexGrow: 1,
           }}
         >
-          {s.status === 'loading' && s.loadedCount === 0
-            ? '读取提交…'
-            : `${s.loadedCount} 提交`}
+          {s.status === 'loading' && s.loadedCount === 0 ? '读取提交…' : `${s.loadedCount} 提交`}
         </text>
         {findOpen ? (
           <div
@@ -1177,9 +1140,7 @@ export function GitGraphView({
                 width: 40,
               }}
             >
-              {s.findMatches.length
-                ? `${s.findIndex + 1}/${s.findMatches.length}`
-                : '0/0'}
+              {s.findMatches.length ? `${s.findIndex + 1}/${s.findMatches.length}` : '0/0'}
             </text>
             <IconButton
               name="chevronUp"
@@ -1252,9 +1213,7 @@ export function GitGraphView({
             flexShrink: 0,
           }}
         >
-          <text
-            style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.bell }}
-          >
+          <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.bell }}>
             {s.actionError ?? s.error ?? 'git log 失败'}
           </text>
         </div>
@@ -1271,9 +1230,7 @@ export function GitGraphView({
             gap: 8,
           }}
         >
-          <text
-            style={{ fontSize: 13, fontFamily: FONT.ui, color: COLORS.muted }}
-          >
+          <text style={{ fontSize: 13, fontFamily: FONT.ui, color: COLORS.muted }}>
             此目录不是 git 仓库
           </text>
         </div>
@@ -1367,9 +1324,7 @@ export function GitGraphView({
                   hollow={i === 0}
                   rowWidth={rowWidth}
                   showRemote={s.showRemote}
-                  onSelect={() =>
-                    store.select(selected ? null : row.commit.sha)
-                  }
+                  onSelect={() => store.select(selected ? null : row.commit.sha)}
                   onMenu={(e, kind) => {
                     if (kind === 'commit') openCommitMenu(e, row, i)
                     else openRefMenu(e, kind)
@@ -1397,13 +1352,7 @@ export function GitGraphView({
           </virtual-list>
         </>
       )}
-      {menu ? (
-        <MenuLayer
-          menu={menu}
-          onClose={() => setMenu(null)}
-          onPick={pickMenu}
-        />
-      ) : null}
+      {menu ? <MenuLayer menu={menu} onClose={() => setMenu(null)} onPick={pickMenu} /> : null}
       {branchOpen ? (
         <anchored
           position={{ x: 56, y: SIZES.titleBarHeight + TAB_H + TOOLBAR_H }}
@@ -1502,10 +1451,7 @@ export function GitGraphView({
       ) : null}
       {prompt ? (
         <Modal width={380} onClose={() => setPrompt(null)}>
-          <ModalHeading
-            title={prompt.item.label}
-            onClose={() => setPrompt(null)}
-          />
+          <ModalHeading title={prompt.item.label} onClose={() => setPrompt(null)} />
           <ModalBody>
             <TextInput
               value={promptVal}
@@ -1534,11 +1480,7 @@ export function GitGraphView({
                   primary: true,
                   onClick: () => {
                     try {
-                      const argv = resolvePrompt(
-                        prompt.item,
-                        promptVal,
-                        prompt.at,
-                      )
+                      const argv = resolvePrompt(prompt.item, promptVal, prompt.at)
                       toast(`$ git ${argv.join(' ')}`)
                       void store.runAction(argv)
                       setPrompt(null)
