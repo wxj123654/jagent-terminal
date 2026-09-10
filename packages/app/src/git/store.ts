@@ -22,15 +22,9 @@ import {
   type GitBranch,
   type GitLogHandle,
 } from './cli'
-import {
-  firstParentChain,
-  GitGraphData,
-  type CommitLine,
-  type GraphRow,
-} from './graph'
+import { firstParentChain, GitGraphData, type CommitLine, type GraphRow } from './graph'
 
-export type GitGraphStatus =
-  'idle' | 'loading' | 'ready' | 'error' | 'not-a-repo'
+export type GitGraphStatus = 'idle' | 'loading' | 'ready' | 'error' | 'not-a-repo'
 
 export interface GitGraphState {
   status: GitGraphStatus
@@ -120,9 +114,7 @@ export type GitGraphStore = {
   runAction(args: string[]): Promise<void>
 }
 
-export function createGitGraphStore(
-  deps: GitGraphDeps = realDeps,
-): GitGraphStore {
+export function createGitGraphStore(deps: GitGraphDeps = realDeps): GitGraphStore {
   const store = createStore<GitGraphState>(() => ({ ...initialState }))
   /** 挂载代际：旧流的回调/done 看到代际不符即静默丢弃 */
   let seq = 0
@@ -177,9 +169,7 @@ export function createGitGraphStore(
       data.addCommits(chunk)
       const chain = firstParentChain(data.rows.map((r) => r.commit))
       const mute = new Set(
-        data.rows
-          .filter((r) => !chain.has(r.commit.sha))
-          .map((r) => r.commit.sha),
+        data.rows.filter((r) => !chain.has(r.commit.sha)).map((r) => r.commit.sha),
       )
       set({
         rows: data.rows.slice(),
@@ -200,11 +190,7 @@ export function createGitGraphStore(
       return
     }
     const chain = firstParentChain(data.rows.map((r) => r.commit))
-    const mute = new Set(
-      data.rows
-        .filter((r) => !chain.has(r.commit.sha))
-        .map((r) => r.commit.sha),
-    )
+    const mute = new Set(data.rows.filter((r) => !chain.has(r.commit.sha)).map((r) => r.commit.sha))
     set({
       status: data.rows.length > 0 ? 'ready' : 'error',
       error: data.rows.length > 0 ? null : '没有任何提交',
@@ -249,8 +235,7 @@ export function createGitGraphStore(
       .getState()
       .rows.filter(
         (r) =>
-          r.commit.subject.toLowerCase().includes(q) ||
-          r.commit.sha.toLowerCase().startsWith(q),
+          r.commit.subject.toLowerCase().includes(q) || r.commit.sha.toLowerCase().startsWith(q),
       )
       .map((r) => r.commit.sha)
     if (matches.length === 0) {
@@ -258,10 +243,7 @@ export function createGitGraphStore(
       return
     }
     const prev = store.getState().findIndex
-    const idx =
-      dir === 0
-        ? 0
-        : ((prev < 0 ? 0 : prev) + dir + matches.length) % matches.length
+    const idx = dir === 0 ? 0 : ((prev < 0 ? 0 : prev) + dir + matches.length) % matches.length
     set({ findQuery: query, findMatches: matches, findIndex: idx })
     const sha = matches[idx]
     if (sha) void select(sha)
@@ -283,8 +265,7 @@ export function createGitGraphStore(
             : s.rows.length - 1
           : Math.min(s.rows.length - 1, Math.max(0, idx + dir))
       const target = s.rows[next]
-      if (target && target.commit.sha !== s.selectedSha)
-        select(target.commit.sha)
+      if (target && target.commit.sha !== s.selectedSha) select(target.commit.sha)
     },
     refresh() {
       if (!mountedCwd) return
