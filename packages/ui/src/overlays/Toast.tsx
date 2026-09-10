@@ -8,7 +8,7 @@
 
 import { useEffect, useSyncExternalStore } from 'react'
 
-import { COLORS, FONT } from './tokens'
+import { COLORS, FONT } from '../theme/tokens'
 
 /** 浮条投影（对象形态——GPUIX boxShadow 不收 CSS 字符串） */
 const FLOAT_SHADOW = {

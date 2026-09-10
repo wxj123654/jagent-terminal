@@ -17,8 +17,8 @@ import { useGpuix, type PublicInstance } from '@gpuix/react'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 
-import { focusRing } from './style'
-import { COLORS, FONT } from './tokens'
+import { focusRing } from '../theme/style'
+import { COLORS, FONT } from '../theme/tokens'
 
 type Bounds = { left: number; width: number }
 

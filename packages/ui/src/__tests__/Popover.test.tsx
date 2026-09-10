@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement, useState } from 'react'
 
-import { Popover } from '../Popover'
+import { Popover } from '../overlays/Popover'
 
 let t: TestRoot
 

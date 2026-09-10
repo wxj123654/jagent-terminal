@@ -10,7 +10,7 @@
 import { Tooltip as GpuixTooltip, TooltipContent, TooltipTrigger } from '@gpuix/react'
 import type { ReactElement, ReactNode } from 'react'
 
-import { COLORS, FONT } from './tokens'
+import { COLORS, FONT } from '../theme/tokens'
 
 export function Tip({
   label,

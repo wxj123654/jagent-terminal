@@ -11,10 +11,10 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
 
-import { Icon, type IconName } from './Icon'
-import { focusRing } from './style'
-import { COLORS } from './tokens'
-import { Tip } from './Tooltip'
+import { Icon, type IconName } from '../display/Icon'
+import { Tip } from '../overlays/Tooltip'
+import { focusRing } from '../theme/style'
+import { COLORS } from '../theme/tokens'
 
 export function IconButton({
   name,

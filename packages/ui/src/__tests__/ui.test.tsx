@@ -12,14 +12,14 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
-import { Badge } from '../Badge'
-import { IconButton } from '../IconButton'
-import { NumberInput } from '../NumberInput'
-import { RangeInput } from '../RangeInput'
-import { SelectField } from '../Select'
-import { Textarea } from '../Textarea'
-import { TextInput } from '../TextInput'
-import { Toggle } from '../Toggle'
+import { IconButton } from '../controls/IconButton'
+import { NumberInput } from '../controls/NumberInput'
+import { RangeInput } from '../controls/RangeInput'
+import { SelectField } from '../controls/Select'
+import { Textarea } from '../controls/Textarea'
+import { TextInput } from '../controls/TextInput'
+import { Toggle } from '../controls/Toggle'
+import { Badge } from '../display/Badge'
 
 let t: TestRoot
 

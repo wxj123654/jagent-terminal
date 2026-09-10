@@ -15,7 +15,7 @@
 import type { StyleDesc } from '@gpuix/react'
 import type { ReactNode } from 'react'
 
-import { COLORS, FONT } from './tokens'
+import { COLORS, FONT } from '../theme/tokens'
 
 export type PopoverAnchor =
   | 'topLeft'

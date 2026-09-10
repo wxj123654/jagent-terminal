@@ -5,7 +5,7 @@
 
 import type { ReactElement } from 'react'
 
-import { COLORS, FONT } from './tokens'
+import { COLORS, FONT } from '../theme/tokens'
 
 export type BadgeVariant = 'builtin' | 'custom' | 'phase'
 

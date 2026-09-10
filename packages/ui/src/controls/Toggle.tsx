@@ -11,8 +11,8 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
 
-import { focusRing } from './style'
-import { COLORS } from './tokens'
+import { focusRing } from '../theme/style'
+import { COLORS } from '../theme/tokens'
 
 export function Toggle({
   checked,
