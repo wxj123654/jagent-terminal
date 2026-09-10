@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { trafficLightWidth } from './platform'
+import { trafficLightWidth } from '../platform'
 
 describe('trafficLightWidth', () => {
   test('Tahoe / Darwin 25+ uses 78px', () => {

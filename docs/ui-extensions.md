@@ -94,7 +94,7 @@ crates/
 ## 7. 实施进度
 
 1. [x] 现有 UI 通用/业务分类完成：控件层（Badge/Icon/IconButton/Modal/NumberInput/Popover/RangeInput/Select/Textarea/TextInput/Toast/Toggle/Tooltip + tokens(COLORS/FONT)/style/keyboard/platform）迁 `@jagent/ui`；SettingRow/PhaseBadge/PerfHud + SIZES/GRAPH_LANE_COLORS 留 app（业务/布局域）。
-2. [x] React 包已建立并全量验证：bun workspace 接线、typecheck、fmt/lint、根 bun test 349 全绿（与基线一致）、e2e 17 全绿、export-patches --check 通过、跨包单实例确认。
+2. [x] React 包已建立并全量验证：bun workspace 接线、typecheck、fmt/lint、根 bun test 349 全绿（与基线一致）、e2e 17 全绿、export-patches --check 通过、跨包单实例确认。**ui 包测试统一放 `src/__tests__/`，不与源码混放**（2026-09-12 拍板；app 测试位置暂不变）。
 3. [ ] 出现具体原生缺口后，先验证 GPUIX 现有能力不足，再建立 Rust 核心及适配；不预建空库。
 4. [ ] 首个新增 Rust 组件同时验证纯 GPUI 消费和 React→GPUIX 适配消费，形成契约测试。
 

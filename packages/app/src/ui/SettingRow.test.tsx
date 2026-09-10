@@ -2,7 +2,7 @@
  * ui/SettingRow.test.tsx — 设置行行为测试（声明式行：控件回调 / 蓝点 /
  * reset 槽 / phase disabled）。SettingRow 依赖应用 SettingDef（settings
  * schema），按 ui-extensions.md §5 留在 app；helpers 与控件测试同源
- * （packages/ui/src/ui.test.tsx）。
+ * （packages/ui/src/__tests__/ui.test.tsx）。
  *
  * 跑法：bun test packages/app/src/ui/（TestGpuixRenderer 真渲染管线）。
  */

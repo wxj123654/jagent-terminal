@@ -5,20 +5,21 @@
  * 跑法：bun test packages/ui/（Windows + TestGpuixRenderer）。
  * 每用例独立 render（root.render 替换整树）；回调记录进数组断言。
  * SettingRow 的测试留在 app（依赖业务 schema）：packages/app/src/ui/SettingRow.test.tsx。
+ * 约定：ui 包测试统一放 src/__tests__/，不与源码混放（ui-extensions.md §7）。
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
-import { Badge } from './Badge'
-import { IconButton } from './IconButton'
-import { NumberInput } from './NumberInput'
-import { RangeInput } from './RangeInput'
-import { SelectField } from './Select'
-import { Textarea } from './Textarea'
-import { TextInput } from './TextInput'
-import { Toggle } from './Toggle'
+import { Badge } from '../Badge'
+import { IconButton } from '../IconButton'
+import { NumberInput } from '../NumberInput'
+import { RangeInput } from '../RangeInput'
+import { SelectField } from '../Select'
+import { Textarea } from '../Textarea'
+import { TextInput } from '../TextInput'
+import { Toggle } from '../Toggle'
 
 let t: TestRoot
 
