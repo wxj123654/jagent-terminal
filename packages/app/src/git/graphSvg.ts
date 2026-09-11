@@ -15,6 +15,10 @@
 import type { CommitLine } from './graph'
 
 export const ROW_HEIGHT = 26
+/** 行内固定列宽（header 与 <git-graph-row> 规格/rowColumns.ts 共用） */
+export const COL_AUTHOR = 110
+export const COL_DATE = 80
+export const COL_SHA = 72
 const MID = ROW_HEIGHT / 2
 const QUARTER = ROW_HEIGHT / 4
 export const LANE_WIDTH = 13

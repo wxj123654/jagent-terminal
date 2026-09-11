@@ -14,7 +14,7 @@ index b198869..bec04b1 100644
              gpui::rgba(0x8f8f8fff).into()
          } else {
 diff --git a/packages/native/src/custom_elements/mod.rs b/packages/native/src/custom_elements/mod.rs
-index fd4b81f..d294dab 100644
+index fd4b81f..1b7f658 100644
 --- a/packages/native/src/custom_elements/mod.rs
 +++ b/packages/native/src/custom_elements/mod.rs
 @@ -10,6 +10,7 @@
@@ -25,7 +25,19 @@ index fd4b81f..d294dab 100644
  
  use crate::renderer::EventCallback;
  
-@@ -267,6 +268,19 @@ impl CustomElementEntry {
+@@ -24,6 +25,11 @@ pub mod markdown;
+ 
+ /// Context passed to CustomElement::render() with everything needed
+ /// to build GPUI elements with events and focus.
++// j-agent patch: host custom elements that paint text inside a canvas (e.g.
++// jagent-native's git-graph row) log each string so `getPaintedText()`
++// assertions see it, exactly like `<code>`/`chrome_text` lines do.
++pub use crate::text::log_painted_text;
++
+ pub struct CustomRenderContext<'a> {
+     /// Numeric element ID (matches React's instance ID).
+     pub id: u64,
+@@ -267,6 +273,19 @@ impl CustomElementEntry {
      }
  }
  
@@ -45,7 +57,7 @@ index fd4b81f..d294dab 100644
  /// Stores factories (one per type) and live adapters (one per element ID).
  pub struct CustomElementRegistry {
      factories: HashMap<String, Box<dyn CustomElementFactory>>,
-@@ -292,6 +306,12 @@ impl CustomElementRegistry {
+@@ -292,6 +311,12 @@ impl CustomElementRegistry {
          registry.register(Box::new(code::CodeFactory));
          registry.register(Box::new(diff::DiffFactory));
          registry.register(Box::new(markdown::MarkdownFactory));

@@ -633,6 +633,13 @@ export declare function debugTriggerCrash(kind: string): void
 export declare function destroyTerminalSession(sessionId: number): void
 
 /**
+ * Register the `<git-graph-row>` element factory (canvas-drawn row text;
+ * see git_graph.rs for the perf rationale). Same startup contract as
+ * `install_terminal_element`.
+ */
+export declare function installGitGraphRowElement(): void
+
+/**
  * 安装全局 Rust panic hook（方案 B）：panic.log 落盘 + onNativePanic 转发。
  * `logDir` 传 null 则不写盘（仍转发 TSF）。幂等；建议在 renderer.init
  * 之前调用（越早覆盖面越大）。

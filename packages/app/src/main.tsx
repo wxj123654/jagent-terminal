@@ -15,6 +15,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import {
+  installGitGraphRowElement,
   installNativePanicHook,
   installTerminalElement,
   onNativePanic,
@@ -142,6 +143,7 @@ const lastCrash = await setupCrashReportingForApp('0.1.0')
 
 // ── seam 装配（顺序敏感：先注册元素，再开窗）──────────────────────────
 installTerminalElement()
+installGitGraphRowElement()
 
 // ── SettingsStore（~/.j-agent/settings.json；S3 事实源）──
 // 装配期读盘 await 后再建 ThreadStore（T2.5：nativeDeps 读设置面）。

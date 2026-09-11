@@ -9,7 +9,7 @@
 
 import { useWindowSize } from '@gpuix/react'
 import type { PublicInstance } from '@gpuix/react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import type { IconName } from '@jagent/ui'
 import {
@@ -39,7 +39,25 @@ import type { ChangedFile } from '../cli'
 import { compactDir, nestChangedFiles, type FileTreeNode } from '../fileTree'
 import { formatCommitDate, parseRefNames, relativeTime, type RefDecor } from '../format'
 import type { GraphRow } from '../graph'
-import { buildGapGraphics, buildRowGraphics, graphColumnWidth, ROW_HEIGHT } from '../graphSvg'
+import { buildGapGraphics, buildRowGraphics, graphColumnWidth, ROW_HEIGHT, COL_AUTHOR, COL_DATE, COL_SHA } from '../graphSvg'
+import { buildRowColumns, type RowSpec } from '../rowColumns'
+
+// ── `<git-graph-row>` JSX 类型声明（GPUIX jsx-runtime 的 augmentation，
+// 同 TerminalSurface 模式；元素本体在 packages/native/src/git_graph.rs）──
+
+export interface GitGraphRowElementProps {
+  /** 行文本列规格（useMemo 稳定引用：GPUIX 按引用 diff custom props） */
+  row: RowSpec
+  key?: string | number
+}
+
+declare module '@gpuix/react/jsx-runtime' {
+  namespace JSX {
+    interface IntrinsicElements {
+      'git-graph-row': GitGraphRowElementProps
+    }
+  }
+}
 import type { GitGraphStore } from '../store'
 import { useGitGraphStore } from '../useGitGraphStore'
 
@@ -50,9 +68,6 @@ const ERROR_H = 33
 const CDV_H = 224
 /** vscode-git-graph：Committer: 是最宽 label，12px 约 82px */
 const CDV_LABEL_W = 82
-const COL_AUTHOR = 110
-const COL_DATE = 80
-const COL_SHA = 72
 
 type MenuState = {
   x: number
@@ -586,6 +601,19 @@ function GraphRowView({
   const decors = parseRefNames(row.commit.refNames.join(', '))
   const msgColor = selected ? COLORS.textBright : COLORS.text
   const dim = muted ? 0.45 : 1
+  const rowSpec = useMemo(
+    () =>
+      buildRowColumns({
+        subject: row.commit.subject,
+        subjectColor: msgColor,
+        subjectWeight: selected ? 600 : 400,
+        dim,
+        author: row.commit.authorName,
+        date: relativeTime(row.commit.timestamp),
+        sha: row.commit.shortSha,
+      }),
+    [row.commit, msgColor, selected, dim],
+  )
   return (
     <div
       testId={`git-row-${index}`}
@@ -668,69 +696,9 @@ function GraphRowView({
             onMenu(e, d)
           }}
         />
-        <text
-          style={{
-            fontSize: 13,
-            fontFamily: FONT.ui,
-            color: msgColor,
-            opacity: dim,
-            flexGrow: 1,
-            flexShrink: 1,
-            minWidth: 0,
-            whiteSpace: 'nowrap',
-            textOverflow: 'ellipsis',
-            overflow: 'hidden',
-            fontWeight: selected ? '600' : undefined,
-          }}
-        >
-          {row.commit.subject}
-        </text>
-        <text
-          style={{
-            fontSize: 11,
-            fontFamily: FONT.ui,
-            color: COLORS.muted,
-            opacity: dim,
-            width: COL_AUTHOR,
-            flexShrink: 0,
-            whiteSpace: 'nowrap',
-            textOverflow: 'ellipsis',
-            overflow: 'hidden',
-            marginLeft: 8,
-          }}
-        >
-          {row.commit.authorName}
-        </text>
-        <text
-          style={{
-            fontSize: 11,
-            fontFamily: FONT.ui,
-            color: COLORS.muted,
-            opacity: dim,
-            width: COL_DATE,
-            flexShrink: 0,
-            textAlign: 'right',
-            marginLeft: 8,
-          }}
-        >
-          {relativeTime(row.commit.timestamp)}
-        </text>
-        <text
-          testId={`git-sha-${index}`}
-          onClick={() => {
-            toast(`已复制 ${row.commit.shortSha}`)
-          }}
-          style={{
-            fontSize: 11,
-            fontFamily: FONT.mono,
-            color: COLORS.muted,
-            width: COL_SHA,
-            flexShrink: 0,
-            marginLeft: 8,
-          }}
-        >
-          {row.commit.shortSha}
-        </text>
+        {/* 行文本 4 列：canvas 自绘（见 rowColumns.ts 头注）。sha 点击的
+            半成品 toast（无剪贴板写入）随之移除，复制走行右键菜单 copy-sha */}
+        <git-graph-row row={rowSpec} />
       </div>
     </div>
   )

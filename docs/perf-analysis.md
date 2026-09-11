@@ -92,6 +92,28 @@ crates/jagent-terminal/      终端栈（model/pool/pty/view/view/render）—�
 
 > 2026-09-08 范围收缩：`.refs/gpuix` 不再作为分析/修改对象。此前记录的三项（commitUpdate 无条件重发 style、virtual-list 机制、style hash-cons）是外部行为事实，仅作理解前提——本仓代码的结论已在各自模块里引用，无需在此跟踪。
 
+## 9. git/GitGraphView.tsx（git 图页）
+
+> 2026-09-12 建项。用户观测：git graph 页 HUD draw ~10ms，terminal 仅 3–4ms。基准设施（确定性仓库 + 双 bench 脚本，保留可重跑）：
+> ```
+> bun scripts/bench/gen-bench-repo.ts --fresh      # 374 提交确定性仓库（feat/hotfix/tag 多 lane）
+> cd packages/app && bun bench/git-graph.bench.tsx <repoDir>            # 真实 GitGraphView 滚动基准
+> ABL=full|nosvg|notext|bare|sametext|half bun bench/git-graph-ablation.bench.tsx <repoDir>  # 行内窖变
+> ```
+
+| # | 怀疑项 | 状态 | 结论与证据 |
+|---|--------|------|-----------|
+| 9.1 | svg pieces 每帧重光栅化 | ✅ | sprite atlas 按 (内容hash,size) 跨帧缓存；nosvg 瓶颈不变（7.66 vs full 7.37ms） |
+| 9.2 | text shaping 缓存 miss | ✅ | LineLayoutCache 命中良好：滚动期仅 4–10 miss/帧（新行进入），miss 成本 0.2–0.3ms；shape 总计仅 ~0.67ms/帧 |
+| 9.3 | **text 元素每帧重测量（结构性成本）** | ⚠️ **实测主因** | 窖变：notext 7.37→2.58ms（text 占 ~65%）。.refs 临时插桩（已按补丁纪律恢复）：整帧 ~7ms 中 layout 段 5.1–6.7ms（75%），其中 text 测量闭包 1.0–3.3ms（**410–450 次/帧 ≈ 每 text 元素 ~2.9 次 taffy 探测**）+ taffy 树行 0.8–1.5ms（~800 节点）+ prepaint/hitbox 遍 1.4–3.4ms。根因：GPUIX 每帧重建元素树 → 元素级 TextLayout 缓存永不跨帧；ellipsis（truncate_width=Some）额外绕过帧内元素缓存；重测成本在闭包开销（runs 构建/truncate 决策/缓存查询）而非 shaping 本身（sametext 9.08ms 不降反升=内容无关） |
+| 9.4 | 与 terminal 3–4ms 的差异来源 | ✅ | 结构性：terminal=单 custom element 自绘 200×60 网格（HUD term 读数即其自身 paint 成本），无元素树重建/taffy text 节点/测量闭包/hitbox；git graph=29 可见行 × ~27 元素 ≈ 800 元素全管线每帧重跑 |
+
+### 9.x 优化方向（未实施，按预期收益排序）
+
+1. ~~**P1 候选·行级 custom element**（terminal 同构）~~ **✅ 2026-09-11 已实施**：`<git-graph-row>`（packages/native/src/git_graph.rs）+ rowColumns.ts 规格 + GitGraphView 接入。每行 4 文本列 canvas 自绘（ShapedLine 直 paint，truncate_line 截断，元素实例级 shaped 缓存跨帧复用）；测试断言改走 getPaintedText。**实测：滚动 draw p90 7.0→3.9–4.2ms（terminal 水平），idle 3.8–3.9ms**。seam 补丁：gpuix 0002 增导出 log_painted_text（canvas 文本进 paint log，测试可见）。
+2. **本地小改（已被 1 吸收）**：author+date 合并单 text、去 ellipsis——行文本全部走 custom element 后无 text 节点，不再需要。
+3. **上游 GPUIX**（走 patches 体系）：元素级 TextLayout 跨帧复用（按 text+style hash 键控）/taffy 探测降频——收益面大但属外部依赖改动；当前行级元素方案已把 git graph 移出受害者名单，此项降级为「其他重文本页（如 settings 长列表）再看」。
+
 ---
 
 ## 问题汇总与优先级
@@ -104,6 +126,7 @@ crates/jagent-terminal/      终端栈（model/pool/pty/view/view/render）—�
 | P3 | Title 批内不去重 | 6.6→1.4 | 高频改 title 的 TUI | model.rs 批内 last-wins 合并 | 📋 低频，择机 |
 | P3 | Sidebar query / ThreadRow 无 memo | 4.2/4.3 | 线程数百+ | 搜索框下沉 + memo | 📋 低频，择机 |
 | P4 | TerminalSurface 全量订阅 | 5.2 | 拖任意设置滑块 | useSettingsValue(terminal) | 📋 顺手 |
+| **P5** | git graph 每帧全量重测 ~145 text 元素 | 9.3 | git 图页滚动/hover（~10ms/帧） | 行级 custom element（terminal 同构）或列合并小改 | 📋 已归因，待拍板 |
 | 记录 | spawn 阻塞 ~1s | 1.5 | 新建终端 | 已文档化接受（nativeDeps 头注） | 无需行动 |
 
 ## 待执行（动态验证，静态结论 → 数据证实）
@@ -116,6 +139,9 @@ crates/jagent-terminal/      终端栈（model/pool/pty/view/view/render）—�
 - [ ] 长会话内存曲线（scrollback cap 下的稳态验证）。
 
 ## 会话日志
+
+- 2026-09-11 · **P1 实施**：`<git-graph-row>` 行级元素落地（git_graph.rs / rowColumns.ts / GitGraphView 接入 / gpuix 0002 增 log_painted_text seam）。实测滚动 p90 7.0→3.9–4.2ms。回归：git 72 + surfaces 31 全绿、scroll-chain 6 + terminal 17 e2e 全绿、tsc/clippy 零告警、export-patches --check 通过。**事故与修复**：bench 仓库生成脚本首版 cwd 处理 bug 把 39 个空提交写进主仓 HEAD（树与真 HEAD 零差异，reflog 恢复）；脚本已加双重护栏（GIT_DIR/GIT_WORK_TREE 清空 + init 前后 --show-toplevel 自检），--fresh 验证主仓 HEAD 纹丝不动。bench 截图人工核对未做（视觉 sidecar 400），用结构化像素采样替代：行带 text/muted 列稳定呈现。
+- 2026-09-12 · git graph 10ms vs terminal 3–4ms 调研（模块 9 建项）：新建确定性仓库 gen（374 提交）+ 真实组件/窖变双 bench（保畵在 packages/app/bench/ 与 scripts/bench/，未提交待拍板）。真实组件滚动 draw p90 ~7ms/max 11.7ms（本仓 374 提交/3 lane）；窖变定位 text 占 65%（notext 2.58ms）、svg/缓存 miss 无辜。.refs 临时插桩（[DEBUG-jgg1/jgg2]，gpui window.rs 三段 + renderer.rs 树构建 + text.rs 测量闭包 + text_system shape/miss）出最终分解：build 0.65（树构建 0.07）/taffy 2–4（含测量闭包 1–3.3、410–450 次/帧 ≈ 2.9 次/text，shape 仅 0.67）/prepaint+hitbox 1.4–3.4/paint ~1。根因=GPUIX 每帧重建元素树→text 元素每帧全量重测（ellipsis 绕过帧内缓存）；terminal 为单 custom element 无此成本。插桩已按纪律恢复（保存 diff→checkout→--include 回补→export-patches --check 通过→重编 release .node→bench 冒烟无 [jgg1] 输出）。
 
 - 2026-09-08 · 全模块静态分析首轮 + P2 动态基准：8 模块 32 项过筛；确认 P1×1（render.rs 零缓存）、P2a×1（draft 顶层，bench 证实线性增长 10.3x）、P2b×1（virtual-list JS/retained 层未窗口化，bench 意外发现）；观察项×5，上游/已知记录×3。P1 基准与修复待执行。
 - 2026-09-08 · 范围收缩（用户拍板）：只看本仓代码，`.refs/gpuix` 移出分析范围（模块 8 整节移除，问题清单剔除上游项）；P1/P2a/P2b 的问题与修法已确认全部落在本仓文件，无需碰外部依赖。

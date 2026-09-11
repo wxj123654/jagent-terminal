@@ -9,6 +9,7 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
+import { installGitGraphRowElement } from '@jagent/native'
 import { WorkspacePage } from '../../plane/WorkspacePage'
 import { memoryAdapter } from '../../settings/file'
 import { createSettingsStore, type SettingsStore } from '../../settings/store'
@@ -36,6 +37,9 @@ const c = (sha: string, parents: string[]): GraphCommit => ({
 })
 
 beforeAll(() => {
+  // 顺序敏感：先注册 <git-graph-row> 工厂（GLOBAL_FACTORIES push），再建
+  // renderer（GpuixView with_defaults 时 drain）——同 e2e/terminal 模式
+  installGitGraphRowElement()
   t = createTestRoot({ width: 1000, height: 700 })
   settings = createSettingsStore(memoryAdapter())
   store = createThreadStore({
@@ -92,7 +96,10 @@ function renderPage() {
   return gitStore
 }
 
-const texts = () => t.renderer.getAllText().join('\n')
+// 行内文本由 <git-graph-row> canvas 自绘（getAllText 只见 retained 树的
+// <text>，native 内容须并 getPaintedText —— ChatSurface T2.3 同例）
+const texts = () =>
+  [...t.renderer.getAllText(), ...t.renderer.getPaintedText()].join('\n')
 const has = (testId: string) => t.renderer.findByTestId(testId) != null
 
 async function until(ms = 0) {

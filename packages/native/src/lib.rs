@@ -20,6 +20,7 @@
 mod appearance;
 mod crash;
 mod element;
+mod git_graph;
 mod host;
 mod notify;
 mod panic;
@@ -36,6 +37,7 @@ use napi_derive::napi;
 use gpui::BorrowAppContext;
 
 use element::TerminalElementFactory;
+use git_graph::GitGraphRowFactory;
 use gpuix_native::custom_elements::register_global_factory;
 use jagent_terminal::pool::{set_session_event_fn, SessionEvent as RustSessionEvent};
 use jagent_terminal::terminal_error_code;
@@ -48,6 +50,14 @@ use jagent_terminal::{perf, HostPanic, SpawnOptions, TerminalError, TerminalPool
 #[napi]
 pub fn install_terminal_element() {
     register_global_factory(Box::new(TerminalElementFactory));
+}
+
+/// Register the `<git-graph-row>` element factory (canvas-drawn row text;
+/// see git_graph.rs for the perf rationale). Same startup contract as
+/// `install_terminal_element`.
+#[napi]
+pub fn install_git_graph_row_element() {
+    register_global_factory(Box::new(GitGraphRowFactory));
 }
 
 /// Match native window chrome to the dark UI (Zed `init_app_appearance`).
