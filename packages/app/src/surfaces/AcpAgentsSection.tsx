@@ -15,13 +15,10 @@
 import { useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 
+import { Icon, IconButton, TextInput, COLORS, FONT } from '@jagent/ui'
 import type { AcpAgent } from '../settings/schema'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
-import { Icon } from '../ui/Icon'
-import { IconButton } from '../ui/IconButton'
-import { TextInput } from '../ui/TextInput'
-import { COLORS, FONT } from '../ui/tokens'
 import { FieldRow, LinesField } from './listEditorParts'
 
 /** 搜索命中（label / command / args 子串，不区分大小写） */

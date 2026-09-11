@@ -11,7 +11,11 @@ import {
   type GlobalKeydown,
 } from './keybindings'
 
-function makeHandler(over: { focusThreadSearch: () => void; toggleSidebar?: () => void; inSettings?: () => boolean }): {
+function makeHandler(over: {
+  focusThreadSearch: () => void
+  toggleSidebar?: () => void
+  inSettings?: () => boolean
+}): {
   keydown: GlobalKeydown
   calls: { search: number; cycle: number }
 } {

@@ -1,25 +1,25 @@
 /**
- * ui/ui.test.tsx — T2.3 原子组件行为测试（architecture.md §9 测试面：
+ * ui.test.tsx — @jagent/ui 原子控件行为测试（architecture.md §9 测试面：
  * TestGpuixRenderer 真渲染管线；坐标 hit-test + 键盘事件全走 GPUI 派发）。
  *
- * 跑法：bun test packages/app/src/ui/（Windows + TestGpuixRenderer）。
+ * 跑法：bun test packages/ui/（Windows + TestGpuixRenderer）。
  * 每用例独立 render（root.render 替换整树）；回调记录进数组断言。
+ * SettingRow 的测试留在 app（依赖业务 schema）：packages/app/src/ui/SettingRow.test.tsx。
+ * 约定：ui 包测试统一放 src/__tests__/，不与源码混放（ui-extensions.md §7）。
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
-import { SETTING_DEFS } from '../settings/schema'
-import { Badge } from './Badge'
-import { IconButton } from './IconButton'
-import { NumberInput } from './NumberInput'
-import { RangeInput } from './RangeInput'
-import { SelectField } from './Select'
-import { SettingRow } from './SettingRow'
-import { Textarea } from './Textarea'
-import { TextInput } from './TextInput'
-import { Toggle } from './Toggle'
+import { IconButton } from '../controls/IconButton'
+import { NumberInput } from '../controls/NumberInput'
+import { RangeInput } from '../controls/RangeInput'
+import { SelectField } from '../controls/Select'
+import { Textarea } from '../controls/Textarea'
+import { TextInput } from '../controls/TextInput'
+import { Toggle } from '../controls/Toggle'
+import { Badge } from '../display/Badge'
 
 let t: TestRoot
 
@@ -340,8 +340,11 @@ describe('IconButton', () => {
     click('btn')
     expect(clicked).toBe(1)
 
-    // hover → Tooltip open（delay 0 立即）→ label 出现在 painted text
+    // hover → Tooltip open（delay 0 立即）→ label 出现在 painted text。
+    // 上游 click 改为 primary-button mouse-up 送达后，同元素内重复 move 不再
+    // 合成 mouseenter（与 DOM 语义一致），需从外部移入才触发 hover。
     const [x, y, w, h] = boundsOf('btn')
+    t.renderer.nativeSimulateMouseMove(x - 50, y - 50)
     t.renderer.nativeSimulateMouseMove(x + w / 2, y + h / 2)
     expect(texts().includes('恢复默认')).toBe(true)
   })
@@ -359,90 +362,5 @@ describe('IconButton', () => {
     const [x, y, w, h] = boundsOf('btn-no-tip')
     t.renderer.nativeSimulateMouseMove(x + w / 2, y + h / 2)
     expect(texts().includes('Git 图')).toBe(false)
-  })
-})
-
-// ── SettingRow（声明式行）────────────────────────────────────────────
-
-describe('SettingRow', () => {
-  const defOf = (path: string) => {
-    const def = SETTING_DEFS.find((d) => d.path === path)
-    expect(def, `def not found: ${path}`).toBeDefined()
-    return def!
-  }
-
-  test('toggle 行：控件回调 + 蓝点 + reset', () => {
-    const changes: (boolean | string | number)[] = []
-    let resets = 0
-    const def = defOf('notifications.desktop')
-    t.render(
-      createElement(SettingRow, {
-        def,
-        value: true,
-        modified: true,
-        onChange: (v) => changes.push(v),
-        onReset: () => resets++,
-      }),
-    )
-
-    expect(t.renderer.findByTestId('row-notifications.desktop')).toBeDefined()
-    expect(t.renderer.findByTestId('moddot-notifications.desktop')).toBeDefined()
-    expect(t.renderer.findByTestId('reset-notifications.desktop')).toBeDefined()
-    expect(boundsOf('reset-slot-notifications.desktop')[2]).toBe(18)
-    expect(boundsOf('reset-notifications.desktop')[2]).toBe(18)
-
-    click('setting-notifications.desktop')
-    expect(changes).toEqual([false])
-
-    click('reset-notifications.desktop')
-    expect(resets).toBe(1)
-  })
-
-  test('未修改行保留 reset 槽；显隐切换不改变控件与槽位布局', () => {
-    const def = defOf('terminal.scrollbackLines')
-    const renderRow = (modified: boolean) =>
-      t.render(
-        createElement(SettingRow, {
-          def,
-          value: 10000,
-          modified,
-          onChange: () => {},
-          onReset: () => {},
-        }),
-      )
-
-    renderRow(false)
-    expect(t.renderer.findByTestId('reset-terminal.scrollbackLines')).toBeUndefined()
-    expect(t.renderer.findByTestId('reset-inactive-terminal.scrollbackLines')).toBeDefined()
-    const slotBefore = boundsOf('reset-slot-terminal.scrollbackLines')
-    const controlBefore = boundsOf('setting-terminal.scrollbackLines')
-    expect(slotBefore[2]).toBe(18)
-
-    renderRow(true)
-    expect(t.renderer.findByTestId('reset-terminal.scrollbackLines')).toBeDefined()
-    expect(boundsOf('reset-slot-terminal.scrollbackLines')).toEqual(slotBefore)
-    expect(boundsOf('setting-terminal.scrollbackLines')).toEqual(controlBefore)
-    expect(t.renderer.getAllText().some((s) => s.includes('回滚行数'))).toBe(true)
-    expect(t.renderer.getAllText().some((s) => s.includes('scrollback 缓冲区大小'))).toBe(true)
-  })
-
-  test('phase 行：控件 disabled + PhaseBadge', () => {
-    const def = { ...defOf('notifications.desktop'), phase: 2 as const }
-    const changes: (boolean | string | number)[] = []
-    t.render(
-      createElement(SettingRow, {
-        def,
-        value: true,
-        modified: false,
-        onChange: (v) => changes.push(v),
-        onReset: () => {},
-      }),
-    )
-
-    expect(t.renderer.findByTestId('phase-notifications.desktop')).toBeDefined()
-    expect(texts().includes('Phase 2')).toBe(true)
-
-    click('setting-notifications.desktop')
-    expect(changes).toEqual([])
   })
 })

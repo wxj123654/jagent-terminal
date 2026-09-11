@@ -336,6 +336,11 @@ export declare class TestGpuixRenderer {
   getText(id: number): string | null
   /** Get the full tree as JSON for snapshot testing. */
   getTreeJson(): string
+  /**
+   * GPUI accessibility dump from the last painted frame.
+   * Empty until a11y is active; the test renderer turns that on at construct.
+   */
+  getA11yTree(): string
   /** Tree JSON with last-paint bounds. Used by the automation locators. */
   getAutomationTree(): string
   /** Last painted bounds for an element, or null if it was not painted. */
@@ -626,6 +631,13 @@ export declare function debugTriggerCrash(kind: string): void
  * Unknown id → throw with code ERR_TERMINAL_SESSION_NOT_FOUND.
  */
 export declare function destroyTerminalSession(sessionId: number): void
+
+/**
+ * Register the `<git-graph-row>` element factory (canvas-drawn row text;
+ * see git_graph.rs for the perf rationale). Same startup contract as
+ * `install_terminal_element`.
+ */
+export declare function installGitGraphRowElement(): void
 
 /**
  * 安装全局 Rust panic hook（方案 B）：panic.log 落盘 + onNativePanic 转发。

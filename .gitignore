@@ -16,6 +16,8 @@ packages/native/*retired*
 
 # 打包产物（bun run build）
 dist/
+# bun compile 失败/中断时留在仓库根的临时大文件（~137MB）
+.*.bun-build
 
 # 杂项
 *.log

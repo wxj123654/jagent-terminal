@@ -51,8 +51,14 @@ export async function openInSystemApp(p: string): Promise<void> {
   const { spawn } = await import('node:child_process')
   try {
     if (process.platform === 'win32') {
-      // cmd /c start "" "path"：空标题参防路径带空格被当标题
-      spawn('cmd', ['/c', 'start', '', p], { stdio: 'ignore', detached: true })?.unref()
+      // cmd /c start "" "path"：空标题参防路径带空格被当标题。
+      // windowsHide：GUI 子系统下压住 cmd.exe 自己的控制台窗口（start 拉起
+      // 的目标程序不受影响，仍显示自己的窗口）。
+      spawn('cmd', ['/c', 'start', '', p], {
+        stdio: 'ignore',
+        detached: true,
+        windowsHide: true,
+      })?.unref()
     } else if (process.platform === 'darwin') {
       spawn('open', [p], { stdio: 'ignore', detached: true })?.unref()
     } else {

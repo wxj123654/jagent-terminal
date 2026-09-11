@@ -184,10 +184,7 @@ describe('WorkspaceList：分组树', () => {
     try {
       renderHarness({ query: '' })
       t.renderer.flush()
-      await until(
-        'rows visible',
-        () => t.renderer.findByTestId(`row-${made[0]}`) != null,
-      )
+      await until('rows visible', () => t.renderer.findByTestId(`row-${made[0]}`) != null)
       const texts = t.renderer.getAllText()
 
       // 今天 10 条可见；「更早」组完全隐藏 → 标签不该出现

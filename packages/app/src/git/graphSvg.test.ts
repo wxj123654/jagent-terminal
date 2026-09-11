@@ -49,74 +49,27 @@ describe('buildRowGraphics', () => {
         ].join('\x00'),
       )!,
       parseLogLine(
-        [
-          'e'.repeat(40),
-          'c'.repeat(40),
-          '',
-          'eeeeeee',
-          'a',
-          'a@x',
-          '0',
-          'a',
-          'a@x',
-          'e',
-        ].join('\x00'),
+        ['e'.repeat(40), 'c'.repeat(40), '', 'eeeeeee', 'a', 'a@x', '0', 'a', 'a@x', 'e'].join(
+          '\x00',
+        ),
       )!,
       parseLogLine(
-        [
-          'd'.repeat(40),
-          'b'.repeat(40),
-          '',
-          'ddddddd',
-          'a',
-          'a@x',
-          '0',
-          'a',
-          'a@x',
-          'd',
-        ].join('\x00'),
+        ['d'.repeat(40), 'b'.repeat(40), '', 'ddddddd', 'a', 'a@x', '0', 'a', 'a@x', 'd'].join(
+          '\x00',
+        ),
       )!,
       parseLogLine(
-        [
-          'c'.repeat(40),
-          'b'.repeat(40),
-          '',
-          'ccccccc',
-          'a',
-          'a@x',
-          '0',
-          'a',
-          'a@x',
-          'c',
-        ].join('\x00'),
+        ['c'.repeat(40), 'b'.repeat(40), '', 'ccccccc', 'a', 'a@x', '0', 'a', 'a@x', 'c'].join(
+          '\x00',
+        ),
       )!,
       parseLogLine(
-        [
-          'b'.repeat(40),
-          'a'.repeat(40),
-          '',
-          'bbbbbbb',
-          'a',
-          'a@x',
-          '0',
-          'a',
-          'a@x',
-          'b',
-        ].join('\x00'),
+        ['b'.repeat(40), 'a'.repeat(40), '', 'bbbbbbb', 'a', 'a@x', '0', 'a', 'a@x', 'b'].join(
+          '\x00',
+        ),
       )!,
       parseLogLine(
-        [
-          'a'.repeat(40),
-          '',
-          '',
-          'aaaaaaa',
-          'a',
-          'a@x',
-          '0',
-          'a',
-          'a@x',
-          'a',
-        ].join('\x00'),
+        ['a'.repeat(40), '', '', 'aaaaaaa', 'a', 'a@x', '0', 'a', 'a@x', 'a'].join('\x00'),
       )!,
     ])
     return g
@@ -141,14 +94,10 @@ describe('buildRowGraphics', () => {
     expect(line0!.colorIdx).toBe(0)
     // f→d 支线起点行：下半竖线在 col0（下一行才弯到 col1）
     const branch = pieces.find((p) => p.colorIdx === 1)
-    expect(branch?.source).toContain(
-      `M ${laneX(0)} ${ROW_HEIGHT / 2} V ${ROW_HEIGHT}`,
-    )
+    expect(branch?.source).toContain(`M ${laneX(0)} ${ROW_HEIGHT / 2} V ${ROW_HEIGHT}`)
     // 圆点：cx = lane0 中心，cy = 中线
     const dot = pieces[pieces.length - 1]
-    expect(dot.source).toContain(
-      `<circle cx="${laneX(0)}" cy="${ROW_HEIGHT / 2}"`,
-    )
+    expect(dot.source).toContain(`<circle cx="${laneX(0)}" cy="${ROW_HEIGHT / 2}"`)
   })
 
   test('row1（e）：f→e 直线收尾（上半竖线）+ 支线 merge 弧到 col1', () => {
@@ -166,9 +115,7 @@ describe('buildRowGraphics', () => {
     expect(arc!.source).toContain(
       `M ${laneX(0)} 0 C ${laneX(0)} 6.5, ${laneX(1)} 6.5, ${laneX(1)} 13`,
     )
-    expect(arc!.source).toContain(
-      `M ${laneX(1)} ${ROW_HEIGHT / 2} V ${ROW_HEIGHT}`,
-    )
+    expect(arc!.source).toContain(`M ${laneX(1)} ${ROW_HEIGHT / 2} V ${ROW_HEIGHT}`)
     // 回归：弧已占上半，禁止再从 y=0 画 to 列竖线（否则合并点旁冒 orphan stub）
     expect(arc!.source).not.toContain(`M ${laneX(1)} 0 V`)
   })
@@ -220,9 +167,7 @@ describe('buildRowGraphics', () => {
       })
       for (const p of pieces) {
         expect(p.source).toContain('stroke="currentColor"')
-        expect(p.source).toContain(
-          `viewBox="0 0 ${graphColumnWidth(g.maxLanes)} ${ROW_HEIGHT}"`,
-        )
+        expect(p.source).toContain(`viewBox="0 0 ${graphColumnWidth(g.maxLanes)} ${ROW_HEIGHT}"`)
       }
     }
   })

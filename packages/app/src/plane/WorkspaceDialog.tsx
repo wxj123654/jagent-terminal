@@ -9,11 +9,17 @@
 
 import { useState } from 'react'
 
+import {
+  Icon,
+  Modal,
+  ModalActions,
+  ModalBody,
+  ModalHeading,
+  TextInput,
+  COLORS,
+  FONT,
+} from '@jagent/ui'
 import type { ThreadStore, Workspace } from '../threads/store'
-import { Icon } from '../ui/Icon'
-import { Modal, ModalActions, ModalBody, ModalHeading } from '../ui/Modal'
-import { TextInput } from '../ui/TextInput'
-import { COLORS, FONT } from '../ui/tokens'
 import type { DirectoryPicker } from './WorkspaceList'
 
 /** 绝对路径校验（原型正则同款）：~/…、/…、C:\\…、\\\\… */

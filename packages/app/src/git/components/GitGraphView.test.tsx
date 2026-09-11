@@ -9,6 +9,7 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
+import { installGitGraphRowElement } from '@jagent/native'
 import { WorkspacePage } from '../../plane/WorkspacePage'
 import { memoryAdapter } from '../../settings/file'
 import { createSettingsStore, type SettingsStore } from '../../settings/store'
@@ -36,6 +37,9 @@ const c = (sha: string, parents: string[]): GraphCommit => ({
 })
 
 beforeAll(() => {
+  // 顺序敏感：先注册 <git-graph-row> 工厂（GLOBAL_FACTORIES push），再建
+  // renderer（GpuixView with_defaults 时 drain）——同 e2e/terminal 模式
+  installGitGraphRowElement()
   t = createTestRoot({ width: 1000, height: 700 })
   settings = createSettingsStore(memoryAdapter())
   store = createThreadStore({
@@ -68,9 +72,7 @@ function renderPage() {
       }
     },
     showCommitBody: async (_cwd, sha) => `BODY-${sha}`,
-    listChangedFiles: async (_cwd, sha) => [
-      { path: `${sha}.ts`, added: 2, deleted: 1 },
-    ],
+    listChangedFiles: async (_cwd, sha) => [{ path: `${sha}.ts`, added: 2, deleted: 1 }],
     listBranches: async () => [{ name: 'main', current: true }],
     runGit: async () => '',
   })
@@ -94,7 +96,9 @@ function renderPage() {
   return gitStore
 }
 
-const texts = () => t.renderer.getAllText().join('\n')
+// 行内文本由 <git-graph-row> canvas 自绘（getAllText 只见 retained 树的
+// <text>，native 内容须并 getPaintedText —— ChatSurface T2.3 同例）
+const texts = () => [...t.renderer.getAllText(), ...t.renderer.getPaintedText()].join('\n')
 const has = (testId: string) => t.renderer.findByTestId(testId) != null
 
 async function until(ms = 0) {
@@ -293,5 +297,12 @@ describe('GitGraphView 渲染与选中', () => {
     expect(texts()).toContain('name.ts')
     expect(texts()).toContain('+2')
     expect(texts()).toContain('-1')
+
+    // 文件树（一行路径）远短于右栏：padding 10 不该造出 20px 幽灵滚动范围
+    // （box 记录曾是 absolute().size_full() 子节点，把 content_size 撑到元素自身大小）。
+    t.renderer.scrollTo(files!.id, -100000, -100000)
+    const off = t.renderer.getScrollOffset(files!.id)!
+    expect(off[0]! + 0).toBe(0)
+    expect(off[1]! + 0).toBe(0)
   })
 })

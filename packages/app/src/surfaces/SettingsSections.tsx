@@ -15,6 +15,7 @@
 
 import { useState, type ReactElement } from 'react'
 
+import { COLORS, FONT } from '@jagent/ui'
 import { DEFAULT_KEYBINDINGS, type KeybindingAction, type Keybindings } from '../keybindings'
 import { openInSystemApp } from '../settings/file'
 import type { SettingDef, SettingSectionId, SettingsPath } from '../settings/schema'
@@ -22,7 +23,6 @@ import { SETTING_DEFS } from '../settings/schema'
 import type { SettingsStore } from '../settings/store'
 import { getByPath, serializeSettings } from '../settings/store'
 import { SettingRow } from '../ui/SettingRow'
-import { COLORS, FONT } from '../ui/tokens'
 import { AcpAgentsSection } from './AcpAgentsSection'
 import { ModDot } from './listEditorParts'
 import { PresetsSection } from './PresetsSection'

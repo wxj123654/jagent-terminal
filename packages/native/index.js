@@ -707,6 +707,7 @@ module.exports.applyWindowAppearance = nativeBinding.applyWindowAppearance
 module.exports.createTerminalSession = nativeBinding.createTerminalSession
 module.exports.debugTriggerCrash = nativeBinding.debugTriggerCrash
 module.exports.destroyTerminalSession = nativeBinding.destroyTerminalSession
+module.exports.installGitGraphRowElement = nativeBinding.installGitGraphRowElement
 module.exports.installNativePanicHook = nativeBinding.installNativePanicHook
 module.exports.installTerminalElement = nativeBinding.installTerminalElement
 module.exports.notifyDesktop = nativeBinding.notifyDesktop

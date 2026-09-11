@@ -111,6 +111,19 @@ bun run build --app --skip-native     # 已有对应 .node 时，只重新编译
 
 图标源稿与多平台文件在 [`packages/app/assets/icons/`](packages/app/assets/icons/README.md)，预览见 [`design/app-icon.html`](design/app-icon.html)。修改 `app.svg` 后运行 `bun run icons` 更新 PNG / ICNS / ICO，再运行 `bun test scripts/icons.test.ts`。普通打包直接使用已入库资产，无需图像工具。
 
+#### Windows：GUI 子系统（双击不再多一个终端窗口）
+
+`dist/windows-x64/jagent.exe` 打包收尾会把 PE 头部 Subsystem 从 3（CUI/console）改成 2（WINDOWS_GUI）——不改的话双击启动时 Windows 会分配一个控制台窗口（`scripts/pe-subsystem.ts`；bun 1.3.13 的 `--windows-hide-console` **实测不生效**，上游修复 PR 在 Rust 重写后按 stale 关闭）。子命令 `bun scripts/pe-subsystem.ts <exe> [--check]` 可查/改任意 exe。
+
+GUI 子系统带来两条硬约束：
+
+- **所有 spawn 必须 `windowsHide: true`**：GUI 进程没有可继承的 console，不隐藏时 Windows 会给子进程新建**可见**控制台窗口（git 面板每次刷新闪黑框、ACP agent 闪 cmd 框）。`git/cli.ts`、`threads/acp.ts`、`settings/file.ts`、`errors/crashReport.ts` 均已处理。注意 **`Bun.spawn` 的 `windowsHide` 在 bun 1.3.13 实测无效**（子进程照样拿到窗口），新增子进程请用 `node:child_process` 的 `spawn`。
+- **从 cmd / PowerShell 运行 `jagent.exe` 不再回显 stdout/stderr**（无 console 可写）。排查启动问题看 `~/.j-agent/logs/`（`installErrorLog` + panic hook 落盘）。
+
+#### Windows：图标资源帧声明（任务栏图标不糊）
+
+`bun --windows-icon` 写 PE 图标时会产出**两个** `RT_GROUP_ICON` 组，而主组（`IDI_MYICON`）的 `dwBytesInRes` 只声明第一帧，于是 Windows 认为「这个图标最大只有 16×16」，把 16px 帧放大到任务栏需要的 32px（96 DPI）——图标发糊的根因（ICO 源文件本身七档齐全）。收尾步骤 `scripts/pe-icon-resources.ts` 把两个组都指向含帧最多的 blob 并重算 CheckSum，子命令 `bun scripts/pe-icon-resources.ts <exe> [--check]` 可查/改。
+
 ## 技术栈
 
 | 层 | 选型 |

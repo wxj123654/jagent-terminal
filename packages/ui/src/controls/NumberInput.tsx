@@ -11,10 +11,10 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
 
-import { Icon } from './Icon'
-import { inputFocus } from './keyboard'
-import { controlText } from './style'
-import { COLORS } from './tokens'
+import { Icon } from '../display/Icon'
+import { inputFocus } from '../keyboard'
+import { controlText } from '../theme/style'
+import { COLORS } from '../theme/tokens'
 
 export function NumberInput({
   value,

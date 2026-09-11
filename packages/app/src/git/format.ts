@@ -20,8 +20,7 @@ export function parseRefNames(raw: string): RefDecor[] {
     .split(', ')
     .filter(Boolean)
     .map((part) => {
-      if (part.startsWith('HEAD -> '))
-        return { kind: 'head', label: part.slice(8) }
+      if (part.startsWith('HEAD -> ')) return { kind: 'head', label: part.slice(8) }
       if (part === 'HEAD') return { kind: 'head', label: 'HEAD' }
       if (part.startsWith('tag: ')) return { kind: 'tag', label: part.slice(5) }
       if (part.includes('/')) return { kind: 'remote', label: part }
@@ -33,10 +32,7 @@ export function parseRefNames(raw: string): RefDecor[] {
  * 相对时间（git graph 行尾用）。粗粒度中文短句，与 Zed 的 "2 hours ago"
  * 同信息量。now 可注入（测试确定性）。
  */
-export function relativeTime(
-  unixSec: number,
-  nowMs: number = Date.now(),
-): string {
+export function relativeTime(unixSec: number, nowMs: number = Date.now()): string {
   const s = Math.max(0, Math.floor(nowMs / 1000) - unixSec)
   if (s < 60) return '刚刚'
   const m = Math.floor(s / 60)
@@ -89,9 +85,10 @@ export function formatCommitDate(unixSec: number, timeZone?: string): string {
     hourCycle: 'h23',
     timeZoneName: 'longOffset',
   })
-  const parts = Object.fromEntries(
-    fmt.formatToParts(d).map((p) => [p.type, p.value]),
-  ) as Record<string, string>
+  const parts = Object.fromEntries(fmt.formatToParts(d).map((p) => [p.type, p.value])) as Record<
+    string,
+    string
+  >
   const weekday = parts.weekday ?? WEEKDAY[d.getUTCDay()]
   const month = parts.month ?? MONTH[d.getUTCMonth()]
   const day = parts.day ?? pad2(d.getUTCDate())

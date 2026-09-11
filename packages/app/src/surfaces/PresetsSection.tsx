@@ -23,6 +23,7 @@
 import { useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 
+import { Badge, Icon, IconButton, SelectField, TextInput, COLORS, FONT } from '@jagent/ui'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
 import type { TerminalPreset } from '../threads/presets'
@@ -32,12 +33,6 @@ import {
   presetMatches,
   presetModified,
 } from '../threads/presets'
-import { Badge } from '../ui/Badge'
-import { Icon } from '../ui/Icon'
-import { IconButton } from '../ui/IconButton'
-import { SelectField } from '../ui/Select'
-import { TextInput } from '../ui/TextInput'
-import { COLORS, FONT } from '../ui/tokens'
 import { FieldRow, LinesField, ModDot } from './listEditorParts'
 
 export function PresetsSection({

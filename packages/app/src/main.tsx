@@ -15,6 +15,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import {
+  installGitGraphRowElement,
   installNativePanicHook,
   installTerminalElement,
   onNativePanic,
@@ -23,6 +24,7 @@ import {
   takePaintPerf,
 } from '@jagent/native'
 
+import { inputFocus, PLATFORM } from '@jagent/ui'
 import { appWindow, type AppRenderer } from './appWindow'
 import { emitError } from './errors/bus'
 import {
@@ -53,9 +55,7 @@ import {
   parseWorkspaceState,
   serializeWorkspaceState,
 } from './threads/workspaces'
-import { inputFocus } from './ui/keyboard'
 import type { PerfSample, PerfSource } from './ui/PerfHud'
-import { PLATFORM } from './ui/platform'
 
 // ── 性能 HUD 采样器（native 收口：takePaintPerf / getDebugFrameOverlayStats
 // 在此唯一可见）──
@@ -144,6 +144,7 @@ const lastCrash = await setupCrashReportingForApp('0.1.0')
 
 // ── seam 装配（顺序敏感：先注册元素，再开窗）──────────────────────────
 installTerminalElement()
+installGitGraphRowElement()
 
 // ── SettingsStore（~/.j-agent/settings.json；S3 事实源）──
 // 装配期读盘 await 后再建 ThreadStore（T2.5：nativeDeps 读设置面）。

@@ -61,7 +61,10 @@ describe('crashReport', () => {
   test('sidecarSpawnArgs：dev 指向独立 crash-handler.ts', () => {
     const { cmd, args } = sidecarSpawnArgs()
     expect(cmd).toBe(process.execPath)
-    expect(args.some((a) => a.endsWith('scripts/crash-handler.ts'))).toBe(true)
+    // 平台无关：Windows path.join 产反斜杠，统一归一后再比对尾段
+    expect(args.some((a) => a.replaceAll('\\', '/').endsWith('scripts/crash-handler.ts'))).toBe(
+      true,
+    )
     expect(args).not.toContain(CRASH_HANDLER_FLAG)
   })
 

@@ -27,6 +27,7 @@ import { join } from 'node:path'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { installTerminalElement, destroyTerminalSession, onSessionEvent } from '@jagent/native'
 
+import { inputFocus } from '@jagent/ui'
 import { createElement } from 'react'
 import { createGlobalKeydown, type GlobalKeydown } from '../packages/app/src/keybindings'
 import { App } from '../packages/app/src/plane/AgentPlane'
@@ -46,7 +47,6 @@ import { createNativeThreadDeps } from '../packages/app/src/threads/nativeDeps'
 import { type TerminalPreset } from '../packages/app/src/threads/presets'
 import { createThreadStore, type ThreadStore } from '../packages/app/src/threads/store'
 import { defaultWorkspace } from '../packages/app/src/threads/workspaces'
-import { inputFocus } from '../packages/app/src/ui/keyboard'
 
 /** 轮询直到谓词为真：advanceTime 驱动 fake clock（4ms 批处理），setTimeout 让出主线程（React 提交 + TSF 回调） */
 async function until(desc: string, pred: () => boolean, timeoutMs = 15000): Promise<void> {

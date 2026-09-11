@@ -19,8 +19,8 @@
 import { useWindowSize } from '@gpuix/react'
 import type { ReactNode } from 'react'
 
-import { Icon } from './Icon'
-import { COLORS, FONT } from './tokens'
+import { Icon } from '../display/Icon'
+import { COLORS, FONT } from '../theme/tokens'
 
 /** 卡片目标高（可缺省 = 内容自适应；设了则列表区独立滚动——原型 tool-dialog 固定高形态） */
 export function Modal({

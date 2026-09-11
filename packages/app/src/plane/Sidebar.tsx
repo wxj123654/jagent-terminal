@@ -11,13 +11,12 @@
 
 import { useState } from 'react'
 
+import type { AppPlatform } from '@jagent/ui'
+import { Icon, TRAFFIC_LIGHT_WIDTH, COLORS, FONT } from '@jagent/ui'
 import type { SettingsStore } from '../settings/store'
 import { useSettingsValue } from '../settings/useSettings'
 import type { ThreadStore } from '../threads/store'
-import { Icon } from '../ui/Icon'
-import type { AppPlatform } from '../ui/platform'
-import { TRAFFIC_LIGHT_WIDTH } from '../ui/platform'
-import { COLORS, FONT, SIZES } from '../ui/tokens'
+import { SIZES } from '../tokens'
 import type { DialogOpener } from './DialogHost'
 import { useTitleBarDrag, type WindowControls } from './TitleBar'
 import { WorkspaceList } from './WorkspaceList'

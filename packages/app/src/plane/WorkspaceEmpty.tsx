@@ -12,11 +12,10 @@
  * 按钮）+ 其余预设快捷行。pi 预设被删时 primary 隐藏（防御，仅菜单）。
  */
 
+import { Icon, COLORS, FONT } from '@jagent/ui'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
 import type { ThreadStore, Workspace } from '../threads/store'
-import { Icon } from '../ui/Icon'
-import { COLORS, FONT } from '../ui/tokens'
 import type { DialogOpener } from './DialogHost'
 
 export function WorkspaceEmpty({

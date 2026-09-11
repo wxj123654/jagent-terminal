@@ -16,7 +16,7 @@
 
 import { Component, Fragment, type ReactNode } from 'react'
 
-import { COLORS, FONT } from '../ui/tokens'
+import { COLORS, FONT } from '@jagent/ui'
 import { emitError } from './bus'
 
 type Props = {

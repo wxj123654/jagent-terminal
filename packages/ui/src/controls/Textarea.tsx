@@ -8,8 +8,8 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
 
-import { inputFocus } from './keyboard'
-import { controlBox, controlText } from './style'
+import { inputFocus } from '../keyboard'
+import { controlBox, controlText } from '../theme/style'
 
 export function Textarea({
   value,

@@ -8,9 +8,8 @@
 
 import { useEffect, useState } from 'react'
 
+import { Modal, ModalBody, ModalHeading, COLORS, FONT } from '@jagent/ui'
 import { clearErrors, listErrors, subscribeErrors, type AppError } from '../errors/bus'
-import { Modal, ModalBody, ModalHeading } from '../ui/Modal'
-import { COLORS, FONT } from '../ui/tokens'
 
 const LEVEL_COLOR: Record<AppError['level'], string> = {
   fatal: COLORS.bell,

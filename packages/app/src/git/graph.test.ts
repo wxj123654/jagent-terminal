@@ -12,11 +12,7 @@ import type { GraphCommit } from './cli'
 import { GitGraphData, firstParentChain } from './graph'
 
 /** 快捷构造：sha 用短代号，parents 引用其它代号 */
-function c(
-  sha: string,
-  parents: string[],
-  refNames: string[] = [],
-): GraphCommit {
+function c(sha: string, parents: string[], refNames: string[] = []): GraphCommit {
   return {
     sha,
     parents,
@@ -155,16 +151,9 @@ describe('GitGraphData would_overlap 修正', () => {
     //   h3(merge g3,e3) row0 lane0(g3) + lane1(e3 支线)
     //   e3 ← d3         row1 commit_lane = 1（等 e3 的只有支线自己）
     const g = new GitGraphData()
-    g.addCommits([
-      c('h3', ['g3', 'e3']),
-      c('e3', ['d3']),
-      c('g3', ['d3']),
-      c('d3', []),
-    ])
+    g.addCommits([c('h3', ['g3', 'e3']), c('e3', ['d3']), c('g3', ['d3']), c('d3', [])])
     const e3Line = g.lines.find((l) => l.rowSpan[0] === 0 && l.rowSpan[1] === 1)
-    expect(e3Line?.segments).toEqual([
-      { kind: 'curve', toColumn: 1, onRow: 1, merge: true },
-    ])
+    expect(e3Line?.segments).toEqual([{ kind: 'curve', toColumn: 1, onRow: 1, merge: true }])
   })
 })
 

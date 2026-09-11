@@ -37,7 +37,10 @@ bun test scripts/icons.test.ts
 ## 打包接线
 
 - **macOS**：`bun run build --app`；复制 `app.icns` 到 `JAgent.app/Contents/Resources/`，`Info.plist` 的 `CFBundleIconFile` 指向它，复制后再签名。裸 Mach-O 文件本身不显示应用图标，请使用 `.app`。
-- **Windows**：在 Windows 上执行 `bun run build`；`bun build --compile --windows-icon` 将 `app.ico` 写入 `.exe` 资源。Bun 的资源修改依赖 Windows API，跨系统构建会提前报错（即使带 `--skip-native`）。见 [Bun 文档](https://bun.com/docs/bundler/executables#windows-specific-flags)。
+- **Windows**：在 Windows 上执行 `bun run build`（打包前先退出正在运行的 `jagent.exe`，否则 bun 移动产物时会报 `EPERM`；`build.ts` 会提前探锁并给中文提示）；`bun build --compile --windows-icon` 将 `app.ico` 写入 `.exe` 资源。Bun 的资源修改依赖 Windows API，跨系统构建会提前报错（即使带 `--skip-native`）。见 [Bun 文档](https://bun.com/docs/bundler/executables#windows-specific-flags)。
+  - ⚠️ **bun 写入 PE 的 `RT_GROUP_ICON` 帧声明是错的**（bun 1.3.13 实测）：一个 ICO 会变成两个图标组，主组 `IDI_MYICON` 的 `dwBytesInRes` 只声明第一帧（=16px）。Windows 据此认为「这个图标最大只有 16×16」，把 16px 放大到任务栏需要的 32px（96 DPI）——**任务栏图标发糊的根因，与源稿/生成物无关**。`scripts/build.ts` 在打包后调用 `scripts/pe-icon-resources.ts` 把各组指向含帧最多的 blob（幂等，可用 `--check` 复核）。
+  - 另：zed/gpui 的 `load_icon()` 用 `LoadImageW(module, MAKEINTRESOURCE(1), …)` 取窗口图标，而 bun 写的组名是 `IDI_MYICON` / `#0`（没有序号 1）——窗口自身拿不到 HICON（`WM_GETICON` 返回 0），任务栏走**回退到 exe 图标**的路径；上面的帧声明修正正是修好了这条回退路径。
+  - 若任务栏 / 资源管理器仍显示旧图标：那是 Windows 图标缓存，重启 `explorer.exe` 或取消固定后重新固定即可。
 - **Linux**：提供 PNG/SVG，但当前输出裸二进制，没有 `.desktop`/AppImage 安装集成，不会自动显示图标。
 
 若 Finder / Dock 仍缓存旧图标，退出旧进程后使用新生成的 `.app`；必要时从 Dock 移除旧项并重新拖入。`bun run dev` 仍由 Bun 宿主启动，不等同于打包应用的图标。

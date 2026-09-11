@@ -22,7 +22,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
 
-import { COLORS, FONT } from './tokens'
+import { COLORS, FONT } from '@jagent/ui'
 
 /** 一次采样的快照（main.tsx 采样器产出；数字均为本窗差分/滚动窗读数） */
 export type PerfSample = {

@@ -10,13 +10,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:tes
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement, useState } from 'react'
 
+import { toast, ToastHost } from '@jagent/ui'
 import { currentActiveThreadId, navigateTarget, router } from '../router'
 import { memoryAdapter } from '../settings/file'
 import { createSettingsStore, type SettingsStore } from '../settings/store'
 import { builtinPresetOf } from '../threads/presets'
 import { createThreadStore, type ThreadStore } from '../threads/store'
 import { defaultWorkspace } from '../threads/workspaces'
-import { toast, ToastHost } from '../ui/Toast'
 import { DialogHost, type DialogState } from './DialogHost'
 
 let t: TestRoot
@@ -244,9 +244,7 @@ describe('Modal 窄窗钳制（D18）', () => {
     const Shell = () => {
       const [state, setState] = useState<DialogState>({ kind: 'tool', workspaceId: wsA })
       return (
-        <div
-          style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0 }}
-        >
+        <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0 }}>
           {state.kind !== 'none' ? (
             <DialogHost
               store={store}

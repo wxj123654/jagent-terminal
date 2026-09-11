@@ -11,6 +11,7 @@
   "dependencies": {
     "@gpuix/react": "file:../../.refs/gpuix/packages/react",
     "@jagent/native": "workspace:*",
+    "@jagent/ui": "workspace:*",
     "@tanstack/react-router": "1.170.32",
     "dequal": "2.0.3",
     "immer": "11.1.18",

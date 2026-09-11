@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from 'react'
 
-import { COLORS, FONT } from '../ui/tokens'
+import { COLORS, FONT } from '@jagent/ui'
 import { errorCount, subscribeErrors } from './bus'
 
 export function ErrorIndicator({ onOpen }: { onOpen: () => void }) {

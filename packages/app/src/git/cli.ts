@@ -6,13 +6,21 @@
  * --date-order、按 chunk 回调（512 行）。stdout 走 ReadableStream + 流式
  * TextDecoder 行缓冲——禁止全量 text() 拼接（大 repo 会卡爆）。
  *
- * 本模块只依赖 Bun 全局（spawn），不 import 项目内其他模块；解析行为由
+ * 本模块只依赖 node:child_process（spawn），不 import 项目内其他模块；解析行为由
  * cli.test.ts 锁定，真进程冒烟也在测试里跑（开发机必有 git）。
+ *
+ * ⚠ 为什么不用 Bun.spawn（性能相当，但 Windows 打包是 GUI 子系统）：
+ * GUI 子系统进程没有可继承的 console，spawn console 子进程时 Windows 会给
+ * 子进程新建一个**可见**控制台窗口（git 面板每次刷新都闪黑框）。压住它必须
+ * 传 CREATE_NO_WINDOW，而 Bun.spawn 的 `windowsHide` 在 bun 1.3.13 实测
+ * **无效**（子进程仍有 console 窗口）；node:child_process 的 spawn 走 libuv
+ * 的 UV_PROCESS_WINDOWS_HIDE_CONSOLE，实测有效。故本模块统一用后者。
  */
 
+import { spawn, type ChildProcess } from 'node:child_process'
+
 /** Zed 三字段 + 行内 CDV 元数据（email/committer 单行字段；body 含换行，选中时另拉） */
-const LOG_FORMAT =
-  '--format=%H%x00%P%x00%D%x00%h%x00%an%x00%ae%x00%at%x00%cn%x00%ce%x00%s'
+const LOG_FORMAT = '--format=%H%x00%P%x00%D%x00%h%x00%an%x00%ae%x00%at%x00%cn%x00%ce%x00%s'
 
 /** 流式回调的 chunk 大小（Zed GRAPH_CHUNK_SIZE 同量级：首屏快 + 避免 setState 风暴） */
 const CHUNK_SIZE = 512
@@ -93,25 +101,46 @@ export interface GitLogHandle {
   done: Promise<{ ok: boolean; error?: string }>
 }
 
-export function spawnGitLog(
-  cwd: string,
-  onChunk: (commits: GraphCommit[]) => void,
-): GitLogHandle {
-  let proc: Bun.Subprocess<'pipe', 'pipe', 'pipe'>
-  try {
-    proc = Bun.spawn(['git', 'log', LOG_FORMAT, '--date-order'], {
-      cwd,
-      stdout: 'pipe',
-      stderr: 'pipe',
+/**
+ * 统一的 git 子进程入口：Windows 上必须 windowsHide（见文件头注），
+ * stdio 固定 ['ignore','pipe','pipe']（stdin 不给子进程，防 git 等输入）。
+ */
+function spawnGit(args: string[], cwd: string): ChildProcess {
+  return spawn('git', args, {
+    cwd,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  })
+}
+
+/** 读完一个可读流（utf8 文本）；流为 null（子进程启动失败）时返回空串 */
+function collectText(stream: ChildProcess['stdout']): Promise<string> {
+  if (!stream) return Promise.resolve('')
+  return new Promise((resolve, reject) => {
+    let text = ''
+    stream.setEncoding('utf8')
+    stream.on('data', (chunk: string) => {
+      text += chunk
     })
-  } catch (e) {
-    // cwd 不存在 / git 不在 PATH：spawn 同步 throw（ENOENT）
-    const error = e instanceof Error ? e.message : String(e)
-    return { cancel: () => {}, done: Promise.resolve({ ok: false, error }) }
-  }
+    stream.on('end', () => resolve(text))
+    stream.on('error', reject)
+  })
+}
+
+/** 等子进程结束：返回 exit code；启动失败（ENOENT 等）reject */
+function waitExit(child: ChildProcess): Promise<number | null> {
+  return new Promise((resolve, reject) => {
+    child.once('error', reject)
+    child.once('close', (code) => resolve(code))
+  })
+}
+
+export function spawnGitLog(cwd: string, onChunk: (commits: GraphCommit[]) => void): GitLogHandle {
   const lb = new LineBuffer()
   let cancelled = false
   let pending: GraphCommit[] = []
+  /** stderr 尾部（环形截断；进程异常退出时附给错误消息） */
+  let stderrTail = ''
 
   const emit = () => {
     if (pending.length > 0 && !cancelled) {
@@ -120,17 +149,48 @@ export function spawnGitLog(
     }
   }
 
+  let child: ChildProcess
+  try {
+    child = spawnGit(['log', LOG_FORMAT, '--date-order'], cwd)
+  } catch (e) {
+    // 同步 throw（极罕见；ENOENT 走异步 'error'）
+    const error = e instanceof Error ? e.message : String(e)
+    return { cancel: () => {}, done: Promise.resolve({ ok: false, error }) }
+  }
+
+  // stderr 必须同时消费：只读 stdout 会让子进程在 stderr 缓冲区满时卡死
+  child.stderr?.setEncoding('utf8')
+  child.stderr?.on('data', (chunk: string) => {
+    stderrTail = (stderrTail + chunk).slice(-4096)
+  })
+
+  const finished = new Promise<{ code: number | null; spawnError?: string }>((resolve) => {
+    let settled = false
+    child.once('error', (e) => {
+      if (settled) return
+      settled = true
+      resolve({ code: null, spawnError: e.message })
+    })
+    child.once('close', (code) => {
+      if (settled) return
+      settled = true
+      resolve({ code })
+    })
+  })
+
   const done = (async () => {
+    /** 读 stdout 失败的原因（子进程启动失败/中途断开）；有 spawnError 时优先用后者 */
+    let readError: string | undefined
     try {
-      const reader = proc.stdout.getReader()
-      for (;;) {
-        const { done: closed, value } = await reader.read()
-        if (closed || cancelled) break
-        for (const line of lb.push(value)) {
-          const c = parseLogLine(line)
-          if (c) {
-            pending.push(c)
-            if (pending.length >= CHUNK_SIZE) emit()
+      if (child.stdout) {
+        for await (const chunk of child.stdout) {
+          if (cancelled) break
+          for (const line of lb.push(chunk as Uint8Array)) {
+            const c = parseLogLine(line)
+            if (c) {
+              pending.push(c)
+              if (pending.length >= CHUNK_SIZE) emit()
+            }
           }
         }
       }
@@ -141,19 +201,22 @@ export function spawnGitLog(
         }
         emit()
       }
-      const code = await proc.exited
-      if (cancelled) return { ok: false, error: 'cancelled' }
-      if (code !== 0) {
-        const err = await new Response(proc.stderr).text()
-        return {
-          ok: false,
-          error: err.trim() || `git log exited with ${code}`,
-        }
-      }
-      return { ok: true }
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+      // 子进程早退时 node 的 stdout 流会以 "Premature close" 之类的错误结束；
+      // 真因在 spawnError/stderr 里，这里只记下备选消息
+      readError = e instanceof Error ? e.message : String(e)
     }
+    const { code, spawnError } = await finished
+    if (spawnError) return { ok: false, error: spawnError }
+    if (cancelled) return { ok: false, error: 'cancelled' }
+    if (readError) return { ok: false, error: stderrTail.trim() || readError }
+    if (code !== 0) {
+      return {
+        ok: false,
+        error: stderrTail.trim() || `git log exited with ${code}`,
+      }
+    }
+    return { ok: true }
   })()
 
   return {
@@ -162,7 +225,7 @@ export function spawnGitLog(
       cancelled = true
       pending = []
       try {
-        proc.kill()
+        child.kill()
       } catch {
         // 已退出
       }
@@ -174,15 +237,8 @@ export function spawnGitLog(
 /** repo root 检测（git rev-parse --show-toplevel）；非 repo / 无 git → null */
 export async function findRepoRoot(cwd: string): Promise<string | null> {
   try {
-    const proc = Bun.spawn(['git', 'rev-parse', '--show-toplevel'], {
-      cwd,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    const [out, code] = await Promise.all([
-      new Response(proc.stdout).text(),
-      proc.exited,
-    ])
+    const child = spawnGit(['rev-parse', '--show-toplevel'], cwd)
+    const [out, code] = await Promise.all([collectText(child.stdout), waitExit(child)])
     if (code !== 0) return null
     return out.trim() || null
   } catch {
@@ -192,18 +248,13 @@ export async function findRepoRoot(cwd: string): Promise<string | null> {
 
 /** 一次性 git 子进程（非流式）。stdout 全文返回；非 0 抛 stderr。 */
 export async function runGit(cwd: string, args: string[]): Promise<string> {
-  const proc = Bun.spawn(['git', ...args], {
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
+  const child = spawnGit(args, cwd)
   const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
+    collectText(child.stdout),
+    collectText(child.stderr),
+    waitExit(child),
   ])
-  if (code !== 0)
-    throw new Error(err.trim() || `git ${args[0] ?? ''} exited with ${code}`)
+  if (code !== 0) throw new Error(err.trim() || `git ${args[0] ?? ''} exited with ${code}`)
   return out
 }
 
@@ -258,26 +309,14 @@ export async function showPatch(cwd: string, sha: string): Promise<string> {
 }
 
 /** 提交说明正文（%b，不含 subject）。多段以换行保留；无正文返回空串。 */
-export async function showCommitBody(
-  cwd: string,
-  sha: string,
-): Promise<string> {
+export async function showCommitBody(cwd: string, sha: string): Promise<string> {
   const raw = await runGit(cwd, ['log', '-1', '--format=%b', sha])
   return raw.replace(/\n+$/, '')
 }
 
 /** 单提交变更文件（行内详情文件树） */
-export async function listChangedFiles(
-  cwd: string,
-  sha: string,
-): Promise<ChangedFile[]> {
-  const raw = await runGit(cwd, [
-    'show',
-    '--format=',
-    '--numstat',
-    '--no-color',
-    sha,
-  ])
+export async function listChangedFiles(cwd: string, sha: string): Promise<ChangedFile[]> {
+  const raw = await runGit(cwd, ['show', '--format=', '--numstat', '--no-color', sha])
   return parseChangedFiles(raw)
 }
 

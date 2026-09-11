@@ -5,8 +5,8 @@
  * 本组件 = chat 特化（CHAT pill + ChatAgent seam 经 store.sendChatMessage）。
  */
 
+import { COLORS } from '@jagent/ui'
 import type { ChatThread } from '../threads/store'
-import { COLORS } from '../ui/tokens'
 import { ConversationView } from './ConversationView'
 import type { SurfaceProps } from './registry'
 

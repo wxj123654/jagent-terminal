@@ -17,16 +17,19 @@
 
 import type { ReactElement } from 'react'
 
+import {
+  IconButton,
+  NumberInput,
+  RangeInput,
+  SelectField,
+  Textarea,
+  TextInput,
+  Toggle,
+  COLORS,
+  FONT,
+} from '@jagent/ui'
 import type { SettingDef } from '../settings/schema'
-import { IconButton } from './IconButton'
-import { NumberInput } from './NumberInput'
 import { PhaseBadge } from './PhaseBadge'
-import { RangeInput } from './RangeInput'
-import { SelectField } from './Select'
-import { Textarea } from './Textarea'
-import { TextInput } from './TextInput'
-import { Toggle } from './Toggle'
-import { COLORS, FONT } from './tokens'
 
 export type SettingValue = boolean | string | number
 

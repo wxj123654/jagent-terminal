@@ -7,12 +7,12 @@
  * 经 mount(cwd) 幂等换流（D5：git 数据非会话，不进 ThreadStore）。
  */
 
+import { COLORS, FONT } from '@jagent/ui'
 import { GitGraphView } from '../git/components/GitGraphView'
 import type { GitGraphStore } from '../git/store'
 import type { SettingsStore } from '../settings/store'
 import type { ThreadStore, Workspace } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
-import { COLORS, FONT } from '../ui/tokens'
 import type { DialogOpener } from './DialogHost'
 import { WorkspaceEmpty } from './WorkspaceEmpty'
 

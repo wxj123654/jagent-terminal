@@ -9,6 +9,7 @@
     "@gpuix/react": "file:../.refs/gpuix/packages/react",
     "@jagent/app": "workspace:*",
     "@jagent/native": "workspace:*",
+    "@jagent/ui": "workspace:*",
     "react": "19.2.8"
   }
 }

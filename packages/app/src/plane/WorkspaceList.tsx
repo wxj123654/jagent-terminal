@@ -14,6 +14,7 @@
 
 import { useRef, useState } from 'react'
 
+import { Icon, COLORS, FONT } from '@jagent/ui'
 import type { SettingsStore } from '../settings/store'
 import type { ThreadStore } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
@@ -23,8 +24,7 @@ import {
   timeGroupsOf,
   type TimeGroup,
 } from '../threads/workspaces'
-import { Icon } from '../ui/Icon'
-import { COLORS, FONT, SIZES } from '../ui/tokens'
+import { SIZES } from '../tokens'
 import type { DialogOpener } from './DialogHost'
 import { ThreadRow } from './ThreadRow'
 
@@ -53,7 +53,9 @@ export function WorkspaceList({
   const trimmed = query.trim()
 
   if (trimmed !== '') {
-    return <SearchResultsWithDialog store={store} settings={settings} query={trimmed} dialog={dialog} />
+    return (
+      <SearchResultsWithDialog store={store} settings={settings} query={trimmed} dialog={dialog} />
+    )
   }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, overflowY: 'scroll' }}>
@@ -78,13 +80,7 @@ export function WorkspaceList({
 
 // ── 区头（v2 sec-head：label + ghost ＋）────────────────────────────
 
-function SectionHeader({
-  label,
-  children,
-}: {
-  label: string
-  children?: React.ReactNode
-}) {
+function SectionHeader({ label, children }: { label: string; children?: React.ReactNode }) {
   return (
     <div
       style={{
@@ -193,10 +189,7 @@ function TimeGroupedSessions({
   const hiddenTotal =
     limit === Infinity
       ? 0
-      : Math.max(
-          0,
-          threads.length - visible.reduce((n, v) => n + v.slice.length, 0),
-        )
+      : Math.max(0, threads.length - visible.reduce((n, v) => n + v.slice.length, 0))
 
   return (
     <>
@@ -260,13 +253,7 @@ function TimeGroupedSessions({
 
 // ── 会话区（无归属）─────────────────────────────────────────────────
 
-function TempSessionsSection({
-  store,
-  dialog,
-}: {
-  store: ThreadStore
-  dialog: DialogOpener
-}) {
+function TempSessionsSection({ store, dialog }: { store: ThreadStore; dialog: DialogOpener }) {
   // 无归属会话 id 串（稳定订阅粒度：增删/顺序）
   const threadIds = useThreadStore(store, (s) =>
     s.threads
@@ -627,6 +614,11 @@ function SearchResultsWithDialog({
   dialog: DialogOpener
 }) {
   return (
-    <SearchResults store={store} settings={settings} query={query} onManage={dialog.openManageSession} />
+    <SearchResults
+      store={store}
+      settings={settings}
+      query={query}
+      onManage={dialog.openManageSession}
+    />
   )
 }

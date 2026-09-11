@@ -125,7 +125,10 @@ export const TIME_GROUP_LABELS: Record<TimeGroup, string> = {
 /** 会话按 createdAt 归入时间桶（新→旧序内保持创建序）。分组阈值：
  *  今天 = 当天 0 点后；昨天 = 前一天 0 点后；本周 = 7 天内（原型同语义）。
  *  now 注入可测。 */
-export function timeGroupsOf(threads: Thread[], now: number = Date.now()): Map<TimeGroup, Thread[]> {
+export function timeGroupsOf(
+  threads: Thread[],
+  now: number = Date.now(),
+): Map<TimeGroup, Thread[]> {
   const day0 = new Date(now)
   day0.setHours(0, 0, 0, 0)
   const todayStart = day0.getTime()

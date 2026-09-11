@@ -9,6 +9,7 @@
  */
 
 import { useWindowSize } from '@gpuix/react'
+import { IconButton, PLATFORM, ToastHost, COLORS, FONT } from '@jagent/ui'
 import { useEffect, useRef, useState } from 'react'
 import type { LastCrash } from '../errors/crashReport'
 import { ErrorIndicator } from '../errors/ErrorIndicator'
@@ -19,12 +20,8 @@ import { useSettingsValue } from '../settings/useSettings'
 import type { ThreadStore } from '../threads/store'
 import { displayTitle } from '../threads/terminal'
 import { useThreadStore } from '../threads/useThreadStore'
-import { IconButton } from '../ui/IconButton'
 import type { PerfSource } from '../ui/PerfHud'
 import { PerfHud } from '../ui/PerfHud'
-import { PLATFORM } from '../ui/platform'
-import { ToastHost } from '../ui/Toast'
-import { COLORS, FONT } from '../ui/tokens'
 import { DialogHost, type DialogState } from './DialogHost'
 import { dialogKeyboard } from './dialogKeyboard'
 import { Pane } from './Pane'
@@ -162,11 +159,7 @@ export function App({
         }}
       >
         {!narrow && !sidebarHidden ? (
-          <SidebarHeader
-            platform={PLATFORM}
-            windowControls={windowControls}
-            width={sidebarWidth}
-          />
+          <SidebarHeader platform={PLATFORM} windowControls={windowControls} width={sidebarWidth} />
         ) : null}
         <TitleBar
           title={title}

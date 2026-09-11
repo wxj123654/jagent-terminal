@@ -11,15 +11,20 @@
 
 import { useState } from 'react'
 
+import {
+  Icon,
+  Modal,
+  ModalBody,
+  ModalHeading,
+  SelectField,
+  TextInput,
+  COLORS,
+  FONT,
+} from '@jagent/ui'
 import type { AcpAgent } from '../settings/schema'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
 import type { ThreadStore, Workspace } from '../threads/store'
-import { Icon } from '../ui/Icon'
-import { Modal, ModalBody, ModalHeading } from '../ui/Modal'
-import { SelectField } from '../ui/Select'
-import { TextInput } from '../ui/TextInput'
-import { COLORS, FONT } from '../ui/tokens'
 
 function agentCommandSummary(a: AcpAgent): string {
   return [a.command, ...a.args].filter(Boolean).join(' ')

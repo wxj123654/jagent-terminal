@@ -92,6 +92,9 @@ export function createAcpConnection(opts: AcpConnectionOptions): AcpConnection {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: opts.env ? { ...process.env, ...opts.env } : process.env,
     ...(isWin ? { shell: true } : {}),
+    // Windows 打包是 GUI 子系统（无 console 可继承）：不给子进程隐藏窗口，
+    // cmd.exe 会新建一个可见控制台窗口（每次连 agent 闪黑框）。
+    windowsHide: true,
   })
 
   let nextId = 1

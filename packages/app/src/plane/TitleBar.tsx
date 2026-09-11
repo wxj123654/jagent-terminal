@@ -27,10 +27,9 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 
-import { Icon } from '../ui/Icon'
-import type { AppPlatform } from '../ui/platform'
-import { TRAFFIC_LIGHT_WIDTH } from '../ui/platform'
-import { COLORS, FONT, SIZES } from '../ui/tokens'
+import type { AppPlatform } from '@jagent/ui'
+import { Icon, TRAFFIC_LIGHT_WIDTH, COLORS, FONT } from '@jagent/ui'
+import { SIZES } from '../tokens'
 
 /** 窗口控制 seam（main.tsx 装配：闭包 renderer；测试注入 spy） */
 export type WindowControls = {
@@ -291,11 +290,7 @@ export function TitleBar({
             hover: { backgroundColor: COLORS.surfaceHover },
           }}
         >
-          <Icon
-            name="panelLeft"
-            size={14}
-            color={sidebarHidden ? COLORS.muted : COLORS.text}
-          />
+          <Icon name="panelLeft" size={14} color={sidebarHidden ? COLORS.muted : COLORS.text} />
         </div>
       )}
       <div
