@@ -224,3 +224,34 @@ test('short nested content and overflow-x inner do not steal a vertical wheel', 
     t.unmount()
   }
 })
+
+/**
+ * 带 padding 的滚动容器在内容本来就放得下时不得滚动。
+ *
+ * GPUIX 会给每个元素挂一个 `absolute().size_full()` 的边界记录辅助节点，
+ * 而 GPUI 的滚动范围按子元素包围盒 + padding 计算：辅助节点把内容包围盒
+ * 撑到容器自身尺寸，padding 于是变成凭空多出的可滚范围（上 10 + 下 10 = 20px）。
+ * 修复后范围按“普通流子元素最远边缘 + 末端 padding”计算，absolute 子元素按自身
+ * 边缘且不追加 padding（zed#63786）。
+ */
+test('a padded scroll container that fits its content stays put', () => {
+  const t = createTestRoot({ width: 500, height: 400 })
+  try {
+    t.render(
+      <div testId="padded" style={{ width: 300, height: 200, padding: 10, overflow: 'scroll' }}>
+        <div style={{ width: 120, height: 40, flexShrink: 0 }}>
+          <text>short content</text>
+        </div>
+      </div>,
+    )
+    const padded = t.renderer.findByType('div').find((d) => d.testId === 'padded')!
+
+    wheel(t, 80, 60, 0, -50)
+    expect(yOf(t, padded.id)).toBe(0)
+
+    wheel(t, 80, 60, -50, 0)
+    expect(xOf(t, padded.id)).toBe(0)
+  } finally {
+    t.unmount()
+  }
+})

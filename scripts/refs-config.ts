@@ -47,6 +47,7 @@ export const MANIFEST = {
       'packages/native/src/style.rs',
       'packages/native/src/test_renderer.rs',
     ],
+    '0003-bounds-tracker-inset.patch': ['packages/native/src/automation.rs'],
   },
   'gpuix-zed': {
     '0001-gpui-workspace-root.patch': ['crates/gpui/Cargo.toml'],
@@ -54,9 +55,10 @@ export const MANIFEST = {
       'crates/gpui/src/app/visual_test_context.rs',
       'crates/gpui_windows/src/window.rs',
     ],
-    '0003-nested-scroll-chain.patch': [
+    '0003-scroll-chain-and-range.patch': [
       'crates/gpui/src/elements/div.rs',
       'crates/gpui/src/elements/list.rs',
+      'crates/gpui/src/taffy.rs',
       'crates/gpui/src/window.rs',
     ],
   },

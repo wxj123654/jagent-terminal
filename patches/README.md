@@ -20,7 +20,7 @@ setup 快速路径检查 gpuix pin、该 commit 中的 zed gitlink、两个仓�
 源码变更后仍须主动重建 dist/native（存在性检查不保证构建产物新鲜）。
 export 与 setup 复用 `scripts/refs-state.ts`，导出也拒绝 staged 或未管理改动。
 
-## 剩余补丁（3 份）
+## 剩余补丁（5 份）
 
 ### gpuix/（pin `e948b20` @ remorses/gpuix）
 
@@ -36,13 +36,25 @@ export 与 setup 复用 `scripts/refs-state.ts`，导出也拒绝 staged 或未�
 - `custom_elements/input.rs`：测量布局使用捕获的文本样式计算行高，而不是取
   已退出元素样式栈的 window 默认行高。caret、选区和 textarea 高度依赖此修复。
 
+`0003-bounds-tracker-inset.patch` 包含：
+
+- `automation.rs`：`bounds_tracker` 从 `absolute().size_full()` 改成
+  `absolute().inset(px(0.))`。absolute 子元素从 padding box 原点开始、却拿 padding box
+  的尺寸，在带 padding 的父元素里向右下多出 `padding.right`/`padding.bottom`；GPUI 用
+  子元素包围盒 + padding 算滚动范围，于是**内容本来就放得下的 padding 容器被凭空允许滚动
+  padding 那么多**（右侧 Git 详情文件树 `padding: 10` 多出 20px 可滚范围）。辅助节点只
+  为记录坐标／文本选择起区，不需要超出元素自身盒，`inset: 0` 正好是元素盒。
+
+  （gpuix-zed `0003` 的范围算法已把 absolute 子元素按自身边缘计算，单看它也能消除这
+  个多出的范围；两处都改是为了不依赖上游未合并 PR 的行为，并让 bounds 记录回到元素自身盒。）
+
 ### gpuix-zed/（gpuix gitlink pin `8b94def` @ remorses/zed）
 
 | patch | 必要性 |
 |---|---|
 | `0001-gpui-workspace-root.patch` | gpui Cargo.toml 显式 `workspace = "../.."`，使外部 path 依赖按 zed 根继承 workspace 字段。项目侧替代方案尚未验证。 |
 | `0002-hide-offscreen-test-window.patch` | Windows offscreen 测试窗口用 `show:false`，并按原始 bounds 放置隐藏窗口，避免 clamp 和闪窗。`show:true` 路径另加显式 `ShowWindow`，避免 `bun run` 注入的 `STARTUPINFO SW_HIDE` 把正式窗口吞掉。macOS 保持上游行为。 |
-| `0003-nested-scroll-chain.patch` | 嵌套滚动按浏览器式“输入序列锁定目标”消费滚轮：窗口级 `ScrollSequence`（`window.rs`）记录锁定容器 + 序列首个 wheel 位置，500ms 空闲、指针相对首个位置位移 ≥10px、modifier 变化、指针离开锁定容器或 `TouchPhase` 结束时开新序列；序列内只有锁定容器可动，到边界不交接。div 与 virtual-list 只在确实能移动时认领。详见 `docs/nested-scroll-research.md`。 |
+| `0003-scroll-chain-and-range.patch` | 两件事，共用 `div.rs`／`list.rs`／`window.rs` 三个源文件（原先只覆盖后两个）：① 嵌套滚动按浏览器式“输入序列锁定目标”消费滚轮——窗口级 `ScrollSequence`（`window.rs`）记录锁定容器 + 序列首个 wheel 位置，500ms 空闲、指针相对首个位置位移 ≥10px、modifier 变化、指针离开锁定容器或 `TouchPhase` 结束时开新序列；序列内只有锁定容器可动，到边界不交接；div 与 virtual-list 只在确实能移动时认领。详见 `docs/nested-scroll-research.md`。② 滚动范围改为跟随子元素（zed#63786 部分移植）：普通流子元素取最远右下边缘 + 末端 padding，`position: absolute` 子元素取自身边缘且不追加 padding，无子元素时回退旧的 `content_size + padding`；`taffy.rs` 新增 `position_is_absolute`、`window.rs` 新增 `layout_position_is_absolute`。上游该 PR 的 `overscroll-behavior`／逐事件滚动接力与 ① 语义冲突，未移植。 |
 
 ## 已迁回项目（第一批）
 

@@ -102,8 +102,9 @@ APZ `WheelBlockState`：
 
 ## 6. 项目实现（本次落地）
 
-`patches/gpuix-zed/0003-nested-scroll-chain.patch` 现覆盖三个源文件：
-`crates/gpui/src/window.rs`（新增序列状态与 API）、`elements/div.rs`、`elements/list.rs`。
+`patches/gpuix-zed/0003-scroll-chain-and-range.patch` 现覆盖四个源文件：
+`crates/gpui/src/window.rs`（新增序列状态与 API）、`elements/div.rs`、`elements/list.rs`、
+`crates/gpui/src/taffy.rs`（滚动范围改为跟随子元素，见 §7）。
 
 窗口级状态 `ScrollSequence`：
 
@@ -149,4 +150,22 @@ APZ `WheelBlockState`：
 - Chromium `input_handler.cc`（`ScrollBegin` / `ScrollUpdate` / `ScrollLatchedScroller` / `FindNodeToLatch` / `CanConsumeDelta`）：`cc/input/`
 - Blink `mouse_wheel_event_manager.cc`、`components/input/mouse_wheel_event_queue.cc`
 - Firefox `dom/events/WheelHandlingHelper.cpp`、`gfx/layers/apz/src/InputBlockState.cpp`、`gfx/layers/apz/src/InputQueue.cpp`、`modules/libpref/init/StaticPrefList.yaml`
-- 项目内：`patches/gpuix-zed/0003-nested-scroll-chain.patch`、`e2e/scroll-chain.e2e.test.tsx`、`.refs/gpuix/zed/crates/gpui/src/gestures.rs`
+- 项目内：`patches/gpuix-zed/0003-scroll-chain-and-range.patch`、`e2e/scroll-chain.e2e.test.tsx`、`.refs/gpuix/zed/crates/gpui/src/gestures.rs`
+
+## 9. 附：滚动范围跟随子元素（zed#63786 部分移植）
+
+同一个补丁里还带上了滚动范围的 CSS 语义：普通流子元素取最远右下边缘 + 末端 padding，
+`position: absolute` 子元素取自身边缘且**不**追加末端 padding，无子元素时回退旧的
+`content_size + padding`；新增 `TaffyLayoutEngine::position_is_absolute` 与
+`Window::layout_position_is_absolute`（`&self` 只读）。
+
+动机是 GPUIX 的排障：`bounds_tracker` 是 `absolute().size_full()` 的零尺寸 canvas，absolute
+子元素从 padding box 原点起算、却拿 padding box 的尺寸，所以带 padding 的元素被它多撑出
+`padding.right`/`padding.bottom`——内容本来就放得下的容器于是能滚 padding 那么多
+（Git 详情右栏 `padding: 10` → 20px 假范围）。修法有两处：这里的范围算法按 absolute 子元素
+自身边缘计算，以及 gpuix `0003-bounds-tracker-inset.patch` 把辅助节点改成 `inset: 0`。
+
+上游 **未移植** 的部分：`overscroll-behavior`（`Style`／`Styled` 新 API）与
+`Window::take_scroll_wheel`／`scroll_wheel_taken` 的逐事件滚动接力——后者与本补丁的
+「序列内到边界不交接」直接冲突（上游测试要求同一串事件内层到底后父层接管）。
+上游该 PR 状态：closed、未合并。

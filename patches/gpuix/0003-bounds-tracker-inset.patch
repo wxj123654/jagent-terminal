@@ -1,0 +1,28 @@
+diff --git a/packages/native/src/automation.rs b/packages/native/src/automation.rs
+index 8a19765..67797fb 100644
+--- a/packages/native/src/automation.rs
++++ b/packages/native/src/automation.rs
+@@ -84,6 +84,14 @@ pub fn all_bounds() -> HashMap<u64, ElementBounds> {
+     BOUNDS.with(|cell| cell.borrow().clone())
+ }
+ 
++/// Zero-size canvas child of the element's own box, recording the box during
++/// paint. Stretch it with `inset: 0`, never `size_full()`: an
++/// `absolute().size_full()` child starts at the padding box origin but takes the
++/// padding box's size, so it overflows a padded element by
++/// `padding.right`/`padding.bottom`. GPUI derives the scroll range from the child
++/// bounding box plus padding, so that overflow made every padded scroll container
++/// whose content fits scrollable by exactly its padding. With `inset: 0` the box
++/// stays on the element's own box.
+ pub fn bounds_tracker(id: u64, selection_start: Option<bool>) -> impl IntoElement {
+     canvas(
+         |bounds, _, _| bounds,
+@@ -95,7 +103,7 @@ pub fn bounds_tracker(id: u64, selection_start: Option<bool>) -> impl IntoElemen
+         },
+     )
+     .absolute()
+-    .size_full()
++    .inset(px(0.))
+ }
+ 
+ enum ClockMode {
