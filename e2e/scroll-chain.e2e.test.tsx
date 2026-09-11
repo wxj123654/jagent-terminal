@@ -255,3 +255,74 @@ test('a padded scroll container that fits its content stays put', () => {
     t.unmount()
   }
 })
+
+test('padded scroll containers expose no phantom scroll range', () => {
+  const t = createTestRoot({ width: 500, height: 400 })
+  try {
+    t.render(
+      <div testId="outer" style={{ width: 260, height: 300, overflowY: 'scroll' }}>
+        {/* 内容 40 高 < 内容盒 140：padding 不该造出可滚动范围 */}
+        <div
+          testId="padded-fitting"
+          style={{
+            width: 240,
+            height: 160,
+            overflowY: 'scroll',
+            padding: 10,
+            flexShrink: 0,
+          }}
+        >
+          <div testId="fitting-child" style={{ width: 100, height: 40, flexShrink: 0 }} />
+        </div>
+        {/* 内容 500 高 > 内容盒 180：真实范围 = 500 + 2*10 - 200 = 320 */}
+        <div
+          testId="padded-overflowing"
+          style={{
+            width: 240,
+            height: 200,
+            overflowY: 'scroll',
+            padding: 10,
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ width: 100, height: 500, flexShrink: 0 }} />
+        </div>
+        <div style={{ height: 900, flexShrink: 0 }} />
+      </div>,
+    )
+    const outer = t.renderer.findByType('div').find((d) => d.testId === 'outer')!
+    const fitting = t.renderer.findByType('div').find((d) => d.testId === 'padded-fitting')!
+    const overflowing = t.renderer.findByType('div').find((d) => d.testId === 'padded-overflowing')!
+    const child = t.renderer.findByType('div').find((d) => d.testId === 'fitting-child')!
+
+    // 记录盒是元素自己的盒子：padding 只内缩子元素，不再整体偏移元素原点。
+    expect(
+      t.renderer
+        .getElementBounds(fitting.id)!
+        .slice(0, 2)
+        .map((v) => v + 0),
+    ).toEqual([0, 0])
+    expect(
+      t.renderer
+        .getElementBounds(child.id)!
+        .slice(0, 2)
+        .map((v) => v + 0),
+    ).toEqual([10, 10])
+
+    // 曾经的幽灵滚动量恰等于 padding 总和（10*2 = 20），现在没有范围。
+    t.renderer.scrollTo(fitting.id, -100000, -100000)
+    expect(xOf(t, fitting.id)).toBe(0)
+    expect(yOf(t, fitting.id)).toBe(0)
+
+    // 溢出容器的范围没被这次修复改小。
+    t.renderer.scrollTo(overflowing.id, 0, -100000)
+    expect(yOf(t, overflowing.id)).toBe(-320)
+
+    // 幽灵范围消失后，滚轮不再被内层吞掉：父层直接接管整段位移。
+    wheel(t, 80, 60, 0, -50)
+    expect(yOf(t, fitting.id)).toBe(0)
+    expect(yOf(t, outer.id)).toBe(-50)
+  } finally {
+    t.unmount()
+  }
+})

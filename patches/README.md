@@ -20,9 +20,9 @@ setup 快速路径检查 gpuix pin、该 commit 中的 zed gitlink、两个仓�
 源码变更后仍须主动重建 dist/native（存在性检查不保证构建产物新鲜）。
 export 与 setup 复用 `scripts/refs-state.ts`，导出也拒绝 staged 或未管理改动。
 
-## 剩余补丁（5 份）
+## 剩余补丁（gpuix 2 份 + gpuix-zed 3 份）
 
-### gpuix/（pin `e948b20` @ remorses/gpuix）
+### gpuix/（pin `6b4be86` @ remorses/gpuix）
 
 `0002-jagent-native-seam.patch` 包含：
 
@@ -48,7 +48,7 @@ export 与 setup 复用 `scripts/refs-state.ts`，导出也拒绝 staged 或未�
   （gpuix-zed `0003` 的范围算法已把 absolute 子元素按自身边缘计算，单看它也能消除这
   个多出的范围；两处都改是为了不依赖上游未合并 PR 的行为，并让 bounds 记录回到元素自身盒。）
 
-### gpuix-zed/（gpuix gitlink pin `8b94def` @ remorses/zed）
+### gpuix-zed/（gpuix gitlink pin `1f9d1cd` @ remorses/zed）
 
 | patch | 必要性 |
 |---|---|

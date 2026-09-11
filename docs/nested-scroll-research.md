@@ -137,12 +137,64 @@ APZ `WheelBlockState`：
 2. 未实现 Chromium 的“方向变化且首个 GestureScrollUpdate 未被消费则断序列”启发式。
 3. DOM/JS 层 `onScroll` 本质是 wheel 回调，锁定被拒绝时仍会触发（与浏览器里 wheel 事件照常派发一致，但不要用它当“已滚动”信号）。
 
-## 7. 未验证事项与验证方法
+## 7. 幽灵滚动量：padding 被重复计入 `content_size`（2026-09-10 定位，09-11 修复）
+
+**现象**：Git 图提交详情右栏（`git-cdv-files`，`padding: 10`）内容只有一行路径、
+完全不溢出，却能上下滚 20px（滚到底留一段空白）。带 padding 的滚动容器一律如此。
+
+**根因**（gpui 的算法 + 本项目 automation 层的组合）：
+
+1. gpui 用滚动容器**子节点的包围盒**算可滚动尺寸：
+   `content_size = child_max - child_min`（`crates/gpui/src/elements/div.rs` 的 prepaint），
+   再 `scroll_max = content_size + padding_size - bounds.size`（`Interactivity::scroll_max`）。
+2. automation 层为了给每个宿主元素记录盒子，往元素里塞了一个
+   `absolute().size_full()` 的 canvas 子节点（`packages/native/src/automation.rs` 的
+   `bounds_tracker`）。全尺寸子节点把 `content_size` 钉在元素自身尺寸上。
+3. 两条相加：内容不溢出时 `content_size == bounds.size`，于是
+   `scroll_max == padding_size` —— padding 被算了两遍，凭空多出 padding 总量的
+   可滚动范围；内容溢出时同样多报 padding 总量。
+
+最小复现（修复前实测；容器 300×200 + `padding: 10` → 正确值应为 `max(0, 子内容高 - 180)`）：
+
+| 子内容高 | 实测 `scroll_max.y` | 正确值 |
+| --- | --- | --- |
+| 20 / 50 / 180 | 20 | 0 |
+| 200 | 20 | 20 |
+| 300 | 120 | 120 |
+| 500 | 320 | 320 |
+
+`padding: 0` 时不出现（`scroll_max` 恰好为 0），`padding: 40` 时多出 80 —— 多出的量恒等于 padding 总和，
+与内容无关，这是判断该 bug 的特征。
+
+**修复两条腿**（2026-09-11）：
+
+1. `patches/gpuix/0003-bounds-tracker-inset.patch`：`bounds_tracker` 从
+   `absolute().size_full()` 改成 `absolute().inset(px(0.))`。辅助 canvas 只为记录坐标／
+   文本选择起区，不需要超出元素自身盒；`inset: 0` 让记录盒回到元素自己的盒子（padding 只
+   内缩子元素，不再整体偏移原点），`getElementBounds` 因此返回真实布局盒。
+2. `patches/gpuix-zed/0003-scroll-chain-and-range.patch` 的范围算法：普通流子元素取最远
+   右下边缘 + 末端 padding，`position: absolute` 子元素取自身边缘且**不**追加末端 padding，
+   无子元素时回退旧的 `content_size + padding`；新增
+   `TaffyLayoutEngine::position_is_absolute` 与 `Window::layout_position_is_absolute`
+   （`&self` 只读）。absolute 辅助节点因此不再贡献幽灵范围。
+
+两处都改是为了不依赖上游未合并 PR 的行为，并让 bounds 记录回到元素自身盒。
+
+上游 **未移植** 的部分：该 PR 的 `overscroll-behavior`（`Style`／`Styled` 新 API）与
+`Window::take_scroll_wheel`／`scroll_wheel_taken` 的逐事件滚动接力——后者与本补丁的
+「序列内到边界不交接」直接冲突（上游测试要求同一串事件内层到底后父层接管）。上游该 PR
+状态：closed、未合并。
+
+**回归**：`e2e/scroll-chain.e2e.test.tsx` 两个用例——「padded scroll containers expose no
+phantom scroll range」（把全尺寸子节点塞回去即红：实测 `-20`）与「a padded scroll container
+that fits its content stays put」；`GitGraphView.test.tsx` 的 CDV 用例断言右栏无滚动范围。
+
+## 8. 未验证事项与验证方法
 
 - 未在真实浏览器实测；未确认用户环境（Chrome/Firefox 版本、鼠标或触控板、是否 smooth scroll / scroll snap / iframe、`preventDefault()`、`contain`）。
 - 验证实验：同一嵌套 overflow 页面，在 Chrome/Firefox 记录 passive wheel 的 `target/clientX/clientY/delta/timeStamp` 与各容器 `scrollTop`；分别测：静止连滚、停顿 > 500 ms 后继续、位移 <10 与 ≥10 单位、移出子区域、反向滚、`auto/contain/none`。不要用 `dispatchEvent(new WheelEvent(...))` 合成事件推断默认滚动链。
 
-## 8. 来源
+## 9. 来源
 
 - W3C Wheel Events：<https://w3c.github.io/uievents/split/wheel-events.html>
 - CSS Overscroll Behavior：<https://drafts.csswg.org/css-overscroll-1/>
@@ -150,22 +202,4 @@ APZ `WheelBlockState`：
 - Chromium `input_handler.cc`（`ScrollBegin` / `ScrollUpdate` / `ScrollLatchedScroller` / `FindNodeToLatch` / `CanConsumeDelta`）：`cc/input/`
 - Blink `mouse_wheel_event_manager.cc`、`components/input/mouse_wheel_event_queue.cc`
 - Firefox `dom/events/WheelHandlingHelper.cpp`、`gfx/layers/apz/src/InputBlockState.cpp`、`gfx/layers/apz/src/InputQueue.cpp`、`modules/libpref/init/StaticPrefList.yaml`
-- 项目内：`patches/gpuix-zed/0003-scroll-chain-and-range.patch`、`e2e/scroll-chain.e2e.test.tsx`、`.refs/gpuix/zed/crates/gpui/src/gestures.rs`
-
-## 9. 附：滚动范围跟随子元素（zed#63786 部分移植）
-
-同一个补丁里还带上了滚动范围的 CSS 语义：普通流子元素取最远右下边缘 + 末端 padding，
-`position: absolute` 子元素取自身边缘且**不**追加末端 padding，无子元素时回退旧的
-`content_size + padding`；新增 `TaffyLayoutEngine::position_is_absolute` 与
-`Window::layout_position_is_absolute`（`&self` 只读）。
-
-动机是 GPUIX 的排障：`bounds_tracker` 是 `absolute().size_full()` 的零尺寸 canvas，absolute
-子元素从 padding box 原点起算、却拿 padding box 的尺寸，所以带 padding 的元素被它多撑出
-`padding.right`/`padding.bottom`——内容本来就放得下的容器于是能滚 padding 那么多
-（Git 详情右栏 `padding: 10` → 20px 假范围）。修法有两处：这里的范围算法按 absolute 子元素
-自身边缘计算，以及 gpuix `0003-bounds-tracker-inset.patch` 把辅助节点改成 `inset: 0`。
-
-上游 **未移植** 的部分：`overscroll-behavior`（`Style`／`Styled` 新 API）与
-`Window::take_scroll_wheel`／`scroll_wheel_taken` 的逐事件滚动接力——后者与本补丁的
-「序列内到边界不交接」直接冲突（上游测试要求同一串事件内层到底后父层接管）。
-上游该 PR 状态：closed、未合并。
+- 项目内：`patches/gpuix-zed/0003-scroll-chain-and-range.patch`、`patches/gpuix/0003-bounds-tracker-inset.patch`、`e2e/scroll-chain.e2e.test.tsx`、`.refs/gpuix/zed/crates/gpui/src/gestures.rs`
