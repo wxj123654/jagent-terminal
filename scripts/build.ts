@@ -18,21 +18,31 @@
  *   - --app 在 compile 后增加安装壳（Info.plist + app.icns + PkgInfo + adhoc codesign）；
  *     Windows 自动嵌入 app.ico（必须在 Windows 构建，Bun 依赖 Windows 资源 API）。
  *     Windows/Linux 安装包形态（installer/AppImage）暂未实现，输出裸二进制。
+ *   - Windows 的 compile 之后另做两步 PE 收尾（scripts/pe-*.ts）：
+ *     ① RT_GROUP_ICON 帧声明补齐（`--windows-icon` 只给主组声明 1 帧，
+ *        会让任务栏拿 16px 放大 → 图标发糊）；
+ *     ② Subsystem CUI→GUI（不改会在双击启动时多一个终端窗口）。
+ *     bun 1.3.13 的 `--windows-hide-console` 实测不生效；GUI 化后所有
+ *     spawn 必须 windowsHide（仓库内 git/ACP/系统打开已处理）。
  *
  * 体积注记：symbol 剥离由根 Cargo.toml [profile.release] strip = "symbols"
  * 统一处理（不用 napi --strip：它传 -C link-arg=-s，MSVC link.exe 不认识）。
  */
 
 import {
+  closeSync,
   cpSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
+import { patchIconResources } from './pe-icon-resources'
+import { describeSubsystem, patchWindowsGuiSubsystem } from './pe-subsystem'
 import { REPO_ROOT } from './refs-config'
 
 // ── 平台表 ────────────────────────────────────────────────────────────────
@@ -192,6 +202,23 @@ if (strayNodes.length > 0) {
 
 // ── 2. compile：bun build --compile → dist/<platform>/ ───────────────────
 
+// 产物预检：bun 自己的「move executable」在目标文件被占用时只报一句 EPERM
+// （最典型场景：上一次打包出来的 jagent.exe 还在运行，Windows 锁定映像）。
+// 这里提前探一次，给中文可操作的提示。
+const outFile = join(DIST_DIR, platform.exe)
+if (existsSync(outFile)) {
+  try {
+    const probe = openSync(outFile, 'r+')
+    closeSync(probe)
+  } catch (e) {
+    const code = (e as { code?: string }).code ?? '未知'
+    die(
+      `产物 ${outFile} 被占用（${code}）——常见原因：正在运行的 ${platform.exe} 锁定自身映像。` +
+        `请先退出该进程再重新打包。`,
+    )
+  }
+}
+
 console.log(`── compile: dist/${platform.target}/${platform.exe}`)
 mkdirSync(DIST_DIR, { recursive: true })
 const compileArgs = [
@@ -206,6 +233,40 @@ if (platform.target === 'windows-x64') {
   compileArgs.push('--windows-icon', join(ICON_DIR, 'app.ico'))
 }
 await runLive('bun', compileArgs, REPO_ROOT)
+
+// ── 2b. Windows：PE 收尾（图标资源 + Subsystem CUI → GUI）────────────────
+// 两步都幂等，失败即构建失败（不发布糊图标 / 带终端窗口的产物）。
+if (platform.target === 'windows-x64') {
+  const exe = join(DIST_DIR, platform.exe)
+
+  // ① 图标：`--windows-icon` 写入的资源有两处问题（scripts/pe-icon-resources.ts）：
+  //    a) 主组只声明 1 帧（=16px），Windows 认为图标最大 16×16，把 16px 放大
+  //       到任务栏需要的 32px（帧声明发糊）；
+  //    b) 组名是 IDI_MYICON/#0，而 gpui 注册窗口类用 MAKEINTRESOURCE(1) 取
+  //       图标 —— 取不到 → 窗口无图标 → 任务栏走 16px 小图标回退再放大。
+  const iconPatch = patchIconResources(exe)
+  const iconParts: string[] = []
+  if (iconPatch.ordinalFix) {
+    iconParts.push(
+      `组序号 #${iconPatch.ordinalFix.from}→#${iconPatch.ordinalFix.to}（窗口图标生效）`,
+    )
+  }
+  if (iconPatch.frameFixes.length > 0) {
+    iconParts.push(
+      `帧声明已补齐（${iconPatch.frameFixes.map((f) => `${f.name} ${f.fromFrames}→${f.toFrames} 帧`).join('、')}）`,
+    )
+  }
+  console.log(iconParts.length > 0 ? `── icon: ${iconParts.join('；')}` : `── icon: 资源已完整，跳过`)
+
+  // ② 子系统：bun 的 `--windows-hide-console` 在本仓 bun 版本不生效，
+  //    直接改 PE 头部（scripts/pe-subsystem.ts）。
+  const patch = patchWindowsGuiSubsystem(exe)
+  console.log(
+    patch.changed
+      ? `── subsystem: ${describeSubsystem(patch.from)} → ${describeSubsystem(patch.to)}（启动不再分配终端窗口）`
+      : `── subsystem: 已是 ${describeSubsystem(patch.to)}，跳过`,
+  )
+}
 
 // ── 3. --app：macOS 安装壳（Info.plist + 图标 + PkgInfo + adhoc codesign） ──
 

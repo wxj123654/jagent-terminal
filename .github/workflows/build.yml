@@ -96,6 +96,16 @@ jobs:
       - name: Build
         run: bun run build ${{ matrix.app-flag }}
 
+      # Windows 产物收尾自检（build.ts 已执行，这里对最终文件复核）：
+      #   - RT_GROUP_ICON 各组必须声明满帧，否则任务栏拿 16px 放大 → 图标发糊；
+      #   - Subsystem 必须是 GUI，否则双击启动多一个终端窗口。
+      # 两个脚本都是幂等的 --check，只看最终字节（防“bun 行为变了但没人发现”）。
+      - name: Verify Windows PE post-processing
+        if: runner.os == 'Windows'
+        run: |
+          bun scripts/pe-icon-resources.ts dist/windows-x64/jagent.exe --check
+          bun scripts/pe-subsystem.ts dist/windows-x64/jagent.exe --check
+
       # .app 目录直接上传会丢权限/Finder 元数据，ditto zip 保真
       - name: Zip app bundle (macOS)
         if: runner.os == 'macOS'

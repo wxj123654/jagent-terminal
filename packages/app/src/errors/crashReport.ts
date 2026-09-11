@@ -141,6 +141,9 @@ export async function setupCrashReportingForApp(appVersion: string): Promise<Las
     },
     stdio: ['pipe', 'inherit', 'inherit'],
     detached: false,
+    // 发布形态是 GUI 子系统（无 console 可继承）；不做隐藏时 Windows 会给
+    // sidecar 新建一个可见控制台窗口（dev 下是 bun.exe，同理）。
+    windowsHide: true,
   })
   child.on('error', () => {})
 
