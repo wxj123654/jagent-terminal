@@ -109,6 +109,8 @@ bun run build --app --skip-native     # 已有对应 .node 时，只重新编译
 
 产物位于 `dist/<platform>/`。Windows 构建自动将图标嵌入 `.exe`，需要在 Windows 上执行；macOS 请使用 `.app` 才能在 Finder / Dock 显示图标。Linux 当前仅输出裸二进制，尚无桌面安装集成。
 
+macOS 请从 Finder 打开 `dist/darwin-arm64/JAgent.app`：`dist/darwin-arm64/jagent` 是裸二进制，双击时 macOS 会交给 Terminal 运行（看起来像"多弹一个命令行"），且没有 bundle 身份（Dock 图标 / 崩溃报告上下文都缺失）。打包产物冒烟：`bun scripts/sidecar-tree-smoke.ts [exe]` —— 崩溃监控 sidecar 不得递归 spawn 自己，也不得进入 UI 装配（那会各自开窗）。
+
 图标源稿与多平台文件在 [`packages/app/assets/icons/`](packages/app/assets/icons/README.md)，预览见 [`design/app-icon.html`](design/app-icon.html)。修改 `app.svg` 后运行 `bun run icons` 更新 PNG / ICNS / ICO，再运行 `bun test scripts/icons.test.ts`。普通打包直接使用已入库资产，无需图像工具。
 
 #### Windows：GUI 子系统（双击不再多一个终端窗口）

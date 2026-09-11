@@ -189,11 +189,13 @@ panic hook → PANIC + ping       on_message / on_minidump_created
 abort / SEGV → request_dump     → ~/.j-agent/crashes/{jagent-*.dmp, crash.json}
 ```
 
-- **独立 sidecar 入口**（`scripts/crash-handler.ts`）：dev 直接 bun 该脚本；发布形态 `<exe> --crash-handler`。**禁止** sidecar 再走 `main.tsx`（会再次 spawn 自己）。
-- **macOS IPC 名**：mach port **不能含 `/`**，用 `jagent.crash.<pid>`（`crashSocketName()`）。Linux/Windows 用路径 socket。
+- **入口收敛**（2026-09-11 修复）：dev 形态 sidecar 是独立脚本 `scripts/crash-handler.ts`；发布形态（bun compile 只有一个 entry）sidecar 与主进程共用 `main.tsx`，由 `enterCrashSidecarIfRequested()` 收敛 —— 识别到 `--crash-handler` / `JAGENT_CRASH_SIDECAR` 后**立即挂起模块**，应用装配（含开窗、再 spawn）一行都不执行。`run_crash_monitor` 是「起后台线程后立即返回」的非阻塞调用，**绝不能**假设 `runCrashSidecar()` 不返回：曾经每个 sidecar 都继续装配 UI（各自开窗）并再 spawn 子 sidecar —— 数秒内 21+ 窗口（2026-09-11 实机复现）。`setupCrashReportingForApp()` 另有 sidecar 守卫做纵深防御。
+- **IPC 名**：`~/.j-agent/crashes/crash-<pid>.sock`，三平台统一的**绝对路径**（`crashSocketName()`）。macOS 上 minidumper 把同一个字符串既当 UDS 路径又当 mach port 名 —— 相对路径会让 UDS 落在进程 CWD，而 GUI（LaunchServices）启动的 app CWD 是只读的 `/`，bind 直接 EROFS(errno 30)、sidecar 秒退、崩溃报告静默降级（复现：`cd / && python3 -c "socket.bind('x.sock')"` 报同一错误码）。
+- **就绪握手**：sidecar bind 成功后落 `sidecar-<pid>.ready`，主进程轮询它（≤5s）再 `setupCrashReporting` —— macOS 的 mach port 没有「连接前可观测」信号，早期固定 sleep 400ms 在 `.app` 冷启动（Gatekeeper + 单文件加载）时会误判降级，把刚起来的 sidecar 用 stdin EOF 掐掉。陈旧 `crash-*.sock` / `sidecar-*.ready`（SIGKILL 残留）由 `pruneStaleCrashIpc()` 在启动时清掉 24h 前的。
+- **打包产物防回归**：`bun scripts/sidecar-tree-smoke.ts [exe]` 对 dist 产物直接跑 `--crash-handler`，断言「进程存活 + 无后代进程 + 无 `[gpuix]` 输出（未进入 UI 装配）」。dev 形态（独立入口）测不到这类回归，CI 在 macOS / Windows 上执行。
 - panic 路径：hook 里 `send_message(PANIC)` + `ping()`（ACK 保证 server 先处理 PANIC）再 `abort()`；sidecar 的 SIGNAL 不覆盖已有 PANIC。
 - 下次启动读 `crash.json` → `CrashDialog`（「上次会话异常退出」）。
-- 验证：`bun scripts/crash-smoke.ts panic|sigsegv`（本机 2026-09-11 两条均通过，产出 .dmp + crash.json）。
+- 验证：`bun scripts/crash-smoke.ts panic|sigsegv`（本机 2026-09-11 两条均通过，产出 .dmp + crash.json）；打包形态 `bun scripts/sidecar-tree-smoke.ts [exe]`（裸二进制与 `JAgent.app` 内二进制均通过）；`.app` 由 Finder 启动后 `installed=true`（sidecar 常驻，IPC 握手含 UDS + mach port 全通）。
 
 依赖（crates.io 联网核实，禁止 beta）：`crash-handler 0.8.0` + `minidumper 0.11.0` + `thiserror 2.0.20`。
 

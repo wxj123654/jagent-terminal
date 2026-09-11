@@ -106,6 +106,13 @@ jobs:
           bun scripts/pe-icon-resources.ts dist/windows-x64/jagent.exe --check
           bun scripts/pe-subsystem.ts dist/windows-x64/jagent.exe --check
 
+      # 发布形态 sidecar 防回归（2026-09-11）：`<exe> --crash-handler` 只能跑
+      # 崩溃监控 —— 曾因与主进程共用入口而递归 spawn 自己（每个子进程各开一个
+      # 窗口，数秒 21+）。Linux 跳过：无头 runner 上 GUI 二进制的加载行为未验证。
+      - name: Verify crash sidecar does not respawn
+        if: runner.os != 'Linux'
+        run: bun scripts/sidecar-tree-smoke.ts
+
       # .app 目录直接上传会丢权限/Finder 元数据，ditto zip 保真
       - name: Zip app bundle (macOS)
         if: runner.os == 'macOS'
