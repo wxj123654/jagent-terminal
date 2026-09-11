@@ -29,6 +29,7 @@ import type { ReactNode } from 'react'
 
 import { Icon } from '../ui/Icon'
 import type { AppPlatform } from '../ui/platform'
+import { TRAFFIC_LIGHT_WIDTH } from '../ui/platform'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
 
 /** 窗口控制 seam（main.tsx 装配：闭包 renderer；测试注入 spy） */
@@ -200,6 +201,8 @@ export function TitleBar({
   narrow,
   drawerOpen,
   onToggleDrawer,
+  sidebarHidden,
+  onToggleSidebar,
   trailing,
 }: {
   title: string
@@ -209,6 +212,10 @@ export function TitleBar({
   narrow?: boolean
   drawerOpen?: boolean
   onToggleDrawer?: () => void
+  /** 宽窗口侧栏收起态（D4）：true 时切换钮用 panelLeft 图标表示"恢复" */
+  sidebarHidden?: boolean
+  /** 侧栏开关（宽窗口收起/展开；与 ⌘B 同效）——常驻按钮，侧栏隐藏后仍可鼠标恢复 */
+  onToggleSidebar?: () => void
   /** 右上角尾部插槽（性能 HUD 等；元素零依赖，数据源由调用方装配）。win 下落在窗口控制三键左侧，mac/linux 靠 title 后的右侧空白 */
   trailing?: ReactNode
 }) {
@@ -240,6 +247,9 @@ export function TitleBar({
       }}
       {...(dragOnBar ? drag : {})}
     >
+      {/* 侧栏开关（D4）：宽窗口常驻 panelLeft 钮 / 窄窗口汉堡钮。
+          mac 侧栏隐藏时 SidebarHeader 不在场，本钮接替红绿灯 78px 让位
+          （原型：收起后 toolbar 左侧预留红绿灯宽度，不让图标顶到系统灯）。 */}
       {narrow ? (
         <div
           testId="drawer-toggle"
@@ -261,7 +271,33 @@ export function TitleBar({
         >
           <Icon name="menu" size={13} color={drawerOpen ? COLORS.accent : COLORS.text} />
         </div>
-      ) : null}
+      ) : (
+        <div
+          testId="toggle-sidebar"
+          tabIndex={0}
+          onClick={() => onToggleSidebar?.()}
+          onKeyDown={(e) => {
+            if (e.key === 'enter' || e.key === 'space') onToggleSidebar?.()
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 28,
+            height: SIZES.titleBarHeight,
+            marginLeft: platform === 'mac' && sidebarHidden ? TRAFFIC_LIGHT_WIDTH : 0,
+            flexShrink: 0,
+            cursor: 'pointer',
+            hover: { backgroundColor: COLORS.surfaceHover },
+          }}
+        >
+          <Icon
+            name="panelLeft"
+            size={14}
+            color={sidebarHidden ? COLORS.muted : COLORS.text}
+          />
+        </div>
+      )}
       <div
         testId="titlebar-drag"
         style={{

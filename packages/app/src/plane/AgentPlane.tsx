@@ -9,7 +9,7 @@
  */
 
 import { useWindowSize } from '@gpuix/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { LastCrash } from '../errors/crashReport'
 import { ErrorIndicator } from '../errors/ErrorIndicator'
 import type { GitGraphStore } from '../git/store'
@@ -28,6 +28,7 @@ import { COLORS, FONT } from '../ui/tokens'
 import { DialogHost, type DialogState } from './DialogHost'
 import { dialogKeyboard } from './dialogKeyboard'
 import { Pane } from './Pane'
+import { planeKeyboard } from './planeKeyboard'
 import { Sidebar, SidebarHeader } from './Sidebar'
 import { TitleBar, type WindowControls } from './TitleBar'
 import type { DirectoryPicker } from './WorkspaceList'
@@ -85,6 +86,18 @@ export function App({
   // 性能 HUD（advanced.perfHud）：单值订阅——开关切换才重渲染顶栏行
   const perfHud = useSettingsValue(settings, (s) => s.advanced.perfHud)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // v2（D2）：侧栏收起态（宽窗口 = 藏 sidebar；窄窗口抽屉同效切换）。
+  // ⌘B/Ctrl-B 经 planeKeyboard 模块态进来（main.tsx 键位层）。
+  const [sidebarHidden, setSidebarHidden] = useState(false)
+  const toggleSidebar = () => {
+    if (narrow) setDrawerOpen((v) => !v)
+    else setSidebarHidden((v) => !v)
+  }
+  // 最新回调 ref（D18）：⌘B 经 planeKeyboard 模块态进来，但注册只在挂载时
+  // 做一次——若直接闭包 toggleSidebar，跨 760 断口 resize 后快捷键仍作用
+  // 于旧宽窄态（stale closure）。ref 每帧刷新，注册的转发函数永读最新。
+  const toggleRef = useRef(toggleSidebar)
+  toggleRef.current = toggleSidebar
   // 弹窗中枢（W7）：四类弹窗单一显示源，入口经 dialog 回调打开。
   // ⌘K 挂点：装配层 focusThreadSearch → dialogKeyboard.openSearch()
   // 启动崩溃提示（方案 C）：残留存在 → 初始即弹 crash dialog
@@ -100,7 +113,11 @@ export function App({
   }
   useEffect(() => {
     dialogKeyboard.register(dialogOpener)
-    return () => dialogKeyboard.register(null)
+    planeKeyboard.register(() => toggleRef.current())
+    return () => {
+      dialogKeyboard.register(null)
+      planeKeyboard.register(null)
+    }
   }, [])
   const sidebar = (
     <Sidebar
@@ -139,11 +156,18 @@ export function App({
           flexDirection: 'row',
           flexShrink: 0,
           backgroundColor: COLORS.titlebar,
+          borderWidth: 0,
           borderBottomWidth: 1,
           borderColor: COLORS.border,
         }}
       >
-        <SidebarHeader platform={PLATFORM} windowControls={windowControls} width={sidebarWidth} />
+        {!narrow && !sidebarHidden ? (
+          <SidebarHeader
+            platform={PLATFORM}
+            windowControls={windowControls}
+            width={sidebarWidth}
+          />
+        ) : null}
         <TitleBar
           title={title}
           platform={PLATFORM}
@@ -151,6 +175,8 @@ export function App({
           narrow={narrow}
           drawerOpen={drawerOpen}
           onToggleDrawer={narrow ? () => setDrawerOpen((v) => !v) : undefined}
+          sidebarHidden={!narrow && sidebarHidden}
+          onToggleSidebar={!narrow ? toggleSidebar : undefined}
           trailing={
             <>
               <IconButton
@@ -215,7 +241,7 @@ export function App({
           </>
         ) : (
           <>
-            {sidebar}
+            {!sidebarHidden ? sidebar : null}
             {pane}
           </>
         )}

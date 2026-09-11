@@ -147,7 +147,8 @@ const KEY_ACTIONS: {
   { action: 'cyclePrev', label: '上一个 thread（循环切换）', requireCtrl: true },
   { action: 'toggleSettings', label: '打开 / 关闭设置', requireCtrl: true },
   { action: 'focusSearch', label: '聚焦设置搜索', requireCtrl: false },
-  { action: 'searchThreads', label: '搜索会话（侧栏，⌘K/Ctrl-K）', requireCtrl: true },
+  { action: 'searchThreads', label: '搜索会话（⌘K/Ctrl-K）', requireCtrl: true },
+  { action: 'toggleSidebar', label: '收起 / 展开侧栏（⌘B/Ctrl-B）', requireCtrl: true },
 ]
 
 /** 平台语义只读行（不参与配置） */

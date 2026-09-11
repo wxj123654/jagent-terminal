@@ -39,6 +39,7 @@ export type KeybindingAction =
   | 'toggleSettings'
   | 'focusSearch'
   | 'searchThreads'
+  | 'toggleSidebar'
 export type Keybindings = Record<KeybindingAction, string>
 
 /**
@@ -81,6 +82,8 @@ export function createGlobalKeydown(opts: {
   clearEscConsumed: () => void
   /** 聚焦工作区侧栏搜索框（W4 searchThreads；Sidebar ref → 模块态 id） */
   focusThreadSearch: () => void
+  /** ⌘B/Ctrl-B 收起/展开侧栏（Phase D2；窄窗口抽屉态同效） */
+  toggleSidebar: () => void
   /** Git 图打开时吃无修饰键（↑↓/enter/escape/r）；返回 true = 已消费。
    *  激活判定在闭包内（workspace 路由 + paneTab==='git'）——非激活必返回 false
    *  透传（硬约束 2：不吃 vim/claude 按键） */
@@ -96,6 +99,7 @@ export function createGlobalKeydown(opts: {
     inSettings,
     focusSearch,
     focusThreadSearch,
+    toggleSidebar,
     inputFocused,
     settingsQuery,
     escConsumed,
@@ -127,6 +131,11 @@ export function createGlobalKeydown(opts: {
       focusThreadSearch()
       return
     }
+    // 收起/展开侧栏（D2 ⌘B）：cmd/ctrl 修饰层，不吃终端裸键
+    if (keystrokeMatches(kb().toggleSidebar, key, ctrl, shift, cmd)) {
+      toggleSidebar()
+      return
+    }
     // Git 图表面键（无修饰；输入框聚焦时透传，否则吃 vim/终端键）
     if (!ctrl && !inSettings() && !inputFocused() && gitGraphKey?.(key)) return
     // 修饰键组合层（其余透传）
@@ -156,4 +165,6 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
   // mac ⌘K（platform 修饰不写 PTY，劫持零终端冲突）；win ctrl-k
   // （修饰组合层，同 ctrl-,；键位可改）
   searchThreads: process.platform === 'darwin' ? 'cmd-k' : 'ctrl-k',
+  // 收起侧栏（D2）：mac ⌘B / win ctrl-b（修饰层，不写 PTY）
+  toggleSidebar: process.platform === 'darwin' ? 'cmd-b' : 'ctrl-b',
 }

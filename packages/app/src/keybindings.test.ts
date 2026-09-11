@@ -11,7 +11,7 @@ import {
   type GlobalKeydown,
 } from './keybindings'
 
-function makeHandler(over: { focusThreadSearch: () => void; inSettings?: () => boolean }): {
+function makeHandler(over: { focusThreadSearch: () => void; toggleSidebar?: () => void; inSettings?: () => boolean }): {
   keydown: GlobalKeydown
   calls: { search: number; cycle: number }
 } {
@@ -27,6 +27,7 @@ function makeHandler(over: { focusThreadSearch: () => void; inSettings?: () => b
     inSettings: over.inSettings ?? (() => false),
     focusSearch: () => {},
     focusThreadSearch: over.focusThreadSearch,
+    toggleSidebar: over.toggleSidebar ?? (() => {}),
     inputFocused: () => false,
     settingsQuery: () => '',
     escConsumed: () => false,
@@ -83,6 +84,7 @@ describe('searchThreads 层（⌘K/Ctrl-K）', () => {
       inSettings: () => false,
       focusSearch: () => {},
       focusThreadSearch: () => (n += 1),
+      toggleSidebar: () => {},
       inputFocused: () => false,
       settingsQuery: () => '',
       escConsumed: () => false,
@@ -115,6 +117,7 @@ describe('Git 图键位层（git-graph.md §4.3）', () => {
       inSettings: over.inSettings ?? (() => false),
       focusSearch: () => {},
       focusThreadSearch: () => {},
+      toggleSidebar: () => {},
       inputFocused: over.inputFocused ?? (() => false),
       settingsQuery: () => '',
       escConsumed: () => false,
@@ -189,5 +192,28 @@ describe('Git 图键位层（git-graph.md §4.3）', () => {
     keydown('down', false, false)
     keydown('g', true, true)
     expect(calls.cycle).toBe(0)
+  })
+})
+
+// ── D2：⌘B/Ctrl-B 收起侧栏 ──────────────────────────────────────────
+
+describe('toggleSidebar（D2）', () => {
+  test('cmd-b 触发（mac 默认键位）', () => {
+    let n = 0
+    const { keydown } = makeHandler({
+      focusThreadSearch: () => {},
+      toggleSidebar: () => (n += 1),
+    })
+    keydown('b', false, false, true)
+    expect(n).toBe(1)
+  })
+  test('裸 b 不触发（终端透传）', () => {
+    let n = 0
+    const { keydown } = makeHandler({
+      focusThreadSearch: () => {},
+      toggleSidebar: () => (n += 1),
+    })
+    keydown('b', false, false, false)
+    expect(n).toBe(0)
   })
 })

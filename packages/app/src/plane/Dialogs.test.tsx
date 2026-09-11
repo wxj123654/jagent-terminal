@@ -216,6 +216,60 @@ describe('ToolDialog 工作区切换', () => {
     const th = store.getState().threads.at(-1)!
     expect(th.workspaceId).toBe(wsA)
   })
+
+  // D06：临时入口（workspaceId=''）——不再回退 workspaces[0]，
+  // spawn 后会话应无归属；且无工作区上下文时不渲染 New Chat/ACP。
+  test('临时入口（workspaceId=""）→ 未归属会话；无 New Chat', async () => {
+    mountWith({ kind: 'tool', workspaceId: '' })
+    t.renderer.flush()
+    await until('dialog visible', () => t.renderer.findByTestId('modal-card') != null)
+    // select 在场且首项为未归属（双工作区 + includeTemp）
+    expect(t.renderer.findByTestId('tool-dialog-workspace')).toBeDefined()
+    expect(t.renderer.getAllText().some((s) => s.includes('未归属'))).toBe(true)
+    expect(t.renderer.getAllText().some((s) => s.includes('无项目目录'))).toBe(true)
+    // chat/acp 无工作区上下文 → 不在场
+    expect(t.renderer.findByTestId('new-chat')).toBeUndefined()
+    const before = store.getState().threads.length
+    clickCenter('tool-preset-shell')
+    await until('spawned', () => store.getState().threads.length === before + 1)
+    const th = store.getState().threads.at(-1)!
+    expect(th.workspaceId).toBeUndefined()
+  })
+})
+
+describe('Modal 窄窗钳制（D18）', () => {
+  test('窗口比卡片窄 → 卡宽钳到 vw-24，不出窗', async () => {
+    // TestRenderer 无运行时 resize：独立窄根（360×640）验证 Modal 钳制
+    const narrowRoot = createTestRoot({ width: 360, height: 640 })
+    const Shell = () => {
+      const [state, setState] = useState<DialogState>({ kind: 'tool', workspaceId: wsA })
+      return (
+        <div
+          style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0 }}
+        >
+          {state.kind !== 'none' ? (
+            <DialogHost
+              store={store}
+              settings={settings}
+              state={state}
+              setState={setState}
+              pickDirectory={undefined}
+            />
+          ) : null}
+        </div>
+      )
+    }
+    narrowRoot.render(createElement(Shell))
+    narrowRoot.renderer.flush()
+    await until('dialog visible', () => narrowRoot.renderer.findByTestId('modal-card') != null)
+    const card = narrowRoot.renderer.getElementBounds(
+      narrowRoot.renderer.findByTestId('modal-card')!.id,
+    )!
+    expect(card[2]).toBeLessThanOrEqual(360 - 24 + 1) // 宽 ≤ vw-24（含取整余量）
+    expect(card[0]).toBeGreaterThanOrEqual(12)
+    expect(card[0] + card[2]).toBeLessThanOrEqual(360 + 1)
+    narrowRoot.unmount()
+  })
 })
 
 describe('Toast（W7）', () => {

@@ -90,6 +90,14 @@ const SOURCES = {
   download: strokeSvg(
     '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/>',
   ),
+  /** panelLeft：收起/展开侧栏（Phase D2；lucide panel-left） */
+  panelLeft: strokeSvg(
+    '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
+  ),
+  /** panelRight：工作面板开关（Phase D3；lucide panel-right） */
+  panelRight: strokeSvg(
+    '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>',
+  ),
 } as const
 
 export type IconName = keyof typeof SOURCES

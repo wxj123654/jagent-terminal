@@ -448,7 +448,6 @@ function Cdv({
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
-                      textDecoration: 'underline',
                     }}
                   >
                     {p}

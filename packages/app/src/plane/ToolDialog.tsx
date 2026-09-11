@@ -40,9 +40,13 @@ export function ToolDialog({
   onClose: () => void
 }) {
   const snap = useSettings(settings)
+  // 空串 = 未归属临时会话（会话区＋入口）；select 首项为「（未归属 · 临时会话）」
+  // ——不再回退 workspaces[0]，否则临时入口误归属首个工作区（D06）。
+  // Chat/ACP 是应用内非终端表面，无工作区上下文时禁用（cwd 无意义）。
   const [workspaceId, setWorkspaceId] = useState(initialWorkspaceId)
   const [filter, setFilter] = useState('')
-  const workspace = workspaces.find((w) => w.id === workspaceId) ?? workspaces[0]
+  const includeTemp = initialWorkspaceId === ''
+  const workspace = workspaces.find((w) => w.id === workspaceId)
 
   const lower = filter.trim().toLowerCase()
   const hit = (...xs: (string | undefined)[]) =>
@@ -79,11 +83,14 @@ export function ToolDialog({
             marginBottom: 4,
           }}
         >
-          {workspaces.length > 1 ? (
+          {workspaces.length > 1 || includeTemp ? (
             <SelectField
               testId="tool-dialog-workspace"
-              value={workspace?.id ?? ''}
-              options={workspaces.map((w) => ({ value: w.id, label: w.name }))}
+              value={workspaceId}
+              options={[
+                ...(includeTemp ? [{ value: '', label: '（未归属 · 临时会话）' }] : []),
+                ...workspaces.map((w) => ({ value: w.id, label: w.name })),
+              ]}
               onChange={setWorkspaceId}
               width="fill"
             />
@@ -127,7 +134,18 @@ export function ToolDialog({
           >
             cwd {workspace.path}
           </text>
-        ) : null}
+        ) : (
+          <text
+            style={{
+              fontSize: 10,
+              fontFamily: FONT.mono,
+              color: COLORS.muted,
+              marginBottom: 10,
+            }}
+          >
+            cwd （无项目目录）
+          </text>
+        )}
 
         {/* 筛选（原型 tool-search：全宽，24px 侧距） */}
         <div style={{ marginBottom: 6 }}>
@@ -185,27 +203,32 @@ export function ToolDialog({
             />
           ))}
 
-          {/* New Chat + ACP：归「终端工具」组尾（原型自定义命令位 = footer；ACP 是其原生对应物） */}
-          <ToolRow
-            testId="new-chat"
-            icon="chat"
-            iconColor={COLORS.accent}
-            name="New Chat"
-            description="应用内对话面（非终端）"
-            onPick={pick(() => workspace && store.createChat(workspace.id))}
-          />
-          {acpAgents.map((a) => (
+          {/* New Chat + ACP：归「终端工具」组尾（原型自定义命令位 = footer；ACP 是其原生对应物）。
+              未归属（无 workspace）时不渲染：chat/acp 是应用内表面，没有可继承的 cwd 上下文 */}
+          {workspace ? (
             <ToolRow
-              key={a.id}
-              testId={`new-acp-${a.id}`}
-              icon="acp"
-              iconColor={COLORS.acpKind}
-              name={a.label}
-              description="ACP agent"
-              command={agentCommandSummary(a)}
-              onPick={pick(() => workspace && store.createAcpThread(a.id, a.label, workspace.id))}
+              testId="new-chat"
+              icon="chat"
+              iconColor={COLORS.accent}
+              name="New Chat"
+              description="应用内对话面（非终端）"
+              onPick={pick(() => store.createChat(workspace.id))}
             />
-          ))}
+          ) : null}
+          {workspace
+            ? acpAgents.map((a) => (
+                <ToolRow
+                  key={a.id}
+                  testId={`new-acp-${a.id}`}
+                  icon="acp"
+                  iconColor={COLORS.acpKind}
+                  name={a.label}
+                  description="ACP agent"
+                  command={agentCommandSummary(a)}
+                  onPick={pick(() => store.createAcpThread(a.id, a.label, workspace.id))}
+                />
+              ))
+            : null}
 
           {empty ? (
             <text

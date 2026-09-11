@@ -111,6 +111,42 @@ export function workspaceSessions(threads: Thread[], workspaceId: string): Threa
   return threads.filter((t) => t.workspaceId === workspaceId)
 }
 
+// ── 时间分组（Phase D1；原型：今天/昨天/本周/更早）──────────────
+
+export type TimeGroup = 'today' | 'yesterday' | 'week' | 'earlier'
+
+export const TIME_GROUP_LABELS: Record<TimeGroup, string> = {
+  today: '今天',
+  yesterday: '昨天',
+  week: '本周',
+  earlier: '更早',
+}
+
+/** 会话按 createdAt 归入时间桶（新→旧序内保持创建序）。分组阈值：
+ *  今天 = 当天 0 点后；昨天 = 前一天 0 点后；本周 = 7 天内（原型同语义）。
+ *  now 注入可测。 */
+export function timeGroupsOf(threads: Thread[], now: number = Date.now()): Map<TimeGroup, Thread[]> {
+  const day0 = new Date(now)
+  day0.setHours(0, 0, 0, 0)
+  const todayStart = day0.getTime()
+  const yesterdayStart = todayStart - 86400_000
+  const weekStart = now - 7 * 86400_000
+  const out = new Map<TimeGroup, Thread[]>([
+    ['today', []],
+    ['yesterday', []],
+    ['week', []],
+    ['earlier', []],
+  ])
+  for (const t of threads) {
+    const at = t.createdAt
+    if (at >= todayStart) out.get('today')!.push(t)
+    else if (at >= yesterdayStart) out.get('yesterday')!.push(t)
+    else if (at >= weekStart) out.get('week')!.push(t)
+    else out.get('earlier')!.push(t)
+  }
+  return out
+}
+
 // ── 跨工作区搜索（Phase W2；原型：标题、工具、目录）────────────────
 
 /** 会话的搜索命中面：标题 + 工具名（调用方注入 preset 查询）+ 目录 */

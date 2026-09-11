@@ -33,6 +33,7 @@
 | W 工作区平面迁移 | ✅ W0–W5 完成（含 ctrl-tab PTY 真 bug 修复）|
 | G Git 树（commit graph） | ✅ G1–G3 完成（docs/git-graph.md；只读 graph + workspace tab）|
 | E 统一错误管理（A/B/C/D） | ✅ 完成（docs/error-management.md；总线+边界+panic 收编+minidump sidecar+watchdog）|
+| D 桌面工作台 v2（Codex 灰阶） | 🚧 D0 tokens+基座 → D1 双区侧栏 → D2 工具栏 → D3 工作面板 |
 
 **当前指针**：→ Phase E 收官 ✅（错误总线 / ErrorBoundary / thiserror+catch_unwind / crash_handler+minidumper sidecar / launcher watchdog）· 待办：G4 另立设计（status/commit 面板）；真窗口手验清单（W3/W4/W5 + G 的 Ctrl+Shift+G + 错误面板/崩溃提示）
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
@@ -267,6 +268,39 @@
 - **测试**：e2e 12→17；AgentPlane.test +1（⌘K 无 terminal 闭环）；WorkspaceList.test +1（ToolMenu 筛选）；cargo 37→38。app 177 + e2e 17 + cargo 38 全绿。
 
 ---
+
+## Phase D —— 桌面工作台 v2 迁移（desktop-plane-v2 → 原生）
+
+> 锚点：`design/desktop-plane-v2.html/.md`（已定稿原型，39+11 项检查过）。
+> 硬约束不变：单终端内容区、`<terminal>` 唯一写点、字节流不过 napi。
+> 本 Phase 只改 `packages/app`，不动 `.refs/`。
+> **2026-09-12 用户拍板：配色回 One Dark**（v2 原型的 Codex 灰阶被否）——
+> 结构性改动（双区侧栏/时间分组/状态点/⌘B）保留，视觉 tokens 维持 Phase 1 定稿。
+
+- [x] **D0 tokens + 布局基座**：~先落 Codex 灰阶后回滚 One Dark（用户决策）~。
+  结构：侧栏头 52px 无 AGENT 字（红绿灯让位 + 收起钮）；主栏工具栏高度 token 就位；
+  panelLeft/panelRight 图标；顺手修 G4 遗留 typecheck 错（textDecoration 不在 StyleDesc）。
+- [x] **D1 双区侧栏**：Sidebar 改双区（会话区无归属临时会话 + 工作区分组）。行 28px + 行首状态点
+  （running 琥珀/need 紫/error 红/idle 空心环/exited 灰字，One Dark 调和）+ 时间分组（今天/昨天/本周/更早，
+  timeGroupsOf 纯函数）+ 默认前 10 条 + 展开其余（load more）。statusDot 纯函数：terminal status /
+  chat·acp pendingReply→need、末条 error→红。active 行背景高亮，无左缘指示条。
+- [x] **D2 ⌘B 收起侧栏**：keybindings 增 toggleSidebar（mac ⌘B/win ctrl-b，修饰层不写 PTY）
+  + schema 同步 + 键位表可编辑；planeKeyboard 模块态；宽窗口藏 sidebar+侧栏头，窄窗口抽屉同效。
+  未做（待 D2+）：⌘N 新建、工具栏会话 chip/cwd/分支、铃铛收编。
+- [ ] **D3 工作面板（可停靠）**：右侧 dock 默认收起、可拖宽 244–720。Git 变更 tab（复用 git/ 数据层）+
+  文件预览 tab。窄屏（<1100）覆盖式不压终端。
+- [ ] **D4 收官**：全量回归 + 截图目检 + 会话日志 + commit。
+
+### Phase D 结论区
+
+- **配色回滚（2026-09-12）**：D0 先落的 Codex 灰阶（g0–g1000/tile/白 accent）在真机截图后被用户否决，
+  tokens.ts 恢复 One Dark 全意。保留增量：surfaceActive（active 行底语义拆分）、g300（idle 空心环描边）
+  状态点四色（One Dark 调和）。GRAPH_LANE_COLORS 恢复原 8 色。
+- **侧栏内搜索框移除（D0/D2 结构变更）**：v2 语义搜索在工具栏/⌘K 弹窗——Sidebar 内 query 恒空串
+  （侧栏搜索框已删，sidebarKeyboard 仍在但无消费者；AgentPlane 测试锚点从 session-search 换 open-settings）。
+- **TestRenderer 已知限制 +2**：① nativeSimulateClick 打在 load-more 行不触发（键盘 focusElement+
+  simulateKeystrokes('enter') 可靠）；② useEffect 注册的模块态回调（planeKeyboard）后 setState 需 macrotask
+  提交（时序三律之二，toggle 断言要 await）。
 
 ## 验收锚点速查（settings-ui.md §15）
 

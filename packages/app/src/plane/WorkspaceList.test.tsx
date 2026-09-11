@@ -156,6 +156,64 @@ describe('WorkspaceList：分组树', () => {
     expect(t.renderer.getAllText().some((s) => s.includes('beta'))).toBe(true)
   })
 
+  // D13：超过 10 条且跨时间组时，不再为完全隐藏的组渲染孤立日期标签；
+  // 「展开其余 N 个」只在最后一个可见组下方、N 为全组合计。
+  test('超 10 条跨时间组：无孤立日期标签；展开合计正确（D13）', async () => {
+    // 自清理前置：前面用例可能有遗留行（会占 limit 名额）
+    for (const old of store.getState().threads.slice()) store.close(old.id)
+    // 12 条今天 + 2 条更早（createdAt 倒推；today=当天内，earlier=8 天前）
+    const day = 86400_000
+    const now = Date.now()
+    const made: string[] = []
+    for (let i = 0; i < 12; i++) {
+      await store.spawnFromPreset('shell', wsA)
+      const th = store.getState().threads.at(-1)
+      if (th) {
+        store.setThreadCreatedAt(th.id, now - i * 60_000) // 今天
+        made.push(th.id)
+      }
+    }
+    for (let i = 0; i < 2; i++) {
+      await store.spawnFromPreset('shell', wsA)
+      const th = store.getState().threads.at(-1)
+      if (th) {
+        store.setThreadCreatedAt(th.id, now - 8 * day) // 更早
+        made.push(th.id)
+      }
+    }
+    try {
+      renderHarness({ query: '' })
+      t.renderer.flush()
+      await until(
+        'rows visible',
+        () => t.renderer.findByTestId(`row-${made[0]}`) != null,
+      )
+      const texts = t.renderer.getAllText()
+
+      // 今天 10 条可见；「更早」组完全隐藏 → 标签不该出现
+      expect(texts.filter((s) => s === '今天').length).toBe(1)
+      expect(texts.some((s) => s === '更早')).toBe(false)
+      // 展开按钮在（合计 4 条：今天 2 + 更早 2；JSX 插值分片 → 相邻文本节点断言）
+      const moreIdx = texts.findIndex((s) => s === '展开其余 ')
+      expect(moreIdx).toBeGreaterThanOrEqual(0)
+      expect(texts[moreIdx + 1]).toBe('4')
+      expect(texts[moreIdx + 2]).toBe(' 个')
+      // 展开 → 更早标签出现且可见条目 14
+      const more =
+        t.renderer.findByTestId('load-more-today') ?? t.renderer.findByTestId('load-more-earlier')
+      expect(more).toBeDefined()
+      const b = t.renderer.getElementBounds(more!.id)!
+      t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2, 0)
+      t.renderer.flush()
+      await until('expanded', () => t.renderer.getAllText().some((s) => s === '更早'))
+      expect(t.renderer.getAllText().some((s) => s.startsWith('展开其余'))).toBe(false)
+      expect(made.every((id) => t.renderer.findByTestId(`row-${id}`) != null)).toBe(true)
+    } finally {
+      for (const id of made) store.close(id)
+      t.renderer.flush()
+    }
+  })
+
   test('归属会话行缩进渲染（x 偏移 > 工作区行）', async () => {
     await store.spawnFromPreset('shell', wsA)
     renderHarness({ query: '' })
@@ -443,5 +501,79 @@ describe('WorkspaceList：重复目录（W7 收尾用例）', () => {
     await until('dup error shown', () =>
       t.renderer.getAllText().some((s) => s.includes('此目录已有工作区')),
     )
+  })
+})
+
+// ── Phase D1：双区侧栏（会话区 + 时间分组 + load more + 状态点）──────
+
+describe('WorkspaceList：双区侧栏（D1）', () => {
+  test('双区渲染：「会话」区头 + 无归属会话；「工作区」区头 + 分组', async () => {
+    // 无归属会话（workspaceId 未设——spawn 不传目标）
+    await store.spawnFromPreset('shell')
+    renderHarness({ query: '' })
+    t.renderer.flush()
+    const tid = store.getState().threads.at(-1)!.id
+    await until('temp row visible', () => t.renderer.findByTestId(`row-${tid}`) != null)
+    const texts = t.renderer.getAllText().join('\n')
+    expect(texts.includes('会话')).toBe(true)
+    expect(texts.includes('工作区')).toBe(true)
+    expect(texts.includes('暂无未归属会话')).toBe(false)
+    store.close(tid)
+    t.renderer.flush()
+  })
+
+  test('无归属会话空态：暂无未归属会话', async () => {
+    renderHarness({ query: '' })
+    t.renderer.flush()
+    await until('empty hint', () =>
+      t.renderer.getAllText().some((s) => s.includes('暂无未归属会话')),
+    )
+  })
+
+  test('时间分组：今天标签 + 老会话归「更早」', async () => {
+    await store.spawnFromPreset('shell', wsA)
+    const tid = store.getState().threads.at(-1)!.id
+    renderHarness({ query: '' })
+    t.renderer.flush()
+    await until('today label', () => t.renderer.getAllText().some((s) => s.includes('今天')))
+    store.close(tid)
+    t.renderer.flush()
+  })
+
+  test('load more：>10 条出现「展开其余」+ 点击全展开', async () => {
+    // 自清理前置：前面用例可能有遗留行（slice 按创建序会占 limit 名额）
+    for (const old of store.getState().threads.slice()) store.close(old.id)
+    const ids: string[] = []
+    for (let i = 0; i < 12; i++) {
+      await store.spawnFromPreset('shell', wsA)
+      ids.push(store.getState().threads.at(-1)!.id)
+    }
+    renderHarness({ query: '' })
+    t.renderer.flush()
+    await until('load-more visible', () => {
+      const el =
+        t.renderer.findByTestId('load-more-today') ??
+        t.renderer.findByTestId('load-more-yesterday') ??
+        t.renderer.findByTestId('load-more-week') ??
+        t.renderer.findByTestId('load-more-earlier')
+      return el != null
+    })
+    // 默认只显 10 行
+    const visible = ids.filter((id) => t.renderer.findByTestId(`row-${id}`) != null)
+    expect(visible.length).toBe(10)
+    // 点击展开其余
+    const more =
+      t.renderer.findByTestId('load-more-today') ??
+      t.renderer.findByTestId('load-more-yesterday') ??
+      t.renderer.findByTestId('load-more-week') ??
+      t.renderer.findByTestId('load-more-earlier')!
+    t.renderer.focusElement(more.id)
+    t.renderer.simulateKeystrokes('enter')
+    t.renderer.flush()
+    await until('all rows visible', () =>
+      ids.every((id) => t.renderer.findByTestId(`row-${id}`) != null),
+    )
+    for (const id of ids) store.close(id)
+    t.renderer.flush()
   })
 })

@@ -38,9 +38,12 @@ export function Modal({
   onClose: () => void
 }) {
   const { width: vw, height: vh } = useWindowSize()
+  // 窄窗钳制（D18，原型 min(92vw, ...)）：卡片宽不超出视口（两侧至少 12px），
+  // 高不超出 vh-48。原固定宽 440/460/480 在 390px 窗口会横向溢出。
+  const cardWidth = Math.min(width, vw - 24)
   const cardHeight = height ? Math.min(height, vh - 48) : undefined
   // 居中（窗口比卡片窄时贴边防御——测试窗口 800×600 场景）
-  const x = Math.max((vw - width) / 2, 12)
+  const x = Math.max((vw - cardWidth) / 2, 12)
   const y = cardHeight ? Math.max((vh - cardHeight) / 2, 12) : Math.max((vh - 360) / 2, 12)
 
   // 覆盖层定位：absolute 四边 0。W7 实测：GPUIX absolute 需要最近定位
@@ -83,7 +86,7 @@ export function Modal({
         style={{
           display: 'flex',
           flexDirection: 'column',
-          width,
+          width: cardWidth,
           height: cardHeight,
           maxHeight: vh - 48,
           backgroundColor: COLORS.inputBg,

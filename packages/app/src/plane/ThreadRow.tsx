@@ -35,6 +35,65 @@ export function rowTitle(thread: Thread): string {
   return thread.kind === 'terminal' ? displayTitle(thread) : thread.title
 }
 
+/** 状态点视觉五态（v2 .st；退出=灰文字无点） */
+export type DotState = 'running' | 'need' | 'done' | 'error' | 'exited' | 'idle'
+
+/** 会话 → 状态点（纯函数，测试面）：terminal running/exited；
+ *  chat/acp pendingReply=need（紫，等待回复）；error 行=红（消息带
+ *  error 标记且非 pending）。 */
+export function statusDot(thread: Thread): DotState {
+  if (thread.kind === 'terminal') return thread.status === 'exited' ? 'exited' : 'running'
+  if (thread.pendingReply) return 'need'
+  const last = thread.messages.at(-1)
+  return last && last.role === 'assistant' && last.error ? 'error' : 'idle'
+}
+
+function Dot({ state }: { state: DotState }) {
+  if (state === 'exited') return <div style={{ width: 7, flexShrink: 0 }} />
+  if (state === 'idle')
+    return (
+      <div
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: 9999,
+          // v2 idle：透明心底 + g300 描边空心环
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          borderColor: COLORS.g300,
+          flexShrink: 0,
+        }}
+      />
+    )
+  const bg =
+    state === 'running'
+      ? COLORS.statusRunning
+      : state === 'need'
+        ? COLORS.statusNeed
+        : state === 'error'
+          ? COLORS.statusError
+          : COLORS.statusDone
+  return (
+    <div
+      style={{
+        width: 7,
+        height: 7,
+        borderRadius: 9999,
+        backgroundColor: bg,
+        // 呼吸光晕：外圈 15% 同色（原型 box-shadow 3px 展开）
+        boxShadow: {
+          offsetX: 0,
+          offsetY: 0,
+          blurRadius: 0,
+          spreadRadius: 3,
+          color: `${bg}26`,
+        },
+        flexShrink: 0,
+      }}
+    />
+  )
+}
+
 export function ThreadRow({
   id,
   store,
@@ -61,15 +120,10 @@ export function ThreadRow({
   const isActive = active?.type === 'thread' && active.id === id
   const isTerminal = thread.kind === 'terminal'
   const exited = isTerminal && thread.status === 'exited'
+  const dot = statusDot(thread)
   const showBell = isTerminal && thread.hasBell && !isActive
   const showMenu = hovered || isActive || editing
 
-  const kindColor =
-    thread.kind === 'terminal'
-      ? COLORS.terminalKind
-      : thread.kind === 'acp'
-        ? COLORS.acpKind
-        : COLORS.accent
   const titleColor = exited ? COLORS.exited : isActive ? COLORS.textBright : COLORS.text
 
   const startRename = () => {
@@ -118,30 +172,13 @@ export function ThreadRow({
         paddingLeft: SIZES.rowPaddingX,
         paddingRight: SIZES.rowPaddingX - 2,
         borderRadius: SIZES.rowRadius,
-        backgroundColor: isActive ? COLORS.surface : 'transparent',
+        backgroundColor: isActive ? COLORS.surfaceActive : 'transparent',
         cursor: 'pointer',
         userSelect: 'none',
       }}
     >
-      {/* active 指示条：贴行左缘外（布局契约 §3，绝对定位于 margin 区）。
-          装饰层：pe none 不挡命中（见文件头） */}
-      {isActive ? (
-        <div
-          style={{
-            position: 'absolute',
-            left: -SIZES.rowMarginX,
-            top: 6,
-            bottom: 6,
-            width: SIZES.activeBarWidth,
-            backgroundColor: COLORS.accent,
-            borderRadius: 1,
-            pointerEvents: 'none',
-          }}
-        />
-      ) : null}
-
       <div style={{ display: 'flex', width: 18, justifyContent: 'center', flexShrink: 0 }}>
-        <Icon name={thread.kind} size={13} color={exited ? COLORS.exited : kindColor} />
+        <Dot state={dot} />
       </div>
 
       {editing ? (

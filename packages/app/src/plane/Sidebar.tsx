@@ -15,19 +15,17 @@ import type { SettingsStore } from '../settings/store'
 import { useSettingsValue } from '../settings/useSettings'
 import type { ThreadStore } from '../threads/store'
 import { Icon } from '../ui/Icon'
-import { inputFocus } from '../ui/keyboard'
 import type { AppPlatform } from '../ui/platform'
 import { TRAFFIC_LIGHT_WIDTH } from '../ui/platform'
 import { COLORS, FONT, SIZES } from '../ui/tokens'
 import type { DialogOpener } from './DialogHost'
-import { sidebarKeyboard } from './sidebarKeyboard'
 import { useTitleBarDrag, type WindowControls } from './TitleBar'
 import { WorkspaceList } from './WorkspaceList'
-
 /**
- * 顶栏左段：AGENT 标识 + 线程切换 hint。mac 上给红绿灯让位（Zed：
- * sidebar 打开时 TRAFFIC_LIGHT_PADDING 在这一段，TitleBar 段不加）；
- * mac/linux 可拖窗口（TitleBar 同款 armed+move 模式）；win 标 drag 区。
+ * 顶栏左段：v2 侧栏头（52px；Phase D0）。mac 上给红绿灯让位 78px，
+ * 无 AGENT 标识（v2 去品牌字）；侧栏收起钮已移至 TitleBar 常驻（D4：
+ * 侧栏隐藏后仍需鼠标恢复入口，不能随侧栏一起卸载）。
+ * mac/linux 可拖窗口（armed+move）；win 标 drag 区。
  * 宽 = 侧栏宽（AgentPlane 从 settings 订阅后传入，与内容行对齐）。
  */
 export function SidebarHeader({
@@ -51,42 +49,19 @@ export function SidebarHeader({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        height: SIZES.titleBarHeight,
+        height: SIZES.sidebarHeadHeight,
         // 不把 padding 放在横向 flex item 上：gpuix 的 padding 不计入
-        // flex 占位，会让本段从 x=TRAFFIC_LIGHT_WIDTH 开始并把 TitleBar
-        // 推出窗口。用子项 margin 保留视觉内缩，本段严格占满 248px。
-        // 与 TitleBar 同色：顶栏行是一条连续表面，不是侧栏顶盖。
-        backgroundColor: COLORS.titlebar,
+        // flex 占位（会让本段从 x=78 开始并把工具栏推出窗口）；用子项 margin 保留视觉内缩。
+        // v2：侧栏头底 = 侧栏底 #000（不再与工具栏同色——两段分属侧栏/主栏）。
+        backgroundColor: COLORS.sidebar,
         userSelect: 'none',
         ...(platform === 'win' ? { windowControlArea: 'drag' as const } : {}),
       }}
       {...(platform === 'mac' || platform === 'linux' ? drag : {})}
     >
-      <text
-        testId="sidebar-header-label"
-        style={{
-          marginLeft: (platform === 'mac' ? TRAFFIC_LIGHT_WIDTH : 0) + 12,
-          // GPUI 文本基线略高于几何中心；+1px 与系统红绿灯光学对齐。
-          marginTop: 1,
-          fontSize: 11,
-          fontFamily: FONT.ui,
-          fontWeight: '600',
-          color: COLORS.muted,
-        }}
-      >
-        AGENT
-      </text>
-      <text
-        style={{
-          marginRight: 10,
-          marginTop: 1,
-          fontSize: 10,
-          fontFamily: FONT.mono,
-          color: COLORS.muted,
-        }}
-      >
-        ⌃⇥
-      </text>
+      {/* 左占位：mac 红绿灯让位；win/linux 留对称内缩（收起钮已移
+          TitleBar，此段只剩拖拽让位与对称内缩） */}
+      <div style={{ width: (platform === 'mac' ? TRAFFIC_LIGHT_WIDTH : 0) + 10, flexShrink: 0 }} />
     </div>
   )
 }
@@ -94,17 +69,18 @@ export function SidebarHeader({
 export function Sidebar({
   store,
   settings,
-  onEscEmpty,
+  onEscEmpty: _onEscEmpty,
   dialog,
 }: {
   store: ThreadStore
   settings: SettingsStore
-  /** Esc 层级最低层（W4）：query 空 + Esc → 窄窗口抽屉关闭（宽窗口 no-op） */
+  /** Esc 层级最低层（W4）：query 空 + Esc → 窄窗口抽屉关闭（宽窗口 no-op）。
+   *  v2：侧栏内搜索框已移除（⌘K 打开弹窗）；保留 prop 以兼容窄屏抽屉调用点 */
   onEscEmpty?: () => void
   /** 弹窗入口（W7）：⌘K 搜索/添加工作区 */
   dialog: DialogOpener
 }) {
-  const [query, setQuery] = useState('')
+  const [query] = useState('')
   // 宽度单值订阅：设置页拖滑块时只重渲染侧栏（不碰会话树）；
   // 其他 patch（如主题）因 selector 值稳定而不触发重渲染
   const width = useSettingsValue(settings, (s) => s.appearance.sidebarWidth)
@@ -116,66 +92,16 @@ export function Sidebar({
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
+        // v2：侧栏底 = #000 + 顶部白 4.5%→25% 渐变（原型 sidebar 双层背景）。
+        // gpuix 无渐变原语，用单层 #000 + 头部与 tile 叠层近似；分层由
+        // WorkspaceList 的 tile 容器承担。
         backgroundColor: COLORS.sidebar,
         borderWidth: 0,
         borderRightWidth: 1,
         borderColor: COLORS.border,
       }}
     >
-      {/* 搜索会话（跨工作区：标题/工具/目录；非空时列表切搜索结果） */}
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 6,
-          marginTop: 6,
-          marginLeft: 10,
-          marginRight: 10,
-          marginBottom: 6,
-          height: 28,
-          paddingLeft: 8,
-          paddingRight: 8,
-          borderRadius: 4,
-          backgroundColor: COLORS.inputBg,
-          borderWidth: 1,
-          borderColor: COLORS.borderSubtle,
-        }}
-      >
-        <Icon name="search" size={12} color={COLORS.muted} />
-        <input
-          ref={(r) => {
-            sidebarKeyboard.setSearchInput(r?.id ?? null)
-          }}
-          testId="session-search"
-          value={query}
-          placeholder="搜索会话"
-          onChange={(e) => {
-            setQuery(e.value ?? '')
-            sidebarKeyboard.setQuery(e.value ?? '')
-          }}
-          onFocus={() => inputFocus.acquire()}
-          onBlur={() => inputFocus.release()}
-          onKeyDown={(e) => {
-            // Esc 层级（W4）：非空清空 → 空+抽屉态关抽屉（onEscEmpty）
-            if (e.key === 'escape') {
-              if (query) {
-                setQuery('')
-                sidebarKeyboard.setQuery('')
-              } else {
-                onEscEmpty?.()
-              }
-            }
-          }}
-          style={{
-            flexGrow: 1,
-            fontSize: 12,
-            fontFamily: FONT.ui,
-            color: COLORS.text,
-          }}
-        />
-      </div>
-
+      {/* v2：搜索框上移到侧栏头（D0 与收起钮同段）后，列表区直接从双区开始 */}
       <WorkspaceList store={store} settings={settings} query={query} dialog={dialog} />
 
       {/* Footer：设置入口（Ctrl-, 同效，见 main.tsx 键位层） */}

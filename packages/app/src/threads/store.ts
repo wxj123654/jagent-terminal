@@ -154,6 +154,9 @@ export interface ThreadStore {
   toggleWorkspaceExpanded(id: string): void
   /** 工作区内 tab（git-graph.md §4.1）：'home'/'git'；持久化，不导航 */
   setWorkspacePaneTab(id: string, tab: 'home' | 'git'): void
+  /** 测试专用：直接改 thread.createdAt（时间分组测试需跨今天/更早组；
+ *  生产路径 createdAt 只在 spawn 时写入，不提供运行时改口） */
+  setThreadCreatedAt(id: string, at: number): void
   /** 打开 Git 图：当前工作区（会话归属 / 已激活 / 第一个）切 paneTab=git 并激活。无工作区 no-op。 */
   openGitGraph(): void
   /** 装配层专用：native → store（经 events.ts 窄化后的判别联合） */
@@ -415,6 +418,14 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
         if (ws) ws.expanded = !ws.expanded
       })
       persist()
+    },
+
+    setThreadCreatedAt(id, at) {
+      set((s) => {
+        const th = s.threads.find((t) => t.id === id)
+        if (th) th.createdAt = at
+      })
+      // 不 persist：测试专用改口，不落盘
     },
 
     setWorkspacePaneTab(id, tab) {

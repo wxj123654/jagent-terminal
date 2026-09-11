@@ -39,6 +39,7 @@ import { createGitGraphStore } from './git/store'
 import { createGlobalKeydown } from './keybindings'
 import { App } from './plane/AgentPlane'
 import { dialogKeyboard } from './plane/dialogKeyboard'
+import { planeKeyboard } from './plane/planeKeyboard'
 import type { WindowControls } from './plane/TitleBar'
 import { router, activeTargetFromLocation, lastNonSettings } from './router'
 import { fsAdapter } from './settings/file'
@@ -239,6 +240,10 @@ const handleKeyDown = createGlobalKeydown({
   focusThreadSearch: () => {
     // W7 ⌘K/Ctrl-K：打开搜索会话弹窗（原型语义；原 W4 聚焦侧栏搜索框废弃）
     dialogKeyboard.openSearch()
+  },
+  toggleSidebar: () => {
+    // D2 ⌘B/Ctrl-B：经 plane 模块态（AgentPlane useEffect 注册）
+    planeKeyboard.toggleSidebar()
   },
   // Git 图键位（git-graph.md §4.3）：与顶栏按钮共用 store.openGitGraph
   openGitGraph: () => threadStore.openGitGraph(),

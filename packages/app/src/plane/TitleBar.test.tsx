@@ -61,23 +61,21 @@ describe('TitleBar · mac', () => {
     t.renderer.flush()
 
     // padding 不放在横向 flex item 上，因此整个左段与内容列严格
-    // 对齐；红绿灯让位体现在 AGENT 文本的 marginLeft。
+    // 对齐；v2：侧栏头 52px、无 AGENT 标签（红绿灯让位由左占位承担）。
     const header = boundsOf('sidebar-header')
     expect(header[0]).toBe(0)
     expect(header[2]).toBe(248)
-    expect(header[3]).toBe(34)
+    expect(header[3]).toBe(52)
 
     const bar = boundsOf('titlebar')
-    expect(bar[0]).toBe(248) // 左段宽 248；标题文本从 260 开始
-    const label = boundsOf('sidebar-header-label')
-    expect(label[0]).toBe(TRAFFIC_LIGHT_WIDTH + 12)
-    const title = boundsOf('titlebar-title')
-    expect(title[0]).toBe(248 + 12)
-    // Optical 1px drop: both labels sit below the geometric center.
-    expect(label[1]).toBeGreaterThan(header[1])
-    expect(title[1]).toBeGreaterThan(bar[1])
+    expect(bar[0]).toBe(248) // 左段宽 248；常驻侧栏钮 28px 后标题从 288 开始
+    // D4：宽窗口侧栏开关常驻 TitleBar（侧栏隐藏后仍可鼠标恢复）；
+    // mac 侧栏在场时让位由 SidebarHeader 承担，本钮不额外缩进。
+    expect(boundsOf('toggle-sidebar')[0]).toBe(248)
+    expect(boundsOf('titlebar-title')[0]).toBe(248 + 28 + 12)
+    // Optical 1px drop: title sits below the geometric center.
+    expect(boundsOf('titlebar-title')[1]).toBeGreaterThan(bar[1])
     const texts = t.renderer.getAllText()
-    expect(texts.join('\n')).toContain('AGENT')
     expect(texts.join('\n')).toContain('j-agent')
   })
 

@@ -15,8 +15,9 @@ export const COLORS = {
   terminal: '#1a1d23',
   /** 抬升表面：active 行底 / 按钮底 / 通用 hover（One Dark selection） */
   surface: '#2c313a',
-  /** 抬升表面的 hover（按钮加深） */
   surfaceHover: '#333845',
+  /** active 行底（Phase D1：原 surface 语义拆分——surface 留给 hover 面） */
+  surfaceActive: '#2c313a',
   /** 凹陷表面：rename 输入框 / 菜单底 */
   inputBg: '#1b1d23',
   /** 行内关闭钮 hover */
@@ -40,6 +41,13 @@ export const COLORS = {
   borderSubtle: '#3e4451',
   /** exited 行：整行压灰（含文字） */
   exited: '#4b5262',
+  /** idle 状态点空心环描边——One Dark muted */
+  g300: '#5c6370',
+  // ── 状态点四态（Phase D1；One Dark 调和）──
+  statusRunning: '#e5c07b',
+  statusNeed: '#c678dd',
+  statusDone: '#98c379',
+  statusError: '#e06c75',
 } as const
 
 /** git graph lane 色板（docs/git-graph.md §3.2）：8 色轮转，One Dark 调和 */
@@ -57,14 +65,18 @@ export const GRAPH_LANE_COLORS = [
 export const SIZES = {
   // 默认侧栏宽；运行时以 settings.appearance.sidebarWidth（200–400）为准——
   // 布局面（Sidebar/SidebarHeader/ToolMenu/AgentPlane drawer）经 useSettingsValue 消费
-  sidebarWidth: 248,
+  sidebarWidth: 264,
   rowHeight: 28,
   rowMarginX: 6,
   rowPaddingX: 8,
-  rowRadius: 4,
+  rowRadius: 10,
   activeBarWidth: 2,
   /** 自绘顶栏高度（Zed platform_title_bar_height：非 Windows 为 max(1.75rem, 34px)） */
   titleBarHeight: 34,
+  /** 主栏工具栏高（原型 --toolbar-h；Phase D0） */
+  toolbarHeight: 46,
+  /** 侧栏头高（原型 .sb-head 52px，含红绿灯让位；Phase D0） */
+  sidebarHeadHeight: 52,
 } as const
 
 export const FONT = {
