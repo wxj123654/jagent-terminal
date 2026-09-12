@@ -20,7 +20,7 @@ import { ErrorDialog } from './ErrorDialog'
 import { SearchDialog } from './SearchDialog'
 import { SessionDialog } from './SessionDialog'
 import { ToolDialog } from './ToolDialog'
-import { WorkspaceDialog } from './WorkspaceDialog'
+import { WorkspaceDialog, WorkspaceManageDialog } from './WorkspaceDialog'
 import type { DirectoryPicker } from './WorkspaceList'
 
 export type DialogState =
@@ -29,6 +29,7 @@ export type DialogState =
   | { kind: 'addWorkspace' }
   | { kind: 'search' }
   | { kind: 'manageSession'; threadId: string }
+  | { kind: 'manageWorkspace'; workspaceId: string }
   | { kind: 'errors' }
   | { kind: 'crash'; last: LastCrash }
 
@@ -38,6 +39,8 @@ export type DialogOpener = {
   openAddWorkspace: () => void
   openSearch: () => void
   openManageSession: (threadId: string) => void
+  /** D10：工作区行「…」→ 管理弹窗（重命名/显示全部/移除） */
+  openManageWorkspace: (workspaceId: string) => void
   openErrors: () => void
 }
 
@@ -85,6 +88,8 @@ export function DialogHost({
       return <CrashDialog last={state.last} onClose={close} />
     case 'manageSession':
       return <SessionDialog store={store} threadId={state.threadId} onClose={close} />
+    case 'manageWorkspace':
+      return <WorkspaceManageDialog store={store} workspaceId={state.workspaceId} onClose={close} />
     default:
       return null
   }

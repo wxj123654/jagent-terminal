@@ -67,7 +67,7 @@ export function Popover({
           display: 'flex',
           flexDirection: 'column',
           minWidth,
-          backgroundColor: COLORS.inputBg,
+          backgroundColor: COLORS.overlay,
           borderWidth: 1,
           borderColor: COLORS.borderSubtle,
           borderRadius: 6,

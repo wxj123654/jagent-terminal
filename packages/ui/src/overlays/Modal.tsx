@@ -26,6 +26,7 @@ import { COLORS, FONT } from '../theme/tokens'
 export function Modal({
   width,
   height,
+  radius,
   children,
   onClose,
 }: {
@@ -33,6 +34,8 @@ export function Modal({
   width: number
   /** 卡片目标高（px；缺省内容自适应，anchored 高随内容） */
   height?: number
+  /** 卡片圆角（原型 dialog r-lg=16；search-dialog r-xl=20） */
+  radius?: number
   children: ReactNode
   /** Esc / 点击遮罩 → 关闭（调用方通常 setShow(false)） */
   onClose: () => void
@@ -75,7 +78,7 @@ export function Modal({
           top: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: '#00000066',
+          backgroundColor: 'rgba(0,0,0,0.48)',
           pointerEvents: 'auto',
         }}
       />
@@ -89,10 +92,17 @@ export function Modal({
           width: cardWidth,
           height: cardHeight,
           maxHeight: vh - 48,
-          backgroundColor: COLORS.inputBg,
+          backgroundColor: COLORS.overlay,
           borderWidth: 1,
-          borderColor: COLORS.borderSubtle,
-          borderRadius: 8,
+          borderColor: COLORS.border,
+          borderRadius: radius ?? 16,
+          boxShadow: {
+            offsetX: 0,
+            offsetY: 16,
+            blurRadius: 48,
+            spreadRadius: 0,
+            color: 'rgba(0,0,0,0.55)',
+          },
           color: COLORS.text,
           fontFamily: FONT.ui,
         }}
@@ -129,15 +139,15 @@ export function ModalHeading({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingLeft: 16,
-        paddingRight: 10,
-        paddingTop: 12,
-        paddingBottom: 10,
+        gap: 8,
+        paddingLeft: 14,
+        paddingRight: 14,
+        paddingTop: 14,
       }}
     >
       <text
         style={{
-          fontSize: 14,
+          fontSize: 16,
           fontFamily: FONT.ui,
           fontWeight: '600',
           color: COLORS.textBright,
@@ -158,14 +168,14 @@ export function ModalHeading({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: 22,
-            height: 22,
-            borderRadius: 4,
+            width: 28,
+            height: 28,
+            borderRadius: 9999,
             cursor: 'pointer',
             hover: { backgroundColor: COLORS.closeHover },
           }}
         >
-          <Icon name="close" size={13} color={COLORS.muted} />
+          <Icon name="close" size={15} color={COLORS.muted} />
         </div>
       </div>
     </div>
@@ -181,9 +191,11 @@ export function ModalBody({ children }: { children: ReactNode }) {
         display: 'flex',
         flexDirection: 'column',
         minHeight: 0,
-        paddingLeft: 16,
-        paddingRight: 16,
-        paddingBottom: 14,
+        paddingLeft: 14,
+        paddingRight: 14,
+        paddingTop: 12,
+        paddingBottom: 16,
+        gap: 12,
         flexGrow: 1,
       }}
     >
@@ -229,15 +241,14 @@ export function ModalActions({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            height: 28,
-            paddingLeft: 13,
-            paddingRight: 13,
-            borderRadius: 5,
+            height: 30,
+            paddingLeft: 14,
+            paddingRight: 14,
+            borderRadius: 6,
             cursor: a.disabled ? 'default' : 'pointer',
             opacity: a.disabled ? 0.5 : 1,
-            backgroundColor: a.primary ? COLORS.accent : a.danger ? COLORS.bell : COLORS.surface,
-            borderWidth: a.primary || a.danger ? 0 : 1,
-            borderColor: COLORS.borderSubtle,
+            backgroundColor: a.primary ? COLORS.accent : a.danger ? COLORS.bell : 'transparent',
+            borderWidth: 0,
             hover: a.disabled
               ? {}
               : {
@@ -253,7 +264,7 @@ export function ModalActions({
             style={{
               fontSize: 12,
               fontFamily: FONT.ui,
-              color: a.primary || a.danger ? '#ffffff' : COLORS.text,
+              color: a.primary ? '#0d0d0d' : a.danger ? '#ffffff' : COLORS.text,
               pointerEvents: 'none',
             }}
           >

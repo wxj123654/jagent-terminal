@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from 'react'
 
-import { Icon, inputFocus, Modal, ModalBody, ModalHeading, COLORS, FONT } from '@jagent/ui'
+import { Icon, inputFocus, Modal, COLORS, FONT } from '@jagent/ui'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
 import type { ThreadStore } from '../threads/store'
@@ -62,76 +62,88 @@ export function SearchDialog({
   }
 
   return (
-    <Modal width={480} onClose={onClose}>
-      <ModalHeading title="搜索会话" onClose={onClose} />
-      <ModalBody>
-        {/* 搜索框（原型：输入即筛选；Esc 清空——空时放行 Modal 关闭） */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            height: 30,
-            paddingLeft: 9,
-            paddingRight: 9,
-            marginBottom: 8,
-            borderRadius: 4,
-            backgroundColor: COLORS.app,
-            borderWidth: 1,
-            borderColor: COLORS.borderSubtle,
+    // 原型 #search-dialog：min(92vw,560) + r-xl；命令面板形态——
+    // 顶部 .search-in 输入行（无标题栏），下接 .sr-list 结果区
+    <Modal width={560} radius={20} onClose={onClose}>
+      {/* 搜索行（原型 .search-in：icon 16 + input 14px，padding 12 14，底部分隔线） */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          paddingLeft: 14,
+          paddingRight: 14,
+          paddingTop: 12,
+          paddingBottom: 12,
+          borderBottomWidth: 1,
+          borderColor: COLORS.border,
+          flexShrink: 0,
+        }}
+      >
+        <Icon name="search" size={16} color={COLORS.faint} />
+        <input
+          autoFocus
+          testId="search-dialog-input"
+          value={query}
+          placeholder="搜索会话、工作区、命令…"
+          onChange={(e) => {
+            setQuery(e.value ?? '')
+            setCursor(0)
           }}
-        >
-          <Icon name="search" size={12} color={COLORS.muted} />
-          <input
-            autoFocus
-            testId="search-dialog-input"
-            value={query}
-            placeholder="搜索会话、工具或工作区…"
-            onChange={(e) => {
-              setQuery(e.value ?? '')
-              setCursor(0)
-            }}
-            onFocus={() => inputFocus.acquire()}
-            onBlur={() => inputFocus.release()}
-            onKeyDown={(e) => {
-              if (e.key === 'arrowdown') moveCursor(1)
-              else if (e.key === 'arrowup') moveCursor(-1)
-              else if (e.key === 'enter') activateAt(cursor)
-              else if (e.key === 'escape' && query) setQuery('')
-            }}
-            style={{ flexGrow: 1, fontSize: 12, fontFamily: FONT.ui, color: COLORS.text }}
-          />
-        </div>
+          onFocus={() => inputFocus.acquire()}
+          onBlur={() => inputFocus.release()}
+          onKeyDown={(e) => {
+            if (e.key === 'arrowdown') moveCursor(1)
+            else if (e.key === 'arrowup') moveCursor(-1)
+            else if (e.key === 'enter') activateAt(cursor)
+            else if (e.key === 'escape' && query) setQuery('')
+          }}
+          style={{
+            flexGrow: 1,
+            fontSize: 14,
+            fontFamily: FONT.ui,
+            color: COLORS.textBright,
+          }}
+        />
+      </div>
 
-        {/* 结果列表（↑↓ 光标行 + 行内高亮） */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
-            overflowY: 'scroll',
-            maxHeight: 300,
-            minHeight: 80,
-          }}
-        >
-          {q !== '' && results.length === 0 ? (
-            <text style={{ fontSize: 11, fontFamily: FONT.ui, color: COLORS.muted, padding: 8 }}>
-              没有匹配的会话。试试项目名或工具名。
-            </text>
-          ) : null}
-          {results.map(({ thread, workspace }, i) => (
-            <SearchRow
-              key={thread.id}
-              thread={thread}
-              workspaceName={workspace?.name}
-              selected={i === cursor}
-              onHover={() => setCursor(i)}
-              onPick={() => activateAt(i)}
-            />
-          ))}
-        </div>
-      </ModalBody>
+      {/* 结果列表（原型 .sr-list：padding 6，max-height 340；↑↓ 光标行） */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          overflowY: 'scroll',
+          maxHeight: 340,
+          minHeight: 80,
+          padding: 6,
+        }}
+      >
+        {q !== '' && results.length === 0 ? (
+          <text
+            style={{
+              fontSize: 12,
+              fontFamily: FONT.ui,
+              color: COLORS.faint,
+              paddingTop: 28,
+              paddingBottom: 28,
+              textAlign: 'center',
+            }}
+          >
+            没有匹配的会话。试试项目名或工具名。
+          </text>
+        ) : null}
+        {results.map(({ thread, workspace }, i) => (
+          <SearchRow
+            key={thread.id}
+            thread={thread}
+            workspaceName={workspace?.name}
+            selected={i === cursor}
+            onHover={() => setCursor(i)}
+            onPick={() => activateAt(i)}
+          />
+        ))}
+      </div>
     </Modal>
   )
 }
@@ -149,13 +161,8 @@ function SearchRow({
   onHover: () => void
   onPick: () => void
 }) {
-  const kindColor =
-    thread.kind === 'terminal'
-      ? COLORS.terminalKind
-      : thread.kind === 'acp'
-        ? COLORS.acpKind
-        : COLORS.accent
   return (
+    // 原型 .sr：grid 16|1fr|auto，padding 8 10，radius 6，图标 16 text-3
     <div
       tabIndex={0}
       testId={`search-hit-${thread.id}`}
@@ -168,26 +175,29 @@ function SearchRow({
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
-        height: 30,
-        paddingLeft: 8,
-        paddingRight: 8,
-        borderRadius: 4,
+        gap: 10,
+        paddingTop: 8,
+        paddingBottom: 8,
+        paddingLeft: 10,
+        paddingRight: 10,
+        borderRadius: 6,
         backgroundColor: selected ? COLORS.surface : 'transparent',
         cursor: 'pointer',
       }}
     >
       <div style={{ display: 'flex', width: 16, justifyContent: 'center', flexShrink: 0 }}>
-        <Icon name={thread.kind} size={12} color={kindColor} />
+        <Icon name={thread.kind} size={16} color={COLORS.muted} />
       </div>
       <text
         style={{
-          fontSize: 12,
+          fontSize: 13,
           fontFamily: FONT.ui,
           color: COLORS.text,
           whiteSpace: 'nowrap',
           textOverflow: 'ellipsis',
           overflow: 'hidden',
+          flexGrow: 1,
+          minWidth: 0,
           pointerEvents: 'none',
         }}
       >
@@ -195,14 +205,11 @@ function SearchRow({
       </text>
       <text
         style={{
-          fontSize: 10,
+          fontSize: 11,
           fontFamily: FONT.mono,
-          color: COLORS.muted,
+          color: COLORS.faint,
           whiteSpace: 'nowrap',
-          textOverflow: 'ellipsis',
-          overflow: 'hidden',
-          flexGrow: 1,
-          textAlign: 'right',
+          flexShrink: 0,
           pointerEvents: 'none',
         }}
       >

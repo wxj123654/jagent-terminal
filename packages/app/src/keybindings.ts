@@ -40,6 +40,7 @@ export type KeybindingAction =
   | 'focusSearch'
   | 'searchThreads'
   | 'toggleSidebar'
+  | 'newSession'
 export type Keybindings = Record<KeybindingAction, string>
 
 /**
@@ -84,6 +85,11 @@ export function createGlobalKeydown(opts: {
   focusThreadSearch: () => void
   /** ⌘B/Ctrl-B 收起/展开侧栏（Phase D2；窄窗口抽屉态同效） */
   toggleSidebar: () => void
+  /** ⌘N（原型）：新建会话——打开工具弹窗（目标 = 当前工作区；装配层注入） */
+  newSession?: () => void
+  /** Esc：窄窗抽屉打开时吃掉关闭之；返回 true = 已消费（对话框
+   *  打开时不触发——弹窗 Esc 由 Modal 自己处理） */
+  drawerEsc?: () => boolean
   /** Git 图打开时吃无修饰键（↑↓/enter/escape/r）；返回 true = 已消费。
    *  激活判定在闭包内（workspace 路由 + paneTab==='git'）——非激活必返回 false
    *  透传（硬约束 2：不吃 vim/claude 按键） */
@@ -100,6 +106,8 @@ export function createGlobalKeydown(opts: {
     focusSearch,
     focusThreadSearch,
     toggleSidebar,
+    newSession,
+    drawerEsc,
     inputFocused,
     settingsQuery,
     escConsumed,
@@ -131,11 +139,19 @@ export function createGlobalKeydown(opts: {
       focusThreadSearch()
       return
     }
+    // 新建会话（D7 ⌘N）：同修饰层
+    if (!inSettings() && keystrokeMatches(kb().newSession, key, ctrl, shift, cmd)) {
+      newSession?.()
+      return
+    }
     // 收起/展开侧栏（D2 ⌘B）：cmd/ctrl 修饰层，不吃终端裸键
     if (keystrokeMatches(kb().toggleSidebar, key, ctrl, shift, cmd)) {
       toggleSidebar()
       return
     }
+    // 窄窗抽屉 Esc（D18）：设置面/弹窗各管各的，这里只在抽屉开着且无
+    // 弹窗时吃（装配层闭包判定）
+    if (key === 'escape' && !ctrl && !cmd && drawerEsc?.()) return
     // Git 图表面键（无修饰；输入框聚焦时透传，否则吃 vim/终端键）
     if (!ctrl && !inSettings() && !inputFocused() && gitGraphKey?.(key)) return
     // 修饰键组合层（其余透传）
@@ -167,4 +183,7 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
   searchThreads: process.platform === 'darwin' ? 'cmd-k' : 'ctrl-k',
   // 收起侧栏（D2）：mac ⌘B / win ctrl-b（修饰层，不写 PTY）
   toggleSidebar: process.platform === 'darwin' ? 'cmd-b' : 'ctrl-b',
+  // 新建会话（D7）：mac ⌘N；win/linux ctrl-shift-n（裸 ctrl-n 是 readline
+  // next-history，吃掉会破坏 shell）
+  newSession: process.platform === 'darwin' ? 'cmd-n' : 'ctrl-shift-n',
 }

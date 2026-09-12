@@ -1,58 +1,79 @@
 /**
- * tokens.ts — 通用视觉 tokens（ui-extensions.md §5 分类结果）。
+ * ui/theme/tokens.ts — 配色与字号 token（architecture.md §7）。
+ * 单一事实源：本文件消费 0 次，产出 token；所有 Surface 经 ui 控件引用，不散字面量。
+ * 单色亮/暗扩展位：DESIGN_THEME 未接入——本期只定义暗色一套。
  *
- * Zed One Dark 语义色 + 字体。Phase 1 定稿（architecture.md §5）；
- * Phase 2 的 settings appearance 分区若引入主题，再考虑升级为 store 注入。
- *
- * app 域 tokens（布局尺寸 SIZES / git lane 色板 GRAPH_LANE_COLORS）不在这里——
- * 它们留在 packages/app/src/tokens.ts。组件库只收「控件主题」级常量。
+ * V2 对齐（desktop-plane-v2.html）：Codex/pi-desktop 单色系——侧栏纯黑、
+ * 主区 #181818、终端 #0d0d0d、白 accent、白透明度 tile/hover/active 三档，
+ * 醒目面几乎无描边；语义色（git lane / ANSI / 状态灯）保持彩色。
  */
 
 export const COLORS = {
-  app: '#282c34',
-  pane: '#1e2127',
-  sidebar: '#21252b',
-  /** 自绘顶栏底。与 sidebar 同色，整条顶栏行（含左段）连成一体。 */
-  titlebar: '#21252b',
-  terminal: '#1a1d23',
-  /** 抬升表面：active 行底 / 按钮底 / 通用 hover（One Dark selection） */
-  surface: '#2c313a',
-  surfaceHover: '#333845',
-  /** active 行底（Phase D1：原 surface 语义拆分——surface 留给 hover 面） */
-  surfaceActive: '#2c313a',
-  /** 凹陷表面：rename 输入框 / 菜单底 */
-  inputBg: '#1b1d23',
-  /** 行内关闭钮 hover */
-  closeHover: '#3a3f4b',
-  text: '#abb2bf',
-  textBright: '#d7dae0',
-  muted: '#5c6370',
-  accent: '#61afef',
-  /** accent 按钮 hover（提亮一档；原型 .button.primary:hover #a2cffa 同意图） */
-  accentHover: '#82c1f2',
-  /** accent 低透明度底（toggle 开启轨道 / 焦点环，原型 --accent-soft） */
-  accentSoft: 'rgba(97, 175, 239, 0.15)',
-  /** 自定义徽章青（原型 --cyan） */
+  /** 应用底（侧栏列底色；原型 body #000） */
+  app: '#000000',
+  /** 主内容面（工具栏 / pane；原型 --g900 #181818） */
+  pane: '#181818',
+  sidebar: '#000000',
+  /** 工具栏底（与 pane 同底；原型 .toolbar 透明叠在 --g900 上） */
+  titlebar: '#181818',
+  /** 终端/凹陷面（--g1000 #0d0d0d） */
+  terminal: '#0d0d0d',
+  /** hover 面（--bg-hover 6% 白；行/图标钮悬停底） */
+  surface: 'rgba(255,255,255,0.06)',
+  /** 强 hover / 菜单项高亮（--bg-active 10% 白） */
+  surfaceHover: 'rgba(255,255,255,0.10)',
+  /** 选中行 / active 面（--bg-active 10% 白） */
+  surfaceActive: 'rgba(255,255,255,0.10)',
+  /** tile 底（--bg-tile 3.5% 白：chip/胶囊钮/当前工作区底 4%） */
+  tile: 'rgba(255,255,255,0.035)',
+  /** tile hover（--bg-tile-hover 6% 白） */
+  tileHover: 'rgba(255,255,255,0.06)',
+  /** 浮起面（--g800 #212121：弹窗卡/菜单/通知浮层） */
+  overlay: '#212121',
+  /** 输入凹陷底（--g1000 #0d0d0d） */
+  inputBg: '#0d0d0d',
+  /** close × 悬停底 */
+  closeHover: 'rgba(255,255,255,0.10)',
+  /** 常规文字（--text-2 70% 白） */
+  text: 'rgba(255,255,255,0.70)',
+  /** 强文字（--text-1 纯白） */
+  textBright: '#ffffff',
+  /** 弱文字（--text-3 52% 白） */
+  muted: 'rgba(255,255,255,0.52)',
+  /** 最弱文字（--text-4 56% 白：cwd/版本号/占位/hint；比 muted 略亮是
+   *  原型事实——text-4 用在更小字号上补偿可读性） */
+  faint: 'rgba(255,255,255,0.56)',
+  /** accent（V2 白色；主按钮底/选中标记） */
+  accent: '#ffffff',
+  accentHover: '#ededed',
+  /** accent 软化（focus 环；--accent-soft 15% 白） */
+  accentSoft: 'rgba(255,255,255,0.15)',
+  /** 表单控件 focus 边框（原型 28% 白） */
+  focusBorder: 'rgba(255,255,255,0.28)',
+  /** 信息/辅助语义色（git lane、时间等；不用作交互 accent） */
   cyan: '#56b6c2',
-  /** 琥珀（git tag 徽章 / lane 色板同源） */
-  amber: '#e5c07b',
+  /** 警示/进行中语义色 */
+  amber: '#ff8549',
   terminalKind: '#98c379',
-  acpKind: '#c678dd',
-  bell: '#e06c75',
-  border: '#181a1f',
-  borderSubtle: '#3e4451',
-  /** exited 行：整行压灰（含文字） */
-  exited: '#4b5262',
-  /** idle 状态点空心环描边——One Dark muted */
-  g300: '#5c6370',
-  // ── 状态点四态（Phase D1；One Dark 调和）──
-  statusRunning: '#e5c07b',
-  statusNeed: '#c678dd',
-  statusDone: '#98c379',
-  statusError: '#e06c75',
+  acpKind: '#c27aff',
+  /** 错误/危险语义（--err #ff6764；借历史命名 bell——错误指示灯底色） */
+  bell: '#ff6764',
+  /** 弱描边（--line 8% 白：分区线/表格线） */
+  border: 'rgba(255,255,255,0.08)',
+  /** 强描边（--line-2 14% 白：输入框/弹窗描边） */
+  borderSubtle: 'rgba(255,255,255,0.14)',
+  /** 已退出态弱化文字（原型 .row.exited = text-4 56% 白；兼作 disabled） */
+  exited: 'rgba(255,255,255,0.56)',
+  /** 空闲选中环（--g300 #afafaf） */
+  g300: '#afafaf',
+  /** 状态灯（原型：进行中橙 / 待确认紫 / 完成绿 / 错误红；进行中偏琥珀保持可辨） */
+  statusRunning: '#ff8549',
+  statusNeed: '#c27aff',
+  statusDone: '#40c977',
+  statusError: '#ff6764',
 } as const
 
 export const FONT = {
-  ui: 'IBM Plex Sans, Segoe UI, system-ui, sans-serif',
-  mono: 'JetBrains Mono, Cascadia Code, monospace',
+  ui: 'IBM Plex Sans, Segoe UI, system-ui, -apple-system, Helvetica Neue, sans-serif',
+  mono: 'JetBrains Mono, Cascadia Code, Menlo, Consolas, monospace',
 } as const

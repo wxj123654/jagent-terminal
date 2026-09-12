@@ -109,7 +109,7 @@ describe('PerfHud · win 布局组合', () => {
   test('HUD 在三键左侧且不侵占 close 命中区', () => {
     t.render(
       createElement(TitleBar, {
-        title: 'j-agent',
+        chipLabel: 'j-agent',
         platform: 'win',
         trailing: createElement(PerfHud, { source: fakeSource([SAMPLE_B]).source }),
       }),

@@ -155,7 +155,9 @@ describe('SearchDialog（⌘K 搜索弹窗）', () => {
     await until('empty state', () =>
       t.renderer.getAllText().some((s) => s.includes('没有匹配的会话')),
     )
-    clickCenter('modal-close', true)
+    // 命令面板形态无关闭钮：遮罩点击关闭（input 聚焦中先 blur——W7 实测）
+    ;(t.renderer as { blur?: () => void }).blur?.()
+    clickCenter('modal-scrim')
     await until('closed', () => t.renderer.findByTestId('modal-card') == null)
   })
 })

@@ -24,6 +24,7 @@ export function IconButton({
   danger = false,
   disabled = false,
   tooltip = true,
+  radius = 4,
   onClick,
   testId,
 }: {
@@ -34,6 +35,8 @@ export function IconButton({
   /** 透明命中盒边长；桌面紧凑位可小于默认 24px。 */
   hitSize?: number
   danger?: boolean
+  /** V2 圆形 icon-btn（9999）；默认 4 保持旧处兼容。 */
+  radius?: number
   disabled?: boolean
   /** 缺省 true。顶栏等贴边位置可关，避免气泡挡住按钮。 */
   tooltip?: boolean
@@ -62,7 +65,7 @@ export function IconButton({
         justifyContent: 'center',
         width: hitSize,
         height: hitSize,
-        borderRadius: 4,
+        borderRadius: radius,
         flexShrink: 0,
         cursor: disabled ? 'default' : 'pointer',
         boxShadow: focused ? focusRing() : undefined,

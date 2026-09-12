@@ -1,16 +1,18 @@
 /**
- * plane/TitleBar.test.tsx — 自绘顶栏三平台分支（Zed 模式移植的回归面）。
+ * plane/TitleBar.test.tsx — 自绘工具栏三平台分支（Zed 模式移植的回归面）。
  *
  * 跑法：bun test packages/app/src/plane/（TestGpuixRenderer 真渲染管线）。
  * 平台行为参数化注入（TitleBar/SidebarHeader 接 platform prop），
  * 三分支在同一台机器上可测。
+ *
+ * V2 布局：侧栏整列（含 52px 头）+ 主列（46px 工具栏）。测试还原
+ * 真实两列结构——SidebarHeader 代表左列，外层列容器代表 main。
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
-import { TRAFFIC_LIGHT_WIDTH } from '@jagent/ui'
 import { SidebarHeader } from './Sidebar'
 import { TitleBar, type WindowControls } from './TitleBar'
 
@@ -45,18 +47,27 @@ function boundsOf(testId: string): number[] {
   return b!
 }
 
-// ── mac：红绿灯让位在 SidebarHeader 段；TitleBar 段正常 padding ──────
+/** V2 两列骨架：左列头（侧栏代理）+ 主列（工具栏撑满剩余宽） */
+function plane(wc: WindowControls, platform: 'mac' | 'win' | 'linux', titleBarProps = {}) {
+  return createElement(
+    'div',
+    { style: { display: 'flex', flexDirection: 'row', width: '100%', height: '100%' } },
+    createElement(SidebarHeader, { platform, windowControls: wc, width: 248 }),
+    createElement(
+      'div',
+      { style: { display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 } },
+      createElement(TitleBar, { platform, windowControls: wc, ...titleBarProps }),
+    ),
+  )
+}
+
+// ── mac：红绿灯让位在 SidebarHeader 段；工具栏 46px / 左 padding 12 ──
 
 describe('TitleBar · mac', () => {
-  test(`SidebarHeader 让位红绿灯（content 起点 ${TRAFFIC_LIGHT_WIDTH}+12），TitleBar 段 12`, () => {
+  test(`SidebarHeader 让位红绿灯（52px 头），工具栏 46px 12px 内距`, () => {
     const { wc } = controlsSpy()
     t.render(
-      createElement(
-        'div',
-        { style: { display: 'flex', flexDirection: 'row', width: '100%', height: 34 } },
-        createElement(SidebarHeader, { platform: 'mac', windowControls: wc, width: 248 }),
-        createElement(TitleBar, { title: 'j-agent', platform: 'mac', windowControls: wc }),
-      ),
+      plane(wc, 'mac', { chipIcon: 'agent' as const, chipLabel: 'j-agent', panelOpen: false }),
     )
     t.renderer.flush()
 
@@ -68,20 +79,21 @@ describe('TitleBar · mac', () => {
     expect(header[3]).toBe(52)
 
     const bar = boundsOf('titlebar')
-    expect(bar[0]).toBe(248) // 左段宽 248；常驻侧栏钮 28px 后标题从 288 开始
-    // D4：宽窗口侧栏开关常驻 TitleBar（侧栏隐藏后仍可鼠标恢复）；
-    // mac 侧栏在场时让位由 SidebarHeader 承担，本钮不额外缩进。
-    expect(boundsOf('toggle-sidebar')[0]).toBe(248)
-    expect(boundsOf('titlebar-title')[0]).toBe(248 + 28 + 12)
-    // Optical 1px drop: title sits below the geometric center.
-    expect(boundsOf('titlebar-title')[1]).toBeGreaterThan(bar[1])
+    expect(bar[0]).toBe(248)
+    expect(bar[2]).toBe(900 - 248) // 主列撑满剩余宽
+    expect(bar[3]).toBe(46)
+    // 左 padding 12 → 常驻侧栏钮 x = 248+12；会话 chip 跟在其后（gap 8）
+    expect(boundsOf('toggle-sidebar')[0]).toBe(248 + 12)
+    expect(boundsOf('chip-session')[0]).toBe(248 + 12 + 28 + 8)
     const texts = t.renderer.getAllText()
     expect(texts.join('\n')).toContain('j-agent')
+    // 面板开关常驻右端前（三键在 mac 不渲染）
+    expect(boundsOf('panel-toggle')[0] + 28).toBeLessThanOrEqual(900)
   })
 
   test('drag：mousedown + 按住 move → startMove 一次；单击不误触 zoom', () => {
     const { wc, calls } = controlsSpy()
-    t.render(createElement(TitleBar, { title: 't', platform: 'mac', windowControls: wc }))
+    t.render(createElement(TitleBar, { platform: 'mac', windowControls: wc }))
     t.renderer.flush()
     const b = boundsOf('titlebar')
     const cx = b[0] + b[2] / 2
@@ -104,20 +116,13 @@ describe('TitleBar · mac', () => {
 describe('TitleBar · win', () => {
   test('三键存在且各自标记 windowControlArea；无 JS 点击也渲染', () => {
     const { wc, calls } = controlsSpy()
-    t.render(
-      createElement(
-        'div',
-        { style: { display: 'flex', flexDirection: 'row', width: '100%', height: 34 } },
-        createElement(SidebarHeader, { platform: 'win', windowControls: wc, width: 248 }),
-        createElement(TitleBar, { title: 'j-agent', platform: 'win', windowControls: wc }),
-      ),
-    )
+    t.render(plane(wc, 'win'))
     t.renderer.flush()
 
     for (const area of ['min', 'max', 'close'] as const) {
       const b = boundsOf(`titlebar-${area}`)
       expect(b[2]).toBe(36)
-      expect(b[3]).toBe(34)
+      expect(b[3]).toBe(46)
     }
     // 右缘对齐：close 右缘贴窗口右缘（900；父条 bounds 的 x/w
     // 在 gpuix automation 中分别表示 content 起点与盒宽）
@@ -137,20 +142,13 @@ describe('TitleBar · win', () => {
 describe('TitleBar · linux', () => {
   test('三键存在；拖拽区 mousedown+move → startMove；按钮 onClick 触发 seam', () => {
     const { wc, calls } = controlsSpy()
-    t.render(
-      createElement(
-        'div',
-        { style: { display: 'flex', flexDirection: 'row', width: '100%', height: 34 } },
-        createElement(SidebarHeader, { platform: 'linux', windowControls: wc, width: 248 }),
-        createElement(TitleBar, { title: 'j-agent', platform: 'linux', windowControls: wc }),
-      ),
-    )
+    t.render(plane(wc, 'linux'))
     t.renderer.flush()
 
     for (const area of ['min', 'max', 'close'] as const) {
       const b = boundsOf(`titlebar-${area}`)
       expect(b[2]).toBe(36)
-      expect(b[3]).toBe(34)
+      expect(b[3]).toBe(46)
     }
     const close = boundsOf('titlebar-close')
     expect(close[0] + close[2]).toBe(900)

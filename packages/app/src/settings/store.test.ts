@@ -53,7 +53,7 @@ describe('patch / isModified / reset', () => {
     store.patch('terminal.fontSize', 99)
     expect(store.get().terminal.fontSize).toBe(13)
     store.patch('appearance.sidebarWidth', 10)
-    expect(store.get().appearance.sidebarWidth).toBe(248)
+    expect(store.get().appearance.sidebarWidth).toBe(264)
   })
 
   test('结构性路径：presets.items / acpAgents 整体可 patch', async () => {
@@ -89,7 +89,7 @@ describe('读盘容错（zod catch / prefault / 顶层兜底）', () => {
     const { store } = await makeStore(raw)
     expect(store.get().terminal.fontSize).toBe(13) // 越界回默认
     expect(store.get().terminal.fontFamily).toBe('Consolas') // 好值保留
-    expect(store.get().appearance.sidebarWidth).toBe(248)
+    expect(store.get().appearance.sidebarWidth).toBe(264)
     expect(store.get().notifications.desktop).toBe(true) // 整节缺失 → prefault({}) → 叶子默认
   })
 
@@ -241,7 +241,7 @@ describe('schema 一致性（§6.3）', () => {
       palette: 'one-dark',
       closeOnExit: false,
     })
-    expect(d.appearance).toEqual({ theme: 'one-dark', sidebarWidth: 248 })
+    expect(d.appearance).toEqual({ theme: 'one-dark', sidebarWidth: 264 })
     expect(d.acpAgents).toHaveLength(2)
     expect(d.advanced).toEqual({ gpuBackend: 'auto', perfHud: false, frameOverlay: false })
   })

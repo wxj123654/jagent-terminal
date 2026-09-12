@@ -88,6 +88,14 @@ const SOURCES = {
   panelLeft: strokeSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>'),
   /** panelRight：工作面板开关（Phase D3；lucide panel-right） */
   panelRight: strokeSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>'),
+  /** check：通知「全部已读」（V2 原型 notif clear-all） */
+  check: strokeSvg('<path d="m5 13 4 4L19 7"/>'),
+  /** edit：重命名（工作区/会话管理菜单） */
+  edit: strokeSvg('<path d="M4 20h4L20 8l-4-4L4 16v4Z"/>'),
+  /** agent：AI 工具/会话（V2 原型机器人头） */
+  agent: strokeSvg(
+    '<rect x="5" y="7" width="14" height="12" rx="3"/><path d="M12 4.5V7"/><path d="M9.5 12v2"/><path d="M14.5 12v2"/><path d="M9 19h6"/>',
+  ),
 } as const
 
 export type IconName = keyof typeof SOURCES

@@ -34,6 +34,7 @@ import { installErrorLog } from './errors/log'
 import { registerNativePanicHandler } from './errors/native'
 import { wireErrorToasts } from './errors/toastWire'
 import { createGitGraphStore } from './git/store'
+import { createWorktreeStore } from './git/worktree'
 import { createGlobalKeydown } from './keybindings'
 import { App } from './plane/AgentPlane'
 import { dialogKeyboard } from './plane/dialogKeyboard'
@@ -52,6 +53,7 @@ import {
   serializeWorkspaceState,
 } from './threads/workspaces'
 import type { PerfSample, PerfSource } from './ui/PerfHud'
+import { APP_VERSION } from './version'
 
 // ── 性能 HUD 采样器（native 收口：takePaintPerf / getDebugFrameOverlayStats
 // 在此唯一可见）──
@@ -143,7 +145,7 @@ async function mountApp(): Promise<void> {
   // 在 renderer 开窗之前：崩溃保护越早生效越好。失败静默降级（panic
   // hook 照装，无 dump）。返回的残留用于启动提示（App prop 传入）。
   // 与 SettingsSections / packages/app/package.json 同步（resolveJsonModule 未开）
-  const lastCrash = await setupCrashReportingForApp('0.1.0')
+  const lastCrash = await setupCrashReportingForApp(APP_VERSION)
 
   // ── seam 装配（顺序敏感：先注册元素，再开窗）──────────────────────────
   installTerminalElement()
@@ -190,6 +192,8 @@ async function mountApp(): Promise<void> {
 
   // ── GitGraphStore（git-graph.md §4.1；单例，mount 跟随 workspace tab）──
   const gitStore = createGitGraphStore()
+  // ── WorktreeStore（D5 工作面板 + 工具栏分支徽章；mount 跟随上下文 cwd）──
+  const worktreeStore = createWorktreeStore()
 
   // ── 窗口（renderer 实例自持：`/` 全局聚焦需要 focusElement 命令面）──
   // 先建 renderer 再接键位层（闭包引用 renderer，声明顺序即初始化顺序）
@@ -250,6 +254,10 @@ async function mountApp(): Promise<void> {
       // D2 ⌘B/Ctrl-B：经 plane 模块态（AgentPlane useEffect 注册）
       planeKeyboard.toggleSidebar()
     },
+    // D7 ⌘N（mac）/Ctrl-Shift-N：新建会话弹窗（目标工作区由 AgentPlane 算）
+    newSession: () => dialogKeyboard.newSession(),
+    // D18 抽屉 Esc：窄窗侧栏抽屉开着时吃掉关闭之（弹窗 Esc 归 Modal 管）
+    drawerEsc: () => planeKeyboard.escape(),
     // Git 图键位（git-graph.md §4.3）：与顶栏按钮共用 store.openGitGraph
     openGitGraph: () => threadStore.openGitGraph(),
     gitGraphKey: (key) => {
@@ -293,6 +301,8 @@ async function mountApp(): Promise<void> {
         store={threadStore}
         settings={settingsStore}
         gitStore={gitStore}
+        worktree={worktreeStore}
+        version={APP_VERSION}
         windowControls={windowControls}
         scrollToItem={(elementId, index) => renderer.scrollToItem(elementId, index)}
         pickDirectory={() =>

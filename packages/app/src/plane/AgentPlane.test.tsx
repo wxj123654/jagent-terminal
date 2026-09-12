@@ -9,6 +9,7 @@ import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
 import { createGitGraphStore } from '../git/store'
+import { createWorktreeStore } from '../git/worktree'
 import { navigateTarget } from '../router'
 import { memoryAdapter } from '../settings/file'
 import { createSettingsStore, type SettingsStore } from '../settings/store'
@@ -47,7 +48,19 @@ function setup(width: number): { store: ThreadStore; settings: SettingsStore } {
     initialWorkspaces: [defaultWorkspace('/w/x')],
   })
   t = createTestRoot({ width, height: 700 })
-  t.render(createElement(App, { store, settings, gitStore: createGitGraphStore() }))
+  t.render(
+    createElement(App, {
+      store,
+      settings,
+      gitStore: createGitGraphStore(),
+      // 假 deps：不起 git 子进程（status null → not-a-repo 静默态）
+      worktree: createWorktreeStore({
+        status: async () => null,
+        diff: async () => '',
+        readFile: async () => null,
+      }),
+    }),
+  )
   t.renderer.flush()
   return { store, settings }
 }
@@ -119,7 +132,18 @@ describe('AgentPlane：⌘K/Ctrl-K 聚焦搜索 → 打字 → Esc（无 termina
       initialWorkspaces: [defaultWorkspace('/w/alpha')],
     })
     t = createTestRoot({ width: 900, height: 700 })
-    t.render(createElement(App, { store, settings, gitStore: createGitGraphStore() }))
+    t.render(
+      createElement(App, {
+        store,
+        settings,
+        gitStore: createGitGraphStore(),
+        worktree: createWorktreeStore({
+          status: async () => null,
+          diff: async () => '',
+          readFile: async () => null,
+        }),
+      }),
+    )
     t.renderer.flush()
     // 键位层直接调 openSearch（dialogKeyboard 单例；真窗口经 createGlobalKeydown
     // 的 searchThreads 分支，同函数）

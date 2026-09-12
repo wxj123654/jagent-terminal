@@ -74,7 +74,9 @@ export function ToolDialog({
   const showAgentGroup = presets.some((p) => p.id !== 'shell')
 
   return (
-    <Modal width={460} onClose={onClose} height={560}>
+    // 原型 #tool-dialog：内容自适应高（无固定高；超高时 Modal maxHeight
+    // 钳制 + 列表区滚动），width min(92vw,420)
+    <Modal width={420} onClose={onClose}>
       <ModalHeading title="新建会话" onClose={onClose} />
       <ModalBody>
         {/* 目标工作区 + cwd（原型 tool-context：48px label 列 + 撑满 select；
@@ -128,13 +130,12 @@ export function ToolDialog({
         {workspace ? (
           <text
             style={{
-              fontSize: 10,
+              fontSize: 11.5,
               fontFamily: FONT.mono,
-              color: COLORS.muted,
+              color: COLORS.faint,
               whiteSpace: 'nowrap',
               textOverflow: 'ellipsis',
               overflow: 'hidden',
-              marginBottom: 10,
             }}
           >
             cwd {workspace.path}
@@ -142,28 +143,25 @@ export function ToolDialog({
         ) : (
           <text
             style={{
-              fontSize: 10,
+              fontSize: 11.5,
               fontFamily: FONT.mono,
-              color: COLORS.muted,
-              marginBottom: 10,
+              color: COLORS.faint,
             }}
           >
-            cwd （无项目目录）
+            （无项目目录）
           </text>
         )}
 
         {/* 筛选（原型 tool-search：全宽，24px 侧距） */}
-        <div style={{ marginBottom: 6 }}>
-          <TextInput
-            testId="tool-dialog-filter"
-            value={filter}
-            onChange={setFilter}
-            placeholder="搜索工具…"
-            width="fill"
-          />
-        </div>
+        <TextInput
+          testId="tool-dialog-filter"
+          value={filter}
+          onChange={setFilter}
+          placeholder="搜索工具…"
+          width="fill"
+        />
 
-        {/* 工具列表（原型 tool-options：独立滚动区 + 分组标签） */}
+        {/* 工具列表（原型 .tool-list：gap 1px 纵向列表） */}
         <div
           style={{
             display: 'flex',
@@ -171,8 +169,7 @@ export function ToolDialog({
             flexGrow: 1,
             minHeight: 0,
             overflowY: 'scroll',
-            marginTop: 4,
-            marginBottom: 4,
+            gap: 1,
           }}
         >
           {showAgentGroup ? <GroupLabel label="AI 编程" /> : null}
@@ -181,7 +178,6 @@ export function ToolDialog({
               key={p.id}
               testId={`tool-preset-${p.id}`}
               icon="terminal"
-              iconColor={COLORS.terminalKind}
               name={p.label}
               description={p.description}
               command={
@@ -198,7 +194,6 @@ export function ToolDialog({
               key={p.id}
               testId={`tool-preset-${p.id}`}
               icon="terminal"
-              iconColor={COLORS.terminalKind}
               name={p.label}
               description={p.description}
               command={
@@ -214,7 +209,6 @@ export function ToolDialog({
             <ToolRow
               testId="new-chat"
               icon="chat"
-              iconColor={COLORS.accent}
               name="New Chat"
               description="应用内对话面（非终端）"
               onPick={pick(() => store.createChat(workspace.id))}
@@ -226,7 +220,6 @@ export function ToolDialog({
                   key={a.id}
                   testId={`new-acp-${a.id}`}
                   icon="acp"
-                  iconColor={COLORS.acpKind}
                   name={a.label}
                   description="ACP agent"
                   command={agentCommandSummary(a)}
@@ -252,22 +245,34 @@ export function ToolDialog({
             </text>
           ) : null}
         </div>
+        {/* 底注（原型 .hint：「选一项即创建会话，Esc 取消」） */}
+        <text
+          style={{
+            fontSize: 11.5,
+            fontFamily: FONT.ui,
+            color: COLORS.faint,
+            pointerEvents: 'none',
+          }}
+        >
+          选一项即创建会话，Esc 取消
+        </text>
       </ModalBody>
     </Modal>
   )
 }
 
-/** 分组标签（原型 option-group-label：11px muted，上距 8） */
+/** 分组标签（原型 .g-lab：11px text-4，padding 8 8 3） */
 function GroupLabel({ label }: { label: string }) {
   return (
     <text
       style={{
         fontSize: 11,
         fontFamily: FONT.ui,
-        color: COLORS.muted,
-        paddingLeft: 12,
+        color: COLORS.faint,
+        paddingLeft: 8,
+        paddingRight: 8,
         paddingTop: 8,
-        paddingBottom: 4,
+        paddingBottom: 3,
         pointerEvents: 'none',
       }}
     >
@@ -276,12 +281,11 @@ function GroupLabel({ label }: { label: string }) {
   )
 }
 
-/** 工具行（原型 .tool-option 三列：20 图标 | 名称+描述（minWidth 0）| 右侧命令码。
- *  高 44（原 56 微收——无描述时自然 36）；hover 抬底） */
+/** 工具行（原型 .tool 三列：16 图标 | 名称+描述（minWidth 0）| 右侧命令码。
+ *  padding 7 8、radius 6、gap 10；图标统一 16px text-3，hover 抬底） */
 function ToolRow({
   testId,
   icon,
-  iconColor,
   name,
   description,
   command,
@@ -290,7 +294,6 @@ function ToolRow({
 }: {
   testId: string
   icon: 'terminal' | 'chat' | 'acp'
-  iconColor: string
   name: string
   description?: string
   command?: string
@@ -309,19 +312,19 @@ function ToolRow({
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
-        minHeight: 36,
-        paddingLeft: 12,
-        paddingRight: 12,
-        marginTop: 1,
-        marginBottom: 1,
+        gap: 10,
+        paddingTop: 7,
+        paddingBottom: 7,
+        paddingLeft: 8,
+        paddingRight: 8,
         borderRadius: 6,
         cursor: 'pointer',
-        hover: { backgroundColor: COLORS.surface },
+        color: COLORS.text,
+        hover: { backgroundColor: COLORS.surface, color: COLORS.textBright },
       }}
     >
-      <div style={{ display: 'flex', width: 20, justifyContent: 'center', flexShrink: 0 }}>
-        <Icon name={icon} size={13} color={iconColor} />
+      <div style={{ display: 'flex', width: 16, justifyContent: 'center', flexShrink: 0 }}>
+        <Icon name={icon} size={16} color={COLORS.muted} />
       </div>
       <div
         style={{
@@ -369,9 +372,9 @@ function ToolRow({
         {description ? (
           <text
             style={{
-              fontSize: 11,
+              fontSize: 11.5,
               fontFamily: FONT.ui,
-              color: COLORS.muted,
+              color: COLORS.faint,
               whiteSpace: 'normal',
               minWidth: 0,
               pointerEvents: 'none',
@@ -384,9 +387,9 @@ function ToolRow({
       {command ? (
         <text
           style={{
-            fontSize: 10,
+            fontSize: 10.5,
             fontFamily: FONT.mono,
-            color: COLORS.muted,
+            color: COLORS.faint,
             whiteSpace: 'nowrap',
             flexShrink: 0,
             maxWidth: 120,

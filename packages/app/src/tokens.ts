@@ -7,9 +7,9 @@
  * - GRAPH_LANE_COLORS：git graph lane 色板（docs/git-graph.md §3.2，git 域）
  */
 
-/** git graph lane 色板（docs/git-graph.md §3.2）：8 色轮转，One Dark 调和 */
+/** git graph lane 色板（docs/git-graph.md §3.2）：8 色轮转，冷色调和 */
 export const GRAPH_LANE_COLORS = [
-  '#61afef', // accent 蓝
+  '#61afef', // 蓝
   '#98c379', // 绿
   '#c678dd', // 紫
   '#e5c07b', // 琥珀
@@ -24,10 +24,17 @@ export const SIZES = {
   // 布局面（Sidebar/SidebarHeader/ToolMenu/AgentPlane drawer）经 useSettingsValue 消费
   sidebarWidth: 264,
   rowHeight: 28,
-  rowMarginX: 6,
+  /** 侧栏行左右外距（原型 .sb-scroll padding 8px） */
+  rowMarginX: 8,
   rowPaddingX: 8,
   rowRadius: 10,
   activeBarWidth: 2,
+  /** 工作面板宽（原型 --panel-w 默认 280，可拖 244–720） */
+  panelWidth: 280,
+  panelWidthMin: 244,
+  panelWidthMax: 720,
+  /** 工作面板覆盖阈值（原型 <1100px 转为浮层） */
+  panelOverlayWidth: 1100,
   /** 自绘顶栏高度（Zed platform_title_bar_height：非 Windows 为 max(1.75rem, 34px)） */
   titleBarHeight: 34,
   /** 主栏工具栏高（原型 --toolbar-h；Phase D0） */

@@ -34,6 +34,8 @@ export type Workspace = {
   lastSession: string | null
   /** 工作区内 tab（git-graph.md §4.1）：'home' = 起始页/会话，'git' = Git 图 */
   paneTab: 'home' | 'git'
+  /** 会话列表显示全部（V2 原型 ws.showAll；false = 只显最近 10 个） */
+  showAll?: boolean
   createdAt: number
 }
 
@@ -46,6 +48,7 @@ const WorkspaceSchema = z.object({
   expanded: z.boolean().catch(true),
   lastSession: z.string().nullable().catch(null),
   paneTab: z.enum(['home', 'git']).catch('home'),
+  showAll: z.boolean().catch(false),
   createdAt: z.number().catch(0),
 })
 
@@ -102,6 +105,7 @@ export function defaultWorkspace(path: string, now: number = Date.now()): Worksp
     expanded: true,
     lastSession: null,
     paneTab: 'home',
+    showAll: false,
     createdAt: now,
   }
 }
@@ -148,6 +152,15 @@ export function timeGroupsOf(
     else out.get('earlier')!.push(t)
   }
   return out
+}
+
+/** 相对时间标签（通知中心 sub；原型「5 分钟前」格式） */
+export function relTime(at: number, now: number = Date.now()): string {
+  const diff = Math.max(0, now - at)
+  if (diff < 60_000) return '刚刚'
+  if (diff < 3600_000) return `${Math.floor(diff / 60_000)} 分钟前`
+  if (diff < 86400_000) return `${Math.floor(diff / 3600_000)} 小时前`
+  return `${Math.floor(diff / 86400_000)} 天前`
 }
 
 // ── 跨工作区搜索（Phase W2；原型：标题、工具、目录）────────────────

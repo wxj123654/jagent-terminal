@@ -23,6 +23,8 @@ export type TerminalPreset = {
   initCommand?: string
   /** 可选；默认项目根目录 */
   cwd?: string
+  /** V2 工具弹窗分组（D16）：agent = AI 编程 / tool = 终端工具；自定义缺省 tool */
+  category?: 'agent' | 'tool'
 }
 
 /** 五个内置预设（布局契约 §6；E2 预设）。 */
@@ -33,6 +35,7 @@ export const BUILTIN_PRESETS: TerminalPreset[] = [
     builtin: true,
     initCommand: 'pi',
     description: '在项目中对话、读写代码、调用工具',
+    category: 'agent',
   },
   {
     id: 'claude',
@@ -40,6 +43,7 @@ export const BUILTIN_PRESETS: TerminalPreset[] = [
     builtin: true,
     initCommand: 'claude',
     description: '使用 Claude Code 的终端界面',
+    category: 'agent',
   },
   {
     id: 'codex',
@@ -47,6 +51,7 @@ export const BUILTIN_PRESETS: TerminalPreset[] = [
     builtin: true,
     initCommand: 'codex',
     description: '使用 Codex CLI 的终端界面',
+    category: 'agent',
   },
   {
     id: 'amp',
@@ -55,12 +60,14 @@ export const BUILTIN_PRESETS: TerminalPreset[] = [
     program: 'amp',
     env: { AMP_FORCE_BEL: '1' },
     description: '使用 Amp 的终端界面',
+    category: 'agent',
   },
   {
     id: 'shell',
     label: 'Shell',
     builtin: true,
     description: '运行命令、脚本和开发服务',
+    category: 'tool',
   },
 ]
 

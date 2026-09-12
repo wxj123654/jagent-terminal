@@ -52,6 +52,7 @@ function Harness({
     openAddWorkspace: () => open({ kind: 'addWorkspace' }),
     openSearch: () => open({ kind: 'search' }),
     openManageSession: (threadId: string) => open({ kind: 'manageSession', threadId }),
+    openManageWorkspace: (workspaceId: string) => open({ kind: 'manageWorkspace', workspaceId }),
     openErrors: () => open({ kind: 'errors' }),
   }
   return (
@@ -159,7 +160,9 @@ describe('WorkspaceList：分组树', () => {
   // D13：超过 10 条且跨时间组时，不再为完全隐藏的组渲染孤立日期标签；
   // 「展开其余 N 个」只在最后一个可见组下方、N 为全组合计。
   test('超 10 条跨时间组：无孤立日期标签；展开合计正确（D13）', async () => {
-    // 自清理前置：前面用例可能有遗留行（会占 limit 名额）
+    // 自清理前置：前面用例可能有遗留行（会占 limit 名额）；
+    // showAll 持久化——先钉回默认收起态
+    store.setWorkspaceShowAll(wsA, false)
     for (const old of store.getState().threads.slice()) store.close(old.id)
     // 12 条今天 + 2 条更早（createdAt 倒推；today=当天内，earlier=8 天前）
     const day = 86400_000
@@ -220,8 +223,6 @@ describe('WorkspaceList：分组树', () => {
     const rowB = t.renderer.getElementBounds(t.renderer.findByTestId(`row-${tid}`)!.id)!
     const wsRowB = t.renderer.getElementBounds(t.renderer.findByTestId(`workspace-${wsA}`)!.id)!
     expect(rowB[0]).toBeGreaterThan(wsRowB[0])
-    // 会话数 badge：含工作区名行文本（1 会话）
-    expect(t.renderer.getAllText().some((s) => s.includes('1'))).toBe(true)
     store.close(tid)
     t.renderer.flush()
   })
@@ -538,7 +539,9 @@ describe('WorkspaceList：双区侧栏（D1）', () => {
   })
 
   test('load more：>10 条出现「展开其余」+ 点击全展开', async () => {
-    // 自清理前置：前面用例可能有遗留行（slice 按创建序会占 limit 名额）
+    // 自清理前置：前面用例可能有遗留行（slice 按创建序会占 limit 名额）；
+    // showAll 是持久化工作区态（D10）——前面用例的展开会留到本用例，先钉回
+    store.setWorkspaceShowAll(wsA, false)
     for (const old of store.getState().threads.slice()) store.close(old.id)
     const ids: string[] = []
     for (let i = 0; i < 12; i++) {

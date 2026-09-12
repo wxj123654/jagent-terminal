@@ -81,6 +81,19 @@ export type AcpThread = {
 
 export type Thread = TerminalThread | ChatThread | AcpThread
 
+/** 通知中心条目（D8）：真实会话事件流（bell/exit）落列；tone 对应原型
+ *  ok/warn/err 图标色。不持久化（与 threads 同纪律——重启即死） */
+export type SessionNotice = {
+  /** `n${seq}` */
+  id: string
+  tone: 'ok' | 'warn' | 'err'
+  /** 主文案（如「build 等待注意」/「Shell 已退出」） */
+  text: string
+  /** 副文案（工作区名 · 相对时间在 UI 层格式化） */
+  sub: string
+  at: number
+}
+
 export type ThreadState = {
   /** 混排，创建序 */
   threads: Thread[]
@@ -88,6 +101,10 @@ export type ThreadState = {
   workspaces: Workspace[]
   /** 运行时态，不写 settings.json */
   lastUsedPreset: string | null
+  /** 通知中心事件流（D8；未读 = notices.length - noticesRead） */
+  notices: SessionNotice[]
+  /** 已读计数（notices 截断时随之 clamp——未读数非负不变量） */
+  noticesRead: number
   // 注意：active 不在此——导航唯一事实源是 router（§3.5）
 }
 
@@ -152,6 +169,10 @@ export interface ThreadStore {
   activateWorkspace(id: string): void
   /** 展开/收起分组（持久化，不导航） */
   toggleWorkspaceExpanded(id: string): void
+  /** 显示全部 / 只显最近 10 个（V2 原型 ws 菜单项；持久化，不导航） */
+  setWorkspaceShowAll(id: string, showAll: boolean): void
+  /** 通知中心（D8）：全部已读——红点清除，条目保留 */
+  markNoticesRead(): void
   /** 工作区内 tab（git-graph.md §4.1）：'home'/'git'；持久化，不导航 */
   setWorkspacePaneTab(id: string, tab: 'home' | 'git'): void
   /** 测试专用：直接改 thread.createdAt（时间分组测试需跨今天/更早组；
@@ -168,6 +189,14 @@ export interface ThreadStore {
 /** chat 消息 id 自增（仅需 thread 内唯一 + 测试可预测） */
 let msgSeq = 0
 
+/** 通知条目 id 自增（同 msgSeq 纪律） */
+let noticeSeq = 0
+
+/** 通知主文案用的会话名（displayTitle 本地等价，避免 →terminal 循环 import） */
+function noticeTitle(t: TerminalThread): string {
+  return t.customTitle ?? t.oscTitle ?? t.initCommand ?? 'Terminal'
+}
+
 /** chat 默认标题（首条消息改写的哨兵值；rename 手改后不再改写） */
 export const CHAT_DEFAULT_TITLE = 'Chat'
 
@@ -176,6 +205,8 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
     threads: [],
     workspaces: opts.initialWorkspaces ?? [],
     lastUsedPreset: null,
+    notices: [],
+    noticesRead: 0,
   }))
   const set = (recipe: (s: ThreadState) => void) => store.setState(produce(recipe))
   const state = () => store.getState()
@@ -365,6 +396,7 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
         expanded: true,
         lastSession: null,
         paneTab: 'home',
+        showAll: false,
         createdAt: Date.now(),
       }
       set((s) => {
@@ -418,6 +450,20 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
         if (ws) ws.expanded = !ws.expanded
       })
       persist()
+    },
+
+    setWorkspaceShowAll(id, showAll) {
+      set((s) => {
+        const ws = s.workspaces.find((w) => w.id === id)
+        if (ws) ws.showAll = showAll
+      })
+      persist()
+    },
+
+    markNoticesRead() {
+      set((s) => {
+        s.noticesRead = s.notices.length
+      })
     },
 
     setThreadCreatedAt(id, at) {
@@ -475,6 +521,7 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
                 const row = s.threads.find((x) => x.id === id)
                 if (row && row.kind === 'terminal') row.hasBell = true
               })
+              pushNotice(t, 'warn', `「${noticeTitle(t)}」等待注意`)
               deps.notify(t)
             }
           }
@@ -483,6 +530,12 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
         case 'exit': {
           const t = state().threads.find((x) => x.id === id)
           if (!t || t.kind !== 'terminal') return
+          // 通知中心（D8）：退出是真实会话事件——非零码 err、正常退出 ok
+          pushNotice(
+            t,
+            e.code === 0 || e.code == null ? 'ok' : 'err',
+            `「${noticeTitle(t)}」已退出`,
+          )
           if (deps.closeOnExit()) {
             this.close(id)
           } else {
@@ -504,6 +557,23 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
   /** active thread id（router 读侧；未注入时回退 null = 视为非 active） */
   function activeThreadId(): string | null {
     return deps.activeThreadId?.() ?? null
+  }
+
+  /** 通知落列（D8）：sub = 归属工作区名 / 未归属；容量 50（截断时
+   *  已读计数 clamp——未读数非负不变量） */
+  function pushNotice(t: TerminalThread, tone: SessionNotice['tone'], text: string) {
+    set((s) => {
+      const ws = t.workspaceId ? s.workspaces.find((w) => w.id === t.workspaceId) : undefined
+      s.notices.push({
+        id: `n${++noticeSeq}`,
+        tone,
+        text,
+        sub: ws?.name ?? '未归属',
+        at: Date.now(),
+      })
+      if (s.notices.length > 50) s.notices.splice(0, s.notices.length - 50)
+      if (s.noticesRead > s.notices.length) s.noticesRead = s.notices.length
+    })
   }
 
   /** 显式传入的 workspaceId 必须存在（调用方 bug 早暴露；spawn 侧已内联同判） */

@@ -16,10 +16,12 @@ import {
   ModalBody,
   ModalHeading,
   TextInput,
+  Toggle,
   COLORS,
   FONT,
 } from '@jagent/ui'
 import type { ThreadStore, Workspace } from '../threads/store'
+import { useThreadStore } from '../threads/useThreadStore'
 import type { DirectoryPicker } from './WorkspaceList'
 
 /** 绝对路径校验（原型正则同款）：~/…、/…、C:\\…、\\\\… */
@@ -191,6 +193,89 @@ export function WorkspaceDialog({
           actions={[
             { label: '取消', onClick: onClose },
             { label: '添加工作区', primary: true, onClick: submit },
+          ]}
+        />
+      </ModalBody>
+    </Modal>
+  )
+}
+
+/**
+ * 管理工作区弹窗（D10；原型 ws 菜单项 = 重命名/显示全部/移除的表单化）。
+ * 侧栏行内双击重命名保留（不变）；此弹窗是「…」钮的入口：名称 + 目录
+ * 只读上下文 + 显示全部开关 + 移除（danger；连带关闭其全部会话）。
+ */
+export function WorkspaceManageDialog({
+  store,
+  workspaceId,
+  onClose,
+}: {
+  store: ThreadStore
+  workspaceId: string
+  onClose: () => void
+}) {
+  const ws = useThreadStore(store, (s) => s.workspaces.find((w) => w.id === workspaceId))
+  const [name, setName] = useState(ws?.name ?? '')
+  if (!ws) return null
+
+  const save = () => {
+    if (name.trim()) store.renameWorkspace(ws.id, name)
+    onClose()
+  }
+  const remove = () => {
+    store.removeWorkspace(ws.id)
+    onClose()
+  }
+
+  return (
+    <Modal width={400} onClose={onClose}>
+      <ModalHeading title="管理工作区" onClose={onClose} />
+      <ModalBody>
+        <text
+          style={{
+            fontSize: 10.5,
+            fontFamily: FONT.mono,
+            color: COLORS.muted,
+            marginBottom: 10,
+            whiteSpace: 'nowrap',
+            textOverflow: 'ellipsis',
+            overflow: 'hidden',
+          }}
+        >
+          {ws.path}
+        </text>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <text style={{ fontSize: 11, fontFamily: FONT.ui, color: COLORS.muted }}>工作区名称</text>
+          <TextInput
+            testId="workspace-manage-name"
+            value={name}
+            onChange={setName}
+            onSubmit={save}
+            width="fill"
+          />
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginTop: 12,
+          }}
+        >
+          <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.text }}>
+            显示全部会话（多于 10 条时）
+          </text>
+          <Toggle
+            testId="workspace-manage-show-all"
+            checked={ws.showAll ?? false}
+            onChange={(on) => store.setWorkspaceShowAll(ws.id, on)}
+          />
+        </div>
+        <ModalActions
+          actions={[
+            { label: '移除工作区', danger: true, onClick: remove },
+            { label: '保存', primary: true, onClick: save },
           ]}
         />
       </ModalBody>

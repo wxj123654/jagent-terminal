@@ -70,9 +70,9 @@ export function SelectField({
           opacity: disabled ? 0.5 : 1,
           backgroundColor: COLORS.inputBg,
           borderWidth: 1,
-          borderColor: open || focused ? COLORS.accent : COLORS.borderSubtle,
+          borderColor: open || focused ? COLORS.focusBorder : COLORS.borderSubtle,
           boxShadow: focused && !open ? focusRing() : undefined,
-          hover: disabled ? undefined : { borderColor: COLORS.accent },
+          hover: disabled ? undefined : { borderColor: COLORS.focusBorder },
         })}
       >
         <SelectValue placeholder="—">

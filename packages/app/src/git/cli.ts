@@ -329,3 +329,74 @@ export async function listBranches(cwd: string): Promise<GitBranch[]> {
   ])
   return parseBranches(raw)
 }
+
+// ── 工作区状态（D5 工作面板：status 文件表 / diff / 当前分支）──────────
+
+export type WorktreeFileKind = 'm' | 'a' | 'd'
+
+export interface WorktreeFile extends ChangedFile {
+  /** porcelain 状态归并：m 修改 / a 新增（含 ?? 未跟踪与暂存新文件）/ d 删除 */
+  status: WorktreeFileKind
+}
+
+/**
+ * `git status --porcelain=v1 -z` 解析。条目 `XY<sp>path\0`；重命名/复制
+ * 在 -z 下是 `XY<sp>new\0old\0`（字段序反转、无箭头）——跳过后一条目。
+ * 状态字母取 X（index 侧）优先、Y（worktree 侧）兜底；?? → 'a'。
+ */
+export function parseStatusEntries(raw: string): { path: string; status: WorktreeFileKind }[] {
+  const entries = raw.split('\0')
+  const out: { path: string; status: WorktreeFileKind }[] = []
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i]
+    if (e.length < 4) continue
+    const x = e[0]
+    const y = e[1]
+    const path = e.slice(3)
+    if (!path) continue
+    if (x === 'R' || x === 'C') i++ // 消费 old-path 条目
+    const letter = x !== ' ' && x !== '?' ? x : y
+    const status: WorktreeFileKind =
+      letter === 'A' || letter === '?' ? 'a' : letter === 'D' ? 'd' : 'm'
+    out.push({ path, status })
+  }
+  return out
+}
+
+export interface WorktreeStatus {
+  /** repo root（diff/preview 的 cwd 基准） */
+  root: string
+  /** 当前分支名；detached HEAD / 空 repo → null */
+  branch: string | null
+  files: WorktreeFile[]
+}
+
+/**
+ * 工作区快照：porcelain 状态表 + `git diff HEAD --numstat` 行数合并 +
+ * 当前分支。非 repo → null。单条子命令失败（如无 HEAD 的空 repo）降级
+ * 为空数据而不是整体失败。
+ */
+export async function listWorktreeStatus(cwd: string): Promise<WorktreeStatus | null> {
+  const root = await findRepoRoot(cwd)
+  if (!root) return null
+  const safe = (p: Promise<string>) => p.catch(() => '')
+  const [statusRaw, numstatRaw, branchRaw] = await Promise.all([
+    safe(runGit(root, ['status', '--porcelain=v1', '-z'])),
+    safe(runGit(root, ['diff', '--numstat', '--no-color', 'HEAD', '--'])),
+    safe(runGit(root, ['rev-parse', '--abbrev-ref', 'HEAD'])),
+  ])
+  const counts = new Map(parseChangedFiles(numstatRaw).map((f) => [f.path, f]))
+  const files = parseStatusEntries(statusRaw).map(({ path, status }) => ({
+    path,
+    status,
+    added: counts.get(path)?.added ?? null,
+    deleted: counts.get(path)?.deleted ?? null,
+  }))
+  const branch = branchRaw.trim()
+  return { root, branch: branch && branch !== 'HEAD' ? branch : null, files }
+}
+
+/** 单文件 vs HEAD 的 unified patch（工作面板内联 diff）。未跟踪文件 → 空串。 */
+export async function diffWorktreeFile(root: string, path: string): Promise<string> {
+  return runGit(root, ['diff', '--no-color', 'HEAD', '--', path])
+}

@@ -26,7 +26,7 @@ export function controlBox(focused: boolean, disabled: boolean = false): StyleDe
   return {
     backgroundColor: COLORS.inputBg,
     borderWidth: 1,
-    borderColor: focused ? COLORS.accent : COLORS.borderSubtle,
+    borderColor: focused ? COLORS.focusBorder : COLORS.borderSubtle,
     borderRadius: 4,
     boxShadow: focused ? focusRing() : undefined,
     opacity: disabled ? 0.5 : 1,

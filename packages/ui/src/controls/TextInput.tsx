@@ -53,7 +53,7 @@ export function TextInput({
         borderRadius: 4,
         backgroundColor: COLORS.inputBg,
         borderWidth: 1,
-        borderColor: focused ? COLORS.accent : COLORS.borderSubtle,
+        borderColor: focused ? COLORS.focusBorder : COLORS.borderSubtle,
         boxShadow: focused ? focusRing() : undefined,
         opacity: disabled ? 0.5 : 1,
         cursor: disabled ? 'default' : 'text',

@@ -29,9 +29,12 @@ import { installTerminalElement, destroyTerminalSession, onSessionEvent } from '
 
 import { inputFocus } from '@jagent/ui'
 import { createElement } from 'react'
+import { createGitGraphStore } from '../packages/app/src/git/store'
+import { createWorktreeStore } from '../packages/app/src/git/worktree'
 import { createGlobalKeydown, type GlobalKeydown } from '../packages/app/src/keybindings'
 import { App } from '../packages/app/src/plane/AgentPlane'
 import { dialogKeyboard } from '../packages/app/src/plane/dialogKeyboard'
+import { planeKeyboard } from '../packages/app/src/plane/planeKeyboard'
 import {
   currentActiveThreadId,
   router,
@@ -151,6 +154,10 @@ beforeAll(() => {
       // W7 ⌘K/Ctrl-K：打开搜索会话弹窗（原型语义；W4 聚焦侧栏搜索框废弃）
       dialogKeyboard.openSearch()
     },
+    // D7 ⌘N：新建会话弹窗；D18 抽屉 Esc（与 main.tsx 同链）
+    newSession: () => dialogKeyboard.newSession(),
+    toggleSidebar: () => planeKeyboard.toggleSidebar(),
+    drawerEsc: () => planeKeyboard.escape(),
     inputFocused: () => inputFocus.any,
     settingsQuery: settingsKeyboard.query,
     escConsumed: settingsKeyboard.escConsumed,
@@ -159,7 +166,19 @@ beforeAll(() => {
     keys: () => settings.get().keybindings,
   })
 
-  t.render(createElement(App, { store, settings }))
+  t.render(
+    createElement(App, {
+      store,
+      settings,
+      gitStore: createGitGraphStore(),
+      // 假 deps：e2e 不起 git 子进程（status null → not-a-repo 静默态）
+      worktree: createWorktreeStore({
+        status: async () => null,
+        diff: async () => '',
+        readFile: async () => null,
+      }),
+    }),
+  )
 })
 
 afterAll(() => {
@@ -183,7 +202,8 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       const texts = t.renderer.getAllText()
       expect(texts.some((s) => s.includes('Claude Code'))).toBe(true)
       expect(texts.some((s) => s.includes('Shell'))).toBe(true)
-      expect(texts.some((s) => s.includes('新建会话'))).toBe(true)
+      // V2 统一空态（D15，原型 .home）：h1 文案 + 预设 pills
+      expect(texts.some((s) => s.includes('想做点什么'))).toBe(true)
     },
     TEST_TIMEOUT,
   )
@@ -266,8 +286,12 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       })
       expect(store.getState().threads).toHaveLength(2)
 
-      // exited 微标签渲染在列表里（React 提交轮询；Phase W 中文化「已退出」）
-      await until('exited badge visible', () => t.renderer.getAllText().some((x) => x === '已退出'))
+      // V2 语义：exited 行保留且标题弱化（无「已退出」徽标——原型 .row.exited
+      // 仅降文字色）。可断言面 = 行仍在列表中 + store status 已退出（上一步已验）。
+      await until(
+        'exited row kept in list',
+        () => t.renderer.findByTestId(`row-${bellRowId}`) != null,
+      )
 
       // close 后台行（当前 active 在它上 → 先导航离开再移除，不变量 1）
       store.close(bellRowId)
@@ -791,10 +815,10 @@ describe('Phase W e2e: 工作区全链', () => {
       t.renderer.simulateKeystrokes(process.platform === 'darwin' ? 'cmd-k' : 'ctrl-k')
       await until('search dialog visible', () => t.renderer.findByTestId('modal-card') != null)
       expect(t.renderer.findByTestId('search-dialog-input') != null).toBe(true)
-      // 关闭收尾（X 钮；occlude 挡后续用例）
-      const closeBtn = t.renderer.findByTestId('modal-close')!
-      const cb = t.renderer.getElementBounds(closeBtn.id)!
-      t.renderer.nativeSimulateClick(cb[0] + cb[2] / 2, cb[1] + cb[3] / 2, 0)
+      // 关闭收尾（V2 命令面板无 X 钮——遮罩点击；点左上角落避开卡片）
+      const scrim = t.renderer.findByTestId('modal-scrim')!
+      const cb = t.renderer.getElementBounds(scrim.id)!
+      t.renderer.nativeSimulateClick(cb[0] + 4, cb[1] + 4, 0)
       await until('search dialog closed', () => t.renderer.findByTestId('modal-card') == null)
       // 无 PTY 泄漏：两工作区 shell 会话仍在（未被误关/误写崩溃）
       const terms = store.getState().threads.filter((x) => x.kind === 'terminal')

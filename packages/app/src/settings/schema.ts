@@ -50,6 +50,8 @@ const TerminalPresetSchema = z.object({
   initCommand: z.string().optional(),
   /** 可选；默认项目根目录 */
   cwd: z.string().optional(),
+  /** V2 工具弹窗分组（D16）：agent = AI 编程 / tool = 终端工具；缺省 tool */
+  category: z.enum(['agent', 'tool']).optional(),
 })
 
 /** ACP 默认 2 示例（原型定稿：codex --acp / claude-code-acp） */
@@ -100,7 +102,7 @@ export const RawSettingsSchema = z.looseObject({
   appearance: section(
     z.object({
       theme: z.string().catch('one-dark'),
-      sidebarWidth: z.number().int().min(200).max(400).catch(248),
+      sidebarWidth: z.number().int().min(200).max(400).catch(264),
     }),
   ),
   acpAgents: z
@@ -128,6 +130,9 @@ export const RawSettingsSchema = z.looseObject({
       searchThreads: z.string().catch(process.platform === 'darwin' ? 'cmd-k' : 'ctrl-k'),
       /** D2：收起/展开侧栏（原型 ⌘B）。同平台化规则 */
       toggleSidebar: z.string().catch(process.platform === 'darwin' ? 'cmd-b' : 'ctrl-b'),
+      /** D7：新建会话（原型 ⌘N）。win/linux 用 ctrl-shift-n——裸 ctrl-n 是
+       *  readline next-history，吃掉会破坏 shell */
+      newSession: z.string().catch(process.platform === 'darwin' ? 'cmd-n' : 'ctrl-shift-n'),
     }),
   ),
   advanced: section(
@@ -273,11 +278,11 @@ export const SETTING_DEFS: SettingDef[] = [
     path: 'appearance.theme',
     section: 'appearance',
     label: '主题',
-    description: '第一期仅 One Dark',
+    description: 'V2 单色暗色（值名 one-dark 为落盘兼容）',
     control: {
       type: 'select',
       options: [
-        { value: 'one-dark', label: 'One Dark（默认）' },
+        { value: 'one-dark', label: 'Mono Dark（默认）' },
         { value: 'one-dark-pro', label: 'One Dark Pro · Phase 2' },
         { value: 'light', label: 'Light · Phase 2' },
       ],

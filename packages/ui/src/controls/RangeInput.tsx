@@ -232,7 +232,7 @@ export function RangeInput({
             borderRadius: 999,
             backgroundColor: COLORS.textBright,
             borderWidth: 1,
-            borderColor: dragging || focused ? COLORS.accent : COLORS.borderSubtle,
+            borderColor: dragging || focused ? COLORS.focusBorder : COLORS.borderSubtle,
             pointerEvents: 'none',
           }}
         />

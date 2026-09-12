@@ -69,10 +69,14 @@ export function Pane({
   }
   if (!thread) {
     // 空态预设卡：spawn 进第一个工作区（无工作区则不归属——防御；正常装配
-    // 首启即有默认工作区，Phase W2 起新建入口全带归属）
-    const firstWs = store.getState().workspaces[0]?.id
+    // 首启即有默认工作区，Phase W2 起新建入口全带归属）；ctx 行显示其 path
+    const firstWs = store.getState().workspaces[0]
     return (
-      <EmptyPresets onPick={(id) => void store.spawnFromPreset(id, firstWs)} settings={settings} />
+      <EmptyPresets
+        onPick={(id) => void store.spawnFromPreset(id, firstWs?.id)}
+        settings={settings}
+        cwd={firstWs?.path}
+      />
     )
   }
   const S = getSurface(thread.kind)
