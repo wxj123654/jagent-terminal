@@ -23,16 +23,16 @@ import { SIZES } from '../tokens'
 
 export type WorkPanelTab = 'changes' | 'files'
 
-/** diff/code 元素共用的 V2 色（GpuixTheme 层；底 = 面板 pane 色） */
+/** diff/code 元素共用色（GpuixTheme 层；底 = 面板 pane 色，One Dark 调和） */
 const DIFF_THEME = {
   bg: COLORS.pane,
   text: COLORS.text,
   textMuted: COLORS.muted,
   border: COLORS.border,
-  accent: COLORS.textBright,
-  diffAdd: 'rgba(64,201,119,0.09)',
-  diffDel: 'rgba(255,103,100,0.09)',
-  diffHunkBg: 'rgba(255,255,255,0.03)',
+  accent: COLORS.accent,
+  diffAdd: 'rgba(152,195,121,0.12)',
+  diffDel: 'rgba(224,108,117,0.12)',
+  diffHunkBg: COLORS.tile,
 } as const
 
 /** 变更文件徽章色（原型 .badge-m/a/d） */

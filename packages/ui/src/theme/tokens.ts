@@ -3,74 +3,75 @@
  * 单一事实源：本文件消费 0 次，产出 token；所有 Surface 经 ui 控件引用，不散字面量。
  * 单色亮/暗扩展位：DESIGN_THEME 未接入——本期只定义暗色一套。
  *
- * V2 对齐（desktop-plane-v2.html）：Codex/pi-desktop 单色系——侧栏纯黑、
- * 主区 #181818、终端 #0d0d0d、白 accent、白透明度 tile/hover/active 三档，
- * 醒目面几乎无描边；语义色（git lane / ANSI / 状态灯）保持彩色。
+ * Zed One Dark 语义色（2026-09-12 决策：V2 灰阶回滚，见 TODOLIST）。
+ * V2 期新增的 token 键（tile/overlay/faint/focusBorder 等）保留，
+ * 色值映射到 One Dark 抬升阶：inputBg < pane < sidebar < app < surface < surfaceHover。
  */
 
 export const COLORS = {
-  /** 应用底（侧栏列底色；原型 body #000） */
-  app: '#000000',
-  /** 主内容面（工具栏 / pane；原型 --g900 #181818） */
-  pane: '#181818',
-  sidebar: '#000000',
-  /** 工具栏底（与 pane 同底；原型 .toolbar 透明叠在 --g900 上） */
-  titlebar: '#181818',
-  /** 终端/凹陷面（--g1000 #0d0d0d） */
-  terminal: '#0d0d0d',
-  /** hover 面（--bg-hover 6% 白；行/图标钮悬停底） */
-  surface: 'rgba(255,255,255,0.06)',
-  /** 强 hover / 菜单项高亮（--bg-active 10% 白） */
-  surfaceHover: 'rgba(255,255,255,0.10)',
-  /** 选中行 / active 面（--bg-active 10% 白） */
-  surfaceActive: 'rgba(255,255,255,0.10)',
-  /** tile 底（--bg-tile 3.5% 白：chip/胶囊钮/当前工作区底 4%） */
-  tile: 'rgba(255,255,255,0.035)',
-  /** tile hover（--bg-tile-hover 6% 白） */
-  tileHover: 'rgba(255,255,255,0.06)',
-  /** 浮起面（--g800 #212121：弹窗卡/菜单/通知浮层） */
-  overlay: '#212121',
-  /** 输入凹陷底（--g1000 #0d0d0d） */
-  inputBg: '#0d0d0d',
+  /** 应用底（窗口根色） */
+  app: '#282c34',
+  /** 主内容面（工具栏 / pane） */
+  pane: '#1e2127',
+  /** 侧栏列底色 */
+  sidebar: '#21252b',
+  /** 自绘顶栏底。与 sidebar 同色，整条顶栏行（含左段）连成一体 */
+  titlebar: '#21252b',
+  /** 终端/凹陷面 */
+  terminal: '#1a1d23',
+  /** 抬升表面：hover 面 / 按钮底（One Dark selection） */
+  surface: '#2c313a',
+  /** 强 hover / 菜单项高亮（按钮加深） */
+  surfaceHover: '#333845',
+  /** 选中行 / active 面（原 surface 语义拆分——surface 留给 hover 面） */
+  surfaceActive: '#2c313a',
+  /** tile 底（chip/胶囊钮/当前工作区底；One Dark 并入抬升阶） */
+  tile: '#2c313a',
+  /** tile hover */
+  tileHover: '#333845',
+  /** 浮起面（弹窗卡/菜单/通知浮层；比 pane 抬两档） */
+  overlay: '#282c34',
+  /** 输入凹陷底 */
+  inputBg: '#1b1d23',
   /** close × 悬停底 */
-  closeHover: 'rgba(255,255,255,0.10)',
-  /** 常规文字（--text-2 70% 白） */
-  text: 'rgba(255,255,255,0.70)',
-  /** 强文字（--text-1 纯白） */
-  textBright: '#ffffff',
-  /** 弱文字（--text-3 52% 白） */
-  muted: 'rgba(255,255,255,0.52)',
-  /** 最弱文字（--text-4 56% 白：cwd/版本号/占位/hint；比 muted 略亮是
-   *  原型事实——text-4 用在更小字号上补偿可读性） */
-  faint: 'rgba(255,255,255,0.56)',
-  /** accent（V2 白色；主按钮底/选中标记） */
-  accent: '#ffffff',
-  accentHover: '#ededed',
-  /** accent 软化（focus 环；--accent-soft 15% 白） */
-  accentSoft: 'rgba(255,255,255,0.15)',
-  /** 表单控件 focus 边框（原型 28% 白） */
-  focusBorder: 'rgba(255,255,255,0.28)',
+  closeHover: '#3a3f4b',
+  /** 常规文字（One Dark fg） */
+  text: '#abb2bf',
+  /** 强文字 */
+  textBright: '#d7dae0',
+  /** 弱文字（One Dark comment） */
+  muted: '#5c6370',
+  /** 最弱文字（cwd/版本号/占位/hint；比 muted 亮一档补偿小字号可读性） */
+  faint: '#7f848e',
+  /** accent（One Dark 蓝；主按钮底/选中标记） */
+  accent: '#61afef',
+  /** accent 按钮 hover（提亮一档） */
+  accentHover: '#82c1f2',
+  /** accent 低透明度底（toggle 开启轨道 / focus 环） */
+  accentSoft: 'rgba(97, 175, 239, 0.15)',
+  /** 表单控件 focus 边框（One Dark 用 accent 实色） */
+  focusBorder: '#61afef',
   /** 信息/辅助语义色（git lane、时间等；不用作交互 accent） */
   cyan: '#56b6c2',
-  /** 警示/进行中语义色 */
-  amber: '#ff8549',
+  /** 警示/进行中语义色（One Dark 琥珀） */
+  amber: '#e5c07b',
   terminalKind: '#98c379',
-  acpKind: '#c27aff',
-  /** 错误/危险语义（--err #ff6764；借历史命名 bell——错误指示灯底色） */
-  bell: '#ff6764',
-  /** 弱描边（--line 8% 白：分区线/表格线） */
-  border: 'rgba(255,255,255,0.08)',
-  /** 强描边（--line-2 14% 白：输入框/弹窗描边） */
-  borderSubtle: 'rgba(255,255,255,0.14)',
-  /** 已退出态弱化文字（原型 .row.exited = text-4 56% 白；兼作 disabled） */
-  exited: 'rgba(255,255,255,0.56)',
-  /** 空闲选中环（--g300 #afafaf） */
-  g300: '#afafaf',
-  /** 状态灯（原型：进行中橙 / 待确认紫 / 完成绿 / 错误红；进行中偏琥珀保持可辨） */
-  statusRunning: '#ff8549',
-  statusNeed: '#c27aff',
-  statusDone: '#40c977',
-  statusError: '#ff6764',
+  acpKind: '#c678dd',
+  /** 错误/危险语义（One Dark 红；借历史命名 bell——错误指示灯底色） */
+  bell: '#e06c75',
+  /** 弱描边（分区线/表格线） */
+  border: '#181a1f',
+  /** 强描边（输入框/弹窗描边） */
+  borderSubtle: '#3e4451',
+  /** 已退出态弱化文字（兼作 disabled） */
+  exited: '#4b5262',
+  /** 空闲选中环（One Dark muted） */
+  g300: '#5c6370',
+  /** 状态灯四态（One Dark 调和：进行中琥珀 / 待确认紫 / 完成绿 / 错误红） */
+  statusRunning: '#e5c07b',
+  statusNeed: '#c678dd',
+  statusDone: '#98c379',
+  statusError: '#e06c75',
 } as const
 
 export const FONT = {

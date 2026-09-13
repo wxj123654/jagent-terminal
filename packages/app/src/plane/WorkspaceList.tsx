@@ -375,7 +375,7 @@ function WorkspaceGroup({
           paddingLeft: 2,
           paddingRight: 2,
           borderRadius: SIZES.rowRadius,
-          backgroundColor: isCurrent ? 'rgba(255,255,255,0.04)' : 'transparent',
+          backgroundColor: isCurrent ? COLORS.tile : 'transparent',
           userSelect: 'none',
         }}
       >
@@ -562,7 +562,7 @@ function WorkspaceGroup({
             marginLeft: 13,
             paddingLeft: 9,
             borderLeftWidth: 1,
-            borderColor: 'rgba(255,255,255,0.06)',
+            borderColor: COLORS.borderSubtle,
           }}
         >
           {sessions.length === 0 ? (

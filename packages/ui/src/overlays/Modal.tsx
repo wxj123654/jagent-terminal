@@ -247,8 +247,9 @@ export function ModalActions({
             borderRadius: 6,
             cursor: a.disabled ? 'default' : 'pointer',
             opacity: a.disabled ? 0.5 : 1,
-            backgroundColor: a.primary ? COLORS.accent : a.danger ? COLORS.bell : 'transparent',
-            borderWidth: 0,
+            backgroundColor: a.primary ? COLORS.accent : a.danger ? COLORS.bell : COLORS.surface,
+            borderWidth: a.primary || a.danger ? 0 : 1,
+            borderColor: COLORS.borderSubtle,
             hover: a.disabled
               ? {}
               : {
@@ -264,7 +265,7 @@ export function ModalActions({
             style={{
               fontSize: 12,
               fontFamily: FONT.ui,
-              color: a.primary ? '#0d0d0d' : a.danger ? '#ffffff' : COLORS.text,
+              color: a.primary || a.danger ? '#ffffff' : COLORS.text,
               pointerEvents: 'none',
             }}
           >

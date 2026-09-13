@@ -278,7 +278,6 @@ export function Sidebar({
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
-        // v2：侧栏底 = #000（原型 --g1050）
         backgroundColor: COLORS.sidebar,
         borderWidth: 0,
         borderRightWidth: 1,
