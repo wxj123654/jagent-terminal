@@ -12,7 +12,7 @@
  * 零 IO（输入是已解析的 GraphCommit），全部行为由 graph.test.ts 锁定。
  */
 
-import type { GraphCommit } from './cli'
+import type { GraphCommit } from './types'
 
 /** Zed usize::MAX 的「未定」哨兵 */
 export const UNSET = Number.MAX_SAFE_INTEGER

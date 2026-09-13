@@ -75,25 +75,45 @@ j-agent/
 │   │
 │   └── app/                           # React 应用（唯一前端包）
 │       ├── src/
-│       │   ├── main.tsx               #   装配 + 全局键位 + renderer 事件桥
+│       │   ├── main.tsx               #   装配 + 全局键位 + renderer 事件桥（纯装配：
+│       │   │                          #   域逻辑已出——采样/git 键位/持久化各归其域）
 │       │   ├── router.tsx             #   路由树（/ · /thread/$id · /settings）+
 │       │   │                          #   memory history + useActiveTarget + 手动桥（R-V1）
+│       │   ├── keybindings.ts         #   全局键位层 + Keybindings 类型派生
+│       │   │                          #   （schema 单源）+ createKeyboardSlot
 │       │   ├── plane/                 #   AgentPlane / Sidebar / ThreadList /
-│       │   │                          #   ThreadRow / NewThreadButton / Pane
+│       │   │                          #   ThreadRow / NewThreadButton / Pane +
+│       │   │                          #   planeKeyboard/dialogKeyboard（模块单例槽）
 │       │   ├── threads/               #   store.ts + terminal.ts + presets.ts +
 │       │   │                          #   events.ts（SessionEvent 窄化）+ chat.ts
 │       │   │                          #   （ChatAgent seam + EchoAgent，T3.2）+
 │       │   │                          #   acp.ts（ACP v1 JSON-RPC 子进程客户端，
 │       │   │                          #   ChatAgent adapter，T3+.1）+
 │       │   │                          #   nativeDeps.ts（装配工厂）+
+│       │   │                          #   statePersistence.ts（state.json 写回）+
 │       │   │                          #   workspaces.ts（工作区模型 + state.json
 │       │   │                          #   schema/序列化，Phase W）
+│       │   ├── git/                   #   store.ts（GitGraphStore）+ worktree.ts +
+│       │   │                          #   cli.ts（进程边界）+ types.ts（域类型）+
+│       │   │                          #   deps.ts（真适配器装配）+ generation.ts
+│       │   │                          #   （代际判废）+ commands.ts（菜单动作派发）+
+│       │   │                          #   graphKeys.ts（git 域键位）+
+│       │   │                          #   graph.ts/graphSvg.ts/fileTree.ts/format.ts/
+│       │   │                          #   rowColumns.ts + components/GitGraphView
 │       │   ├── surfaces/              #   registry + Terminal/Chat/Acp/Empty +
 │       │   │                          #   ConversationView（chat/acp 共享消息面）+
-│       │   │                          #   listEditorParts（列表分区共享编辑器件）+
-│       │   │                          #   PresetsSection/AcpAgentsSection/SettingsView
-│       │   ├── settings/              #   schema.ts / store.ts / file.ts
-│       │   └── ui/                    #   Icon / Tooltip / SettingRow / 控件
+│       │   │                          #   listEditorParts（列表分区共享：FieldRow/
+│       │   │                          #   LinesField/ModDot + ListEditorCard 外壳 +
+│       │   │                          #   Error/Empty/Add 惯用法）+ SettingRow +
+│       │   │                          #   PhaseBadge + PresetsSection/
+│       │   │                          #   AcpAgentsSection/SettingsView
+│       │   ├── diagnostics/           #   PerfHud + perfSource（采样数学，native
+│       │   │                          #   打点注入）+ frameOverlay（设置→overlay 同步）
+│       │   ├── settings/              #   schema.ts（含 acpAgentCommandSummary）/
+│       │   │                          #   store.ts / file.ts
+│       │   └── errors/                #   bus/guards/native/crashReport/log/toastWire
+│       │                              #   + ErrorBoundary；测试统一收各 feature 的
+│       │                              #   __tests__/（src/ui/ 已删——业务件归域）
 │       └── package.json               #   依赖 @gpuix/react + @jagent/native
 │
 └── e2e/                               # GPUIX TestGpuixRenderer 测试（bun test）
@@ -117,7 +137,7 @@ main.tsx ──> router.ts（路由树装配，不依赖任何业务模块）
 - `native` 的导入只允许出现在 `main.tsx`、`threads/nativeDeps.ts`（装配工厂，main 与 e2e 共用）与 `threads/store.ts` 的依赖注入参数类型里，及 `e2e/`（TestGpuixRenderer 环境）——跨语言 seam 的 JS 侧收口
 - `ui` 被所有人依赖，不依赖任何人
 
-**组件扩展方向**：见 [UI 组件扩展架构](./ui-extensions.md)。已确认以“补充 GPUIX，而非重新实现 GPUIX”为原则：React 包负责包装与组合，仅有实际原生缺口时新增可独立用于纯 GPUI 的 Rust 组件，通过宿主适配接入；两侧不要求一一对应。React 包 `@jagent/ui` 已落地（通用控件层已迁入，app `src/ui/` 只留业务组件），原生扩展尚未实施；唯一 native 宿主约束不变。
+**组件扩展方向**：见 [UI 组件扩展架构](./ui-extensions.md)。已确认以“补充 GPUIX，而非重新实现 GPUIX”为原则：React 包负责包装与组合，仅有实际原生缺口时新增可独立用于纯 GPUI 的 Rust 组件，通过宿主适配接入；两侧不要求一一对应。React 包 `@jagent/ui` 已落地（通用控件层已迁入；app `src/ui/` 已删除——SettingRow/PhaseBadge 归 surfaces，PerfHud 归 diagnostics，业务件一律随域），原生扩展尚未实施；唯一 native 宿主约束不变。
 
 ---
 
@@ -566,7 +586,7 @@ App（useSyncExternalStore(threadStore) + useSettings()）
 - ThreadRow 的局部态：hover、rename 编辑框——useState，不上 store
 - 图标/颜色 tokens 全部从 agent-plane-layout.md §3 引（CSS 变量或 TS 常量，Phase 1 定）
 
-**全局键位层（src/keybindings.ts，T2.6 从 main.tsx 提取；T3+.2 键位参数化；main/e2e 同一 createGlobalKeydown）**：四动作键位真值 = settings.keybindings（getter 注入，修改即时生效）；默认 `ctrl-tab` / `ctrl-shift-tab` → `cycle`、`ctrl-,` → 设置路由开/关。修饰键组合外只吃设置面生命周期键（Esc/`focusSearch` 默认 `/`，仅 inSettings() 时；terminal 表面时透传给 PTY——硬约束 2）。焦点模型已验（T1.6）：TerminalView 聚焦时窗口级 keyDown 仍到达，无需降级。
+**全局键位层（src/keybindings.ts，T2.6 从 main.tsx 提取；T3+.2 键位参数化；main/e2e 同一 createGlobalKeydown）**：四动作键位真值 = settings.keybindings（getter 注入，修改即时生效）；默认 `ctrl-tab` / `ctrl-shift-tab` → `cycle`、`ctrl-,` → 设置路由开/关。修饰键组合外只吃设置面生命周期键（Esc/`focusSearch` 默认 `/`，仅 inSettings() 时；terminal 表面时透传给 PTY——硬约束 2）。焦点模型已验（T1.6）：TerminalView 聚焦时窗口级 keyDown 仍到达，无需降级。`Keybindings`/`KeybindingAction`/`DEFAULT_KEYBINDINGS` 自 schema `DEFAULTS.keybindings` 派生（叶子 catch 是真值单点，平台分支只写一次）；`createKeyboardSlot` 是 planeKeyboard/dialogKeyboard 的模块单例脚手架；git 域键位（↑↓/enter/esc/r）在 git/graphKeys.ts——激活判定（工作区路由 + paneTab）随域代码走，装配层只注读侧。
 
 ---
 
@@ -657,7 +677,7 @@ interface SettingsStore {
 
 ### 6.3 测试面
 
-内存 adapter：patch/isModified/reset · 坏 JSON / 越界值字段级回默认（zod catch）· 未知 key 往返保真 · 写失败回滚 + writeError · 合并写 · SETTING_DEFS 的 path 全部真实存在于 Settings（schema 一致性测试）。预设 CRUD（T3.1）：add 唯一 id+builtin:false · update 空字段归一+args 空行过滤 · delete plusDefault 回退 · duplicate 副本语义 · reset 出厂值 · CRUD 写失败同一回滚面。ACP agent CRUD（T3+.1）：add 缺省/唯一 id · update args 空行过滤 · delete 落盘 + 写失败回滚（path=acpAgents）。keybindings section（T3+.2）：四动作叶子 string catch 默认（'ctrl-tab'/'ctrl-shift-tab'/'ctrl-,','/'）；filePath() 暴露真盘路径（fsAdapter.path；memory 无）+ serializeSettings 导出（写盘与 Advanced JSON 视图同源）。threads/acp.test.ts：真子进程 JSON-RPC 链（__fixtures__/fake-acp-agent.ts，FAKE_ACP_MODE 选行为：echo/tools/permission/refusal/crash/badline/version2）。
+内存 adapter：patch/isModified/reset · 坏 JSON / 越界值字段级回默认（zod catch）· 未知 key 往返保真 · 写失败回滚 + writeError · 合并写 · SETTING_DEFS 的 path 全部真实存在于 Settings（schema 一致性测试）。预设 CRUD（T3.1）：add 唯一 id+builtin:false · update 空字段归一+args 空行过滤 · delete plusDefault 回退 · duplicate 副本语义 · reset 出厂值 · CRUD 写失败同一回滚面。ACP agent CRUD（T3+.1）：add 缺省/唯一 id · update args 空行过滤 · delete 落盘 + 写失败回滚（path=acpAgents）。keybindings section（T3+.2）：四动作叶子 string catch 默认（'ctrl-tab'/'ctrl-shift-tab'/'ctrl-,','/'）；filePath() 暴露真盘路径（fsAdapter.path；memory 无）+ serializeSettings 导出（写盘与 Advanced JSON 视图同源）。threads/__tests__/acp.test.ts：真子进程 JSON-RPC 链（__tests__/__fixtures__/fake-acp-agent.ts，FAKE_ACP_MODE 选行为：echo/tools/permission/refusal/crash/badline/version2）。
 
 ---
 

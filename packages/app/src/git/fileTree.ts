@@ -4,7 +4,7 @@
  * `src/pages/a.ts` 且中间目录无兄弟 → 显示为 `src / pages`。零 IO。
  */
 
-import type { ChangedFile } from './cli'
+import type { ChangedFile } from './types'
 
 export interface FileTreeNode {
   dirs: Record<string, FileTreeNode>

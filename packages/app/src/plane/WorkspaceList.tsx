@@ -8,8 +8,8 @@
  *   ＋ 新建会话 / 「…」管理弹窗）。当前工作区（含活跃会话或起始页激活）
  *   = 4% 白底 + 名后 5px 状态点。组内会话挂 ws-body（左缩进 13 + 9 padding
  *   + 1px 竖线），时间分组 + 默认前 10 条（ws.showAll 持久化切换）。
- * - 搜索态由 Sidebar 传入 query：非空时整树切换为跨工作区结果列表
- *   （未归属行标注「未归属」）。
+ * - 搜索在 ⌘K 弹窗（W7 起走 plane/SearchDialog + searchThreads，本树不再
+ *   内嵌结果态）。
  *
  * 事件命中模型（T3.1）：GPUIX 子元素自带 listener 时冒泡到父 listener
  * （deepest-first）——箭头/＋/「…」钮与行 onClick 的冲突用「抑制 ref」。
@@ -19,15 +19,9 @@ import { useRef, useState } from 'react'
 
 import { Icon, COLORS, FONT } from '@jagent/ui'
 import { useActiveTarget } from '../router'
-import type { SettingsStore } from '../settings/store'
 import type { ThreadStore } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
-import {
-  searchThreads,
-  TIME_GROUP_LABELS,
-  timeGroupsOf,
-  type TimeGroup,
-} from '../threads/workspaces'
+import { TIME_GROUP_LABELS, timeGroupsOf, type TimeGroup } from '../threads/workspaces'
 import { SIZES } from '../tokens'
 import type { DialogOpener } from './DialogHost'
 import { ThreadRow } from './ThreadRow'
@@ -40,24 +34,14 @@ const GROUP_LIMIT = 10
 
 export function WorkspaceList({
   store,
-  settings,
-  query,
   dialog,
 }: {
   store: ThreadStore
-  settings: SettingsStore
-  query: string
   /** 弹窗入口（W7）：行 ＋ / 空组引导 → 新建会话弹窗；底部 → 添加工作区弹窗 */
   dialog: DialogOpener
 }) {
   const workspaces = useThreadStore(store, (s) => s.workspaces)
-  const trimmed = query.trim()
 
-  if (trimmed !== '') {
-    return (
-      <SearchResultsWithDialog store={store} settings={settings} query={trimmed} dialog={dialog} />
-    )
-  }
   return (
     <div
       style={{
@@ -624,90 +608,5 @@ function WorkspaceGroup({
         </div>
       ) : null}
     </div>
-  )
-}
-
-// ── 跨工作区搜索结果 ────────────────────────────────────────────────
-
-function SearchResults({
-  store,
-  settings,
-  query,
-  onManage,
-}: {
-  store: ThreadStore
-  settings: SettingsStore
-  query: string
-  onManage?: (threadId: string) => void
-}) {
-  // 订阅稳定引用（immer 结构共享：threads/workspaces 未变则引用不变），
-  // 命中列表渲染期现算（uSES 的 getSnapshot 必须返回稳定引用——新数组会炸）
-  const threads = useThreadStore(store, (s) => s.threads)
-  const workspaces = useThreadStore(store, (s) => s.workspaces)
-  const results = searchThreads(
-    threads,
-    workspaces,
-    query,
-    (pid) => settings.get().presets.items.find((p) => p.id === pid)?.label,
-  )
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        flexGrow: 1,
-        overflowY: 'scroll',
-        paddingLeft: SIZES.rowMarginX,
-        paddingRight: SIZES.rowMarginX,
-        paddingTop: 2,
-      }}
-    >
-      {results.length === 0 ? (
-        <text
-          style={{
-            marginTop: 12,
-            marginLeft: 6,
-            fontSize: 11,
-            fontFamily: FONT.ui,
-            color: COLORS.muted,
-            pointerEvents: 'none',
-          }}
-        >
-          无匹配会话
-        </text>
-      ) : (
-        results.map(({ thread, workspace }) => (
-          <ThreadRow
-            key={thread.id}
-            id={thread.id}
-            store={store}
-            suffix={workspace?.name ?? '未归属'}
-            onManage={onManage}
-          />
-        ))
-      )}
-    </div>
-  )
-}
-
-function SearchResultsWithDialog({
-  store,
-  settings,
-  query,
-  dialog,
-}: {
-  store: ThreadStore
-  settings: SettingsStore
-  query: string
-  dialog: DialogOpener
-}) {
-  return (
-    <SearchResults
-      store={store}
-      settings={settings}
-      query={query}
-      onManage={dialog.openManageSession}
-    />
   )
 }

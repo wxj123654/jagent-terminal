@@ -19,28 +19,20 @@
 
 import { spawn, type ChildProcess } from 'node:child_process'
 
+import type {
+  ChangedFile,
+  GitBranch,
+  GitLogHandle,
+  GraphCommit,
+  WorktreeFileKind,
+  WorktreeStatus,
+} from './types'
+
 /** Zed 三字段 + 行内 CDV 元数据（email/committer 单行字段；body 含换行，选中时另拉） */
 const LOG_FORMAT = '--format=%H%x00%P%x00%D%x00%h%x00%an%x00%ae%x00%at%x00%cn%x00%ce%x00%s'
 
 /** 流式回调的 chunk 大小（Zed GRAPH_CHUNK_SIZE 同量级：首屏快 + 避免 setState 风暴） */
 const CHUNK_SIZE = 512
-
-export interface GraphCommit {
-  /** %H 全 sha（oid 键） */
-  sha: string
-  /** %P 按空白切 */
-  parents: string[]
-  /** %D 逗号+空格切；detached HEAD / 普通提交为 [] */
-  refNames: string[]
-  shortSha: string
-  authorName: string
-  authorEmail: string
-  /** %at 秒 */
-  timestamp: number
-  committerName: string
-  committerEmail: string
-  subject: string
-}
 
 /** 单行解析：字段数 < 10 或空 sha → null（坏行丢弃不炸） */
 export function parseLogLine(line: string): GraphCommit | null {
@@ -92,13 +84,6 @@ export class LineBuffer {
     this.buf = ''
     return rest ? [rest] : []
   }
-}
-
-export interface GitLogHandle {
-  /** kill 子进程并停止回调；幂等 */
-  cancel(): void
-  /** 进程结束（含取消/非零退出，都 resolve 不 reject） */
-  done: Promise<{ ok: boolean; error?: string }>
 }
 
 /**
@@ -258,13 +243,6 @@ export async function runGit(cwd: string, args: string[]): Promise<string> {
   return out
 }
 
-export interface ChangedFile {
-  path: string
-  /** 二进制为 null */
-  added: number | null
-  deleted: number | null
-}
-
 /** `git diff-tree --numstat` / `git show --numstat --format=` 输出解析 */
 export function parseChangedFiles(raw: string): ChangedFile[] {
   const files: ChangedFile[] = []
@@ -284,11 +262,6 @@ export function parseChangedFiles(raw: string): ChangedFile[] {
     })
   }
   return files
-}
-
-export interface GitBranch {
-  name: string
-  current: boolean
 }
 
 /** `git for-each-ref --format=%(refname:short)%x00%(HEAD)` refs/heads */
@@ -332,13 +305,6 @@ export async function listBranches(cwd: string): Promise<GitBranch[]> {
 
 // ── 工作区状态（D5 工作面板：status 文件表 / diff / 当前分支）──────────
 
-export type WorktreeFileKind = 'm' | 'a' | 'd'
-
-export interface WorktreeFile extends ChangedFile {
-  /** porcelain 状态归并：m 修改 / a 新增（含 ?? 未跟踪与暂存新文件）/ d 删除 */
-  status: WorktreeFileKind
-}
-
 /**
  * `git status --porcelain=v1 -z` 解析。条目 `XY<sp>path\0`；重命名/复制
  * 在 -z 下是 `XY<sp>new\0old\0`（字段序反转、无箭头）——跳过后一条目。
@@ -361,14 +327,6 @@ export function parseStatusEntries(raw: string): { path: string; status: Worktre
     out.push({ path, status })
   }
   return out
-}
-
-export interface WorktreeStatus {
-  /** repo root（diff/preview 的 cwd 基准） */
-  root: string
-  /** 当前分支名；detached HEAD / 空 repo → null */
-  branch: string | null
-  files: WorktreeFile[]
 }
 
 /**

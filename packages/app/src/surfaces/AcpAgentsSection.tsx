@@ -12,14 +12,21 @@
  * writeError：path === 'acpAgents' → 分区顶部红条（回滚已由 store 层完成）。
  */
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import type { ReactElement } from 'react'
 
-import { Icon, IconButton, TextInput, COLORS, FONT } from '@jagent/ui'
-import type { AcpAgent } from '../settings/schema'
+import { IconButton, TextInput, COLORS, FONT } from '@jagent/ui'
+import { acpAgentCommandSummary, type AcpAgent } from '../settings/schema'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
-import { FieldRow, LinesField } from './listEditorParts'
+import {
+  FieldRow,
+  LinesField,
+  ListEditorAdd,
+  ListEditorCard,
+  ListEditorEmpty,
+  ListEditorError,
+} from './listEditorParts'
 
 /** 搜索命中（label / command / args 子串，不区分大小写） */
 export function acpAgentMatches(a: AcpAgent, q: string): boolean {
@@ -29,11 +36,6 @@ export function acpAgentMatches(a: AcpAgent, q: string): boolean {
     a.command.toLowerCase().includes(lower) ||
     a.args.some((x) => x.toLowerCase().includes(lower))
   )
-}
-
-/** mono 命令摘要（命令 + 参数一行） */
-function agentCommandSummary(a: AcpAgent): string {
-  return [a.command, ...a.args].filter(Boolean).join(' ')
 }
 
 export function AcpAgentsSection({
@@ -71,22 +73,10 @@ export function AcpAgentsSection({
         环境——此处不出现 API key 输入框。
       </text>
 
-      {err?.path === 'acpAgents' ? (
-        <text
-          testId="writeerror"
-          style={{ fontSize: 11, fontFamily: FONT.mono, color: COLORS.bell, marginBottom: 6 }}
-        >
-          {`写入失败：${err.message}`}
-        </text>
-      ) : null}
+      <ListEditorError err={err} hit={(p) => p === 'acpAgents'} />
 
       {visible.length === 0 && query ? (
-        <text
-          testId="settings-empty-hits"
-          style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted, padding: 8 }}
-        >
-          无匹配 agent
-        </text>
+        <ListEditorEmpty text="无匹配 agent" />
       ) : (
         visible.map((a) => (
           <AgentCard
@@ -100,44 +90,11 @@ export function AcpAgentsSection({
         ))
       )}
 
-      {/* 新增 agent（同 Presets 分区形态） */}
-      <div
+      <ListEditorAdd
         testId="add-acp-agent"
-        tabIndex={0}
-        onClick={() => setExpandedId(settings.addAcpAgent({ label: `Agent ${agents.length + 1}` }))}
-        onKeyDown={(e) => {
-          if (e.key === 'enter' || e.key === 'space') {
-            setExpandedId(settings.addAcpAgent({ label: `Agent ${agents.length + 1}` }))
-          }
-        }}
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 7,
-          height: 30,
-          paddingLeft: 12,
-          paddingRight: 12,
-          marginTop: 2,
-          borderWidth: 1,
-          borderColor: COLORS.borderSubtle,
-          borderRadius: 4,
-          cursor: 'pointer',
-          hover: { borderColor: COLORS.accent, color: COLORS.textBright },
-        }}
-      >
-        <Icon name="plus" size={12} color={COLORS.muted} />
-        <text
-          style={{
-            fontSize: 12.5,
-            fontFamily: FONT.ui,
-            color: COLORS.muted,
-            pointerEvents: 'none',
-          }}
-        >
-          新增 Agent
-        </text>
-      </div>
+        label="新增 Agent"
+        onAdd={() => setExpandedId(settings.addAcpAgent({ label: `Agent ${agents.length + 1}` }))}
+      />
     </div>
   )
 }
@@ -157,93 +114,30 @@ function AgentCard({
   onToggle: () => void
   onDeleted: () => void
 }): ReactElement {
-  // 冒泡抑制：删除钮 click 会冒到 head 的 onClick（T3.1 实测），按钮先置位
-  const suppressHead = useRef(false)
-
   return (
-    <div
-      testId={`agent-card-${a.id}`}
-      style={{
-        borderWidth: 1,
-        borderColor: expanded ? COLORS.borderSubtle : COLORS.border,
-        borderRadius: 6,
-        marginBottom: 8,
-        backgroundColor: COLORS.sidebar,
-      }}
-    >
-      {/* head：命中容器（显式 backgroundColor；装饰 pe:none 穿透） */}
-      <div
-        testId={`agent-head-${a.id}`}
-        tabIndex={0}
-        onClick={() => {
-          if (suppressHead.current) {
-            suppressHead.current = false
-            return
-          }
-          onToggle()
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'enter' || e.key === 'space') onToggle()
-        }}
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 10,
-          minHeight: 38,
-          paddingTop: 4,
-          paddingBottom: 4,
-          paddingLeft: 12,
-          paddingRight: 8,
-          borderTopLeftRadius: 6,
-          borderTopRightRadius: 6,
-          backgroundColor: COLORS.sidebar,
-          cursor: 'pointer',
-          hover: { backgroundColor: COLORS.surfaceHover },
-        }}
-      >
-        <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={12} color={COLORS.muted} />
-        <text
-          style={{
-            fontSize: 13,
-            fontFamily: FONT.ui,
-            color: COLORS.textBright,
-            flexShrink: 0,
-            pointerEvents: 'none',
-          }}
-        >
-          {a.label}
-        </text>
-        <text
-          style={{
-            flexGrow: 1,
-            minWidth: 0,
-            fontSize: 11.5,
-            fontFamily: FONT.mono,
-            color: COLORS.muted,
-            whiteSpace: 'nowrap',
-            textOverflow: 'ellipsis',
-            overflow: 'hidden',
-            pointerEvents: 'none',
-          }}
-        >
-          {agentCommandSummary(a)}
-        </text>
+    <ListEditorCard
+      testIdPrefix="agent"
+      id={a.id}
+      label={a.label}
+      summary={acpAgentCommandSummary(a)}
+      expanded={expanded}
+      onToggle={onToggle}
+      actions={(suppress) => (
         <IconButton
           name="trash"
           danger
           label={`删除 agent ${a.label}`}
           testId={`agent-delete-${a.id}`}
           onClick={() => {
-            suppressHead.current = true
+            suppress()
             settings.deleteAcpAgent(a.id)
             onDeleted()
           }}
         />
-      </div>
-
-      {expanded ? <AgentEditor a={a} settings={settings} /> : null}
-    </div>
+      )}
+    >
+      <AgentEditor a={a} settings={settings} />
+    </ListEditorCard>
   )
 }
 
@@ -253,17 +147,7 @@ function AgentEditor({ a, settings }: { a: AcpAgent; settings: SettingsStore }):
     settings.updateAcpAgent(a.id, patch)
 
   return (
-    <div
-      testId={`agent-editor-${a.id}`}
-      style={{
-        borderTopWidth: 1,
-        borderColor: COLORS.border,
-        padding: 12,
-        paddingLeft: 14,
-        paddingBottom: 14,
-        backgroundColor: COLORS.app,
-      }}
-    >
+    <div>
       <FieldRow label="Label" name="label" modified={false}>
         <TextInput
           testId={`agent-field-label-${a.id}`}

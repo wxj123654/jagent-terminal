@@ -150,10 +150,8 @@ beforeAll(() => {
       const id = settingsKeyboard.searchInputId()
       if (id != null) t.renderer.focusElement(id)
     },
-    focusThreadSearch: () => {
-      // W7 ⌘K/Ctrl-K：打开搜索会话弹窗（原型语义；W4 聚焦侧栏搜索框废弃）
-      dialogKeyboard.openSearch()
-    },
+    // W7 ⌘K/Ctrl-K：打开搜索会话弹窗（原型语义；W4 聚焦侧栏搜索框废弃）
+    openSearch: () => dialogKeyboard.openSearch(),
     // D7 ⌘N：新建会话弹窗；D18 抽屉 Esc（与 main.tsx 同链）
     newSession: () => dialogKeyboard.newSession(),
     toggleSidebar: () => planeKeyboard.toggleSidebar(),
@@ -571,6 +569,7 @@ describe('T3+.1 e2e: ACP 全链（菜单入口 → AcpSurface → 真子进程 J
         'app',
         'src',
         'threads',
+        '__tests__',
         '__fixtures__',
         'fake-acp-agent.ts',
       )

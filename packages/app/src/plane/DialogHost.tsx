@@ -6,9 +6,9 @@
  * 会话 …）不再自持 anchored 菜单，改经 props 回调打开本处弹窗——
  * 入口唯一、状态单点、Esc/遮罩统一在 Modal。
  *
- * ⌘K：keybindings.focusThreadSearch（原语义「聚焦侧栏搜索框」）改为
- * openSearch——挂点在 main.tsx/e2e 装配层，经模块态 setGlobalHooks
- * 注入（与 sidebarKeyboard/settingsKeyboard 同款纪律）。
+ * ⌘K：keybindings.openSearch（原 W4 语义「聚焦侧栏搜索框」废弃）→
+ * 搜索会话弹窗——挂点在 main.tsx/e2e 装配层，经 dialogKeyboard 模块态
+ * 注入（与 planeKeyboard/settingsKeyboard 同款纪律）。
  */
 
 import type { LastCrash } from '../errors/crashReport'

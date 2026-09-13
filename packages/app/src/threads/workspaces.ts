@@ -18,6 +18,7 @@
 import { z } from 'zod'
 
 import type { Thread } from './store'
+import { displayTitle } from './terminal'
 
 // ── 类型 ─────────────────────────────────────────────────────────────
 
@@ -115,6 +116,34 @@ export function workspaceSessions(threads: Thread[], workspaceId: string): Threa
   return threads.filter((t) => t.workspaceId === workspaceId)
 }
 
+// ── lastSession 不变量（store 的唯一规则写点；immer draft 直接改）─────
+
+/** 会话聚焦 → 归属工作区记录 lastSession（activateWorkspace 恢复源）。
+ *  实际变化返回 true（store 拿它做 persist 判据）。 */
+export function recordLastSession(
+  workspaces: Workspace[],
+  workspaceId: string,
+  threadId: string,
+): boolean {
+  const ws = workspaces.find((w) => w.id === workspaceId)
+  if (!ws || ws.lastSession === threadId) return false
+  ws.lastSession = threadId
+  return true
+}
+
+/** 会话移除 → 若是所属工作区 lastSession 则清空（回起始页的数据面兑底）。
+ *  实际变化返回 true。 */
+export function clearLastSession(
+  workspaces: Workspace[],
+  workspaceId: string,
+  threadId: string,
+): boolean {
+  const ws = workspaces.find((w) => w.id === workspaceId)
+  if (!ws || ws.lastSession !== threadId) return false
+  ws.lastSession = null
+  return true
+}
+
 // ── 时间分组（Phase D1；原型：今天/昨天/本周/更早）──────────────
 
 export type TimeGroup = 'today' | 'yesterday' | 'week' | 'earlier'
@@ -178,7 +207,7 @@ export function searchThreads(
   const hits: Array<{ thread: Thread; workspace?: Workspace }> = []
   for (const t of threads) {
     const ws = t.workspaceId ? wsById.get(t.workspaceId) : undefined
-    const title = t.kind === 'terminal' ? terminalTitle(t) : t.title
+    const title = t.kind === 'terminal' ? displayTitle(t) : t.title
     const tool =
       t.kind === 'terminal'
         ? (presetLabelOf(t.preset) ?? 'Terminal')
@@ -190,9 +219,4 @@ export function searchThreads(
     if (haystack.includes(q)) hits.push({ thread: t, workspace: ws })
   }
   return hits
-}
-
-/** terminal 标题（displayTitle 的本地等价——避免 workspaces→terminal 循环 import） */
-function terminalTitle(t: Extract<Thread, { kind: 'terminal' }>): string {
-  return t.customTitle ?? t.oscTitle ?? t.initCommand ?? 'Terminal'
 }

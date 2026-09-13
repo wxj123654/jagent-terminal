@@ -18,7 +18,13 @@ import type { ActiveTarget } from '../router'
 import type { ChatAgent, ChatMessage } from './chat'
 import type { TerminalSessionEvent } from './events'
 import type { TerminalPreset } from './presets'
-import { workspaceDisplayName, type Workspace } from './workspaces'
+import { displayTitle } from './terminal'
+import {
+  clearLastSession,
+  recordLastSession,
+  workspaceDisplayName,
+  type Workspace,
+} from './workspaces'
 
 export type { Workspace } from './workspaces'
 
@@ -133,6 +139,13 @@ export type ThreadDeps = {
   /** 工作区持久化（Phase W）：workspaces 任何变化后 fire（fire-and-forget；
    *  装配层写 state.json，失败仅 warn）。不注入则跳过（纯内存，测试面）。 */
   persistWorkspaces?: (workspaces: Workspace[]) => void
+  // ── ambient deps（缺省 = 真实环境；测试注入确定性值）──────────────
+  /** 时钟（createdAt / 消息 at / 通知 at）。缺省 Date.now */
+  now?: () => number
+  /** id 生成（c/a/w 前缀的 uuid）。缺省 crypto.randomUUID */
+  newId?: () => string
+  /** cwd 继承链兜底（preset.cwd ?? workspace.path ?? 本项）。缺省 process.cwd */
+  defaultCwd?: () => string
 }
 
 /** 构造选项（Phase W）：装配层读盘后的初值（含首启默认工作区决策） */
@@ -175,9 +188,6 @@ export interface ThreadStore {
   markNoticesRead(): void
   /** 工作区内 tab（git-graph.md §4.1）：'home'/'git'；持久化，不导航 */
   setWorkspacePaneTab(id: string, tab: 'home' | 'git'): void
-  /** 测试专用：直接改 thread.createdAt（时间分组测试需跨今天/更早组；
-   *  生产路径 createdAt 只在 spawn 时写入，不提供运行时改口） */
-  setThreadCreatedAt(id: string, at: number): void
   /** 打开 Git 图：当前工作区（会话归属 / 已激活 / 第一个）切 paneTab=git 并激活。无工作区 no-op。 */
   openGitGraph(): void
   /** 装配层专用：native → store（经 events.ts 窄化后的判别联合） */
@@ -185,17 +195,6 @@ export interface ThreadStore {
 }
 
 // ── 实现 ─────────────────────────────────────────────────────────────
-
-/** chat 消息 id 自增（仅需 thread 内唯一 + 测试可预测） */
-let msgSeq = 0
-
-/** 通知条目 id 自增（同 msgSeq 纪律） */
-let noticeSeq = 0
-
-/** 通知主文案用的会话名（displayTitle 本地等价，避免 →terminal 循环 import） */
-function noticeTitle(t: TerminalThread): string {
-  return t.customTitle ?? t.oscTitle ?? t.initCommand ?? 'Terminal'
-}
 
 /** chat 默认标题（首条消息改写的哨兵值；rename 手改后不再改写） */
 export const CHAT_DEFAULT_TITLE = 'Chat'
@@ -212,6 +211,14 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
   const state = () => store.getState()
   /** acp thread → 连接实例（情建；close 时 dispose。不进 state——纯运行时资源） */
   const acpAgents = new Map<string, ChatAgent>()
+  // ambient deps：缺省真实环境适配（nativeDeps 显式接线同款值）
+  const now = deps.now ?? Date.now
+  const newId = deps.newId ?? (() => crypto.randomUUID())
+  const defaultCwd = deps.defaultCwd ?? (() => process.cwd())
+  /** chat 消息 id 自增（实例级——跨 store 实例不共享，测试互不污染） */
+  let msgSeq = 0
+  /** 通知条目 id 自增（同 msgSeq 纪律） */
+  let noticeSeq = 0
   /** workspaces 变化后统一持久化出口（fire-and-forget） */
   const persist = () => deps.persistWorkspaces?.(state().workspaces)
   const activate = (target: ActiveTarget) => {
@@ -223,11 +230,7 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
         if (t && t.kind === 'terminal' && t.hasBell) t.hasBell = false
         // Phase W：会话聚焦 → 归属工作区 lastSession 记录（activateWorkspace 恢复源）
         if (t?.workspaceId) {
-          const ws = s.workspaces.find((w) => w.id === t.workspaceId)
-          if (ws && ws.lastSession !== t.id) {
-            ws.lastSession = t.id
-            touchedWorkspace = true
-          }
+          touchedWorkspace = recordLastSession(s.workspaces, t.workspaceId, t.id)
         }
       })
       // produce 同步执行，set 返回时标记已定；仅 lastSession 实际变化才写盘
@@ -247,7 +250,7 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
       const ws = workspaceId ? state().workspaces.find((w) => w.id === workspaceId) : undefined
       if (workspaceId && !ws) throw new Error(`unknown workspace: ${workspaceId}`)
       // cwd 继承链（Phase W 契约）：preset 显式 cwd（用户配置意图）→ 工作区目录 → 进程 CWD
-      const cwd = preset.cwd ?? ws?.path ?? process.cwd()
+      const cwd = preset.cwd ?? ws?.path ?? defaultCwd()
       const sessionId = await deps.spawnSession({
         cwd, // 与 thread.cwd 同源（Rust None 回退也是进程 CWD，显式传保两端一致）
         program: preset.program,
@@ -264,7 +267,7 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
         initCommand: preset.initCommand,
         status: 'running',
         hasBell: false,
-        createdAt: Date.now(),
+        createdAt: now(),
         workspaceId: ws?.id,
       }
       set((s) => {
@@ -278,9 +281,9 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
       assertWorkspace(state(), workspaceId)
       const thread: ChatThread = {
         kind: 'chat',
-        id: `c${crypto.randomUUID()}`,
+        id: `c${newId()}`,
         title: CHAT_DEFAULT_TITLE,
-        createdAt: Date.now(),
+        createdAt: now(),
         messages: [],
         pendingReply: false,
         workspaceId,
@@ -295,9 +298,9 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
       assertWorkspace(state(), workspaceId)
       const thread: AcpThread = {
         kind: 'acp',
-        id: `a${crypto.randomUUID()}`,
+        id: `a${newId()}`,
         title: label,
-        createdAt: Date.now(),
+        createdAt: now(),
         agentId,
         messages: [],
         pendingReply: false,
@@ -347,10 +350,7 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
         // Phase W：会话移除 → 若是所属工作区 lastSession 则清空（下一个
         // activateWorkspace 回起始页；「最后一个会话被移除后回工作区起始页」
         // 的数据面兑底，空态 UI 是 W2）
-        if (thread.workspaceId) {
-          const ws = s.workspaces.find((w) => w.id === thread.workspaceId)
-          if (ws && ws.lastSession === id) ws.lastSession = null
-        }
+        if (thread.workspaceId) clearLastSession(s.workspaces, thread.workspaceId, id)
       })
       persist()
     },
@@ -390,14 +390,14 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
 
     addWorkspace(name, path) {
       const ws: Workspace = {
-        id: `w${crypto.randomUUID()}`,
+        id: `w${newId()}`,
         name: name.trim() || workspaceDisplayName(path),
         path,
         expanded: true,
         lastSession: null,
         paneTab: 'home',
         showAll: false,
-        createdAt: Date.now(),
+        createdAt: now(),
       }
       set((s) => {
         s.workspaces.push(ws)
@@ -466,14 +466,6 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
       })
     },
 
-    setThreadCreatedAt(id, at) {
-      set((s) => {
-        const th = s.threads.find((t) => t.id === id)
-        if (th) th.createdAt = at
-      })
-      // 不 persist：测试专用改口，不落盘
-    },
-
     setWorkspacePaneTab(id, tab) {
       set((s) => {
         const ws = s.workspaces.find((w) => w.id === id)
@@ -521,7 +513,7 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
                 const row = s.threads.find((x) => x.id === id)
                 if (row && row.kind === 'terminal') row.hasBell = true
               })
-              pushNotice(t, 'warn', `「${noticeTitle(t)}」等待注意`)
+              pushNotice(t, 'warn', `「${displayTitle(t)}」等待注意`)
               deps.notify(t)
             }
           }
@@ -534,7 +526,7 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
           pushNotice(
             t,
             e.code === 0 || e.code == null ? 'ok' : 'err',
-            `「${noticeTitle(t)}」已退出`,
+            `「${displayTitle(t)}」已退出`,
           )
           if (deps.closeOnExit()) {
             this.close(id)
@@ -569,7 +561,7 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
         tone,
         text,
         sub: ws?.name ?? '未归属',
-        at: Date.now(),
+        at: now(),
       })
       if (s.notices.length > 50) s.notices.splice(0, s.notices.length - 50)
       if (s.noticesRead > s.notices.length) s.noticesRead = s.notices.length
@@ -615,7 +607,7 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
             id: `m${++msgSeq}`,
             role: 'assistant',
             text: `无法建立 ACP 连接：${err instanceof Error ? err.message : String(err)}`,
-            at: Date.now(),
+            at: now(),
             error: true,
           })
           return
@@ -624,7 +616,7 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
       }
     }
 
-    const userMsg: ChatMessage = { id: `m${++msgSeq}`, role: 'user', text, at: Date.now() }
+    const userMsg: ChatMessage = { id: `m${++msgSeq}`, role: 'user', text, at: now() }
     set((s) => {
       const t = s.threads.find((x) => x.id === threadId)
       if (!t || t.kind !== kind || t.pendingReply) return
@@ -645,14 +637,14 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
         id: `m${++msgSeq}`,
         role: 'assistant',
         text: reply,
-        at: Date.now(),
+        at: now(),
       })
     } catch (err) {
       pushReply(threadId, kind, {
         id: `m${++msgSeq}`,
         role: 'assistant',
         text: `发送失败：${err instanceof Error ? err.message : String(err)}`,
-        at: Date.now(),
+        at: now(),
         error: true,
       })
     }

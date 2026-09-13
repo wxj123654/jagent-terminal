@@ -11,18 +11,10 @@
 
 import { createStore } from 'zustand/vanilla'
 
-import {
-  findRepoRoot,
-  listBranches,
-  listChangedFiles,
-  runGit,
-  showCommitBody,
-  spawnGitLog,
-  type ChangedFile,
-  type GitBranch,
-  type GitLogHandle,
-} from './cli'
+import { realGitGraphDeps } from './deps'
+import { createGeneration } from './generation'
 import { firstParentChain, GitGraphData, type CommitLine, type GraphRow } from './graph'
+import type { ChangedFile, GitBranch, GitLogHandle, GraphCommit } from './types'
 
 export type GitGraphStatus = 'idle' | 'loading' | 'ready' | 'error' | 'not-a-repo'
 
@@ -55,23 +47,11 @@ export interface GitGraphState {
 
 export interface GitGraphDeps {
   findRepoRoot: (cwd: string) => Promise<string | null>
-  spawnGitLog: (
-    cwd: string,
-    onChunk: (commits: import('./cli').GraphCommit[]) => void,
-  ) => GitLogHandle
+  spawnGitLog: (cwd: string, onChunk: (commits: GraphCommit[]) => void) => GitLogHandle
   showCommitBody: (cwd: string, sha: string) => Promise<string>
   listChangedFiles: (cwd: string, sha: string) => Promise<ChangedFile[]>
   listBranches: (cwd: string) => Promise<GitBranch[]>
   runGit: (cwd: string, args: string[]) => Promise<string>
-}
-
-const realDeps: GitGraphDeps = {
-  findRepoRoot,
-  spawnGitLog,
-  showCommitBody,
-  listChangedFiles,
-  listBranches,
-  runGit,
 }
 
 const initialState: GitGraphState = {
@@ -114,11 +94,12 @@ export type GitGraphStore = {
   runAction(args: string[]): Promise<void>
 }
 
-export function createGitGraphStore(deps: GitGraphDeps = realDeps): GitGraphStore {
+export function createGitGraphStore(deps: GitGraphDeps = realGitGraphDeps): GitGraphStore {
   const store = createStore<GitGraphState>(() => ({ ...initialState }))
   /** 挂载代际：旧流的回调/done 看到代际不符即静默丢弃 */
-  let seq = 0
-  let patchSeq = 0
+  const seq = createGeneration()
+  /** 详情代际：select 切换使旧 body/files 回调作废 */
+  const patchSeq = createGeneration()
   let data = new GitGraphData()
   let handle: GitLogHandle | null = null
   let mountedCwd: string | null = null
@@ -134,7 +115,7 @@ export function createGitGraphStore(deps: GitGraphDeps = realDeps): GitGraphStor
   async function mount(cwd: string): Promise<void> {
     if (mountedCwd === cwd && handle) return
     cancelLog()
-    const mySeq = ++seq
+    const mySeq = seq.next()
     mountedCwd = cwd
     repoRoot = null
     data = new GitGraphData()
@@ -158,14 +139,14 @@ export function createGitGraphStore(deps: GitGraphDeps = realDeps): GitGraphStor
     })
 
     const root = await deps.findRepoRoot(cwd)
-    if (mySeq !== seq) return
+    if (!seq.isCurrent(mySeq)) return
     if (!root) {
       set({ status: 'not-a-repo' })
       return
     }
     repoRoot = root
     handle = deps.spawnGitLog(root, (chunk) => {
-      if (mySeq !== seq) return
+      if (!seq.isCurrent(mySeq)) return
       data.addCommits(chunk)
       const chain = firstParentChain(data.rows.map((r) => r.commit))
       const mute = new Set(
@@ -178,12 +159,12 @@ export function createGitGraphStore(deps: GitGraphDeps = realDeps): GitGraphStor
         muteShas: mute,
       })
     })
-    void deps.listBranches?.(root).then((branches) => {
-      if (mySeq !== seq) return
+    void deps.listBranches(root).then((branches) => {
+      if (!seq.isCurrent(mySeq)) return
       set({ branches })
     })
     const res = await handle.done
-    if (mySeq !== seq) return
+    if (!seq.isCurrent(mySeq)) return
     if (res.error === 'cancelled') return
     if (!res.ok) {
       set({ status: 'error', error: res.error ?? 'git log failed' })
@@ -207,17 +188,17 @@ export function createGitGraphStore(deps: GitGraphDeps = realDeps): GitGraphStor
       files: [],
     })
     if (!sha || !repoRoot) return
-    const mySeq = ++patchSeq
+    const mySeq = patchSeq.next()
     const root = repoRoot
     try {
       const [body, files] = await Promise.all([
         deps.showCommitBody(root, sha),
-        deps.listChangedFiles?.(root, sha) ?? Promise.resolve([]),
+        deps.listChangedFiles(root, sha),
       ])
-      if (patchSeq !== mySeq || store.getState().selectedSha !== sha) return
+      if (!patchSeq.isCurrent(mySeq) || store.getState().selectedSha !== sha) return
       set({ body, files, detailLoading: false })
     } catch (e) {
-      if (patchSeq !== mySeq) return
+      if (!patchSeq.isCurrent(mySeq)) return
       set({
         detailLoading: false,
         detailError: e instanceof Error ? e.message : String(e),
@@ -274,8 +255,8 @@ export function createGitGraphStore(deps: GitGraphDeps = realDeps): GitGraphStor
       void mount(cwd)
     },
     unmount() {
-      seq++
-      patchSeq++
+      seq.next()
+      patchSeq.next()
       cancelLog()
       mountedCwd = null
       repoRoot = null

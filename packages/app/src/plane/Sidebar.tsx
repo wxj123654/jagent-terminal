@@ -292,7 +292,7 @@ export function Sidebar({
         onNewSession={onNewSession}
         onSearch={() => dialog.openSearch()}
       />
-      <WorkspaceList store={store} settings={settings} query="" dialog={dialog} />
+      <WorkspaceList store={store} dialog={dialog} />
 
       {/* 脚（.sb-foot：padding 8 10 12，无边框）：设置 + 通知铃（未读红点）+ 版本号 */}
       <div

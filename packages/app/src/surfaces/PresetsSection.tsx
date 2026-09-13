@@ -20,10 +20,10 @@
  * writeError：path 以 presets. 开头 → 分区顶部红条（回滚已由 store 层完成）。
  */
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import type { ReactElement } from 'react'
 
-import { Badge, Icon, IconButton, SelectField, TextInput, COLORS, FONT } from '@jagent/ui'
+import { Badge, IconButton, SelectField, TextInput, COLORS, FONT } from '@jagent/ui'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
 import type { TerminalPreset } from '../threads/presets'
@@ -33,7 +33,15 @@ import {
   presetMatches,
   presetModified,
 } from '../threads/presets'
-import { FieldRow, LinesField, ModDot } from './listEditorParts'
+import {
+  FieldRow,
+  LinesField,
+  ListEditorAdd,
+  ListEditorCard,
+  ListEditorEmpty,
+  ListEditorError,
+  ModDot,
+} from './listEditorParts'
 
 export function PresetsSection({
   settings,
@@ -89,22 +97,10 @@ export function PresetsSection({
         预设列表
       </text>
 
-      {err && err.path.startsWith('presets.') ? (
-        <text
-          testId="writeerror"
-          style={{ fontSize: 11, fontFamily: FONT.mono, color: COLORS.bell, marginBottom: 6 }}
-        >
-          {`写入失败：${err.message}`}
-        </text>
-      ) : null}
+      <ListEditorError err={err} hit={(p) => p.startsWith('presets.')} />
 
       {visible.length === 0 && query ? (
-        <text
-          testId="settings-empty-hits"
-          style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted, padding: 8 }}
-        >
-          无匹配预设
-        </text>
+        <ListEditorEmpty text="无匹配预设" />
       ) : (
         visible.map((p) => (
           <PresetCard
@@ -119,44 +115,11 @@ export function PresetsSection({
         ))
       )}
 
-      {/* 新增预设（虚线框按钮，原型 .btn-add） */}
-      <div
+      <ListEditorAdd
         testId="add-preset"
-        tabIndex={0}
-        onClick={() => setExpandedId(settings.addPreset({ label: `自定义 ${customCount + 1}` }))}
-        onKeyDown={(e) => {
-          if (e.key === 'enter' || e.key === 'space') {
-            setExpandedId(settings.addPreset({ label: `自定义 ${customCount + 1}` }))
-          }
-        }}
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 7,
-          height: 30,
-          paddingLeft: 12,
-          paddingRight: 12,
-          marginTop: 2,
-          borderWidth: 1,
-          borderColor: COLORS.borderSubtle,
-          borderRadius: 4,
-          cursor: 'pointer',
-          hover: { borderColor: COLORS.accent, color: COLORS.textBright },
-        }}
-      >
-        <Icon name="plus" size={12} color={COLORS.muted} />
-        <text
-          style={{
-            fontSize: 12.5,
-            fontFamily: FONT.ui,
-            color: COLORS.muted,
-            pointerEvents: 'none',
-          }}
-        >
-          新增预设
-        </text>
-      </div>
+        label="新增预设"
+        onAdd={() => setExpandedId(settings.addPreset({ label: `自定义 ${customCount + 1}` }))}
+      />
     </div>
   )
 }
@@ -179,106 +142,40 @@ function PresetCard({
   onDuplicated: (newId: string) => void
 }): ReactElement {
   const modified = presetModified(p)
-  // 冒泡抑制：行内按钮 click 会冒到 head 的 onClick（见文件头），按钮先置位、
-  // head 消费后跳过本次 toggle。React 状态同步提交保证同批可靠。
-  const suppressHead = useRef(false)
-  const guarded = (action: () => void) => () => {
-    suppressHead.current = true
-    action()
-  }
-
   return (
-    <div
-      testId={`preset-card-${p.id}`}
-      style={{
-        borderWidth: 1,
-        borderColor: expanded ? COLORS.borderSubtle : COLORS.border,
-        borderRadius: 6,
-        marginBottom: 8,
-        backgroundColor: COLORS.sidebar,
-      }}
-    >
-      {/* head：命中容器（显式 backgroundColor；装饰 pe:none 穿透） */}
-      <div
-        testId={`preset-head-${p.id}`}
-        tabIndex={0}
-        onClick={() => {
-          if (suppressHead.current) {
-            suppressHead.current = false
-            return
-          }
-          onToggle()
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'enter' || e.key === 'space') onToggle()
-        }}
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 10,
-          minHeight: 38,
-          paddingTop: 4,
-          paddingBottom: 4,
-          paddingLeft: 12,
-          paddingRight: 8,
-          borderTopLeftRadius: 6,
-          borderTopRightRadius: 6,
-          backgroundColor: COLORS.sidebar,
-          cursor: 'pointer',
-          hover: { backgroundColor: COLORS.surfaceHover },
-        }}
-      >
-        <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={12} color={COLORS.muted} />
-        <text
-          style={{
-            fontSize: 13,
-            fontFamily: FONT.ui,
-            color: COLORS.textBright,
-            flexShrink: 0,
-            pointerEvents: 'none',
-          }}
-        >
-          {p.label}
-        </text>
-        <text
-          style={{
-            flexGrow: 1,
-            minWidth: 0,
-            fontSize: 11.5,
-            fontFamily: FONT.mono,
-            color: COLORS.muted,
-            whiteSpace: 'nowrap',
-            textOverflow: 'ellipsis',
-            overflow: 'hidden',
-            pointerEvents: 'none',
-          }}
-        >
-          {presetCommandSummary(p)}
-        </text>
-        {modified ? <ModDot testId={`mod-dot-${p.id}`} /> : null}
-        <Badge variant={p.builtin ? 'builtin' : 'custom'}>{p.builtin ? '内置' : '自定义'}</Badge>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 2,
-            flexShrink: 0,
-          }}
-        >
+    <ListEditorCard
+      testIdPrefix="preset"
+      id={p.id}
+      label={p.label}
+      summary={presetCommandSummary(p)}
+      expanded={expanded}
+      onToggle={onToggle}
+      badges={
+        <>
+          {modified ? <ModDot testId={`mod-dot-${p.id}`} /> : null}
+          <Badge variant={p.builtin ? 'builtin' : 'custom'}>{p.builtin ? '内置' : '自定义'}</Badge>
+        </>
+      }
+      actions={(suppress) => (
+        <>
           <IconButton
             name="copy"
             label={`复制预设 ${p.label} 为自定义副本`}
             testId={`preset-copy-${p.id}`}
-            onClick={guarded(() => onDuplicated(settings.duplicatePreset(p.id)))}
+            onClick={() => {
+              suppress()
+              onDuplicated(settings.duplicatePreset(p.id))
+            }}
           />
           {p.builtin && modified ? (
             <IconButton
               name="reset"
               label={`重置预设 ${p.label} 为出厂值`}
               testId={`preset-reset-${p.id}`}
-              onClick={guarded(() => settings.resetPreset(p.id))}
+              onClick={() => {
+                suppress()
+                settings.resetPreset(p.id)
+              }}
             />
           ) : null}
           {!p.builtin ? (
@@ -287,17 +184,18 @@ function PresetCard({
               danger
               label={`删除预设 ${p.label}`}
               testId={`preset-delete-${p.id}`}
-              onClick={guarded(() => {
+              onClick={() => {
+                suppress()
                 settings.deletePreset(p.id)
                 onDeleted()
-              })}
+              }}
             />
           ) : null}
-        </div>
-      </div>
-
-      {expanded ? <PresetEditor p={p} settings={settings} /> : null}
-    </div>
+        </>
+      )}
+    >
+      <PresetEditor p={p} settings={settings} />
+    </ListEditorCard>
   )
 }
 
@@ -314,17 +212,7 @@ function PresetEditor({
     settings.updatePreset(p.id, patch)
 
   return (
-    <div
-      testId={`preset-editor-${p.id}`}
-      style={{
-        borderTopWidth: 1,
-        borderColor: COLORS.border,
-        padding: 12,
-        paddingLeft: 14,
-        paddingBottom: 14,
-        backgroundColor: COLORS.app,
-      }}
-    >
+    <div>
       <FieldRow label="Label" name="label" modified={presetFieldModified(p, 'label')}>
         <TextInput
           testId={`field-label-${p.id}`}

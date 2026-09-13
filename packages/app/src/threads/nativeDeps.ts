@@ -25,9 +25,20 @@ import { createEchoAgent } from './chat'
 import type { ThreadDeps } from './store'
 import { displayTitle } from './terminal'
 
-/** 可覆盖项：装配层差异点（e2e：notify 静默、注入测试预设、chatAgent 零延迟） */
+/** 可覆盖项：装配层差异点（e2e：notify 静默、注入测试预设、chatAgent 零延迟、
+ *  ambient deps 换确定性值） */
 export type NativeDepsOverrides = Partial<
-  Pick<ThreadDeps, 'notify' | 'closeOnExit' | 'presetOf' | 'chatAgent' | 'createAcpAgent'>
+  Pick<
+    ThreadDeps,
+    | 'notify'
+    | 'closeOnExit'
+    | 'presetOf'
+    | 'chatAgent'
+    | 'createAcpAgent'
+    | 'now'
+    | 'newId'
+    | 'defaultCwd'
+  >
 >
 
 export function createNativeThreadDeps(
@@ -65,6 +76,10 @@ export function createNativeThreadDeps(
       if (!a) throw new Error(`unknown ACP agent: ${agentId}`)
       return createAcpConnection({ command: a.command, args: a.args, cwd: process.cwd() })
     },
+    // ambient deps 显式接线（测试可覆盖；缺省也是同值——interface 上可见即真值）
+    now: Date.now,
+    newId: () => crypto.randomUUID(),
+    defaultCwd: () => process.cwd(),
     ...overrides,
   }
 }

@@ -10,6 +10,7 @@ import { useState } from 'react'
 
 import { Modal, ModalActions, ModalBody, ModalHeading, TextInput, COLORS, FONT } from '@jagent/ui'
 import type { ThreadStore } from '../threads/store'
+import { displayTitle } from '../threads/terminal'
 import { useThreadStore } from '../threads/useThreadStore'
 
 export function SessionDialog({
@@ -27,11 +28,7 @@ export function SessionDialog({
     (s) => s.workspaces.find((w) => w.id === thread?.workspaceId)?.name,
   )
   const [name, setName] = useState(
-    thread
-      ? thread.kind === 'terminal'
-        ? (thread.customTitle ?? thread.oscTitle ?? thread.initCommand ?? 'Terminal')
-        : thread.title
-      : '',
+    thread ? (thread.kind === 'terminal' ? displayTitle(thread) : thread.title) : '',
   )
 
   if (!thread) return null

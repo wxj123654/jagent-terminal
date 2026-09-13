@@ -9,11 +9,11 @@
  * rev-parse 分支名（cli.ts 聚合）。不造原型假数据。
  */
 
-import { readFile, stat } from 'node:fs/promises'
-
 import { createStore } from 'zustand/vanilla'
 
-import { diffWorktreeFile, listWorktreeStatus, type WorktreeFile, type WorktreeStatus } from './cli'
+import { realWorktreeDeps } from './deps'
+import { createGeneration } from './generation'
+import type { WorktreeFile, WorktreeStatus } from './types'
 
 export type WorktreeLoadStatus = 'idle' | 'loading' | 'ready' | 'error' | 'not-a-repo'
 
@@ -45,27 +45,7 @@ export interface WorktreeDeps {
   readFile: (path: string) => Promise<string | null>
 }
 
-/** 预览上限：512KB / 前 400 行（面板是预览不是编辑器） */
-const PREVIEW_MAX_BYTES = 512 * 1024
-const PREVIEW_MAX_LINES = 400
-
-async function readTextFile(path: string): Promise<string | null> {
-  try {
-    const st = await stat(path)
-    if (!st.isFile() || st.size > PREVIEW_MAX_BYTES) return null
-    const text = await readFile(path, 'utf8')
-    const lines = text.split('\n')
-    return lines.length > PREVIEW_MAX_LINES ? lines.slice(0, PREVIEW_MAX_LINES).join('\n') : text
-  } catch {
-    return null
-  }
-}
-
-const realDeps: WorktreeDeps = {
-  status: listWorktreeStatus,
-  diff: diffWorktreeFile,
-  readFile: readTextFile,
-}
+/** 预览上限与文本读取适配器在 deps.ts（进程/文件系统边界归一处） */
 
 const initialState: WorktreeState = {
   cwd: null,
@@ -92,16 +72,16 @@ export type WorktreeStore = {
   select(path: string | null): void
 }
 
-export function createWorktreeStore(deps: WorktreeDeps = realDeps): WorktreeStore {
+export function createWorktreeStore(deps: WorktreeDeps = realWorktreeDeps): WorktreeStore {
   const store = createStore<WorktreeState>(() => ({ ...initialState }))
   /** 代际：旧请求回调看到代际不符即丢弃（同 GitGraphStore seq 纪律） */
-  let seq = 0
+  const seq = createGeneration()
 
   const load = async (cwd: string, generation: number) => {
     store.setState((s) => ({ ...s, status: 'loading', error: null }))
     try {
       const result = await deps.status(cwd)
-      if (generation !== seq) return
+      if (!seq.isCurrent(generation)) return
       if (!result) {
         store.setState((s) => ({
           ...s,
@@ -131,7 +111,7 @@ export function createWorktreeStore(deps: WorktreeDeps = realDeps): WorktreeStor
         }
       })
     } catch (e) {
-      if (generation !== seq) return
+      if (!seq.isCurrent(generation)) return
       store.setState((s) => ({
         ...s,
         status: 'error',
@@ -146,7 +126,7 @@ export function createWorktreeStore(deps: WorktreeDeps = realDeps): WorktreeStor
 
     mount(cwd) {
       if (cwd === store.getState().cwd && store.getState().status !== 'idle') return
-      seq++
+      const generation = seq.next()
       store.setState((s) => ({
         ...s,
         cwd,
@@ -159,18 +139,19 @@ export function createWorktreeStore(deps: WorktreeDeps = realDeps): WorktreeStor
         preview: null,
         error: null,
       }))
-      if (cwd) void load(cwd, seq)
+      if (cwd) void load(cwd, generation)
     },
 
     refresh() {
       const { cwd } = store.getState()
       if (!cwd) return
-      seq++
-      void load(cwd, seq)
+      void load(cwd, seq.next())
     },
 
     select(path) {
-      const generation = seq
+      // 借代际不换代：连选由回调里的 s.selected===path 判别；mount/refresh
+      // 换代后水中的 select 回调才作废
+      const generation = seq.current()
       const { root } = store.getState()
       store.setState((s) => ({
         ...s,
@@ -188,25 +169,25 @@ export function createWorktreeStore(deps: WorktreeDeps = realDeps): WorktreeStor
       void deps
         .diff(root, path)
         .then((patch) => {
-          if (generation !== seq) return
+          if (!seq.isCurrent(generation)) return
           store.setState((s) =>
             s.selected === path ? { ...s, diff: patch, diffLoading: false } : s,
           )
         })
         .catch(() => {
-          if (generation !== seq) return
+          if (!seq.isCurrent(generation)) return
           store.setState((s) => (s.selected === path ? { ...s, diff: '', diffLoading: false } : s))
         })
       void deps
         .readFile(abs)
         .then((text) => {
-          if (generation !== seq) return
+          if (!seq.isCurrent(generation)) return
           store.setState((s) =>
             s.selected === path ? { ...s, preview: text, previewLoading: false } : s,
           )
         })
         .catch(() => {
-          if (generation !== seq) return
+          if (!seq.isCurrent(generation)) return
           store.setState((s) =>
             s.selected === path ? { ...s, preview: null, previewLoading: false } : s,
           )

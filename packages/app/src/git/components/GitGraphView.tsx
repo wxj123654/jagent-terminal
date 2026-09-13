@@ -26,16 +26,8 @@ import {
   FONT,
 } from '@jagent/ui'
 import { GRAPH_LANE_COLORS, SIZES } from '../../tokens'
-import {
-  branchMenuItems,
-  commitMenuItems,
-  remoteMenuItems,
-  resolvePrompt,
-  tagMenuItems,
-  type GitMenuEntry,
-  type GitMenuItem,
-} from '../actions'
-import type { ChangedFile } from '../cli'
+import type { GitMenuEntry, GitMenuItem } from '../actions'
+import { commitMenu, createGitCommands, refMenu } from '../commands'
 import { compactDir, nestChangedFiles, type FileTreeNode } from '../fileTree'
 import { formatCommitDate, parseRefNames, relativeTime, type RefDecor } from '../format'
 import type { GraphRow } from '../graph'
@@ -49,6 +41,7 @@ import {
   COL_SHA,
 } from '../graphSvg'
 import { buildRowColumns, type RowSpec } from '../rowColumns'
+import type { ChangedFile } from '../types'
 
 // ── `<git-graph-row>` JSX 类型声明（GPUIX jsx-runtime 的 augmentation，
 // 同 TerminalSurface 模式；元素本体在 packages/native/src/git_graph.rs）──
@@ -937,69 +930,31 @@ export function GitGraphView({
 
   const currentBranch = s.branches.find((b) => b.current)?.name ?? 'HEAD'
   const graphW = graphColumnWidth(s.maxLanes)
+  // 菜单动作派发归 commands.ts：pick 路由（复制/prompt/danger/直执）、
+  // runGit = toast+runAction 单点；本组件只持有叠加层开合状态
+  const commands = useMemo(
+    () => createGitCommands({ runAction: (a) => store.runAction(a), notify: toast }),
+    [store],
+  )
 
   function openCommitMenu(e: { x?: number; y?: number }, row: GraphRow, index: number) {
-    setMenu({
-      x: e.x ?? 0,
-      y: e.y ?? 0,
-      title: `${row.commit.shortSha} · ${row.commit.subject.slice(0, 24)}`,
-      items: commitMenuItems(row.commit.sha, index === 0),
-      at: row.commit.sha,
-    })
+    setMenu({ x: e.x ?? 0, y: e.y ?? 0, ...commitMenu(row, index) })
   }
 
   function openRefMenu(e: { x?: number; y?: number }, d: RefDecor) {
-    if (d.kind === 'head' || d.kind === 'branch') {
-      setMenu({
-        x: e.x ?? 0,
-        y: e.y ?? 0,
-        title: `分支 ${d.label}`,
-        items: branchMenuItems(d.label, d.label === currentBranch),
-        at: d.label,
-      })
-      return
-    }
-    if (d.kind === 'remote') {
-      setMenu({
-        x: e.x ?? 0,
-        y: e.y ?? 0,
-        title: `远程 ${d.label}`,
-        items: remoteMenuItems(d.label),
-        at: d.label,
-      })
-      return
-    }
-    setMenu({
-      x: e.x ?? 0,
-      y: e.y ?? 0,
-      title: `标签 ${d.label}`,
-      items: tagMenuItems(d.label),
-      at: d.label,
-    })
+    setMenu({ x: e.x ?? 0, y: e.y ?? 0, ...refMenu(d, currentBranch) })
   }
 
   function pickMenu(item: GitMenuItem) {
+    const at = menu?.at
     setMenu(null)
-    if (item.id === 'copy-sha' && menu?.at) {
-      toast(`已复制 ${menu.at.slice(0, 7)}`)
-      return
-    }
-    if (item.id === 'copy-tag' && menu?.at) {
-      toast(`已复制 ${menu.at}`)
-      return
-    }
-    if (item.prompt) {
+    const next = commands.pick(item, at)
+    if (next.kind === 'prompt') {
       setPromptVal('')
-      setPrompt({ item, at: menu?.at })
-      return
+      setPrompt({ item: next.item, at: next.at })
+    } else if (next.kind === 'confirm') {
+      setConfirm({ title: next.title, argv: next.argv })
     }
-    if (!item.argv) return
-    if (item.danger) {
-      setConfirm({ title: item.label, argv: item.argv })
-      return
-    }
-    toast(`$ git ${item.argv.join(' ')}`)
-    void store.runAction(item.argv)
   }
 
   return (
@@ -1171,10 +1126,7 @@ export function GitGraphView({
           name="download"
           label="拉取远端更新"
           testId="git-fetch"
-          onClick={() => {
-            toast('$ git fetch --all --prune')
-            void store.runAction(['fetch', '--all', '--prune'])
-          }}
+          onClick={() => commands.runGit(['fetch', '--all', '--prune'])}
         />
         <IconButton
           name="reset"
@@ -1357,10 +1309,7 @@ export function GitGraphView({
               testId={`git-branch-${b.name}`}
               onClick={() => {
                 setBranchOpen(false)
-                if (!b.current) {
-                  toast(`$ git checkout ${b.name}`)
-                  void store.runAction(['checkout', b.name])
-                }
+                if (!b.current) commands.runGit(['checkout', b.name])
               }}
               style={{
                 height: 26,
@@ -1422,8 +1371,7 @@ export function GitGraphView({
                   label: '执行',
                   danger: true,
                   onClick: () => {
-                    toast(`$ git ${confirm.argv.join(' ')}`)
-                    void store.runAction(confirm.argv)
+                    commands.runGit(confirm.argv)
                     setConfirm(null)
                   },
                 },
@@ -1443,14 +1391,7 @@ export function GitGraphView({
               width="fill"
               onChange={setPromptVal}
               onSubmit={(v) => {
-                try {
-                  const argv = resolvePrompt(prompt.item, v, prompt.at)
-                  toast(`$ git ${argv.join(' ')}`)
-                  void store.runAction(argv)
-                  setPrompt(null)
-                } catch (e) {
-                  toast(e instanceof Error ? e.message : String(e))
-                }
+                if (commands.submitPrompt(prompt.item, v, prompt.at)) setPrompt(null)
               }}
             />
           </ModalBody>
@@ -1462,14 +1403,7 @@ export function GitGraphView({
                   label: '创建',
                   primary: true,
                   onClick: () => {
-                    try {
-                      const argv = resolvePrompt(prompt.item, promptVal, prompt.at)
-                      toast(`$ git ${argv.join(' ')}`)
-                      void store.runAction(argv)
-                      setPrompt(null)
-                    } catch (e) {
-                      toast(e instanceof Error ? e.message : String(e))
-                    }
+                    if (commands.submitPrompt(prompt.item, promptVal, prompt.at)) setPrompt(null)
                   },
                 },
               ]}

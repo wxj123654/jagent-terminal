@@ -17,7 +17,7 @@ import { useState } from 'react'
 import { useSyncExternalStore } from 'react'
 
 import { Icon, COLORS, FONT } from '@jagent/ui'
-import type { WorktreeFile } from '../git/cli'
+import type { WorktreeFile } from '../git/types'
 import type { WorktreeStore } from '../git/worktree'
 import { SIZES } from '../tokens'
 

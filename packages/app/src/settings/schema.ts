@@ -56,6 +56,12 @@ const TerminalPresetSchema = z.object({
 
 /** ACP 默认 2 示例（原型定稿：codex --acp / claude-code-acp） */
 export type AcpAgent = { id: string; label: string; command: string; args: string[] }
+
+/** mono 命令摘要（命令 + 参数一行；设置分区与新建会话弹窗共用） */
+export function acpAgentCommandSummary(a: AcpAgent): string {
+  return [a.command, ...a.args].filter(Boolean).join(' ')
+}
+
 export const DEFAULT_ACP_AGENTS: AcpAgent[] = [
   { id: 'acp-codex', label: 'Codex (ACP)', command: 'codex', args: ['--acp'] },
   { id: 'acp-claude', label: 'Claude (ACP)', command: 'claude-code-acp', args: [] },
@@ -125,8 +131,9 @@ export const RawSettingsSchema = z.looseObject({
       cyclePrev: z.string().catch('ctrl-shift-tab'),
       toggleSettings: z.string().catch('ctrl-,'),
       focusSearch: z.string().catch('/'),
-      /** W4：聚焦工作区侧栏搜索框。默认平台化（mac ⌘K 不写 PTY 零冲突；
-       *  win ctrl-k 属修饰组合层）。mac/win 同 schema——键位串自带 cmd- 前缀 */
+      /** W7：打开搜索会话弹窗（原 W4「聚焦侧栏搜索框」废弃）。默认平台化
+       *  （mac ⌘K 不写 PTY 零冲突；win ctrl-k 属修饰组合层）。mac/win 同
+       *  schema——键位串自带 cmd- 前缀 */
       searchThreads: z.string().catch(process.platform === 'darwin' ? 'cmd-k' : 'ctrl-k'),
       /** D2：收起/展开侧栏（原型 ⌘B）。同平台化规则 */
       toggleSidebar: z.string().catch(process.platform === 'darwin' ? 'cmd-b' : 'ctrl-b'),

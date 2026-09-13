@@ -101,16 +101,10 @@ function Dot({ state }: { state: DotState }) {
 export function ThreadRow({
   id,
   store,
-  indent = 0,
-  suffix,
   onManage,
 }: {
   id: string
   store: ThreadStore
-  /** 左缩进（工作区分组下的会话行；搜索结果行不缩） */
-  indent?: number
-  /** 尾部附注（搜索结果行显示工作区名/「未归属」；静默装饰） */
-  suffix?: string
   /** 「…」→ 管理会话弹窗（W7；WorkspaceGroup 传 dialog.openManageSession） */
   onManage?: (threadId: string) => void
 }) {
@@ -170,7 +164,6 @@ export function ThreadRow({
         flexDirection: 'row',
         alignItems: 'center',
         height: SIZES.rowHeight,
-        marginLeft: indent,
         paddingLeft: 4,
         paddingRight: 4,
         borderRadius: SIZES.rowRadius,
@@ -237,21 +230,6 @@ export function ThreadRow({
           {rowTitle(thread)}
         </text>
       )}
-
-      {suffix ? (
-        <text
-          style={{
-            fontSize: 10,
-            fontFamily: FONT.mono,
-            color: COLORS.muted,
-            flexShrink: 0,
-            marginRight: 2,
-            pointerEvents: 'none',
-          }}
-        >
-          {suffix}
-        </text>
-      ) : null}
 
       {/* 「…」菜单槽固定 22px（D11：不占位→位移；图标 hover/active/focus 显） */}
       <div

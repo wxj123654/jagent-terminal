@@ -22,10 +22,11 @@ import type { SettingDef, SettingSectionId, SettingsPath } from '../settings/sch
 import { SETTING_DEFS } from '../settings/schema'
 import type { SettingsStore } from '../settings/store'
 import { getByPath, serializeSettings } from '../settings/store'
-import { SettingRow } from '../ui/SettingRow'
+import { APP_VERSION } from '../version'
 import { AcpAgentsSection } from './AcpAgentsSection'
 import { ModDot } from './listEditorParts'
 import { PresetsSection } from './PresetsSection'
+import { SettingRow } from './SettingRow'
 import { settingsKeyboard } from './settingsKeyboard'
 
 export type SectionProps = {
@@ -381,8 +382,6 @@ export function KeybindingsSection({
 
 // ── Advanced 分区（§10；T3+.2：gpuBackend + 诊断卡 + JSON 实时视图）────
 
-/** 与 packages/app/package.json version 同步（resolveJsonModule 未开，不引双源） */
-const APP_VERSION = '0.1.0'
 /** scripts/refs-config.ts 的 gpuix pin 前缀 */
 const GPUIX_PIN = 'e948b20'
 

@@ -4,7 +4,8 @@
  * 键盘事件「焦点元素 + 窗口 root」两跳（T1.6 实测）：终端聚焦时也会到
  * root。分层规则：
  * - 修饰键组合全局吃：Ctrl-Tab / Ctrl-Shift-Tab → cycle；Ctrl-, → toggle
- *   设置；⌘K/Ctrl-K → searchThreads（聚焦工作区侧栏搜索框；W4）。其余
+ *   设置；⌘K/Ctrl-K → searchThreads（打开搜索会话弹窗；W7 改道——
+ *   原 W4「聚焦侧栏搜索框」废弃）。其余
  *   修饰键组合与全部裸键透传（硬约束 2：不吃 vim/claude 按键）。⌘ 是
  *   platform 修饰不写 PTY（memory#5③）——mac ⌘K 劫持零终端冲突；win
  *   ctrl-k 与 ctrl-, 同层（修饰组合层），键位可改。
@@ -26,22 +27,39 @@
  * 装配共用同一份语义（布线差异注入，nativeDeps 同款纪律）。
  */
 
+import { DEFAULTS, type Settings } from './settings/schema'
 import type { ThreadStore } from './threads/store'
 
 export type GlobalKeydown = (key: string, ctrl: boolean, shift: boolean, cmd?: boolean) => void
 
-/** 可编辑键位动作（settings.keybindings 的 TS 镜像；schema 是真值单点）。
- *  searchThreads（W4）：聚焦工作区侧栏搜索框；设置面打开时不劫持
+/** 可编辑键位动作——settings/schema.ts keybindings 节的键集（schema 是真值
+ *  单点：动作集、默认值、平台分支全在叶子 catch，此处仅派生类型）。
+ *  searchThreads（W7）：打开搜索会话弹窗；设置面打开时不劫持
  *  （⌘K 在设置面内语义留给设置搜索）。 */
-export type KeybindingAction =
-  | 'cycleNext'
-  | 'cyclePrev'
-  | 'toggleSettings'
-  | 'focusSearch'
-  | 'searchThreads'
-  | 'toggleSidebar'
-  | 'newSession'
-export type Keybindings = Record<KeybindingAction, string>
+export type Keybindings = Settings['keybindings']
+export type KeybindingAction = keyof Keybindings
+
+/** 键位默认 = schema DEFAULTS.keybindings（单源；运行时真值从 settings 读，
+ *  这里只是无注入时的兜底与 UI 展示参照） */
+export const DEFAULT_KEYBINDINGS: Keybindings = DEFAULTS.keybindings
+
+/**
+ * 模块单例槽：「组件树内 useEffect 注册实现 / 装配层键位消费」共享脚手架
+ * （planeKeyboard/dialogKeyboard 同款生命周期）。未注册（无窗口/局部测试
+ * 装配）时 impl() 为 null——消费面自行决定安全 no-op 语义。
+ */
+export function createKeyboardSlot<T extends object>(): {
+  register: (impl: T | null) => void
+  impl: () => T | null
+} {
+  let impl: T | null = null
+  return {
+    register: (next) => {
+      impl = next
+    },
+    impl: () => impl,
+  }
+}
 
 /**
  * keystroke 串（'ctrl-shift-tab' / 'cmd-k' / '/'）是否命中事件参数。
@@ -81,8 +99,8 @@ export function createGlobalKeydown(opts: {
   escConsumed: () => boolean
   /** 重置 Esc 消费标记（root 层读取后调） */
   clearEscConsumed: () => void
-  /** 聚焦工作区侧栏搜索框（W4 searchThreads；Sidebar ref → 模块态 id） */
-  focusThreadSearch: () => void
+  /** 打开搜索会话弹窗（W7 searchThreads；装配层 → dialogKeyboard.openSearch） */
+  openSearch: () => void
   /** ⌘B/Ctrl-B 收起/展开侧栏（Phase D2；窄窗口抽屉态同效） */
   toggleSidebar: () => void
   /** ⌘N（原型）：新建会话——打开工具弹窗（目标 = 当前工作区；装配层注入） */
@@ -104,7 +122,7 @@ export function createGlobalKeydown(opts: {
     store,
     inSettings,
     focusSearch,
-    focusThreadSearch,
+    openSearch,
     toggleSidebar,
     newSession,
     drawerEsc,
@@ -134,9 +152,9 @@ export function createGlobalKeydown(opts: {
         return
       }
     }
-    // 工作区搜索（W4）：设置面打开时不劫持（⌘K 留给设置面语义）
+    // 会话搜索弹窗（W7）：设置面打开时不劫持（⌘K 留给设置面语义）
     if (!inSettings() && keystrokeMatches(kb().searchThreads, key, ctrl, shift, cmd)) {
-      focusThreadSearch()
+      openSearch()
       return
     }
     // 新建会话（D7 ⌘N）：同修饰层
@@ -169,21 +187,4 @@ export function createGlobalKeydown(opts: {
       openGitGraph()
     }
   }
-}
-
-/** 键位默认（与 settings/schema.ts keybindings section 的叶子 catch 同值；
- *  运行时真值从 settings 读，这里只是无注入时的兜底与 UI 展示参照） */
-export const DEFAULT_KEYBINDINGS: Keybindings = {
-  cycleNext: 'ctrl-tab',
-  cyclePrev: 'ctrl-shift-tab',
-  toggleSettings: 'ctrl-,',
-  focusSearch: '/',
-  // mac ⌘K（platform 修饰不写 PTY，劫持零终端冲突）；win ctrl-k
-  // （修饰组合层，同 ctrl-,；键位可改）
-  searchThreads: process.platform === 'darwin' ? 'cmd-k' : 'ctrl-k',
-  // 收起侧栏（D2）：mac ⌘B / win ctrl-b（修饰层，不写 PTY）
-  toggleSidebar: process.platform === 'darwin' ? 'cmd-b' : 'ctrl-b',
-  // 新建会话（D7）：mac ⌘N；win/linux ctrl-shift-n（裸 ctrl-n 是 readline
-  // next-history，吃掉会破坏 shell）
-  newSession: process.platform === 'darwin' ? 'cmd-n' : 'ctrl-shift-n',
 }

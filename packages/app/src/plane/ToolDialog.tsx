@@ -21,14 +21,10 @@ import {
   COLORS,
   FONT,
 } from '@jagent/ui'
-import type { AcpAgent } from '../settings/schema'
+import { acpAgentCommandSummary } from '../settings/schema'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
 import type { ThreadStore, Workspace } from '../threads/store'
-
-function agentCommandSummary(a: AcpAgent): string {
-  return [a.command, ...a.args].filter(Boolean).join(' ')
-}
 
 export function ToolDialog({
   store,
@@ -222,7 +218,7 @@ export function ToolDialog({
                   icon="acp"
                   name={a.label}
                   description="ACP agent"
-                  command={agentCommandSummary(a)}
+                  command={acpAgentCommandSummary(a)}
                   onPick={pick(() => store.createAcpThread(a.id, a.label, workspace.id))}
                 />
               ))

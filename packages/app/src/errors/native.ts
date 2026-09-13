@@ -3,8 +3,8 @@
  *
  * nativeDeps 的 spawnSession/destroySession reject 路径在此 emit
  * （kind='native'）后原样 rethrow——store 层的既有兑底逻辑不变，只是
- * 错误从此可见。fire-and-forget 的 void 调用点（store/Pane）统一用
- * trackVoid 收尾，防 unhandledRejection。
+ * 错误从此可见。fire-and-forget 调用点（如 store.close 的 destroySession）
+ * 在错误已被 trackNative 上报的前提下用裸 catch 防空 rejection。
  *
  * Rust panic 转发（B 方案 onNativePanic TSF）：registerNativePanicHandler
  * 装配一次——native 层 panic（被 catch_unwind 拦住或后台线程）→ 总线
@@ -36,27 +36,6 @@ export async function trackNative<T>(context: string, run: () => Promise<T>): Pr
     reportNativeError(context, e)
     throw e
   }
-}
-
-/**
- * fire-and-forget 收尾：吞掉 reject 并 emit（level 可调——非关键路径用
- * 'warn'）。替代散落的 `void fn().catch(console.warn)`。
- */
-export function trackVoid(
-  context: string,
-  run: () => Promise<unknown>,
-  level: 'error' | 'warn' = 'warn',
-): void {
-  void run().catch((e) => {
-    const d = describeUnknown(e)
-    emitError({
-      level,
-      kind: 'native',
-      message: d.message,
-      detail: d.detail,
-      context,
-    })
-  })
 }
 
 /**

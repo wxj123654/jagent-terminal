@@ -25,14 +25,16 @@ import {
 } from '@jagent/native'
 
 import { inputFocus, PLATFORM } from '@jagent/ui'
-import { appWindow, type AppRenderer } from './appWindow'
-import { emitError } from './errors/bus'
+import { appWindow } from './appWindow'
+import { watchFrameOverlay } from './diagnostics/frameOverlay'
+import { createPerfSource } from './diagnostics/perfSource'
 import { enterCrashSidecarIfRequested, setupCrashReportingForApp } from './errors/crashReport'
 import { ErrorBoundary } from './errors/ErrorBoundary'
 import { installGlobalGuards } from './errors/guards'
 import { installErrorLog } from './errors/log'
 import { registerNativePanicHandler } from './errors/native'
 import { wireErrorToasts } from './errors/toastWire'
+import { createGitGraphKey } from './git/graphKeys'
 import { createGitGraphStore } from './git/store'
 import { createWorktreeStore } from './git/worktree'
 import { createGlobalKeydown } from './keybindings'
@@ -40,79 +42,21 @@ import { App } from './plane/AgentPlane'
 import { dialogKeyboard } from './plane/dialogKeyboard'
 import { planeKeyboard } from './plane/planeKeyboard'
 import type { WindowControls } from './plane/TitleBar'
-import { router, activeTargetFromLocation, lastNonSettings } from './router'
+import {
+  router,
+  activeTargetFromLocation,
+  currentActiveWorkspaceId,
+  lastNonSettings,
+} from './router'
 import { fsAdapter } from './settings/file'
 import { createSettingsStore } from './settings/store'
 import { settingsKeyboard } from './surfaces/settingsKeyboard'
 import { narrowSessionEvent } from './threads/events'
 import { createNativeThreadDeps } from './threads/nativeDeps'
+import { createWorkspacePersister } from './threads/statePersistence'
 import { createThreadStore } from './threads/store'
-import {
-  defaultWorkspace,
-  parseWorkspaceState,
-  serializeWorkspaceState,
-} from './threads/workspaces'
-import type { PerfSample, PerfSource } from './ui/PerfHud'
+import { defaultWorkspace, parseWorkspaceState } from './threads/workspaces'
 import { APP_VERSION } from './version'
-
-// ── 性能 HUD 采样器（native 收口：takePaintPerf / getDebugFrameOverlayStats
-// 在此唯一可见）──
-// 两层数据面：
-// 1. 整 app 帧面：GPUIX 内建 profiler（gpui `profiler` feature，编译进 .node）
-//    对每次 Window::draw（build+layout+paint 全程）计时。直方图默认是
-//    「最近 1000 帧」滚动窗——低帧率下滚动极慢，启动期大帧会冻结在 max
-//    里几分钟（实测 4fps 下 98ms 假峰长期不衰）。因此每窗读后即调
-//    resetDebugFrameOverlayStats（清样本、保 frames 计数）：p90/max 变成
-//    「本采样窗（500ms）内帧」的读数，与 terminal paint 峰值同语义；
-//    差分帧率不受影响。若同时开着屏幕覆盖层，覆盖层读数也同步变实时窗。
-// 2. 终端 paint 子系统面：takePaintPerf（crates/jagent-terminal 打点）。
-// 首次 sample 建基线（Δ=0）；此后每次调用用与上次的时间差/计数差算速率
-// 与均值；cpu 用 process.cpuUsage 差分（含 napi .node 内 Rust 线程，同进程）。
-function createPerfSource(renderer: AppRenderer): PerfSource {
-  const base = takePaintPerf()
-  const frameBase = renderer.getDebugFrameOverlayStats?.()
-  renderer.resetDebugFrameOverlayStats?.() // 基线窗从零起算（清启动期样本）
-  let last = {
-    at: performance.now(),
-    cpu: process.cpuUsage(),
-    count: base.count,
-    totalNs: base.totalNs,
-    frames: frameBase?.frames ?? 0,
-  }
-  return {
-    sample(): PerfSample {
-      const snap = takePaintPerf()
-      const now = performance.now()
-      const cpu = process.cpuUsage()
-      const dtMs = Math.max(now - last.at, 1)
-      const dCount = Math.max(snap.count - last.count, 0)
-      const dNs = Math.max(snap.totalNs - last.totalNs, 0)
-      const frame = renderer.getDebugFrameOverlayStats?.()
-      const dFrames = Math.max((frame?.frames ?? last.frames) - last.frames, 0)
-      const cpuPct = ((cpu.user - last.cpu.user + cpu.system - last.cpu.system) / 1e6 / dtMs) * 100
-      const memMB = process.memoryUsage().rss / 1048576
-      const out = {
-        fps: dFrames / (dtMs / 1000),
-        // 本采样窗内新帧的 p90/max（读后即清；窗内无新帧时直方图为空 → 0）
-        drawP90Ms: dFrames > 0 ? (frame?.p90Ms ?? 0) : 0,
-        drawMaxMs: dFrames > 0 ? (frame?.maxMs ?? 0) : 0,
-        paintAvgMs: dCount > 0 ? dNs / 1e6 / dCount : 0,
-        paintMaxMs: snap.maxNs / 1e6,
-        cpuPct,
-        memMB,
-      }
-      last = {
-        at: now,
-        cpu,
-        count: snap.count,
-        totalNs: snap.totalNs,
-        frames: frame?.frames ?? last.frames,
-      }
-      renderer.resetDebugFrameOverlayStats?.() // 下一窗从零起算
-      return out
-    },
-  }
-}
 
 // ── 发布形态 sidecar 变道（方案 C）──
 // bun compile 只有一个 entry：sidecar 与主进程共用本文件（dev 形态走独立
@@ -166,17 +110,7 @@ async function mountApp(): Promise<void> {
   const threadStore = createThreadStore(
     {
       ...createNativeThreadDeps(settingsStore),
-      persistWorkspaces: (ws) => {
-        void stateFile.write(serializeWorkspaceState(ws)).catch((e) => {
-          // 非关键路径：丢一次恢复态不阻断 UI，但错误要可见（错误总线）
-          emitError({
-            level: 'warn',
-            kind: 'io',
-            message: `工作区状态写入失败：${e instanceof Error ? e.message : String(e)}`,
-            context: 'state.json write',
-          })
-        })
-      },
+      persistWorkspaces: createWorkspacePersister(stateFile),
     },
     {
       initialWorkspaces:
@@ -210,23 +144,9 @@ async function mountApp(): Promise<void> {
     ...(PLATFORM === 'linux' ? { windowDecorations: 'client' as const } : {}),
   })
 
-  // ── 屏幕帧 overlay（advanced.frameOverlay：GPUIX 内建调试覆盖层）──
-  // 整帧耗时直方图的屏幕可视化（full 模式画在场景之上，profiler feature 已编
-  // 译进 .node）。设置开关即时切换；初值启动应用一次。仅 subscribed 变化时
-  // 才调 native（settingsStore.subscribe 是全量回调，需自行去重）。
-  let appliedOverlay: string | null = null
-  const applyFrameOverlay = () => {
-    const mode = settingsStore.get().advanced.frameOverlay ? 'full' : 'hidden'
-    if (mode === appliedOverlay) return
-    appliedOverlay = mode
-    try {
-      renderer.setDebugFrameOverlay(mode)
-    } catch {
-      appliedOverlay = null // native 面未就绪/失败：置空允许下次订阅重试
-    }
-  }
-  settingsStore.subscribe(applyFrameOverlay)
-  applyFrameOverlay()
+  // ── 屏幕帧 overlay（advanced.frameOverlay → native 覆盖层；同步去重
+  // 与失败重试归 diagnostics/frameOverlay.ts）──
+  watchFrameOverlay(renderer, settingsStore)
 
   // ── 全局键位层（keybindings.ts：main/e2e 共用语义；布线在此）──
   // ── 窗口控制 seam（TitleBar 注入；闭包 renderer）──
@@ -246,10 +166,8 @@ async function mountApp(): Promise<void> {
       const id = settingsKeyboard.searchInputId()
       if (id != null) renderer.focusElement(id)
     },
-    focusThreadSearch: () => {
-      // W7 ⌘K/Ctrl-K：打开搜索会话弹窗（原型语义；原 W4 聚焦侧栏搜索框废弃）
-      dialogKeyboard.openSearch()
-    },
+    // W7 ⌘K/Ctrl-K：打开搜索会话弹窗（原型语义；原 W4 聚焦侧栏搜索框废弃）
+    openSearch: () => dialogKeyboard.openSearch(),
     toggleSidebar: () => {
       // D2 ⌘B/Ctrl-B：经 plane 模块态（AgentPlane useEffect 注册）
       planeKeyboard.toggleSidebar()
@@ -260,33 +178,11 @@ async function mountApp(): Promise<void> {
     drawerEsc: () => planeKeyboard.escape(),
     // Git 图键位（git-graph.md §4.3）：与顶栏按钮共用 store.openGitGraph
     openGitGraph: () => threadStore.openGitGraph(),
-    gitGraphKey: (key) => {
-      const active = activeTargetFromLocation(router.history.location.pathname)
-      if (active?.type !== 'workspace') return false
-      const ws = threadStore.getState().workspaces.find((w) => w.id === active.id)
-      if (!ws || ws.paneTab !== 'git') return false
-      switch (key) {
-        case 'down':
-        case 'arrowdown':
-          gitStore.moveSelection(1)
-          return true
-        case 'up':
-        case 'arrowup':
-          gitStore.moveSelection(-1)
-          return true
-        case 'enter':
-          // 选中态即详情打开态（↑↓/点击已带），吃掉防透传
-          return true
-        case 'escape':
-          gitStore.select(null)
-          return true
-        case 'r':
-          gitStore.refresh()
-          return true
-        default:
-          return false
-      }
-    },
+    gitGraphKey: createGitGraphKey({
+      activeWorkspaceId: currentActiveWorkspaceId,
+      workspaces: () => threadStore.getState().workspaces,
+      store: gitStore,
+    }),
     inputFocused: () => inputFocus.any,
     settingsQuery: settingsKeyboard.query,
     escConsumed: settingsKeyboard.escConsumed,
@@ -312,7 +208,7 @@ async function mountApp(): Promise<void> {
             pickDirectoryNative((_err, path) => resolve(path ?? null))
           })
         }
-        perfSource={createPerfSource(renderer)}
+        perfSource={createPerfSource(renderer, { takePaintPerf })}
         lastCrash={lastCrash}
       />
     </ErrorBoundary>,
