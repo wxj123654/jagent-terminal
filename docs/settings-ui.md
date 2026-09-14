@@ -116,7 +116,8 @@ j-agent window
 | 枚举 | select 下拉 |
 | 数值（窄范围、视觉反馈有意义，如 sidebar 宽度） | slider + 实时数值 |
 | 数值（宽范围，如 scrollback） | number stepper |
-| 字符串（字体名、命令） | text input（命令类用 mono） |
+| 字符串（命令、路径） | text input（命令类用 mono） |
+| 字体名 | FontSelect 搜索下拉（系统字体清单 + 字身预览 + 自由输入兜底） |
 | string[] / Record（预设 args/env） | textarea，行式语法（args 每行一个；env 每行 `KEY=VALUE`） |
 | 只读约定 / 诊断信息 | 表格 / 代码卡片 |
 | 动作（打开文件等） | button |
@@ -171,7 +172,7 @@ type Settings = {
 | Presets | `presets.items[]` | 5 内置 | 见 §7 预设编辑器 |
 | Notifications | `notifications.desktop` | `true` | 仅「未聚焦 + BEL」触发；聚焦即清 |
 | Notifications | `notifications.sound` | `false` | 依赖 desktop 开启 |
-| Terminal | `terminal.fontFamily` | `"JetBrains Mono"` | mono 字体；不继承 UI 字体 |
+| Terminal | `terminal.fontFamily` | `"JetBrains Mono"` | mono 字体；不继承 UI 字体；FontSelect 搜索选择（清单来自 native `listSystemFonts` = gpui `all_font_names`） |
 | Terminal | `terminal.fontSize` | `13` | 10–22 整数 |
 | Terminal | `terminal.cursorBlink` | `true` | 系统 reduced-motion 时强制关 |
 | Terminal | `terminal.scrollbackLines` | `10000` | 1000–100000 |

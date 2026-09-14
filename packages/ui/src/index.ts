@@ -13,7 +13,9 @@
 
 export * from './display/Badge'
 export * from './display/Icon'
+export * from './controls/FontSelect'
 export * from './controls/IconButton'
+export * from './controls/SearchSelect'
 export * from './keyboard'
 export * from './overlays/Modal'
 export * from './controls/NumberInput'

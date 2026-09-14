@@ -109,6 +109,22 @@ describe('SettingRow', () => {
     expect(t.renderer.getAllText().some((s) => s.includes('scrollback 缓冲区大小'))).toBe(true)
   })
 
+  test('font 行：渲染 FontSelect 触发器（字体清单走 loadSystemFonts seam）', () => {
+    const def = defOf('terminal.fontFamily')
+    expect(def.control.type).toBe('font')
+    t.render(
+      createElement(SettingRow, {
+        def,
+        value: 'Consolas',
+        modified: false,
+        onChange: () => {},
+        onReset: () => {},
+      }),
+    )
+    expect(t.renderer.findByTestId('setting-terminal.fontFamily')).toBeDefined()
+    expect(texts()).toContain('Consolas')
+  })
+
   test('phase 行：控件 disabled + PhaseBadge', () => {
     const def = { ...defOf('notifications.desktop'), phase: 2 as const }
     const changes: (boolean | string | number)[] = []

@@ -184,6 +184,8 @@ export type SettingControl =
   | { type: 'range'; min: number; max: number; step?: number }
   | { type: 'text'; mono?: boolean }
   | { type: 'textarea'; rows?: number }
+  /** 系统字体选择（FontSelect：搜索 + 字身预览 + 自由输入兜底） */
+  | { type: 'font' }
 
 export type SettingSectionId =
   | 'presets'
@@ -243,7 +245,7 @@ export const SETTING_DEFS: SettingDef[] = [
     section: 'terminal',
     label: '字体',
     description: '终端专用 mono 字体，不继承 UI 字体',
-    control: { type: 'text', mono: true },
+    control: { type: 'font' },
   },
   {
     path: 'terminal.fontSize',

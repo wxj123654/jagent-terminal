@@ -710,6 +710,7 @@ module.exports.destroyTerminalSession = nativeBinding.destroyTerminalSession
 module.exports.installGitGraphRowElement = nativeBinding.installGitGraphRowElement
 module.exports.installNativePanicHook = nativeBinding.installNativePanicHook
 module.exports.installTerminalElement = nativeBinding.installTerminalElement
+module.exports.listSystemFonts = nativeBinding.listSystemFonts
 module.exports.notifyDesktop = nativeBinding.notifyDesktop
 module.exports.onNativePanic = nativeBinding.onNativePanic
 module.exports.onSessionEvent = nativeBinding.onSessionEvent

@@ -18,6 +18,7 @@
 import type { ReactElement } from 'react'
 
 import {
+  FontSelect,
   IconButton,
   NumberInput,
   RangeInput,
@@ -28,6 +29,7 @@ import {
   COLORS,
   FONT,
 } from '@jagent/ui'
+import { loadSystemFonts } from '../fonts'
 import type { SettingDef } from '../settings/schema'
 import { PhaseBadge } from './PhaseBadge'
 
@@ -103,6 +105,16 @@ export function SettingRow({
           <TextInput
             value={value as string}
             mono={c.mono}
+            disabled={disabled}
+            onChange={onChange}
+            testId={`setting-${def.path}`}
+          />
+        )
+      case 'font':
+        return (
+          <FontSelect
+            value={value as string}
+            loadFonts={loadSystemFonts}
             disabled={disabled}
             onChange={onChange}
             testId={`setting-${def.path}`}

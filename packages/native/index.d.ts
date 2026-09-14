@@ -655,6 +655,15 @@ export declare function installNativePanicHook(logDir?: string | undefined | nul
 export declare function installTerminalElement(): void
 
 /**
+ * Enumerate installed font family names (settings font pickers).
+ * Reads `TextSystem::all_font_names()` on the GPUI host — the same source
+ * the renderer resolves `fontFamily` against, so every listed name is
+ * guaranteed resolvable. Sorted + deduped by the text system itself.
+ * Requires a live renderer/test app (host channel); throws otherwise.
+ */
+export declare function listSystemFonts(): Array<string>
+
+/**
  * JS 面事件（`onNativePanic` TSF payload，两参契约同 `SessionEvent`）。
  * js_name 对齐 SessionEvent 命名（Event 后缀）。
  */

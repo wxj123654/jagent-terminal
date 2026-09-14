@@ -202,6 +202,19 @@ pub fn notify_desktop(title: String, body: String, sound: bool) {
     notify::show(&title, &body, sound);
 }
 
+/// Enumerate installed font family names (settings font pickers).
+/// Reads `TextSystem::all_font_names()` on the GPUI host — the same source
+/// the renderer resolves `fontFamily` against, so every listed name is
+/// guaranteed resolvable. Sorted + deduped by the text system itself.
+/// Requires a live renderer/test app (host channel); throws otherwise.
+#[napi]
+pub fn list_system_fonts() -> Result<Vec<String>, String> {
+    panic::guarded(move || {
+        host::run_host(move |cx: &mut gpui::App| Ok(cx.text_system().all_font_names()))
+            .map_err(host_error)
+    })
+}
+
 /// Native folder picker (W3). Callback contract mirrors `onSessionEvent`:
 /// payload is the SECOND argument — `pickDirectory((_err, path) => ...)`.
 /// `path === null` = cancelled / unavailable. On macOS the modal loop runs
