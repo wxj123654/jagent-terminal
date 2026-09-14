@@ -13,6 +13,9 @@ declare module '@gpuix/react' {
     titlebarDoubleClick?(): void
     minimizeWindow?(): void
     closeWindow?(): void
+    /** 上一帧已画元素 bounds [x,y,w,h]；未画/未挂载返回 null。
+     *  原生 renderer 与 test renderer 都有实现，上游 interface 未声明。 */
+    getElementBounds?(elementId: number): number[] | null
   }
 }
 

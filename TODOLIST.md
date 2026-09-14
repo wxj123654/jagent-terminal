@@ -295,7 +295,7 @@
 - [x] **D2 ⌘B 收起侧栏**：keybindings 增 toggleSidebar（mac ⌘B/win ctrl-b，修饰层不写 PTY）
   + schema 同步 + 键位表可编辑；planeKeyboard 模块态；宽窗口藏 sidebar+侧栏头，窄窗口抽屉同效。
   未做（待 D2+）：⌘N 新建、工具栏会话 chip/cwd/分支、铃铛收编。
-- [ ] **D3 工作面板（可停靠）**：右侧 dock 默认收起、可拖宽 244–720。Git 变更 tab（复用 git/ 数据层）+
+- [x] **D3 工作面板（可停靠）**：右侧 dock 默认收起、可拖宽 244–720。Git 变更 tab（复用 git/ 数据层）+
   文件预览 tab。窄屏（<1100）覆盖式不压终端。
 - [x] **D5 侧栏方案 C（codex-sidebar-v2）**：头部图标条 → 单收起钮；nav 行组（新建会话/搜索）入滚动区；
   「会话」区撤除，无归属会话归入「未归属」虚拟组（有内容才渲染，无 … 菜单）；组内 priority 排序
@@ -304,7 +304,7 @@
   会话/工作区均可 pin（工作区 pin 持久化进 state.json）；「…」+ 右键同一面上下文菜单
   （Pin/Rename…/Mark as unread/Remove；项目 Pin/Rename…/Remove）；Rename… → RenameDialog（Modal）；
   SessionDialog/WorkspaceManageDialog 退役（管理弹窗 → 上下文菜单）。
-- [ ] **D4 收官**：全量回归 + 截图目检 + 会话日志 + commit。
+- [x] **D4 收官**：全量回归 + 截图目检 + 会话日志 + commit。
 
 ### Phase D 结论区
 
@@ -428,3 +428,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-15 · **终端字体选择器（FontSelect 通用组件）**：用户报设置→终端字体是纯 text input，要求像 Zed 一样可搜索本地字体 · 原型先行：design/j-agent-prototype.html 加 `.font-trig`/`.font-pop`（触发器→弹层内搜索框+字身预览列表+「使用 "…"」自由输入兜底），`?view=font[&q=]` 深链 + demo 按钮，headless chromium 截图三态验证 · 盘点 select 使用面：palette(1)/theme(3)/gpuBackend(4)/ToolDialog 工作区/plusDefault 均为短列表不需要搜索，仅字体命中 · 落地：native `listSystemFonts()`（gpui `TextSystem::all_font_names`，与渲染器同一字体源，host 通道 + guarded + host_error 既有模式，release .node 重建）；app `fonts.ts` seam（懒加载+进程缓存+失败 reportNativeError 回 [] 不缓存）；ui `controls/FontSelect.tsx` 封装 gpuix Combobox 族（组件内预排序+filter=null+ROW_CAP 60 截断，键盘导航与可见列表一致；inputFocus 配对含卸载兜底）；schema `SettingControl` 加 `{type:'font'}`，terminal.fontFamily 换型，SettingRow 接一行 · gate：ui 28 全绿（FontSelect 7 新例）、app 设置面 49 全绿、双包 tsc · 文档：settings-ui §5.2/§6 · 下一步：真机验收（弹层定位/长列表滚动/自由输入）
 - 2026-09-15 · **FontSelect 修正（全量滚动 + 去字身预览）**：用户截图报底部「还有 N 个」提示换行错乱，并指出 Zed 是全量加载+滚动 · 实测定位：223 项纯文本渲染 9.4ms，逐字体预览（每项 fontFamily=自身）首次打开 ~3.9s（每 family 一次 font load+shape）→ 两项全改：① 去掉 ROW_CAP 截断与 footer 提示，ranked 全量渲染（Zed 同款）；② 列表项统一 FONT.ui 不预览（自由输入行仍 mono 区分），实测 223 项打开 108ms · 原型同步去截断 · 后续若想要字身预览走 virtual-list（gpuix 内建，只挂载可视窗口）+ 高亮项 scrollToItem 跟随
 - 2026-09-15 · **SearchSelect 通用组件 + FontSelect 重构**：用户要求把字体选择器下沉成通用 select（可开关搜索/虚拟渲染）· 落地 `packages/ui/src/controls/SearchSelect.tsx`：封装 gpuix Combobox 族，三开关——`searchable`（弹层内搜索框；false 时挂隐形 input 保 ↑↓/enter/esc 键盘导航）、`virtualized`（内建 `<virtual-list>`：children 全挂载保 ComboboxItem 注册/高亮，只布局绘制可视窗口；高亮项出视口 scrollToItem 跟随——上沿顶对齐/下沿底对齐，已在视口内不动防跳动；打开时当前选中项滚入视口）、`freeform`（「使用 "query"」兜底行）· `itemTextStyle` 钩子做逐行样式 · FontSelect 变薄壳：三开关全开 + 字身预览回归（虚拟化后 shaping 只落 ~10 可见行：223 项+预览首开 412ms vs 非虚拟预览 ~3.9s）· 测试：SearchSelect 5 例（label≠value/隐形 input 导航/虚拟化挂载与跟随/打开滚到选中项）+ FontSelect 7 例全绿 · 注意：nativeSimulateKeyDown 末尾不 flush，连发键盘测试需手动 flush
+- 2026-09-15 · **原型走查对齐轮（j-agent-prototype.html → impl 截图对比收官）**：新增 `packages/app/proto-shot.mjs`（种子 1:1 复刻原型 seedState：三工作区 + 15 会话全状态组合 + git/worktree/通知/错误假数据，时钟注入对齐 createdAt；`__fixtures__/shot-term.ts` 真 PTY 提示行）→ `.shots/impl-*.png` 与 `.shots/proto-*.png` 逐状态对比 · 修复四处：① **`<text>` 多子节点断行**（gpuix text 子节点按 column 堆叠）——ErrorIndicator「⚠ n」/Sidebar 版本号与通知行/ToolDialog cwd 行/WorkPanel 文件名+目录与汇总行/GitGraphView confirm 文案全部改单模板串（WorkspaceList.test 断言同步）；② **GitGraphView 行宽**——virtual-list 行 shrink-wrap 且列表不吃 flexGrow，行宽从窗口宽改为 `getElementBounds` 轮询本视图实占宽（侧栏/面板挤压后 author/date/sha 列不再被推出可视区）；③ **ConversationView 消息行 shrink-wrap**——user 气泡 `justifyContent:flex-end` 无横向空间贴左，三处行根补 `width:'100%'`（SearchSelect 已有同款注释）；④ **消息区锚定**——`alignment=bottom` 把短内容贴底，改 `top`+`followTail` = 原型 `scrollTop=scrollHeight` 语义（短内容顶锚、溢出跟随尾部）· `gpuix.d.ts` 增补 `NativeRenderer.getElementBounds?`（原生/test renderer 都有实现，上游 interface 漏声明）· gate：app 330 全绿 + tsc + fmt + lint · 截图：chat/main/panel/git/settings/tool/search/notif/ctxmenu/narrow 全状态与原型逐张核对一致

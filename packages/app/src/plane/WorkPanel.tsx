@@ -203,8 +203,7 @@ function FileRow({
           pointerEvents: 'none',
         }}
       >
-        {name}
-        {dir ? `  ${dir}` : ''}
+        {dir ? `${name}  ${dir}` : name}
       </text>
       {file.added != null ? (
         <text
@@ -216,7 +215,7 @@ function FileRow({
             pointerEvents: 'none',
           }}
         >
-          +{file.added}
+          {`+${file.added}`}
         </text>
       ) : null}
       {file.deleted != null ? (
@@ -229,7 +228,7 @@ function FileRow({
             pointerEvents: 'none',
           }}
         >
-          −{file.deleted}
+          {`−${file.deleted}`}
         </text>
       ) : null}
     </div>
@@ -439,7 +438,7 @@ export function WorkPanel({
                   pointerEvents: 'none',
                 }}
               >
-                {files.length} 个文件 +{addedTotal} −{deletedTotal}
+                {`${files.length} 个文件 +${addedTotal} −${deletedTotal}`}
               </text>
             </div>
             {files.length === 0 ? (

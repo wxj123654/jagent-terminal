@@ -134,7 +134,7 @@ export function ToolDialog({
               overflow: 'hidden',
             }}
           >
-            cwd {workspace.path}
+            {`cwd ${workspace.path}`}
           </text>
         ) : (
           <text

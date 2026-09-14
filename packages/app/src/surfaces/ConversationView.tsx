@@ -109,9 +109,12 @@ export function ConversationView({
         </text>
       </div>
 
-      {/* 消息区：尾部跟随的虚拟列表（空态贴底；消息内边距契约 §3 20–24px） */}
+      {/* 消息区：尾部跟随的虚拟列表。alignment=top + followTail = 原型
+          scrollTop=scrollHeight 语义：短内容顶锚（原型 .conv-msgs 是
+          flex-column 普通滚动容器），溢出后跟随尾部。bottom 会把短内容
+          贴底——走查截图确认的偏差。 */}
       <virtual-list
-        alignment="bottom"
+        alignment="top"
         followTail
         estimatedItemHeight={64}
         style={{
@@ -128,7 +131,13 @@ export function ConversationView({
         {pendingReply ? (
           <div
             key="__thinking"
-            style={{ display: 'flex', flexDirection: 'row', flexShrink: 0, marginBottom: 16 }}
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              flexShrink: 0,
+              marginBottom: 16,
+              width: '100%',
+            }}
           >
             <text
               style={{
@@ -234,6 +243,9 @@ export function MessageRow({ m }: { m: ChatMessage }): ReactElement {
           justifyContent: 'flex-end',
           flexShrink: 0,
           marginBottom: 16,
+          // virtual-list 行根节点 shrink-wrap（gpui list 不给行撑满宽）——
+          // 不显式 100% 时 justifyContent:flex-end 无横向空间可用，气泡贴左
+          width: '100%',
         }}
       >
         <div
@@ -264,7 +276,13 @@ export function MessageRow({ m }: { m: ChatMessage }): ReactElement {
   return (
     <div
       key={m.id}
-      style={{ display: 'flex', flexDirection: 'row', flexShrink: 0, marginBottom: 16 }}
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        flexShrink: 0,
+        marginBottom: 16,
+        width: '100%',
+      }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', maxWidth: 640 }}>
         <text

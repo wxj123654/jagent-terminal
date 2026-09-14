@@ -7,7 +7,7 @@
  * 右键走 onAuxClick + <anchored> 菜单；git actions 经 store.runAction。
  */
 
-import { useWindowSize } from '@gpuix/react'
+import { useGpuix, useWindowSize } from '@gpuix/react'
 import type { PublicInstance } from '@gpuix/react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
@@ -898,6 +898,8 @@ export function GitGraphView({
 }) {
   const s = useGitGraphStore(store, (st) => st)
   const listRef = useRef<PublicInstance | null>(null)
+  const rootRef = useRef<PublicInstance | null>(null)
+  const { renderer } = useGpuix()
   const { width: winW, height: winH } = useWindowSize()
   const listHeight =
     winH -
@@ -906,7 +908,23 @@ export function GitGraphView({
     TOOLBAR_H -
     HEADER_H -
     (s.status === 'error' || s.actionError ? ERROR_H : 0)
-  const rowWidth = winW
+  // 行宽 = 本视图实占宽（侧栏/工作面板挤压后），不是窗口宽——
+  // 否则 author/date/sha 固定列被推到可视区外（走查发现的偏差）。
+  // getElementBounds 是「上一帧已画」的 bounds，挂载首帧为 null →
+  // 回退 winW；100ms 轮询跟随侧栏开合与窗口 resize。
+  const [paneW, setPaneW] = useState<number | null>(null)
+  useEffect(() => {
+    const read = () => {
+      const el = rootRef.current
+      if (!el) return
+      const b = renderer?.getElementBounds?.(el.id)
+      if (b && b[2] > 0) setPaneW((prev) => (prev === b[2] ? prev : b[2]))
+    }
+    read()
+    const id = setInterval(read, 100)
+    return () => clearInterval(id)
+  }, [renderer])
+  const rowWidth = paneW ?? winW
   const [findOpen, setFindOpen] = useState(false)
   const [findDraft, setFindDraft] = useState('')
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -960,6 +978,7 @@ export function GitGraphView({
   return (
     <div
       testId="git-graph-view"
+      ref={rootRef}
       style={{
         flexGrow: 1,
         display: 'flex',
@@ -1358,9 +1377,7 @@ export function GitGraphView({
                 whiteSpace: 'normal',
               }}
             >
-              {confirm.title}
-              {'\n'}
-              git {confirm.argv.join(' ')}
+              {`${confirm.title}\ngit ${confirm.argv.join(' ')}`}
             </text>
           </ModalBody>
           <div style={{ paddingLeft: 16, paddingRight: 16, paddingBottom: 12 }}>

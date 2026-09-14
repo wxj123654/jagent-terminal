@@ -217,7 +217,7 @@ function NotifPopover({
                     pointerEvents: 'none',
                   }}
                 >
-                  {n.sub} · {relTime(n.at)}
+                  {`${n.sub} · ${relTime(n.at)}`}
                 </text>
               </div>
             </div>
@@ -348,7 +348,7 @@ export function Sidebar({
               pointerEvents: 'none',
             }}
           >
-            v{version}
+            {`v${version}`}
           </text>
         ) : null}
       </div>

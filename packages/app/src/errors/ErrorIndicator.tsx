@@ -39,7 +39,17 @@ export function ErrorIndicator({ onOpen }: { onOpen: () => void }) {
         borderColor: 'rgba(224, 108, 117, 0.4)',
       }}
     >
-      <text style={{ fontSize: 11, fontFamily: FONT.ui, color: COLORS.bell }}>⚠ {count}</text>
+      <text
+        style={{
+          fontSize: 11,
+          fontFamily: FONT.ui,
+          color: COLORS.bell,
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+        }}
+      >
+        {`⚠ ${count}`}
+      </text>
     </div>
   )
 }

@@ -292,8 +292,8 @@ describe('WorkspaceList：分组树', () => {
       'tool dialog opens from empty-group hint',
       () => t.renderer.findByTestId('modal-card') != null,
     )
-    expect(t.renderer.getAllText().some((s) => s.startsWith('cwd'))).toBe(true)
-    expect(t.renderer.getAllText().some((s) => s === '/w/beta')).toBe(true)
+    // cwd 行是单文本节点（{`cwd ${path}`}——gpuix text 多子节点会断行）
+    expect(t.renderer.getAllText().some((s) => s === 'cwd /w/beta')).toBe(true)
     clickCenter('tool-preset-shell')
     await until('spawned into beta from dialog', () =>
       store.getState().threads.some((x) => x.kind === 'terminal' && x.workspaceId === wsB),
