@@ -86,8 +86,8 @@ function renderPage() {
         openToolMenu: () => {},
         openAddWorkspace: () => {},
         openSearch: () => {},
-        openManageSession: () => {},
-        openManageWorkspace: () => {},
+        openRename: () => {},
+
         openErrors: () => {},
       },
       gitStore,
@@ -166,8 +166,8 @@ describe('GitGraphView 渲染与选中', () => {
           openToolMenu: () => {},
           openAddWorkspace: () => {},
           openSearch: () => {},
-          openManageSession: () => {},
-          openManageWorkspace: () => {},
+          openRename: () => {},
+
           openErrors: () => {},
         },
         gitStore,
@@ -270,8 +270,8 @@ describe('GitGraphView 渲染与选中', () => {
           openToolMenu: () => {},
           openAddWorkspace: () => {},
           openSearch: () => {},
-          openManageSession: () => {},
-          openManageWorkspace: () => {},
+          openRename: () => {},
+
           openErrors: () => {},
         },
         gitStore,

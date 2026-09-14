@@ -96,6 +96,8 @@ const SOURCES = {
   agent: strokeSvg(
     '<rect x="5" y="7" width="14" height="12" rx="3"/><path d="M12 4.5V7"/><path d="M9.5 12v2"/><path d="M14.5 12v2"/><path d="M9 19h6"/>',
   ),
+  /** pin：会话/工作区置顶（codex-sidebar-v2 原型 i-pin 图钉） */
+  pin: strokeSvg('<path d="M9 4h6l-1 7 3 3v2H7v-2l3-3-1-7z"/><path d="M12 16v5"/>'),
 } as const
 
 export type IconName = keyof typeof SOURCES

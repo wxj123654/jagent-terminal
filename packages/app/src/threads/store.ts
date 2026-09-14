@@ -50,6 +50,11 @@ export type TerminalThread = {
   exitCode?: number | null
   /** activate 该 thread 时清除 */
   hasBell: boolean
+  /** 未读标记（codex-sidebar-v2：加粗 + 状态点 + 排序加权；activate 清除，
+   *  菜单可手动标回——待办语义。不持久化，与 threads 同纪律） */
+  unread?: boolean
+  /** 置顶（组内排序首位；不持久化） */
+  pin?: boolean
   createdAt: number
 }
 
@@ -64,6 +69,10 @@ export type ChatThread = {
   messages: ChatMessage[]
   /** agent 回复进行中：composer 发送钮禁用 + 消息尾 thinking 占位 */
   pendingReply: boolean
+  /** 未读标记（同 TerminalThread.unread） */
+  unread?: boolean
+  /** 置顶（组内排序首位；不持久化） */
+  pin?: boolean
   /** 归属工作区（Phase W） */
   workspaceId?: string
 }
@@ -81,6 +90,10 @@ export type AcpThread = {
   pendingReply: boolean
   /** title 未被手改/首条消息改写（首条 user 消息自动改写的哨兵；rename 置 false） */
   autoTitle: boolean
+  /** 未读标记（同 TerminalThread.unread） */
+  unread?: boolean
+  /** 置顶（组内排序首位；不持久化） */
+  pin?: boolean
   /** 归属工作区（Phase W） */
   workspaceId?: string
 }
@@ -182,8 +195,14 @@ export interface ThreadStore {
   activateWorkspace(id: string): void
   /** 展开/收起分组（持久化，不导航） */
   toggleWorkspaceExpanded(id: string): void
-  /** 显示全部 / 只显最近 10 个（V2 原型 ws 菜单项；持久化，不导航） */
+  /** 显示全部 / 只显前 4 条优先项（codex-sidebar-v2 截断；持久化，不导航） */
   setWorkspaceShowAll(id: string, showAll: boolean): void
+  /** 会话置顶（codex-sidebar-v2 行菜单 Pin；不持久化，不导航） */
+  setThreadPinned(id: string, pin: boolean): void
+  /** 会话未读标记（行菜单 Mark as unread；activate 清除——待办语义） */
+  setThreadUnread(id: string, unread: boolean): void
+  /** 工作区置顶（项目菜单 Pin；持久化，不导航） */
+  setWorkspacePinned(id: string, pin: boolean): void
   /** 通知中心（D8）：全部已读——红点清除，条目保留 */
   markNoticesRead(): void
   /** 工作区内 tab（git-graph.md §4.1）：'home'/'git'；持久化，不导航 */
@@ -222,12 +241,13 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
   /** workspaces 变化后统一持久化出口（fire-and-forget） */
   const persist = () => deps.persistWorkspaces?.(state().workspaces)
   const activate = (target: ActiveTarget) => {
-    // 契约 §7：聚焦即清 bell 红点
+    // 契约 §7：聚焦即清 bell 红点；codex-sidebar-v2：打开即已读（unread 同处清）
     if (target?.type === 'thread') {
       let touchedWorkspace = false
       set((s) => {
         const t = s.threads.find((x) => x.id === target.id)
         if (t && t.kind === 'terminal' && t.hasBell) t.hasBell = false
+        if (t && t.unread) t.unread = false
         // Phase W：会话聚焦 → 归属工作区 lastSession 记录（activateWorkspace 恢复源）
         if (t?.workspaceId) {
           touchedWorkspace = recordLastSession(s.workspaces, t.workspaceId, t.id)
@@ -456,6 +476,28 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
       set((s) => {
         const ws = s.workspaces.find((w) => w.id === id)
         if (ws) ws.showAll = showAll
+      })
+      persist()
+    },
+
+    setThreadPinned(id, pin) {
+      set((s) => {
+        const t = s.threads.find((x) => x.id === id)
+        if (t) t.pin = pin
+      })
+    },
+
+    setThreadUnread(id, unread) {
+      set((s) => {
+        const t = s.threads.find((x) => x.id === id)
+        if (t) t.unread = unread
+      })
+    },
+
+    setWorkspacePinned(id, pin) {
+      set((s) => {
+        const ws = s.workspaces.find((w) => w.id === id)
+        if (ws) ws.pin = pin
       })
       persist()
     },

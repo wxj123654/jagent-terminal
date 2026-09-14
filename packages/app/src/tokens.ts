@@ -27,7 +27,8 @@ export const SIZES = {
   /** 侧栏行左右外距（原型 .sb-scroll padding 8px） */
   rowMarginX: 8,
   rowPaddingX: 8,
-  rowRadius: 10,
+  /** 侧栏行圆角（原型 --r-nav 6px；nav/会话/工作区/展开行共用） */
+  rowRadius: 6,
   activeBarWidth: 2,
   /** 工作面板宽（原型 --panel-w 默认 280，可拖 244–720） */
   panelWidth: 280,

@@ -35,8 +35,10 @@ export type Workspace = {
   lastSession: string | null
   /** 工作区内 tab（git-graph.md §4.1）：'home' = 起始页/会话，'git' = Git 图 */
   paneTab: 'home' | 'git'
-  /** 会话列表显示全部（V2 原型 ws.showAll；false = 只显最近 10 个） */
+  /** 会话列表显示全部（codex-sidebar-v2：false = 只显前 4 条优先项） */
   showAll?: boolean
+  /** 置顶（codex-sidebar-v2：pin 的工作区排在列表最前，创建序内稳定） */
+  pin?: boolean
   createdAt: number
 }
 
@@ -50,6 +52,7 @@ const WorkspaceSchema = z.object({
   lastSession: z.string().nullable().catch(null),
   paneTab: z.enum(['home', 'git']).catch('home'),
   showAll: z.boolean().catch(false),
+  pin: z.boolean().catch(false),
   createdAt: z.number().catch(0),
 })
 
@@ -107,6 +110,7 @@ export function defaultWorkspace(path: string, now: number = Date.now()): Worksp
     lastSession: null,
     paneTab: 'home',
     showAll: false,
+    pin: false,
     createdAt: now,
   }
 }
@@ -144,43 +148,43 @@ export function clearLastSession(
   return true
 }
 
-// ── 时间分组（Phase D1；原型：今天/昨天/本周/更早）──────────────
+// ── 优先级排序（codex-sidebar-v2 方案 C；原型 sortTs）──────────────
 
-export type TimeGroup = 'today' | 'yesterday' | 'week' | 'earlier'
-
-export const TIME_GROUP_LABELS: Record<TimeGroup, string> = {
-  today: '今天',
-  yesterday: '昨天',
-  week: '本周',
-  earlier: '更早',
+/** 会话优先级桶（小 = 靠前）：run=进行中 > queue=等待注意 > unread=未读 >
+ *  其余（idle/exited/error 同桶，recency 兜底）。terminal 的存活不算 run
+ *  （PTY 活着 ≠ agent 在工作，D12 诚实语义）。 */
+export function threadPriority(t: Thread): number {
+  if (t.kind === 'terminal') {
+    if (t.hasBell) return 1
+    return t.unread ? 2 : 3
+  }
+  if (t.pendingReply) return 0
+  const last = t.messages.at(-1)
+  if (last?.role === 'assistant' && last.error) return 3
+  return t.unread ? 2 : 3
 }
 
-/** 会话按 createdAt 归入时间桶（新→旧序内保持创建序）。分组阈值：
- *  今天 = 当天 0 点后；昨天 = 前一天 0 点后；本周 = 7 天内（原型同语义）。
- *  now 注入可测。 */
-export function timeGroupsOf(
-  threads: Thread[],
-  now: number = Date.now(),
-): Map<TimeGroup, Thread[]> {
-  const day0 = new Date(now)
-  day0.setHours(0, 0, 0, 0)
-  const todayStart = day0.getTime()
-  const yesterdayStart = todayStart - 86400_000
-  const weekStart = now - 7 * 86400_000
-  const out = new Map<TimeGroup, Thread[]>([
-    ['today', []],
-    ['yesterday', []],
-    ['week', []],
-    ['earlier', []],
-  ])
-  for (const t of threads) {
-    const at = t.createdAt
-    if (at >= todayStart) out.get('today')!.push(t)
-    else if (at >= yesterdayStart) out.get('yesterday')!.push(t)
-    else if (at >= weekStart) out.get('week')!.push(t)
-    else out.get('earlier')!.push(t)
-  }
-  return out
+/** 组内会话排序（原型：pin > run > queue > unread > recency）。
+ *  recency = createdAt 新→旧；同毫秒并列兜底原数组序倒排（数组尾 = 最新，
+ *  对齐原型插入序 n desc——裸稳定排序会把旧行留在前面）。 */
+export function sortThreads(threads: Thread[]): Thread[] {
+  return threads
+    .map((t, i) => ({ t, i }))
+    .sort(
+      (a, b) =>
+        Number(b.t.pin ?? false) - Number(a.t.pin ?? false) ||
+        threadPriority(a.t) - threadPriority(b.t) ||
+        b.t.createdAt - a.t.createdAt ||
+        b.i - a.i,
+    )
+    .map((x) => x.t)
+}
+
+/** 工作区排序（原型 [...projects].sort(pin desc)：pin 在前，创建序内稳定） */
+export function sortWorkspaces(workspaces: Workspace[]): Workspace[] {
+  return [...workspaces].sort(
+    (a, b) => Number(b.pin ?? false) - Number(a.pin ?? false) || a.createdAt - b.createdAt,
+  )
 }
 
 /** 相对时间标签（通知中心 sub；原型「5 分钟前」格式） */

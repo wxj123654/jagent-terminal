@@ -32,7 +32,11 @@ let nowMs = Date.now() // 注入 store 的可变时钟（跨时间组用例拨�
 /** DialogHost 可控态镜像（测试读取用；真状态在 Harness useState——React
  *  自调度 rerender。W7 教训：事件回调里手动 root.render 会打断渲染管线，
  *  后续树渲染成空） */
-let dialogState: { kind: string; workspaceId?: string; threadId?: string } = { kind: 'none' }
+let dialogState: {
+  kind: string
+  workspaceId?: string
+  target?: { type: 'thread' | 'workspace'; id: string }
+} = { kind: 'none' }
 const mirror = (next: typeof dialogState) => {
   dialogState = next
   return next
@@ -47,8 +51,8 @@ function Harness({ pickDirectory }: { pickDirectory?: () => Promise<string | nul
     openToolMenu: (workspaceId: string) => open({ kind: 'tool', workspaceId }),
     openAddWorkspace: () => open({ kind: 'addWorkspace' }),
     openSearch: () => open({ kind: 'search' }),
-    openManageSession: (threadId: string) => open({ kind: 'manageSession', threadId }),
-    openManageWorkspace: (workspaceId: string) => open({ kind: 'manageWorkspace', workspaceId }),
+    openRename: (target: { type: 'thread' | 'workspace'; id: string }) =>
+      open({ kind: 'rename', target }),
     openErrors: () => open({ kind: 'errors' }),
   }
   return (
@@ -154,54 +158,85 @@ describe('WorkspaceList：分组树', () => {
     expect(t.renderer.getAllText().some((s) => s.includes('beta'))).toBe(true)
   })
 
-  // D13：超过 10 条且跨时间组时，不再为完全隐藏的组渲染孤立日期标签；
-  // 「展开其余 N 个」只在最后一个可见组下方、N 为全组合计。
-  test('超 10 条跨时间组：无孤立日期标签；展开合计正确（D13）', async () => {
+  // 方案 C：组内 priority 排序（pin > run > queue > unread > recency）+
+  // 默认前 4 条 + Show more/less；active/focus 行不被截断。
+  test('超 4 条截断：默认前 4 + 「展开其余 N 个」合计正确；展开全显', async () => {
     // 自清理前置：前面用例可能有遗留行（会占 limit 名额）；
     // showAll 持久化——先钉回默认收起态
     store.setWorkspaceShowAll(wsA, false)
     for (const old of store.getState().threads.slice()) store.close(old.id)
-    // 12 条今天 + 2 条更早（拨注入时钟；today=当天内，earlier=8 天前）
-    const day = 86400_000
+    // 注入时钟拉开 createdAt（同毫秒并列会让稳定排序保持创建序，
+    // active 行落截断外触发 lim 扩展——干扰断言）
     const base = Date.now()
     const made: string[] = []
-    for (let i = 0; i < 12; i++) {
-      nowMs = base - i * 60_000 // 今天
+    for (let i = 0; i < 6; i++) {
+      nowMs = base + i * 1000
       await store.spawnFromPreset('shell', wsA)
       const th = store.getState().threads.at(-1)
       if (th) made.push(th.id)
     }
-    for (let i = 0; i < 2; i++) {
-      nowMs = base - 8 * day // 更早
-      await store.spawnFromPreset('shell', wsA)
-      const th = store.getState().threads.at(-1)
-      if (th) made.push(th.id)
-    }
-    nowMs = Date.now() // 渲染期分组阈值用真钟
+    nowMs = Date.now()
     try {
       renderHarness()
       t.renderer.flush()
-      await until('rows visible', () => t.renderer.findByTestId(`row-${made[0]}`) != null)
+      // recency 新→旧：made[5] 在首位可见；made[0]（最旧）被截断
+      await until('rows visible', () => t.renderer.findByTestId(`row-${made[5]}`) != null)
       const texts = t.renderer.getAllText()
 
-      // 今天 10 条可见；「更早」组完全隐藏 → 标签不该出现
-      expect(texts.filter((s) => s === '今天').length).toBe(1)
-      expect(texts.some((s) => s === '更早')).toBe(false)
-      // 展开按钮在（合计 4 条：今天 2 + 更早 2；JSX 插值分片 → 相邻文本节点断言）
+      // 默认 4 条可见；「展开其余 2 个」（JSX 插值分片 → 相邻文本节点断言）
       const moreIdx = texts.findIndex((s) => s === '展开其余 ')
       expect(moreIdx).toBeGreaterThanOrEqual(0)
-      expect(texts[moreIdx + 1]).toBe('4')
+      expect(texts[moreIdx + 1]).toBe('2')
       expect(texts[moreIdx + 2]).toBe(' 个')
-      // 展开 → 更早标签出现且可见条目 14
-      const more =
-        t.renderer.findByTestId('load-more-today') ?? t.renderer.findByTestId('load-more-earlier')
+      const visible = made.filter((id) => t.renderer.findByTestId(`row-${id}`) != null)
+      expect(visible.length).toBe(4)
+      // filter 保留创建序——比集合不比顺序（排序后可见集 = recency 最新 4 条）
+      expect(new Set(visible)).toEqual(new Set([made[5], made[4], made[3], made[2]]))
+      // 展开 → 全部 6 条可见 + 「只显示前 4 个」
+      const more = t.renderer.findByTestId(`load-more-${wsA}`)
       expect(more).toBeDefined()
       const b = t.renderer.getElementBounds(more!.id)!
       t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2, 0)
       t.renderer.flush()
-      await until('expanded', () => t.renderer.getAllText().some((s) => s === '更早'))
-      expect(t.renderer.getAllText().some((s) => s.startsWith('展开其余'))).toBe(false)
-      expect(made.every((id) => t.renderer.findByTestId(`row-${id}`) != null)).toBe(true)
+      await until('expanded', () =>
+        made.every((id) => t.renderer.findByTestId(`row-${id}`) != null),
+      )
+      expect(t.renderer.getAllText().some((s) => s.startsWith('只显示前'))).toBe(true)
+    } finally {
+      for (const id of made) store.close(id)
+      t.renderer.flush()
+    }
+  })
+
+  test('priority 排序：pin 行排最前；active 行不被截断（lim 自动扩展）', async () => {
+    store.setWorkspaceShowAll(wsA, false)
+    for (const old of store.getState().threads.slice()) store.close(old.id)
+    const base = Date.now()
+    const made: string[] = []
+    for (let i = 0; i < 6; i++) {
+      nowMs = base + i * 1000 // 拉开 createdAt（同毫秒并列干扰排序断言）
+      await store.spawnFromPreset('shell', wsA)
+      made.push(store.getState().threads.at(-1)!.id)
+    }
+    nowMs = Date.now()
+    try {
+      // 最旧的一条 pin → 排序后应进前 4（recency 最末被 pin 提升）
+      store.setThreadPinned(made[0]!, true)
+      renderHarness()
+      t.renderer.flush()
+      await until('rows visible', () => t.renderer.findByTestId(`row-${made[0]}`) != null)
+      const visible = made.filter((id) => t.renderer.findByTestId(`row-${id}`) != null)
+      expect(visible).toContain(made[0]) // pin 提升进前 4
+      expect(visible.length).toBe(4)
+
+      // active 行不被截断：取消 pin 后激活排序第 5 位（made[1]，
+      // recency 倒数第二）→ lim 扩展到 5，该行保持可见
+      store.setThreadPinned(made[0]!, false)
+      store.activate({ type: 'thread', id: made[1]! })
+      await until('5th-priority row kept visible', () => {
+        const vis = made.filter((id) => t.renderer.findByTestId(`row-${id}`) != null)
+        return vis.length === 5 && vis.includes(made[1]!)
+      })
     } finally {
       for (const id of made) store.close(id)
       t.renderer.flush()
@@ -461,78 +496,132 @@ describe('WorkspaceList：重复目录（W7 收尾用例）', () => {
   })
 })
 
-// ── Phase D1：双区侧栏（会话区 + 时间分组 + load more + 状态点）──────
+// ── 方案 C：nav 行组 + 未归属组 + 上下文菜单（codex-sidebar-v2）──────
 
-describe('WorkspaceList：双区侧栏（D1）', () => {
-  test('双区渲染：「会话」区头 + 无归属会话；「工作区」区头 + 分组', async () => {
-    // 无归属会话（workspaceId 未设——spawn 不传目标）
-    await store.spawnFromPreset('shell')
+describe('WorkspaceList：方案 C 结构', () => {
+  test('nav 行组：新建会话 / 搜索两行渲染；搜索行 → openSearch', async () => {
+    renderHarness()
+    t.renderer.flush()
+    // 前用例可能留开着的弹窗（遮罩吞点击）——先关
+    if (t.renderer.findByTestId('modal-card') != null) {
+      clickCenter('modal-close')
+      await until('dialog closed', () => t.renderer.findByTestId('modal-card') == null)
+    }
+    await until('nav rows visible', () => t.renderer.findByTestId('nav-new-chat') != null)
+    expect(t.renderer.findByTestId('nav-search') != null).toBe(true)
+    expect(t.renderer.getAllText().some((s) => s === '新建会话')).toBe(true)
+    expect(t.renderer.getAllText().some((s) => s === '搜索')).toBe(true)
+    clickCenter('nav-search')
+    await until('search dialog opened', () => dialogState.kind === 'search')
+    // 收尾：遮罩点击关弹窗（SearchDialog 无 X 钮；不关会吞后续用例点击）
+    clickScrim()
+    await until('search dialog closed', () => t.renderer.findByTestId('modal-card') == null)
+  })
+
+  test('无归属会话归入「未归属」虚拟组（无独立「会话」区头）', async () => {
+    await store.spawnFromPreset('shell') // 不传 workspaceId → 未归属
     renderHarness()
     t.renderer.flush()
     const tid = store.getState().threads.at(-1)!.id
-    await until('temp row visible', () => t.renderer.findByTestId(`row-${tid}`) != null)
-    const texts = t.renderer.getAllText().join('\n')
-    expect(texts.includes('会话')).toBe(true)
-    expect(texts.includes('工作区')).toBe(true)
-    expect(texts.includes('暂无未归属会话')).toBe(false)
+    await until(
+      'unassigned group visible',
+      () => t.renderer.findByTestId('workspace-unassigned') != null,
+    )
+    expect(t.renderer.findByTestId(`row-${tid}`) != null).toBe(true)
+    expect(t.renderer.getAllText().some((s) => s === '未归属')).toBe(true)
+    // 虚拟组无 … 菜单（不可 pin/rename/remove）
+    expect(t.renderer.findByTestId('menu-workspace-unassigned')).toBeUndefined()
+    store.close(tid)
+    t.renderer.flush()
+    await until(
+      'unassigned group gone',
+      () => t.renderer.findByTestId('workspace-unassigned') == null,
+    )
+  })
+
+  test('未归属组：点组名激活最高优先级会话；箭头仅折叠', async () => {
+    await store.spawnFromPreset('shell')
+    const tid = store.getState().threads.at(-1)!.id
+    renderHarness()
+    t.renderer.flush()
+    await until('unassigned row visible', () => t.renderer.findByTestId(`row-${tid}`) != null)
+    // 箭头折叠：行消失 + 不导航
+    void router.navigate({ to: '/' })
+    clickCenter('workspace-toggle-unassigned')
+    await until('collapsed', () => t.renderer.findByTestId(`row-${tid}`) == null)
+    expect(currentActiveThreadId()).toBeNull()
+    // 展开 + 点组名 → 激活该会话
+    clickCenter('workspace-toggle-unassigned')
+    await until('expanded', () => t.renderer.findByTestId(`row-${tid}`) != null)
+    clickCenter('workspace-unassigned')
+    await until('activated', () => currentActiveThreadId() === tid)
     store.close(tid)
     t.renderer.flush()
   })
 
-  test('无归属会话空态：暂无未归属会话', async () => {
-    renderHarness()
-    t.renderer.flush()
-    await until('empty hint', () =>
-      t.renderer.getAllText().some((s) => s.includes('暂无未归属会话')),
-    )
-  })
-
-  test('时间分组：今天标签 + 老会话归「更早」', async () => {
+  test('会话行「…」→ 上下文菜单：Pin / Rename / Mark as unread / Remove', async () => {
     await store.spawnFromPreset('shell', wsA)
     const tid = store.getState().threads.at(-1)!.id
     renderHarness()
     t.renderer.flush()
-    await until('today label', () => t.renderer.getAllText().some((s) => s.includes('今天')))
+    await until('row visible', () => t.renderer.findByTestId(`row-${tid}`) != null)
+    clickCenter(`menu-thread-${tid}`)
+    await until('context menu open', () => t.renderer.findByTestId('context-menu') != null)
+    for (const id of ['ctx-pin', 'ctx-rename', 'ctx-unread', 'ctx-remove']) {
+      expect(t.renderer.findByTestId(id) != null).toBe(true)
+    }
+    // Mark as unread → 行加粗点出现
+    clickCenter('ctx-unread')
+    await until('unread dot', () => t.renderer.findByTestId('dot-unread') != null)
+    expect(store.getState().threads.find((x) => x.id === tid)?.unread).toBe(true)
+    // 再开菜单 → Pin
+    clickCenter(`menu-thread-${tid}`)
+    await until('menu again', () => t.renderer.findByTestId('context-menu') != null)
+    clickCenter('ctx-pin')
+    await until('pinned', () => store.getState().threads.find((x) => x.id === tid)?.pin === true)
     store.close(tid)
     t.renderer.flush()
   })
 
-  test('load more：>10 条出现「展开其余」+ 点击全展开', async () => {
-    // 自清理前置：前面用例可能有遗留行（slice 按创建序会占 limit 名额）；
-    // showAll 是持久化工作区态（D10）——前面用例的展开会留到本用例，先钉回
-    store.setWorkspaceShowAll(wsA, false)
-    for (const old of store.getState().threads.slice()) store.close(old.id)
-    const ids: string[] = []
-    for (let i = 0; i < 12; i++) {
-      await store.spawnFromPreset('shell', wsA)
-      ids.push(store.getState().threads.at(-1)!.id)
-    }
+  test('会话行右键（auxClick）→ 同一面菜单；Remove 关闭会话', async () => {
+    await store.spawnFromPreset('shell', wsA)
+    const tid = store.getState().threads.at(-1)!.id
     renderHarness()
     t.renderer.flush()
-    await until('load-more visible', () => {
-      const el =
-        t.renderer.findByTestId('load-more-today') ??
-        t.renderer.findByTestId('load-more-yesterday') ??
-        t.renderer.findByTestId('load-more-week') ??
-        t.renderer.findByTestId('load-more-earlier')
-      return el != null
-    })
-    // 默认只显 10 行
-    const visible = ids.filter((id) => t.renderer.findByTestId(`row-${id}`) != null)
-    expect(visible.length).toBe(10)
-    // 点击展开其余
-    const more =
-      t.renderer.findByTestId('load-more-today') ??
-      t.renderer.findByTestId('load-more-yesterday') ??
-      t.renderer.findByTestId('load-more-week') ??
-      t.renderer.findByTestId('load-more-earlier')!
-    t.renderer.focusElement(more.id)
-    t.renderer.simulateKeystrokes('enter')
+    await until('row visible', () => t.renderer.findByTestId(`row-${tid}`) != null)
+    const row = t.renderer.findByTestId(`row-${tid}`)!
+    const b = t.renderer.getElementBounds(row.id)!
+    // 右键（button=2）→ auxClick → 菜单
+    t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2, 2)
     t.renderer.flush()
-    await until('all rows visible', () =>
-      ids.every((id) => t.renderer.findByTestId(`row-${id}`) != null),
-    )
-    for (const id of ids) store.close(id)
+    await until('context menu open', () => t.renderer.findByTestId('context-menu') != null)
+    clickCenter('ctx-remove')
+    await until('thread removed', () => !store.getState().threads.some((x) => x.id === tid))
+  })
+
+  test('工作区行「…」→ 项目菜单：Pin / Rename / Remove；Rename 开重命名弹窗', async () => {
+    renderHarness()
+    t.renderer.flush()
+    await until('ws row visible', () => t.renderer.findByTestId(`workspace-${wsB}`) != null)
+    clickCenter(`menu-workspace-${wsB}`)
+    await until('context menu open', () => t.renderer.findByTestId('context-menu') != null)
+    for (const id of ['ctx-pin', 'ctx-rename', 'ctx-remove']) {
+      expect(t.renderer.findByTestId(id) != null).toBe(true)
+    }
+    clickCenter('ctx-rename')
+    await until('rename dialog opened', () => dialogState.kind === 'rename')
+    expect(dialogState.target).toEqual({ type: 'workspace', id: wsB })
+  })
+
+  test('工作区 pin：排序提前（pin 的工作区排最前）', async () => {
+    store.setWorkspacePinned(wsB, true)
+    renderHarness()
+    t.renderer.flush()
+    await until('ws rows visible', () => t.renderer.findByTestId(`workspace-${wsB}`) != null)
+    const aB = t.renderer.getElementBounds(t.renderer.findByTestId(`workspace-${wsA}`)!.id)!
+    const bB = t.renderer.getElementBounds(t.renderer.findByTestId(`workspace-${wsB}`)!.id)!
+    expect(bB[1]).toBeLessThan(aB[1]) // pin 的 beta 在 alpha 上方
+    store.setWorkspacePinned(wsB, false)
     t.renderer.flush()
   })
 })

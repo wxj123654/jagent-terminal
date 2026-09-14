@@ -32,3 +32,6 @@ design/.impeccable/
 
 # 会话临时产物（bench 脚本/分析报告等）
 .tmp/
+
+# TestRenderer 截图产物（sidebar-shot/range-shot 等可重建）
+.shots/

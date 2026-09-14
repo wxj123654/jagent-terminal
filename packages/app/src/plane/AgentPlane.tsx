@@ -161,9 +161,8 @@ export function App({
     openToolMenu: (workspaceId: string) => setDialog({ kind: 'tool', workspaceId }),
     openAddWorkspace: () => setDialog({ kind: 'addWorkspace' }),
     openSearch: () => setDialog({ kind: 'search' }),
-    openManageSession: (threadId: string) => setDialog({ kind: 'manageSession', threadId }),
-    openManageWorkspace: (workspaceId: string) =>
-      setDialog({ kind: 'manageWorkspace', workspaceId }),
+    openRename: (target: { type: 'thread' | 'workspace'; id: string }) =>
+      setDialog({ kind: 'rename', target }),
     openErrors: () => setDialog({ kind: 'errors' }),
   }
   useEffect(() => {
@@ -207,6 +206,7 @@ export function App({
       windowControls={windowControls}
       version={version}
       onNewSession={() => dialogOpener.openToolMenu(newSessionWorkspace())}
+      onCollapse={() => toggleRef.current()}
     />
   )
   const pane = (

@@ -17,10 +17,10 @@ import type { ThreadStore } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
 import { CrashDialog } from './CrashDialog'
 import { ErrorDialog } from './ErrorDialog'
+import { RenameDialog, type RenameTarget } from './RenameDialog'
 import { SearchDialog } from './SearchDialog'
-import { SessionDialog } from './SessionDialog'
 import { ToolDialog } from './ToolDialog'
-import { WorkspaceDialog, WorkspaceManageDialog } from './WorkspaceDialog'
+import { WorkspaceDialog } from './WorkspaceDialog'
 import type { DirectoryPicker } from './WorkspaceList'
 
 export type DialogState =
@@ -28,8 +28,7 @@ export type DialogState =
   | { kind: 'tool'; workspaceId: string }
   | { kind: 'addWorkspace' }
   | { kind: 'search' }
-  | { kind: 'manageSession'; threadId: string }
-  | { kind: 'manageWorkspace'; workspaceId: string }
+  | { kind: 'rename'; target: RenameTarget }
   | { kind: 'errors' }
   | { kind: 'crash'; last: LastCrash }
 
@@ -38,9 +37,8 @@ export type DialogOpener = {
   openToolMenu: (workspaceId: string) => void
   openAddWorkspace: () => void
   openSearch: () => void
-  openManageSession: (threadId: string) => void
-  /** D10：工作区行「…」→ 管理弹窗（重命名/显示全部/移除） */
-  openManageWorkspace: (workspaceId: string) => void
+  /** codex-sidebar-v2：上下文菜单 Rename… → 重命名弹窗（会话/工作区共用） */
+  openRename: (target: RenameTarget) => void
   openErrors: () => void
 }
 
@@ -86,10 +84,16 @@ export function DialogHost({
       return <ErrorDialog onClose={close} />
     case 'crash':
       return <CrashDialog last={state.last} onClose={close} />
-    case 'manageSession':
-      return <SessionDialog store={store} threadId={state.threadId} onClose={close} />
-    case 'manageWorkspace':
-      return <WorkspaceManageDialog store={store} workspaceId={state.workspaceId} onClose={close} />
+    case 'rename':
+      // key 随目标变：同壳复用时重置输入初值（React 复用实例会留旧 draft）
+      return (
+        <RenameDialog
+          key={`${state.target.type}:${state.target.id}`}
+          store={store}
+          target={state.target}
+          onClose={close}
+        />
+      )
     default:
       return null
   }

@@ -1,5 +1,5 @@
 /**
- * plane/Dialogs.test.tsx — W7 弹窗族测试（SearchDialog / SessionDialog /
+ * plane/Dialogs.test.tsx — W7 弹窗族测试（SearchDialog / RenameDialog /
  * ToolDialog 工作区切换 / Toast）。
  *
  * 独立装配（双工作区 + spawn 会话）；Harness 包 relative 容器（Modal
@@ -162,33 +162,52 @@ describe('SearchDialog（⌘K 搜索弹窗）', () => {
   })
 })
 
-describe('SessionDialog（管理会话弹窗）', () => {
-  test('上下文行 + 保存名称（rename 生效）+ 关闭', async () => {
+describe('RenameDialog（重命名弹窗；方案 C 上下文菜单 Rename…）', () => {
+  test('会话重命名：初值 = 当前标题；改名提交 → store.rename 生效', async () => {
     const tid = store.getState().threads[0]!.id
-    mountWith({ kind: 'manageSession', threadId: tid })
+    mountWith({ kind: 'rename', target: { type: 'thread', id: tid } })
     t.renderer.flush()
     await until('dialog visible', () => t.renderer.findByTestId('modal-card') != null)
-    // 上下文行含工作区名（alpha）+ 工具
-    expect(t.renderer.getAllText().some((s) => s.includes('alpha'))).toBe(true)
-    expect(t.renderer.getAllText().some((s) => s.includes('shell'))).toBe(true)
-    // 重命名（keystroke 追加——input 初值非空；直接断言 rename 被调用的最终态）
-    const nameInput = t.renderer.findByTestId('session-dialog-name')!
+    expect(t.renderer.getAllText().some((s) => s.includes('重命名会话'))).toBe(true)
+    // keystroke 追加——input 初值非空；断言 rename 最终态
+    const nameInput = t.renderer.findByTestId('rename-dialog-input')!
     const before = String(t.renderer.getElement(nameInput.id)?.customProps?.value ?? '')
     t.renderer.nativeSimulateKeystrokes(nameInput.id, 'X')
-    clickCenter('modal-action-保存名称')
+    clickCenter('modal-action-重命名')
     const th = store.getState().threads.find((x) => x.id === tid)
     const expected = `${before}X`
     await until('renamed', () => th?.kind === 'terminal' && th.customTitle === expected)
+    await until('dialog closed', () => t.renderer.findByTestId('modal-card') == null)
   })
 
-  test('移除会话 → store.close + 回工作区起始页', async () => {
-    const tid = store.getState().threads[0]!.id
-    mountWith({ kind: 'manageSession', threadId: tid })
+  test('工作区重命名：标题为「重命名工作区」；提交 → renameWorkspace', async () => {
+    const wsB = store.getState().workspaces[1]!.id
+    mountWith({ kind: 'rename', target: { type: 'workspace', id: wsB } })
     t.renderer.flush()
     await until('dialog visible', () => t.renderer.findByTestId('modal-card') != null)
-    clickCenter('modal-action-移除会话')
-    await until('thread removed', () => !store.getState().threads.some((x) => x.id === tid))
+    expect(t.renderer.getAllText().some((s) => s.includes('重命名工作区'))).toBe(true)
+    const nameInput = t.renderer.findByTestId('rename-dialog-input')!
+    const before = String(t.renderer.getElement(nameInput.id)?.customProps?.value ?? '')
+    t.renderer.nativeSimulateKeystrokes(nameInput.id, '2')
+    clickCenter('modal-action-重命名')
+    await until('workspace renamed', () => store.getState().workspaces[1]!.name === `${before}2`)
+    // 收尾还原名（后续用例断言 beta 的地方依赖原名）
+    store.renameWorkspace(wsB, 'beta')
+  })
+
+  test('取消不提交：名不变 + 弹窗关闭', async () => {
+    const tid = store.getState().threads[0]!.id
+    const th0 = store.getState().threads[0]!
+    const origTitle = th0.kind === 'terminal' ? th0.customTitle : th0.title
+    mountWith({ kind: 'rename', target: { type: 'thread', id: tid } })
+    t.renderer.flush()
+    await until('dialog visible', () => t.renderer.findByTestId('modal-card') != null)
+    const nameInput = t.renderer.findByTestId('rename-dialog-input')!
+    t.renderer.nativeSimulateKeystrokes(nameInput.id, 'ZZ')
+    clickCenter('modal-action-取消')
     await until('dialog closed', () => t.renderer.findByTestId('modal-card') == null)
+    const th = store.getState().threads.find((x) => x.id === tid)
+    expect(th?.kind === 'terminal' ? th.customTitle : th?.title).toBe(origTitle)
   })
 })
 

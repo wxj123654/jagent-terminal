@@ -43,8 +43,7 @@ function Harness() {
           },
           openAddWorkspace: () => {},
           openSearch: () => {},
-          openManageSession: () => {},
-          openManageWorkspace: () => {},
+          openRename: () => {},
           openErrors: () => {},
         }}
       />

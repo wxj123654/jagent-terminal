@@ -8,11 +8,13 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import type { ChatThread, Thread } from '../store'
+import type { ChatThread, TerminalThread, Thread } from '../store'
 import {
   defaultWorkspace,
   parseWorkspaceState,
   serializeWorkspaceState,
+  sortThreads,
+  sortWorkspaces,
   workspaceDisplayName,
   searchThreads,
   workspaceSessions,
@@ -51,6 +53,7 @@ describe('workspaces: parseWorkspaceState（state.json 读盘容错）', () => {
       lastSession: 't3',
       paneTab: 'home',
       showAll: false,
+      pin: false,
       createdAt: 42,
     })
     expect(ws[1]?.expanded).toBe(true)
@@ -179,5 +182,62 @@ describe('workspaces: searchThreads（跨工作区搜索）', () => {
     expect(searchThreads([term], ws, 'alpha/sub').map((r) => r.thread.id)).toEqual(['t1'])
     // 未注入 presetLabelOf → tool 面回退 'Terminal'
     expect(searchThreads([term], ws, 'terminal').map((r) => r.thread.id)).toEqual(['t1'])
+  })
+})
+
+describe('workspaces: sortThreads / sortWorkspaces（方案 C priority 排序）', () => {
+  const term = (id: string, over: Partial<TerminalThread> = {}): TerminalThread => ({
+    kind: 'terminal',
+    id,
+    sessionId: 1,
+    cwd: '/w',
+    status: 'running',
+    hasBell: false,
+    createdAt: 0,
+    ...over,
+  })
+  const chat = (id: string, over: Partial<ChatThread> = {}): ChatThread => ({
+    kind: 'chat',
+    id,
+    title: id,
+    createdAt: 0,
+    messages: [],
+    pendingReply: false,
+    ...over,
+  })
+
+  test('pin > run > queue > unread > recency（createdAt 新→旧）', () => {
+    const threads: Thread[] = [
+      term('t-old', { createdAt: 1 }),
+      chat('c-run', { createdAt: 2, pendingReply: true }),
+      term('t-bell', { createdAt: 3, hasBell: true }),
+      chat('c-unread', { createdAt: 4, unread: true }),
+      term('t-new', { createdAt: 5 }),
+      chat('c-pin', { createdAt: 1, pin: true }),
+    ]
+    expect(sortThreads(threads).map((x) => x.id)).toEqual([
+      'c-pin', // pin 最前
+      'c-run', // run
+      't-bell', // queue
+      'c-unread', // unread
+      't-new', // recency 新
+      't-old', // recency 旧
+    ])
+  })
+
+  test('terminal 存活不算 run（D12 诚实语义）；exited 归 idle 桶', () => {
+    const threads: Thread[] = [
+      term('t-live', { createdAt: 1 }), // running 但无 bell → idle 桶
+      chat('c-run', { createdAt: 2, pendingReply: true }),
+      term('t-dead', { createdAt: 3, status: 'exited' }),
+    ]
+    expect(sortThreads(threads).map((x) => x.id)).toEqual(['c-run', 't-dead', 't-live'])
+  })
+
+  test('sortWorkspaces：pin 在前，创建序内稳定', () => {
+    const a = { ...defaultWorkspace('/w/a', 1), id: 'w-a' }
+    const b = { ...defaultWorkspace('/w/b', 2), id: 'w-b', pin: true }
+    const c = { ...defaultWorkspace('/w/c', 3), id: 'w-c' }
+    expect(sortWorkspaces([a, b, c]).map((w) => w.id)).toEqual(['w-b', 'w-a', 'w-c'])
   })
 })

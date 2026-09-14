@@ -19,7 +19,7 @@ import type { ChatAgent } from '../chat'
 import { builtinPresetOf, type TerminalPreset } from '../presets'
 import { createThreadStore, type ThreadDeps, type ThreadStore, type TerminalThread } from '../store'
 import { displayTitle } from '../terminal'
-import { defaultWorkspace } from '../workspaces'
+import { defaultWorkspace, type Workspace } from '../workspaces'
 
 /** 可控 fake ChatAgent：调用入队，测试手动 resolve/reject */
 function makeChatAgent() {
@@ -798,5 +798,55 @@ describe('activateWorkspace / close / removeWorkspace', () => {
     store.openGitGraph()
     expect(store.getState().workspaces[0]!.paneTab).toBe('git')
     expect(currentActiveWorkspaceId()).toBe(wsId)
+  })
+})
+
+describe('方案 C：pin / unread（codex-sidebar-v2）', () => {
+  let store: ThreadStore
+  beforeEach(() => {
+    void router.navigate({ to: '/' })
+    store = createThreadStore(makeDeps().deps, {
+      initialWorkspaces: [defaultWorkspace('/w/proj')],
+    })
+  })
+
+  test('setThreadPinned / setThreadUnread：翻转 + unknown no-op', async () => {
+    await store.spawnFromPreset('shell')
+    const tid = store.getState().threads[0]!.id
+    store.setThreadPinned(tid, true)
+    store.setThreadUnread(tid, true)
+    const th = store.getState().threads[0]!
+    expect(th.pin).toBe(true)
+    expect(th.unread).toBe(true)
+    store.setThreadPinned(tid, false)
+    store.setThreadUnread(tid, false)
+    expect(store.getState().threads[0]!.pin).toBe(false)
+    expect(store.getState().threads[0]!.unread).toBe(false)
+    // unknown id no-op（不炸）
+    store.setThreadPinned('t-void', true)
+    store.setThreadUnread('t-void', true)
+  })
+
+  test('activate 清 unread（打开即已读；与 hasBell 同处）', async () => {
+    await store.spawnFromPreset('shell')
+    const tid = store.getState().threads[0]!.id
+    store.setThreadUnread(tid, true)
+    void router.navigate({ to: '/' }) // 离开
+    store.activate({ type: 'thread', id: tid })
+    expect(store.getState().threads[0]!.unread).toBe(false)
+  })
+
+  test('setWorkspacePinned：翻转 + persist fire + unknown no-op', () => {
+    const persisted: Workspace[][] = []
+    const deps = makeDeps({ persistWorkspaces: (ws) => persisted.push(ws.map((w) => ({ ...w }))) })
+    store = createThreadStore(deps.deps, {
+      initialWorkspaces: [defaultWorkspace('/w/a'), defaultWorkspace('/w/b')],
+    })
+    const [wa] = store.getState().workspaces
+    store.setWorkspacePinned(wa!.id, true)
+    expect(store.getState().workspaces[0]!.pin).toBe(true)
+    expect(persisted.at(-1)?.[0]?.pin).toBe(true)
+    store.setWorkspacePinned('w-void', true) // no-op
+    expect(store.getState().workspaces.filter((w) => w.pin)).toHaveLength(1)
   })
 })

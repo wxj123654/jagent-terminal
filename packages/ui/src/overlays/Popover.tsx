@@ -35,6 +35,7 @@ export function Popover({
   minWidth = 220,
   testId = 'popover',
   anchor = 'topLeft',
+  autoFocus = false,
 }: {
   /** 浮层左上角（或 `anchor` 指定角）的窗口坐标 */
   position: { x: number; y: number }
@@ -48,6 +49,8 @@ export function Popover({
   testId?: string
   /** position 锚在浮层哪一角；默认 topLeft = 坐标即左上角 */
   anchor?: PopoverAnchor
+  /** 挂载即聚焦内容盒（上下文菜单等需要 Esc/键盘命中的场景） */
+  autoFocus?: boolean
 }) {
   return (
     <anchored position={position} anchor={anchor} deferred occlude>
@@ -59,6 +62,7 @@ export function Popover({
       <div
         testId={testId}
         tabIndex={0}
+        autoFocus={autoFocus}
         onMouseDownOutside={onClose}
         onKeyDown={(e) => {
           if (e.key === 'escape') onClose()

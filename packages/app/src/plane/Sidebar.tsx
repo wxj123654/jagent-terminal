@@ -1,11 +1,11 @@
 /**
- * Sidebar — 左栏整列（V2 desktop-plane：头 + 列表 + 脚，52/…/34px）。
+ * Sidebar — 左栏整列（codex-sidebar-v2 方案 C：头 + 列表 + 脚，52/…/34px）。
  *
- * 结构（V2 原型 .sidebar）：
- * - 头（52px，.sb-head）：mac 红绿灯让位 78px + 「＋新建会话」+「搜索」
- *   两个 icon-btn（28px 圆角 8，hover 抬底）。窗口拖拽同顶栏。
- * - WorkspaceList（滚动区）：双区（会话 / 工作区分组）。
- * - 脚（34px，.sb-foot）：设置齿轮 + 通知铃（未读红点 + 锚定上方浮层）
+ * 结构（方案 C 原型 .sb）：
+ * - 头（52px，.head）：mac 红绿灯让位 78px + 单个收起钮（⌘B 同效）。
+ *   新建/搜索下移为 WorkspaceList 顶部 nav 行组。窗口拖拽同顶栏。
+ * - WorkspaceList（滚动区）：nav 行组 + 工作区分组（含「未归属」虚拟组）。
+ * - 脚（34px，.foot）：设置齿轮 + 通知铃（未读红点 + 锚定上方浮层）
  *   + 右侧版本号。
  *
  * 宽度 = appearance.sidebarWidth（200–400，设置拖拽实时写回）。
@@ -27,25 +27,22 @@ import { useTitleBarDrag, type WindowControls } from './TitleBar'
 import { WorkspaceList } from './WorkspaceList'
 
 /**
- * 侧栏头（52px；原型 .sb-head）。mac 红绿灯让位 78px；＋ = 当前上下文
- * 新建会话（onNewSession 由 AgentPlane 计算目标工作区），放大镜 = ⌘K
- * 搜索弹窗。mac/linux 可拖窗口；win 标 drag 区。
+ * 侧栏头（52px；方案 C 原型 .head）。mac 红绿灯让位 78px；单个收起钮
+ * （panelLeft 图标，⌘B 同效——新建/搜索已下移为 nav 行组）。
+ * mac/linux 可拖窗口；win 标 drag 区。
  */
 export function SidebarHeader({
   platform,
   windowControls,
   width,
-  onNewSession,
-  onSearch,
+  onCollapse,
 }: {
   platform: AppPlatform
   windowControls?: WindowControls
   /** 与侧栏列同宽（appearance.sidebarWidth）；独立渲染时传 */
   width?: number
-  /** ＋ 新建会话（目标工作区由调用方算） */
-  onNewSession?: () => void
-  /** ⌘K 搜索弹窗 */
-  onSearch?: () => void
+  /** 收起整列（⌘B 同效；窄窗口 = 关抽屉） */
+  onCollapse?: () => void
 }) {
   const drag = useTitleBarDrag(windowControls)
   return (
@@ -69,24 +66,14 @@ export function SidebarHeader({
       {/* 左占位：mac 红绿灯让位；win/linux 留对称内缩 */}
       <div style={{ width: (platform === 'mac' ? TRAFFIC_LIGHT_WIDTH : 0) + 10, flexShrink: 0 }} />
       <IconButton
-        name="plus"
-        label="新建会话"
-        testId="sidebar-new-session"
+        name="panelLeft"
+        label="收起侧栏"
+        testId="sidebar-collapse"
         size={15}
         hitSize={28}
         radius={9999}
         tooltip={false}
-        onClick={() => onNewSession?.()}
-      />
-      <IconButton
-        name="search"
-        label="搜索会话"
-        testId="sidebar-search"
-        size={15}
-        hitSize={28}
-        radius={9999}
-        tooltip={false}
-        onClick={() => onSearch?.()}
+        onClick={() => onCollapse?.()}
       />
     </div>
   )
@@ -249,6 +236,7 @@ export function Sidebar({
   windowControls,
   version,
   onNewSession,
+  onCollapse,
 }: {
   store: ThreadStore
   settings: SettingsStore
@@ -258,8 +246,10 @@ export function Sidebar({
   windowControls?: WindowControls
   /** 脚右侧版本号（装配层注入） */
   version?: string
-  /** 头 ＋ 的目标（当前工作区；AgentPlane 算） */
+  /** nav「新建会话」的目标（当前工作区；AgentPlane 算） */
   onNewSession?: () => void
+  /** 头收起钮（⌘B 同效；窄窗口 = 关抽屉） */
+  onCollapse?: () => void
 }) {
   const [notifOpen, setNotifOpen] = useState(false)
   const { height: winH } = useWindowSize()
@@ -285,15 +275,10 @@ export function Sidebar({
         height: '100%',
       }}
     >
-      <SidebarHeader
-        platform={platform}
-        windowControls={windowControls}
-        onNewSession={onNewSession}
-        onSearch={() => dialog.openSearch()}
-      />
-      <WorkspaceList store={store} dialog={dialog} />
+      <SidebarHeader platform={platform} windowControls={windowControls} onCollapse={onCollapse} />
+      <WorkspaceList store={store} dialog={dialog} onNewSession={onNewSession} />
 
-      {/* 脚（.sb-foot：padding 8 10 12，无边框）：设置 + 通知铃（未读红点）+ 版本号 */}
+      {/* 脚（原型 .foot：padding 8 10 12 + 1px 顶部分隔线）：设置 + 通知铃（未读红点）+ 版本号 */}
       <div
         style={{
           display: 'flex',
@@ -304,6 +289,8 @@ export function Sidebar({
           paddingRight: 10,
           paddingTop: 8,
           paddingBottom: 12,
+          borderTopWidth: 1,
+          borderColor: COLORS.border,
           flexShrink: 0,
         }}
       >
@@ -350,9 +337,14 @@ export function Sidebar({
         {version ? (
           <text
             style={{
+              // 「v{version}」是两个 text 子节点——flex row 防竖排折行
+              display: 'flex',
+              flexDirection: 'row',
               fontSize: 11,
               fontFamily: FONT.ui,
               color: COLORS.faint,
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
               pointerEvents: 'none',
             }}
           >

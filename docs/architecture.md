@@ -81,9 +81,9 @@ j-agent/
 │       │   │                          #   memory history + useActiveTarget + 手动桥（R-V1）
 │       │   ├── keybindings.ts         #   全局键位层 + Keybindings 类型派生
 │       │   │                          #   （schema 单源）+ createKeyboardSlot
-│       │   ├── plane/                 #   AgentPlane / Sidebar / ThreadList /
-│       │   │                          #   ThreadRow / NewThreadButton / Pane +
-│       │   │                          #   planeKeyboard/dialogKeyboard（模块单例槽）
+│       │   ├── plane/                 #   AgentPlane / Sidebar / WorkspaceList /
+│       │   │                          #   ThreadRow / ContextMenu / RenameDialog /
+│       │   │                          #   Pane + planeKeyboard/dialogKeyboard（模块单例槽）
 │       │   ├── threads/               #   store.ts + terminal.ts + presets.ts +
 │       │   │                          #   events.ts（SessionEvent 窄化）+ chat.ts
 │       │   │                          #   （ChatAgent seam + EchoAgent，T3.2）+
@@ -571,13 +571,15 @@ function TerminalSurface({ thread, settings }: SurfaceProps) {
 App（useSyncExternalStore(threadStore) + useSettings()）
 └── AgentPlane                        // flex：sidebar 248px + pane 剩余
     ├── Sidebar
-    │   ├── SidebarHeader             // "AGENT" + Ctrl-Tab hint
-    │   ├── ThreadList
-    │   │   └── ThreadRow × N         // 图标(SVG) · displayTitle 单行 ellipsis+tooltip
-    │   │                             //   红点 / exited 标签 · hover/focus 关闭钮
-    │   │                             //   双击标题 → 行内 rename
-    │   ├── NewThreadButton           // [+ target ▾] anchored 菜单（settings.presets.items；target = plusDefault ?? lastUsedPreset ?? 首项，T3.1）
-    │   └── SidebarFooter             // 齿轮 → activate({type:'settings'})
+    │   ├── SidebarHeader             // 52px 头：红绿灯让位 + 收起钮（⌘B 同效）
+    │   ├── WorkspaceList             // nav 行组（新建会话/搜索）+ 工作区分组
+    │   │   ├── WorkspaceGroup × N    //   （pin 排序；「未归属」虚拟组殿后）
+    │   │   │   └── ThreadRow × N     //   组内 priority 排序 + 前 4 条截断
+    │   │   │                         //   状态点 / unread 加粗 / pin 图标
+    │   │   │                         //   「…」+ 右键同一面 ContextMenu
+    │   │   │                         //   双击标题 → 行内 rename
+    │   │   └── ContextMenu           //   Pin / Rename… / Mark as unread / Remove
+    │   └── SidebarFooter             // 齿轮 → activate({type:'settings'}) + 通知铃 + 版本号
     └── Pane（§4）
 ```
 
