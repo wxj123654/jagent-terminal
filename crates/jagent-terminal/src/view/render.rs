@@ -853,6 +853,55 @@ impl TerminalRenderer {
             }
         }
 
+        // 选区高亮：term.selection → SelectionRange（grid 坐标，行号为
+        // buffer 行、历史为负），换算回屏幕行后画半透明 quad。盖在文字
+        // 上的 tint 是终端惯例（alacritty/Zed 同款），不做反色。
+        if let Some(range) = term.selection.as_ref().and_then(|s| s.to_range(term)) {
+            let selection_color = default_fg.alpha(0.3);
+            for line_idx in 0..num_lines {
+                let line = Line(line_idx as i32 - display_offset);
+                if line < range.start.line || line > range.end.line {
+                    continue;
+                }
+                let (start_col, end_col) = if range.is_block {
+                    (range.start.column.0, range.end.column.0 + 1)
+                } else {
+                    let start = if line == range.start.line {
+                        range.start.column.0
+                    } else {
+                        0
+                    };
+                    let end = if line == range.end.line {
+                        range.end.column.0 + 1
+                    } else {
+                        num_cols
+                    };
+                    (start, end)
+                };
+                if start_col >= end_col || start_col >= num_cols {
+                    continue;
+                }
+                let end_col = end_col.min(num_cols);
+                window.paint_quad(quad(
+                    Bounds {
+                        origin: Point {
+                            x: origin.x + self.cell_width * (start_col as f32),
+                            y: origin.y + self.cell_height * (line_idx as f32),
+                        },
+                        size: Size {
+                            width: self.cell_width * ((end_col - start_col) as f32),
+                            height: self.cell_height,
+                        },
+                    },
+                    px(0.0),
+                    selection_color,
+                    Edges::<Pixels>::default(),
+                    transparent_black(),
+                    Default::default(),
+                ));
+            }
+        }
+
         // 光标位置提前取出：IME 组合文本与硬件光标都要用。
         let cursor_point = grid.cursor.point;
 

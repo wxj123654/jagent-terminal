@@ -26,12 +26,18 @@ pub use colors::ColorPalette;
 pub use input::keystroke_to_bytes;
 pub use render::TerminalRenderer;
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use alacritty_terminal::grid::{Dimensions, Scroll};
+use alacritty_terminal::index::{Column, Line, Point as AlacPoint, Side};
+use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::term::TermMode;
 use gpui::{
-    canvas, div, App, Bounds, Context, Entity, FocusHandle, InputHandler, InteractiveElement,
-    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ParentElement, Pixels, Render, ScrollDelta, ScrollWheelEvent, Styled, Subscription,
+    canvas, div, px, quad, transparent_black, App, Bounds, ClipboardItem, Context,
+    DispatchPhase, Edges, Entity, FocusHandle, InputHandler, InteractiveElement, IntoElement,
+    KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement,
+    Pixels, Point, Render, ScrollDelta, ScrollWheelEvent, Size, Styled, Subscription,
     UTF16Selection, Window,
 };
 
@@ -63,6 +69,40 @@ pub struct TerminalView {
     scroll_remainder_lines: f32,
     /// 当前 IME 组合态；None = 无组合（键盘直通）。
     ime_state: Option<ImeState>,
+    /// 左键拖拽选区进行中（本 view 发起的 selection drag）。
+    selecting: bool,
+    /// 滚动条拖拽：按下点相对 thumb 顶部的偏移；None = 未在拖。
+    scrollbar_drag: Option<Pixels>,
+    /// 本帧内容区几何（paint 阶段写入）：鼠标事件 → grid 坐标换算用。
+    content_metrics: Rc<Cell<Option<ContentMetrics>>>,
+    /// 本帧滚动条几何（paint 阶段写入）：命中测试与拖拽映射用。
+    scrollbar_layout: Rc<Cell<Option<ScrollbarLayout>>>,
+}
+
+/// 终端内容区几何快照（paint 阶段写入，事件阶段读取）。
+#[derive(Clone, Copy)]
+struct ContentMetrics {
+    /// 内容区左上角（padding 之后）的窗口坐标。
+    origin: Point<Pixels>,
+    cell_width: Pixels,
+    cell_height: Pixels,
+    cols: usize,
+    rows: usize,
+}
+
+/// 滚动条几何快照（paint 阶段写入，事件阶段读取）。
+#[derive(Clone, Copy)]
+struct ScrollbarLayout {
+    /// 命中区域（比可见轨道宽，方便抓取）。
+    hit: Bounds<Pixels>,
+    /// 滑块矩形。
+    thumb: Bounds<Pixels>,
+    /// 轨道顶部的窗口 y 坐标。
+    track_top: Pixels,
+    /// 轨道高度。
+    track_height: Pixels,
+    /// 最大回滚行数（display_offset 上限）。
+    max_offset: usize,
 }
 
 impl TerminalView {
@@ -117,6 +157,10 @@ impl TerminalView {
             blink_on: true,
             scroll_remainder_lines: 0.0,
             ime_state: None,
+            selecting: false,
+            scrollbar_drag: None,
+            content_metrics: Rc::new(Cell::new(None)),
+            scrollbar_layout: Rc::new(Cell::new(None)),
         }
     }
 
@@ -205,14 +249,185 @@ impl TerminalView {
         }
     }
 
-    fn on_mouse_down(&mut self, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+    /// 左键按下：优先命中滚动条（拖拽/翻页），否则开始/调整选区。
+    /// 选区语义与 Zed/alacritty 一致：单击 Simple、双击 Semantic（词）、
+    /// 三击 Lines（整行）、Shift+单击扩展现有选区。应用接管鼠标
+    /// （MOUSE_MODE，如 vim）时按住 Shift 才走本地选区，否则留给应用。
+    fn on_mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         self.focus_handle.focus(window, cx);
+
+        // 滚动条命中：拖拽 thumb 或点击轨道翻页。
+        if let Some(layout) = self.scrollbar_layout.get()
+            && layout.hit.contains(&event.position)
+        {
+            if layout.thumb.contains(&event.position) {
+                self.scrollbar_drag = Some(event.position.y - layout.thumb.origin.y);
+            } else {
+                let page = self
+                    .content_metrics
+                    .get()
+                    .map(|m| m.rows as i32)
+                    .unwrap_or(1)
+                    .max(1);
+                let delta = if event.position.y < layout.thumb.origin.y {
+                    page
+                } else {
+                    -page
+                };
+                self.model
+                    .read(cx)
+                    .with_term_mut(|term| term.scroll_display(Scroll::Delta(delta)));
+            }
+            cx.notify();
+            return;
+        }
+
+        let Some(metrics) = self.content_metrics.get() else {
+            cx.notify();
+            return;
+        };
+
+        let model = self.model.read(cx);
+        let mode = model.mode();
+        if mode.intersects(TermMode::MOUSE_MODE) && !event.modifiers.shift {
+            // 应用接管鼠标：不选区（鼠标上报待补），仅聚焦。
+            cx.notify();
+            return;
+        }
+
+        self.selecting = true;
+        model.with_term_mut(|term| {
+            let (point, side) = grid_point_and_side(
+                event.position,
+                metrics,
+                term.grid().display_offset(),
+            );
+            let selection_type = match event.click_count {
+                1 => SelectionType::Simple,
+                2 => SelectionType::Semantic,
+                _ => SelectionType::Lines,
+            };
+            if selection_type == SelectionType::Simple && event.modifiers.shift {
+                // Shift+单击：把现有选区扩展到点击处。
+                if let Some(selection) = term.selection.as_mut() {
+                    selection.update(point, side);
+                }
+            } else {
+                term.selection = Some(Selection::new(selection_type, point, side));
+            }
+        });
         cx.notify();
     }
 
-    fn on_mouse_up(&mut self, _event: &MouseUpEvent, _window: &mut Window, _cx: &mut Context<Self>) {}
+    /// 左键抬起：结束滚动条拖拽；选区非空则复制到剪贴板
+    /// （终端惯例 copy-on-release；当前没有显式 copy 快捷键路径）。
+    fn on_mouse_up(&mut self, _event: &MouseUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        self.scrollbar_drag = None;
+        if self.selecting {
+            self.selecting = false;
+            self.copy_selection(cx);
+        }
+    }
 
-    fn on_mouse_move(&mut self, _event: &MouseMoveEvent, _window: &mut Window, _cx: &mut Context<Self>) {}
+    /// 窗口级 mouse_move（paint 阶段注册）：拖拽越出元素 bounds 时仍能
+    /// 收到事件——选区拖到边界外自动滚动，滚动条拖拽同理。按钮已松开
+    /// （在窗外松开等场景）时兜底收尾选区。
+    fn handle_mouse_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
+        if event.pressed_button != Some(MouseButton::Left) {
+            if self.selecting {
+                self.selecting = false;
+                self.copy_selection(cx);
+            }
+            self.scrollbar_drag = None;
+            return;
+        }
+
+        if self.scrollbar_drag.is_some() {
+            self.update_scrollbar_drag(event.position, cx);
+            return;
+        }
+        if !self.selecting {
+            return;
+        }
+        let Some(metrics) = self.content_metrics.get() else {
+            return;
+        };
+
+        let changed = self.model.read(cx).with_term_mut(|term| {
+            let mut changed = false;
+            // 拖出内容区上下边界 → 自动滚动（alacritty 惯例：每事件约 5 行）。
+            let content_bottom = metrics.origin.y + metrics.cell_height * metrics.rows as f32;
+            let scroll_lines = if event.position.y > content_bottom {
+                -((event.position.y - content_bottom) / metrics.cell_height) as i32 - 1
+            } else if event.position.y < metrics.origin.y {
+                -((event.position.y - metrics.origin.y) / metrics.cell_height) as i32 + 1
+            } else {
+                0
+            };
+            if scroll_lines != 0 {
+                term.scroll_display(Scroll::Delta(scroll_lines.clamp(-5, 5)));
+                changed = true;
+            }
+            let (point, side) = grid_point_and_side(
+                event.position,
+                metrics,
+                term.grid().display_offset(),
+            );
+            // 同一 cell 内的移动不改变选区——跳过重绘。鼠标移动事件频率
+            // 可达数百 Hz，慢速拖拽时大部分事件落在同一格，去重能省掉
+            // 大量全量 repaint。
+            let before = term.selection.clone();
+            if let Some(selection) = term.selection.as_mut() {
+                selection.update(point, side);
+            }
+            changed || term.selection != before
+        });
+        if changed {
+            cx.notify();
+        }
+    }
+
+    /// 滚动条拖拽：thumb 位置 ↔ display_offset 线性映射。
+    fn update_scrollbar_drag(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        let (Some(grab_offset), Some(layout)) = (self.scrollbar_drag, self.scrollbar_layout.get())
+        else {
+            return;
+        };
+        let track_space: f32 = (layout.track_height - layout.thumb.size.height).into();
+        if track_space <= 0.0 || layout.max_offset == 0 {
+            return;
+        }
+        // thumb 位置公式是 frac = 1 - offset/max（顶部=最新、底部=最旧），
+        // 反解 display_offset 时要取 1 - frac。
+        let frac = ((position.y - layout.track_top - grab_offset) / px(track_space))
+            .clamp(0.0, 1.0);
+        let offset = ((1.0 - frac) * layout.max_offset as f32).round() as usize;
+        let changed = self.model.read(cx).with_term_mut(|term| {
+            let current = term.grid().display_offset();
+            if offset != current {
+                term.scroll_display(Scroll::Delta(offset as i32 - current as i32));
+                true
+            } else {
+                false
+            }
+        });
+        if changed {
+            cx.notify();
+        }
+    }
+
+    /// 当前选区文本写入剪贴板。
+    fn copy_selection(&mut self, cx: &mut Context<Self>) {
+        let text = self
+            .model
+            .read(cx)
+            .with_term(|term| term.selection_to_string());
+        if let Some(text) = text
+            && !text.is_empty()
+        {
+            cx.write_to_clipboard(ClipboardItem::new_string(text));
+        }
+    }
 
     /// 滚轮 → 两级路由：
     /// - 主屏（normal screen）：scroll_display 移动回滚视口；
@@ -259,6 +474,48 @@ trait Pipe: Sized {
 }
 impl<T> Pipe for T {}
 
+/// 窗口坐标 → grid 坐标 + 半格侧（左/右）。移植自 Zed
+/// `mappings/mouse.rs::grid_point_and_side`：pos 为窗口坐标，先减去
+/// 内容区 origin；display_offset 把屏幕行换算回 buffer 行（历史为负）。
+fn grid_point_and_side(
+    pos: Point<Pixels>,
+    metrics: ContentMetrics,
+    display_offset: usize,
+) -> (AlacPoint, Side) {
+    let rel = pos - metrics.origin;
+
+    let mut column = (rel.x / metrics.cell_width) as usize;
+    let cell_x = rel.x.max(px(0.0)) % metrics.cell_width;
+    let mut side = if cell_x > metrics.cell_width * 0.5 {
+        Side::Right
+    } else {
+        Side::Left
+    };
+
+    let last_column = metrics.cols.saturating_sub(1);
+    if column > last_column {
+        column = last_column;
+        side = Side::Right;
+    }
+
+    let mut line = (rel.y / metrics.cell_height) as i32;
+    let bottommost_line = metrics.rows.saturating_sub(1) as i32;
+    if line > bottommost_line {
+        line = bottommost_line;
+        side = Side::Right;
+    } else if line < 0 {
+        side = Side::Left;
+    }
+
+    (
+        AlacPoint::new(
+            Line(line.saturating_sub(display_offset as i32)),
+            Column(column),
+        ),
+        side,
+    )
+}
+
 /// 消费滚动行数：亚像素/不足一行的触控板 delta 跨事件累计；单事件最多
 /// 派发 3 行，丢弃异常大尖峰，防止 TUI 方向键/重绘洪泛。
 fn consume_scroll_lines(remainder: &mut f32, delta_lines: f32) -> i32 {
@@ -284,6 +541,8 @@ impl Render for TerminalView {
         // InputHandler（window.handle_input 要求 paint 阶段调用）。
         let this = cx.entity();
         let focus_handle = self.focus_handle.clone();
+        let content_metrics = self.content_metrics.clone();
+        let scrollbar_layout = self.scrollbar_layout.clone();
 
         div()
             .size_full()
@@ -291,8 +550,6 @@ impl Render for TerminalView {
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(Self::on_key_down))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
-            .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
-            .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_scroll_wheel(cx.listener(Self::on_scroll))
             .child(
                 canvas(
@@ -348,6 +605,44 @@ impl Render for TerminalView {
                             .as_ref()
                             .map(|s| s.marked_text.clone());
 
+                        // 鼠标事件 → grid 坐标换算所需的几何快照（事件
+                        // 阶段读不到 paint 局部变量，走 Rc<Cell> 传递）。
+                        content_metrics.set(Some(ContentMetrics {
+                            origin: Point {
+                                x: bounds.origin.x + padding.left,
+                                y: bounds.origin.y + padding.top,
+                            },
+                            cell_width: measured.cell_width,
+                            cell_height: measured.cell_height,
+                            cols,
+                            rows,
+                        }));
+
+                        // 拖拽选区/滚动条时鼠标可能越出元素 bounds，div 的
+                        // on_mouse_move/on_mouse_up 收不到；窗口级监听在
+                        // paint 阶段注册、下一帧有效（Zed terminal_element
+                        // 同款做法）。
+                        {
+                            let view = this.clone();
+                            window.on_mouse_event(
+                                move |e: &MouseMoveEvent, phase, _window, cx| {
+                                    if phase == DispatchPhase::Bubble {
+                                        view.update(cx, |v, cx| v.handle_mouse_move(e, cx));
+                                    }
+                                },
+                            );
+                            let view = this.clone();
+                            window.on_mouse_event(
+                                move |e: &MouseUpEvent, phase, _window, cx| {
+                                    if phase == DispatchPhase::Bubble
+                                        && e.button == MouseButton::Left
+                                    {
+                                        view.update(cx, |v, cx| v.on_mouse_up(e, _window, cx));
+                                    }
+                                },
+                            );
+                        }
+
                         let term = term_lock.lock();
                         measured.paint(
                             bounds,
@@ -357,6 +652,72 @@ impl Render for TerminalView {
                             window,
                             cx,
                         );
+
+                        // 滚动条：仅在有回滚历史时出现（alt screen 无历史
+                        // 不画）。轨道贴内容区右缘，命中区放宽到 12px。
+                        {
+                            let grid = term.grid();
+                            let history = grid.history_size();
+                            let screen_lines = grid.screen_lines();
+                            let display_offset = grid.display_offset();
+                            let total = history + screen_lines;
+                            if history > 0 {
+                                let track_top = bounds.origin.y + padding.top;
+                                let track_height =
+                                    bounds.size.height - padding.top - padding.bottom;
+                                let visible_frac =
+                                    screen_lines as f32 / total.max(1) as f32;
+                                let thumb_height = (track_height * visible_frac)
+                                    .max(px(20.0))
+                                    .min(track_height);
+                                let track_space = track_height - thumb_height;
+                                let frac = if history > 0 {
+                                    1.0 - display_offset as f32 / history as f32
+                                } else {
+                                    1.0
+                                };
+                                let thumb_top = track_top + track_space * frac;
+                                let track_right = bounds.origin.x + bounds.size.width
+                                    - padding.right;
+                                let thumb = Bounds {
+                                    origin: Point {
+                                        x: track_right - px(6.0),
+                                        y: thumb_top,
+                                    },
+                                    size: Size {
+                                        width: px(4.0),
+                                        height: thumb_height,
+                                    },
+                                };
+                                let hit = Bounds {
+                                    origin: Point {
+                                        x: track_right - px(12.0),
+                                        y: track_top,
+                                    },
+                                    size: Size {
+                                        width: px(12.0),
+                                        height: track_height,
+                                    },
+                                };
+                                scrollbar_layout.set(Some(ScrollbarLayout {
+                                    hit,
+                                    thumb,
+                                    track_top,
+                                    track_height,
+                                    max_offset: history,
+                                }));
+                                window.paint_quad(quad(
+                                    thumb,
+                                    px(2.0),
+                                    measured.palette.foreground().alpha(0.35),
+                                    Edges::<Pixels>::default(),
+                                    transparent_black(),
+                                    Default::default(),
+                                ));
+                            } else {
+                                scrollbar_layout.set(None);
+                            }
+                        }
                     },
                 )
                 .size_full(),
