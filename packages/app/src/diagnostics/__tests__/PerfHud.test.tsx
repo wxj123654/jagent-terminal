@@ -123,7 +123,7 @@ describe('PerfHud · win 布局组合', () => {
     const closeB = t.renderer.getElementBounds(close.id)!
 
     // HUD 完整落在 close 左侧（右缘 < close 左缘），且在同一顶栏高度带
-    expect(hudB[0] + hudB[2]).toBeLessThanOrEqual(closeB[0])
-    expect(hudB[1]).toBeGreaterThanOrEqual(0)
+    expect(hudB.x + hudB.width).toBeLessThanOrEqual(closeB.x)
+    expect(hudB.y).toBeGreaterThanOrEqual(0)
   })
 })

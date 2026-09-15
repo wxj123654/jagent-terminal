@@ -44,7 +44,7 @@ function boundsOf(testId: string): number[] {
   expect(el, `element not found: ${testId}`).toBeDefined()
   const b = t.renderer.getElementBounds(el!.id)
   expect(b, `bounds not found: ${testId}`).toBeDefined()
-  return b!
+  return [b!.x, b!.y, b!.width, b!.height]
 }
 
 /** V2 两列骨架：左列头（侧栏代理）+ 主列（工具栏撑满剩余宽） */

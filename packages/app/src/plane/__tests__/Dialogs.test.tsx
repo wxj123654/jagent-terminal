@@ -46,7 +46,7 @@ function clickCenter(testId: string, preRefocus = false) {
   const el = t.renderer.findByTestId(testId)
   if (!el) throw new Error(`element not found: ${testId}`)
   const b = t.renderer.getElementBounds(el.id)!
-  t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2, 0)
+  t.renderer.nativeSimulateClick(b.x + b.width / 2, b.y + b.height / 2, 0)
   t.renderer.flush()
 }
 
@@ -219,7 +219,7 @@ describe('ToolDialog 工作区切换', () => {
     // 双工作区 → Select 在场；打开下拉选 beta
     const trigger = t.renderer.findByTestId('tool-dialog-workspace')!
     const tb = t.renderer.getElementBounds(trigger.id)!
-    t.renderer.nativeSimulateClick(tb[0] + tb[2] / 2, tb[1] + tb[3] / 2, 0)
+    t.renderer.nativeSimulateClick(tb.x + tb.width / 2, tb.y + tb.height / 2, 0)
     t.renderer.flush()
     await until('select menu open', () => {
       // gpuix Select 菜单项（value=beta）
@@ -284,9 +284,9 @@ describe('Modal 窄窗钳制（D18）', () => {
     const card = narrowRoot.renderer.getElementBounds(
       narrowRoot.renderer.findByTestId('modal-card')!.id,
     )!
-    expect(card[2]).toBeLessThanOrEqual(360 - 24 + 1) // 宽 ≤ vw-24（含取整余量）
-    expect(card[0]).toBeGreaterThanOrEqual(12)
-    expect(card[0] + card[2]).toBeLessThanOrEqual(360 + 1)
+    expect(card.width).toBeLessThanOrEqual(360 - 24 + 1) // 宽 ≤ vw-24（含取整余量）
+    expect(card.x).toBeGreaterThanOrEqual(12)
+    expect(card.x + card.width).toBeLessThanOrEqual(360 + 1)
     narrowRoot.unmount()
   })
 })

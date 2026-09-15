@@ -36,7 +36,7 @@ function click(testId: string): void {
   expect(el, `not found: ${testId}`).toBeDefined()
   const b = t.renderer.getElementBounds(el!.id)
   expect(b, `no bounds: ${testId}`).toBeDefined()
-  t.renderer.nativeSimulateClick(b![0] + b![2] / 2, b![1] + b![3] / 2)
+  t.renderer.nativeSimulateClick(b!.x + b!.width / 2, b!.y + b!.height / 2)
 }
 
 function exists(testId: string): boolean {

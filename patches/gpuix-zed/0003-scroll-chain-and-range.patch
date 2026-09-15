@@ -1,5 +1,5 @@
 diff --git a/crates/gpui/src/elements/div.rs b/crates/gpui/src/elements/div.rs
-index ff7e6c2..83d3bd3 100644
+index ff7e6c29..83d3bd3e 100644
 --- a/crates/gpui/src/elements/div.rs
 +++ b/crates/gpui/src/elements/div.rs
 @@ -1914,6 +1914,21 @@ impl Element for Div {
@@ -339,7 +339,7 @@ index ff7e6c2..83d3bd3 100644
 +    }
  }
 diff --git a/crates/gpui/src/elements/list.rs b/crates/gpui/src/elements/list.rs
-index 55eb6c2..35a22bb 100644
+index 55eb6c21..35a22bbd 100644
 --- a/crates/gpui/src/elements/list.rs
 +++ b/crates/gpui/src/elements/list.rs
 @@ -905,25 +905,47 @@ impl StateInner {
@@ -441,7 +441,7 @@ index 55eb6c2..35a22bb 100644
          });
  
 diff --git a/crates/gpui/src/taffy.rs b/crates/gpui/src/taffy.rs
-index b9e583a..e65e64a 100644
+index b9e583a8..e65e64a3 100644
 --- a/crates/gpui/src/taffy.rs
 +++ b/crates/gpui/src/taffy.rs
 @@ -342,6 +342,14 @@ impl TaffyLayoutEngine {
@@ -460,7 +460,7 @@ index b9e583a..e65e64a 100644
          if let Some(layout) = self.absolute_layout_bounds.get(&id).cloned() {
              return layout;
 diff --git a/crates/gpui/src/window.rs b/crates/gpui/src/window.rs
-index 3ce13fd..1f52893 100644
+index 3e550402..1117c73f 100644
 --- a/crates/gpui/src/window.rs
 +++ b/crates/gpui/src/window.rs
 @@ -16,10 +16,11 @@ use crate::{
@@ -517,7 +517,7 @@ index 3ce13fd..1f52893 100644
  /// Represents the two different phases when dispatching events.
  #[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
  pub enum DispatchPhase {
-@@ -1201,6 +1235,8 @@ pub struct Window {
+@@ -1206,6 +1240,8 @@ pub struct Window {
      pub(crate) pending_input_observers: SubscriberSet<(), AnyObserver>,
      prompt: Option<RenderablePromptHandle>,
      pub(crate) client_inset: Option<Pixels>,
@@ -526,7 +526,7 @@ index 3ce13fd..1f52893 100644
      /// The hitbox that has captured the pointer, if any.
      /// While captured, mouse events route to this hitbox regardless of hit testing.
      captured_hitbox: Option<HitboxId>,
-@@ -1891,6 +1927,7 @@ impl Window {
+@@ -1896,6 +1932,7 @@ impl Window {
              pending_input_observers: SubscriberSet::new(),
              prompt: None,
              client_inset: None,
@@ -534,7 +534,7 @@ index 3ce13fd..1f52893 100644
              image_cache_stack: Vec::new(),
              captured_hitbox: None,
              captured_identity: None,
-@@ -4801,6 +4838,21 @@ impl Window {
+@@ -4913,6 +4950,21 @@ impl Window {
          bounds
      }
  
@@ -556,7 +556,7 @@ index 3ce13fd..1f52893 100644
      /// This method should be called during `prepaint`. You can use
      /// the returned [Hitbox] during `paint` or in an event handler
      /// to determine whether the inserted hitbox was the topmost.
-@@ -5284,6 +5336,68 @@ impl Window {
+@@ -5396,6 +5448,68 @@ impl Window {
          }
      }
  

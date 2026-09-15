@@ -36,7 +36,7 @@ function click(testId: string): void {
   expect(el, `not found: ${testId}`).toBeDefined()
   const b = t.renderer.getElementBounds(el!.id)
   expect(b, `no bounds: ${testId}`).toBeDefined()
-  t.renderer.nativeSimulateClick(b![0] + b![2] / 2, b![1] + b![3] / 2)
+  t.renderer.nativeSimulateClick(b!.x + b!.width / 2, b!.y + b!.height / 2)
 }
 
 function texts(): string {
@@ -130,7 +130,7 @@ describe('SettingsView · core（§15 1/2/4 部分）', () => {
   function clickCap(testId: string): void {
     const el = t.renderer.findByTestId(testId)!
     const b = t.renderer.getElementBounds(el.id)!
-    t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2)
+    t.renderer.nativeSimulateClick(b.x + b.width / 2, b.y + b.height / 2)
   }
 
   test('改键：点击捕获格 → 按组合 → 即时写入 + 蓝点 + reset 恢复', async () => {
@@ -320,10 +320,10 @@ describe('SettingsView · scroll containment', () => {
 
       let scroll = constrained.renderer.findByTestId('settings-content-scroll')!
       let bounds = constrained.renderer.getElementBounds(scroll.id)!
-      expect(bounds[3]).toBe(500)
+      expect(bounds.height).toBe(500)
       constrained.renderer.nativeSimulateScrollWheel(
-        bounds[0] + bounds[2] / 2,
-        bounds[1] + 100,
+        bounds.x + bounds.width / 2,
+        bounds.y + 100,
         0,
         -1000,
       )
@@ -333,10 +333,10 @@ describe('SettingsView · scroll containment', () => {
       constrained.renderer.flush()
       scroll = constrained.renderer.findByTestId('settings-content-scroll')!
       bounds = constrained.renderer.getElementBounds(scroll.id)!
-      expect(bounds[3]).toBe(300)
+      expect(bounds.height).toBe(300)
       constrained.renderer.nativeSimulateScrollWheel(
-        bounds[0] + bounds[2] / 2,
-        bounds[1] + 100,
+        bounds.x + bounds.width / 2,
+        bounds.y + 100,
         0,
         -1000,
       )

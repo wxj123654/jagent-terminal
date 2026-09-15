@@ -32,7 +32,7 @@ function boundsOf(testId: string): number[] {
   expect(el, `element not found: ${testId}`).toBeDefined()
   const b = t.renderer.getElementBounds(el!.id)
   expect(b, `no bounds: ${testId}`).toBeDefined()
-  return b!
+  return [b!.x, b!.y, b!.width, b!.height]
 }
 
 function click(testId: string): void {
@@ -133,7 +133,7 @@ describe('SearchSelect', () => {
     expect(t.renderer.getPaintedText().length).toBeLessThan(30)
     // 行宽撑满弹层（virtual-list 子项不默认 stretch，width:'100%' 兜底）
     const row = t.renderer.findByTestId('ss-item-Font 3')!
-    expect(t.renderer.getElementBounds(row.id)![2]).toBeGreaterThan(250)
+    expect(t.renderer.getElementBounds(row.id)!.width).toBeGreaterThan(250)
     // 高亮跟随：连按 20 次 ↓，视口应滚动到高亮项附近
     const input = t.renderer.findByTestId('ss-search')!
     for (let i = 0; i < 20; i++) t.renderer.nativeSimulateKeyDown(input.id, 'down')

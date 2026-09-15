@@ -231,10 +231,10 @@ describe('GitGraphView 渲染与选中', () => {
     expect(b0).toBeDefined()
     expect(bd).toBeDefined()
     expect(b1).toBeDefined()
-    expect(b0![3]).toBeLessThanOrEqual(30)
-    expect(bd![3]).toBeGreaterThan(100)
-    expect(bd![1]).toBeGreaterThanOrEqual(b0![1] + b0![3] - 1)
-    expect(b1![1]).toBeGreaterThanOrEqual(bd![1] + bd![3] - 1)
+    expect(b0!.height).toBeLessThanOrEqual(30)
+    expect(bd!.height).toBeGreaterThan(100)
+    expect(bd!.y).toBeGreaterThanOrEqual(b0!.y + b0!.height - 1)
+    expect(b1!.y).toBeGreaterThanOrEqual(bd!.y + bd!.height - 1)
   })
 
   test('CDV 左栏元数据与右栏文件树分栏，长路径不盖住统计', async () => {
@@ -278,7 +278,7 @@ describe('GitGraphView 渲染与选中', () => {
       }),
     )
     t.renderer.flush()
-    await click('workspace-tab-git')
+    store.setWorkspacePaneTab(store.getState().workspaces[0]!.id, 'git')
     await until(10)
     pushChunk?.([c('c3', ['c2']), c('c2', ['c1']), c('c1', [])])
     finishLog?.(true)

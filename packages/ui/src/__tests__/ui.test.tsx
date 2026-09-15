@@ -39,7 +39,7 @@ function boundsOf(testId: string): number[] {
   expect(el, `element not found: ${testId}`).toBeDefined()
   const b = t.renderer.getElementBounds(el!.id)
   expect(b, `no bounds: ${testId}`).toBeDefined()
-  return b!
+  return [b!.x, b!.y, b!.width, b!.height]
 }
 
 /** 坐标点击（中心点，走 GPUI hit-test 全管线） */
@@ -306,7 +306,8 @@ describe('TextInput / Textarea', () => {
         }),
       )
       t.renderer.flush()
-      return t.renderer.getElementBounds(t.renderer.findByTestId('line-height-textarea')!.id)![3]
+      return t.renderer.getElementBounds(t.renderer.findByTestId('line-height-textarea')!.id)!
+        .height
     }
 
     expect(render(17)).toBe(51)

@@ -34,7 +34,7 @@ function boundsOf(testId: string): number[] {
   expect(el, `element not found: ${testId}`).toBeDefined()
   const b = t.renderer.getElementBounds(el!.id)
   expect(b, `no bounds: ${testId}`).toBeDefined()
-  return b!
+  return [b!.x, b!.y, b!.width, b!.height]
 }
 
 function click(testId: string): void {

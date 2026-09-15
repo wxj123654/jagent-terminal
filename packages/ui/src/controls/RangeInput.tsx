@@ -25,14 +25,16 @@ type Bounds = { left: number; width: number }
 /** 拖动中 onChange 合帧窗口（≤60Hz；帧率上限本就 60Hz，视觉无差） */
 const FRAME_MS = 16
 
-/** 鸭子调用 renderer.getElementBounds（NativeRenderer 接口未列，两个实现都有） */
+/** 鸭子调用 renderer.getElementBounds（NativeRenderer 接口已声明，两个实现都有） */
 function trackBounds(renderer: unknown, id: number | undefined): Bounds | null {
   if (!renderer || id == null) return null
-  const get = (renderer as { getElementBounds?: (id: number) => number[] | null }).getElementBounds
+  const get = (
+    renderer as { getElementBounds?: (id: number) => { x: number; width: number } | null }
+  ).getElementBounds
   if (typeof get !== 'function') return null
   const b = get.call(renderer, id)
-  if (!Array.isArray(b) || b.length < 4 || b[2] <= 0) return null
-  return { left: b[0] as number, width: b[2] as number }
+  if (!b || b.width <= 0) return null
+  return { left: b.x, width: b.width }
 }
 
 export function RangeInput({

@@ -96,7 +96,7 @@ async function until(desc: string, pred: () => boolean, timeoutMs = 2000): Promi
 function clickAt(testId: string): void {
   const el = t.renderer.findByTestId(testId)!
   const b = t.renderer.getElementBounds(el.id)!
-  t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2)
+  t.renderer.nativeSimulateClick(b.x + b.width / 2, b.y + b.height / 2)
 }
 
 describe('ChatSurface', () => {

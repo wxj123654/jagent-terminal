@@ -22,7 +22,7 @@ export 与 setup 复用 `scripts/refs-state.ts`，导出也拒绝 staged 或未�
 
 ## 剩余补丁（gpuix 2 份 + gpuix-zed 3 份）
 
-### gpuix/（pin `6b4be86` @ remorses/gpuix）
+### gpuix/（pin `d85a31e` @ remorses/gpuix）
 
 `0002-jagent-native-seam.patch` 包含：
 
@@ -33,8 +33,9 @@ export 与 setup 复用 `scripts/refs-state.ts`，导出也拒绝 staged 或未�
 - `renderer.rs`、`style.rs`：自绘标题栏原生方法及 WindowControlArea 命中支持。
   **本批只迁走 TS 声明，Rust 标题栏实现未迁移。**
 - `renderer.rs`：纵向 `overflow-y: scroll` 限制到输入轴，避免横向滚轮被转成纵向位移。
-- `custom_elements/input.rs`：测量布局使用捕获的文本样式计算行高，而不是取
-  已退出元素样式栈的 window 默认行高。caret、选区和 textarea 高度依赖此修复。
+
+> 注：原 `custom_elements/input.rs` 行高修复（测量布局用捕获的文本样式而非
+> window 默认行高）在上游 `18e695e` 已落地等价实现，本 patch 不再含该文件。
 
 `0003-bounds-tracker-inset.patch` 包含：
 
@@ -48,7 +49,7 @@ export 与 setup 复用 `scripts/refs-state.ts`，导出也拒绝 staged 或未�
   （gpuix-zed `0003` 的范围算法已把 absolute 子元素按自身边缘计算，单看它也能消除这
   个多出的范围；两处都改是为了不依赖上游未合并 PR 的行为，并让 bounds 记录回到元素自身盒。）
 
-### gpuix-zed/（gpuix gitlink pin `1f9d1cd` @ remorses/zed）
+### gpuix-zed/（gpuix gitlink pin `81c99f81` @ remorses/zed）
 
 | patch | 必要性 |
 |---|---|

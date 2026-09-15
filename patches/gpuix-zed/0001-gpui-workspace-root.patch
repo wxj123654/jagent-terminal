@@ -1,5 +1,5 @@
 diff --git a/crates/gpui/Cargo.toml b/crates/gpui/Cargo.toml
-index 13cd4e8..71aeac7 100644
+index 13cd4e8e..71aeac71 100644
 --- a/crates/gpui/Cargo.toml
 +++ b/crates/gpui/Cargo.toml
 @@ -1,6 +1,11 @@

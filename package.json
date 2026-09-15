@@ -7,6 +7,8 @@
   ],
   "scripts": {
     "setup-refs": "bun run scripts/setup-refs.ts",
+    "dev": "bun run --filter @jagent/native build && bun run --filter @jagent/app dev",
+    "dev:debug": "bun run --filter @jagent/native build:debug && bun run --filter @jagent/app dev",
     "build": "bun run scripts/build.ts",
     "icons": "bun run scripts/generate-icons.ts",
     "export-patches": "bun run scripts/export-patches.ts",

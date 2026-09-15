@@ -296,18 +296,10 @@ test('padded scroll containers expose no phantom scroll range', () => {
     const child = t.renderer.findByType('div').find((d) => d.testId === 'fitting-child')!
 
     // 记录盒是元素自己的盒子：padding 只内缩子元素，不再整体偏移元素原点。
-    expect(
-      t.renderer
-        .getElementBounds(fitting.id)!
-        .slice(0, 2)
-        .map((v) => v + 0),
-    ).toEqual([0, 0])
-    expect(
-      t.renderer
-        .getElementBounds(child.id)!
-        .slice(0, 2)
-        .map((v) => v + 0),
-    ).toEqual([10, 10])
+    const fb = t.renderer.getElementBounds(fitting.id)!
+    expect([fb.x, fb.y]).toEqual([0, 0])
+    const cb = t.renderer.getElementBounds(child.id)!
+    expect([cb.x, cb.y]).toEqual([10, 10])
 
     // 曾经的幽灵滚动量恰等于 padding 总和（10*2 = 20），现在没有范围。
     t.renderer.scrollTo(fitting.id, -100000, -100000)

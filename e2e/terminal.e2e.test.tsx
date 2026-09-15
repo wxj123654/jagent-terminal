@@ -349,7 +349,7 @@ describe('T1.6 e2e: two PTYs · retain · bell · exit · close · focus', () =>
       const el = t.renderer.findByTestId(`row-${target.id}`)!
       const b = t.renderer.getElementBounds(el.id)!
       expect(currentActiveThreadId()).not.toBe(target.id)
-      t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2)
+      t.renderer.nativeSimulateClick(b.x + b.width / 2, b.y + b.height / 2)
 
       await until('click on row text activates thread', () => currentActiveThreadId() === target.id)
     },
@@ -500,7 +500,7 @@ describe('T3.2 e2e: chat 全链（菜单入口 → ChatSurface → echo 回复 �
       // ① + 菜单展开：预设项 + 固定 New Chat（分隔线下）
       const menuBtn = t.renderer.findByTestId(`new-menu-${e2eWorkspace.id}`)!
       const mb = t.renderer.getElementBounds(menuBtn.id)!
-      t.renderer.nativeSimulateClick(mb[0] + mb[2] / 2, mb[1] + mb[3] / 2)
+      t.renderer.nativeSimulateClick(mb.x + mb.width / 2, mb.y + mb.height / 2)
       await until('preset menu open with New Chat item', () => {
         const item = t.renderer.findByTestId('new-chat')
         return item !== undefined && t.renderer.getElementBounds(item.id) != null
@@ -509,7 +509,7 @@ describe('T3.2 e2e: chat 全链（菜单入口 → ChatSurface → echo 回复 �
       // ② 点击 New Chat → ChatSurface 挂载（CHAT pill + composer autoFocus）
       const item = t.renderer.findByTestId('new-chat')!
       const ib = t.renderer.getElementBounds(item.id)!
-      t.renderer.nativeSimulateClick(ib[0] + ib[2] / 2, ib[1] + ib[3] / 2)
+      t.renderer.nativeSimulateClick(ib.x + ib.width / 2, ib.y + ib.height / 2)
       const chatId = currentActiveThreadId()
       expect(chatId).toMatch(/^c/)
       await until('chat surface mounted', () => {
@@ -581,7 +581,7 @@ describe('T3+.1 e2e: ACP 全链（菜单入口 → AcpSurface → 真子进程 J
       // ② 菜单展开 → agent 项（分隔线下，New Chat 之后）
       const menuBtn = t.renderer.findByTestId(`new-menu-${e2eWorkspace.id}`)!
       const mb = t.renderer.getElementBounds(menuBtn.id)!
-      t.renderer.nativeSimulateClick(mb[0] + mb[2] / 2, mb[1] + mb[3] / 2)
+      t.renderer.nativeSimulateClick(mb.x + mb.width / 2, mb.y + mb.height / 2)
       await until('agent entry in menu', () => {
         const item = t.renderer.findByTestId('new-acp-e2e-fake')
         return item !== undefined && t.renderer.getElementBounds(item.id) != null
@@ -590,7 +590,7 @@ describe('T3+.1 e2e: ACP 全链（菜单入口 → AcpSurface → 真子进程 J
       // ③ 点击 → AcpSurface 挂载（ACP pill + 标题 = label）
       const item = t.renderer.findByTestId('new-acp-e2e-fake')!
       const ib = t.renderer.getElementBounds(item.id)!
-      t.renderer.nativeSimulateClick(ib[0] + ib[2] / 2, ib[1] + ib[3] / 2)
+      t.renderer.nativeSimulateClick(ib.x + ib.width / 2, ib.y + ib.height / 2)
       const acpId = currentActiveThreadId()
       expect(acpId).toMatch(/^a/)
       await until('acp surface mounted', () => {
@@ -671,7 +671,7 @@ describe('T3+.2 e2e: 键位可编辑（捕获格 → 即时生效 → Advanced J
       const adv = () => t.renderer.findByTestId('nav-advanced')
       const a = adv()!
       const b = t.renderer.getElementBounds(a.id)!
-      t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2)
+      t.renderer.nativeSimulateClick(b.x + b.width / 2, b.y + b.height / 2)
       await until(
         'json view visible',
         () => t.renderer.findByTestId('settings-json-view') !== undefined,
@@ -817,7 +817,7 @@ describe('Phase W e2e: 工作区全链', () => {
       // 关闭收尾（V2 命令面板无 X 钮——遮罩点击；点左上角落避开卡片）
       const scrim = t.renderer.findByTestId('modal-scrim')!
       const cb = t.renderer.getElementBounds(scrim.id)!
-      t.renderer.nativeSimulateClick(cb[0] + 4, cb[1] + 4, 0)
+      t.renderer.nativeSimulateClick(cb.x + 4, cb.y + 4, 0)
       await until('search dialog closed', () => t.renderer.findByTestId('modal-card') == null)
       // 无 PTY 泄漏：两工作区 shell 会话仍在（未被误关/误写崩溃）
       const terms = store.getState().threads.filter((x) => x.kind === 'terminal')

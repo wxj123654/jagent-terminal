@@ -196,7 +196,7 @@ describe('WorkspaceList：分组树', () => {
       const more = t.renderer.findByTestId(`load-more-${wsA}`)
       expect(more).toBeDefined()
       const b = t.renderer.getElementBounds(more!.id)!
-      t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2, 0)
+      t.renderer.nativeSimulateClick(b.x + b.width / 2, b.y + b.height / 2, 0)
       t.renderer.flush()
       await until('expanded', () =>
         made.every((id) => t.renderer.findByTestId(`row-${id}`) != null),
@@ -251,7 +251,7 @@ describe('WorkspaceList：分组树', () => {
     await until('session row visible', () => t.renderer.findByTestId(`row-${tid}`) != null)
     const rowB = t.renderer.getElementBounds(t.renderer.findByTestId(`row-${tid}`)!.id)!
     const wsRowB = t.renderer.getElementBounds(t.renderer.findByTestId(`workspace-${wsA}`)!.id)!
-    expect(rowB[0]).toBeGreaterThan(wsRowB[0])
+    expect(rowB.x).toBeGreaterThan(wsRowB.x)
     store.close(tid)
     t.renderer.flush()
   })
@@ -592,7 +592,7 @@ describe('WorkspaceList：方案 C 结构', () => {
     const row = t.renderer.findByTestId(`row-${tid}`)!
     const b = t.renderer.getElementBounds(row.id)!
     // 右键（button=2）→ auxClick → 菜单
-    t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2, 2)
+    t.renderer.nativeSimulateClick(b.x + b.width / 2, b.y + b.height / 2, 2)
     t.renderer.flush()
     await until('context menu open', () => t.renderer.findByTestId('context-menu') != null)
     clickCenter('ctx-remove')
@@ -620,7 +620,7 @@ describe('WorkspaceList：方案 C 结构', () => {
     await until('ws rows visible', () => t.renderer.findByTestId(`workspace-${wsB}`) != null)
     const aB = t.renderer.getElementBounds(t.renderer.findByTestId(`workspace-${wsA}`)!.id)!
     const bB = t.renderer.getElementBounds(t.renderer.findByTestId(`workspace-${wsB}`)!.id)!
-    expect(bB[1]).toBeLessThan(aB[1]) // pin 的 beta 在 alpha 上方
+    expect(bB.y).toBeLessThan(aB.y) // pin 的 beta 在 alpha 上方
     store.setWorkspacePinned(wsB, false)
     t.renderer.flush()
   })

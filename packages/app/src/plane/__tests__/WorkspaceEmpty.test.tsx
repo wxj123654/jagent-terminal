@@ -78,7 +78,7 @@ function clickCenter(testId: string) {
   const el = t.renderer.findByTestId(testId)
   if (!el) throw new Error(`element not found: ${testId}`)
   const b = t.renderer.getElementBounds(el.id)!
-  t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2, 0)
+  t.renderer.nativeSimulateClick(b.x + b.width / 2, b.y + b.height / 2, 0)
   t.renderer.flush()
 }
 

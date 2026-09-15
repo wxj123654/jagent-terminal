@@ -918,7 +918,7 @@ export function GitGraphView({
       const el = rootRef.current
       if (!el) return
       const b = renderer?.getElementBounds?.(el.id)
-      if (b && b[2] > 0) setPaneW((prev) => (prev === b[2] ? prev : b[2]))
+      if (b && b.width > 0) setPaneW((prev) => (prev === b.width ? prev : b.width))
     }
     read()
     const id = setInterval(read, 100)
