@@ -4,8 +4,8 @@
  * 真 createThreadStore（fake deps + 两个初始工作区）+ TestGpuixRenderer。
  * 覆盖：分组渲染与缩进 · 箭头 toggle（不激活）/ 点行激活 · ＋ 工具菜单
  * （目标工作区头 + spawn 归属）· 添加工作区内联表单。
- * 双击重命名工作区不可测（TestRenderer click_count 恒 1，TitleBar 已知
- * 限制）；rename 规则在 store.test 已覆盖。跨工作区搜索在 W7 起归
+ * 重命名走上下文菜单 Rename… → RenameDialog（行内双击编辑已移除）；
+ * rename 规则在 store.test 已覆盖。跨工作区搜索在 W7 起归
  * SearchDialog（workspaces.searchThreads 单测覆盖查询语义）。
  */
 

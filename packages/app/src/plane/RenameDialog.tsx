@@ -4,8 +4,8 @@
  *
  * 上下文菜单 Rename… 的二级交互；会话（terminal customTitle / chat·acp
  * title）与工作区共用一壳——目标经 DialogHost 的 rename kind 传入。
- * 行内双击重命名保留（ThreadRow/WorkspaceGroup 局部编辑），本弹窗是
- * 菜单路径的正式入口。
+ * 重命名唯一入口（行内双击编辑已移除）。输入框 autoFocus：deferred 层
+ * 点击聚焦不可靠（W7 实测），弹窗主输入必须挂载即聚焦。
  */
 
 import { useState } from 'react'
@@ -65,6 +65,7 @@ export function RenameDialog({
           onChange={setName}
           onSubmit={commit}
           width="fill"
+          autoFocus
         />
         <ModalActions
           actions={[

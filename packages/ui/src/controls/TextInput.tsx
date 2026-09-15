@@ -26,6 +26,7 @@ export function TextInput({
   onSubmit,
   testId,
   width = 220,
+  autoFocus = false,
 }: {
   value: string
   placeholder?: string
@@ -37,6 +38,8 @@ export function TextInput({
   testId: string
   /** 宽度：数字 = 固定 px；'fill' = 撑满容器（弹窗表单） */
   width?: number | 'fill'
+  /** 挂载即聚焦（弹窗内主输入框；deferred 层点击聚焦不可靠，弹窗输入必须 autoFocus） */
+  autoFocus?: boolean
 }): ReactElement {
   const [focused, setFocused] = useState(false)
 
@@ -61,7 +64,7 @@ export function TextInput({
     >
       <input
         testId={testId}
-        autoFocus={false}
+        autoFocus={autoFocus}
         value={value}
         placeholder={placeholder}
         readOnly={disabled}

@@ -647,8 +647,6 @@ function WorkspaceGroup({
       return s.threads.find((t) => t.id === active.id)?.workspaceId === workspaceId
     return false
   })
-  const [renaming, setRenaming] = useState(false)
-  const [draft, setDraft] = useState('')
   const [hovered, setHovered] = useState(false)
   /** 行内按钮 → 行 onClick 抑制（本行实例；同批 click 消费一次） */
   const skipRow = useRef(false)
@@ -680,25 +678,19 @@ function WorkspaceGroup({
           userSelect: 'none',
         }}
       >
-        {/* .ws-name（chev + folder + 名 + dot5）：点行激活，双击重命名 */}
+        {/* .ws-name（chev + folder + 名 + dot5）：点行激活；重命名走菜单 Rename… */}
         <div
           testId={`workspace-${ws.id}`}
           tabIndex={0}
-          onClick={(e) => {
+          onClick={() => {
             if (skipRow.current) {
               skipRow.current = false
               return
             }
-            if (e.clickCount === 2) {
-              setDraft(ws.name)
-              setRenaming(true)
-              return
-            }
-            if (renaming) return
             store.activateWorkspace(ws.id)
           }}
           onKeyDown={(e) => {
-            if (e.key === 'enter' && !renaming) store.activateWorkspace(ws.id)
+            if (e.key === 'enter') store.activateWorkspace(ws.id)
           }}
           style={{
             display: 'flex',
@@ -741,70 +733,36 @@ function WorkspaceGroup({
             />
           </div>
           <Icon name="folder" size={14} color={COLORS.muted} />
-          {renaming ? (
-            <input
-              autoFocus
-              testId={`workspace-rename-${ws.id}`}
-              value={draft}
-              onChange={(e) => setDraft(e.value ?? draft)}
-              onKeyDown={(e) => {
-                if (e.key === 'enter') {
-                  store.renameWorkspace(ws.id, draft)
-                  setRenaming(false)
-                } else if (e.key === 'escape') setRenaming(false)
-              }}
-              onBlur={() => {
-                store.renameWorkspace(ws.id, draft)
-                setRenaming(false)
-              }}
+          <text
+            testId={`workspace-name-${ws.id}`}
+            style={{
+              flexGrow: 1,
+              minWidth: 0,
+              fontSize: 13,
+              fontFamily: FONT.ui,
+              fontWeight: '500',
+              // 原型 .ws-row.cur .name：当前工作区名提亮
+              color: isCurrent ? COLORS.textBright : COLORS.text,
+              whiteSpace: 'nowrap',
+              textOverflow: 'ellipsis',
+              overflow: 'hidden',
+              pointerEvents: 'none',
+            }}
+          >
+            {ws.name}
+          </text>
+          {/* 当前工作区 5px 状态点（原型 .cur-dot） */}
+          {isCurrent ? (
+            <div
               style={{
-                flexGrow: 1,
-                height: 18,
-                fontSize: 11,
-                fontFamily: FONT.ui,
-                color: COLORS.textBright,
-                backgroundColor: COLORS.inputBg,
-                borderWidth: 1,
-                borderColor: COLORS.focusBorder,
-                borderRadius: 3,
-                paddingLeft: 4,
-                paddingRight: 4,
+                width: 5,
+                height: 5,
+                borderRadius: 9999,
+                backgroundColor: COLORS.g300,
+                flexShrink: 0,
               }}
             />
-          ) : (
-            <>
-              <text
-                testId={`workspace-name-${ws.id}`}
-                style={{
-                  flexGrow: 1,
-                  minWidth: 0,
-                  fontSize: 13,
-                  fontFamily: FONT.ui,
-                  fontWeight: '500',
-                  // 原型 .ws-row.cur .name：当前工作区名提亮
-                  color: isCurrent ? COLORS.textBright : COLORS.text,
-                  whiteSpace: 'nowrap',
-                  textOverflow: 'ellipsis',
-                  overflow: 'hidden',
-                  pointerEvents: 'none',
-                }}
-              >
-                {ws.name}
-              </text>
-              {/* 当前工作区 5px 状态点（原型 .cur-dot） */}
-              {isCurrent ? (
-                <div
-                  style={{
-                    width: 5,
-                    height: 5,
-                    borderRadius: 9999,
-                    backgroundColor: COLORS.g300,
-                    flexShrink: 0,
-                  }}
-                />
-              ) : null}
-            </>
-          )}
+          ) : null}
         </div>
         {/* 「…」项目菜单（方案 C：Pin/Rename/Remove；hover 行可见，槽位常驻防位移） */}
         <div
@@ -825,7 +783,7 @@ function WorkspaceGroup({
             height: 22,
             flexShrink: 0,
             borderRadius: 9999,
-            opacity: hovered || renaming ? 1 : 0,
+            opacity: hovered ? 1 : 0,
             hover: { backgroundColor: COLORS.surfaceHover },
           }}
         >
@@ -850,7 +808,7 @@ function WorkspaceGroup({
             height: 22,
             flexShrink: 0,
             borderRadius: 9999,
-            opacity: hovered || renaming ? 1 : 0,
+            opacity: hovered ? 1 : 0,
             hover: { backgroundColor: COLORS.surfaceHover },
           }}
         >

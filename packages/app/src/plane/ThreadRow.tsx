@@ -2,7 +2,7 @@
  * ThreadRow — 列表行（布局契约 §4；architecture.md §5；codex-sidebar-v2）。
  *
  * zustand 按粒度订阅：只订自己那行（immer 结构共享 → 引用不变即跳过渲染）。
- * 局部态（hover / rename 编辑）useState，不上 store。
+ * 局部态（hover）useState，不上 store。
  *
  * 方案 C 契约要点：
  * - 13px 标题，单行 ellipsis；行高 28，圆角 6（--r-nav），选中 = 10% 白底
@@ -15,7 +15,7 @@
  *   running——PTY 活着 ≠ agent 在工作（不伪造完成/等待态）。
  * - 「…」菜单槽固定 22px 宽（占位不位移）；图标 hover/focus/active 可见；
  *   「…」与右键（onAuxClick）开同一面上下文菜单（onMenu 回调，坐标定位）
- * - 双击标题 → 行内 rename；Delete/Backspace 关闭；Enter 激活
+ * - 重命名走上下文菜单 Rename… → RenameDialog；Delete/Backspace 关闭；Enter 激活
  *
  * 事件命中模型：GPUIX/gpui 事件不冒泡——命中 deepest 有 handler 的元素。
  * 行内装饰一律 pointerEvents 'none' 穿透到行容器；「…」钮命中自身。
@@ -146,8 +146,6 @@ export function ThreadRow({
   const thread = useThreadStore(store, (s) => s.threads.find((t) => t.id === id))
   const active = useActiveTarget()
   const [hovered, setHovered] = useState(false)
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState('')
   /** 行上最后一次指针位置（键盘打开菜单的定位兜底——GPUIX 无元素 bounds 读面） */
   const lastPointer = useRef({ x: 0, y: 0 })
 
@@ -157,22 +155,10 @@ export function ThreadRow({
   const unread = !exited && !!thread.unread
   const rawDot = statusDot(thread)
   const dot: DotState = rawDot === 'idle' && isActive ? 'idle-on' : rawDot
-  const showMenu = hovered || isActive || editing
+  const showMenu = hovered || isActive
 
   // unread：标题加粗提亮（原型 .row.unread .ttl：t1 + 560）；exited 压灰优先
   const titleColor = exited ? COLORS.exited : isActive || unread ? COLORS.textBright : COLORS.text
-
-  const startRename = () => {
-    setDraft(
-      thread.kind === 'terminal' ? (thread.customTitle ?? thread.oscTitle ?? '') : thread.title,
-    )
-    setEditing(true)
-  }
-
-  const commitRename = () => {
-    setEditing(false)
-    store.rename(id, draft)
-  }
 
   const openMenu = (pos?: { x?: number; y?: number }) =>
     onMenu?.(id, { x: pos?.x ?? lastPointer.current.x, y: pos?.y ?? lastPointer.current.y })
@@ -191,12 +177,7 @@ export function ThreadRow({
         onFocusRow?.(id)
       }}
       onBlur={() => setHovered(false)}
-      onClick={(e) => {
-        if (editing) return
-        if (e.clickCount === 2) {
-          startRename()
-          return
-        }
+      onClick={() => {
         store.activate({ type: 'thread', id })
       }}
       onAuxClick={(e) => {
@@ -204,11 +185,9 @@ export function ThreadRow({
         if (e.isRightClick) openMenu(e)
       }}
       onKeyDown={(e) => {
-        // Delete/Backspace（行聚焦）→ 关闭；Enter → 激活（契约 §4 交互表）；
-        // Esc：编辑态 → 取消
+        // Delete/Backspace（行聚焦）→ 关闭；Enter → 激活（契约 §4 交互表）
         if (e.key === 'delete' || e.key === 'backspace') store.close(id)
         else if (e.key === 'enter') store.activate({ type: 'thread', id })
-        else if (e.key === 'escape' && editing) setEditing(false)
       }}
       style={{
         position: 'relative',
@@ -245,51 +224,22 @@ export function ThreadRow({
         </div>
       ) : null}
 
-      {editing ? (
-        <input
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.value ?? draft)}
-          onKeyDown={(e) => {
-            if (e.key === 'enter') commitRename()
-            else if (e.key === 'escape') setEditing(false)
-          }}
-          onBlur={commitRename}
-          style={{
-            flexGrow: 1,
-            marginLeft: 4,
-            marginRight: 4,
-            height: 20,
-            fontSize: 12,
-            lineHeight: 16,
-            fontFamily: FONT.ui,
-            color: COLORS.textBright,
-            backgroundColor: COLORS.inputBg,
-            borderWidth: 1,
-            borderColor: COLORS.focusBorder,
-            borderRadius: 3,
-            paddingLeft: 4,
-            paddingRight: 4,
-          }}
-        />
-      ) : (
-        <text
-          style={{
-            flexGrow: 1,
-            marginLeft: 4,
-            marginRight: 4,
-            fontSize: 13,
-            fontFamily: FONT.ui,
-            fontWeight: unread ? '600' : undefined,
-            color: titleColor,
-            whiteSpace: 'nowrap',
-            textOverflow: 'ellipsis',
-            pointerEvents: 'none',
-          }}
-        >
-          {rowTitle(thread)}
-        </text>
-      )}
+      <text
+        style={{
+          flexGrow: 1,
+          marginLeft: 4,
+          marginRight: 4,
+          fontSize: 13,
+          fontFamily: FONT.ui,
+          fontWeight: unread ? '600' : undefined,
+          color: titleColor,
+          whiteSpace: 'nowrap',
+          textOverflow: 'ellipsis',
+          pointerEvents: 'none',
+        }}
+      >
+        {rowTitle(thread)}
+      </text>
 
       {/* 「…」菜单槽固定 22px（D11：不占位→位移；图标 hover/active/focus 显）。
           点击开上下文菜单（坐标 = 点击点）；键盘 enter/space 用 lastPointer 兜底 */}
