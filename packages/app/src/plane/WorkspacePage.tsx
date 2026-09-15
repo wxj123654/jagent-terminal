@@ -1,13 +1,14 @@
 /**
- * plane/WorkspacePage.tsx — 工作区内 tab 容器（git-graph.md §4.2）。
+ * plane/WorkspacePage.tsx — 工作区页内容宿主（git-graph.md §4.2）。
  *
- * workspace 路由的内容宿主：tab 条（起始页 / Git 图）+ 内容切换。
+ * workspace 路由的内容宿主：无 tab 条——paneTab==='git' 时整页为 Git 图
+ * （由 titlebar 分支 chip / Ctrl-Shift-G 进入），否则为工作区起始页
+ * （原型 renderWorkspacePage 同款整页切换）。
  * paneTab 是 Workspace 运行时态（持久化 state.json）；GitGraphStore 单例
  * 由装配层注入（main.tsx 创建、e2e/测试可注入假 deps），切 workspace 时
  * 经 mount(cwd) 幂等换流（D5：git 数据非会话，不进 ThreadStore）。
  */
 
-import { COLORS, FONT } from '@jagent/ui'
 import { GitGraphView } from '../git/components/GitGraphView'
 import type { GitGraphStore } from '../git/store'
 import type { SettingsStore } from '../settings/store'
@@ -15,46 +16,6 @@ import type { ThreadStore, Workspace } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
 import type { DialogOpener } from './DialogHost'
 import { WorkspaceEmpty } from './WorkspaceEmpty'
-
-function TabButton({
-  label,
-  active,
-  testId,
-  onClick,
-}: {
-  label: string
-  active: boolean
-  testId: string
-  onClick: () => void
-}) {
-  return (
-    <div
-      testId={testId}
-      onClick={onClick}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        height: 30,
-        paddingLeft: 12,
-        paddingRight: 12,
-        borderBottomWidth: active ? 2 : 0,
-        borderColor: active ? COLORS.accent : 'transparent',
-        cursor: 'pointer',
-        flexShrink: 0,
-      }}
-    >
-      <text
-        style={{
-          fontSize: 12,
-          fontFamily: FONT.ui,
-          color: active ? COLORS.textBright : COLORS.muted,
-        }}
-      >
-        {label}
-      </text>
-    </div>
-  )
-}
 
 export function WorkspacePage({
   store,
@@ -82,31 +43,6 @@ export function WorkspacePage({
       testId="workspace-page"
       style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}
     >
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'flex-end',
-          paddingLeft: 8,
-          backgroundColor: COLORS.titlebar,
-          borderBottomWidth: 1,
-          borderColor: COLORS.border,
-          flexShrink: 0,
-        }}
-      >
-        <TabButton
-          label="起始页"
-          testId="workspace-tab-home"
-          active={tab === 'home'}
-          onClick={() => store.setWorkspacePaneTab(workspace.id, 'home')}
-        />
-        <TabButton
-          label="Git 图"
-          testId="workspace-tab-git"
-          active={tab === 'git'}
-          onClick={() => store.setWorkspacePaneTab(workspace.id, 'git')}
-        />
-      </div>
       {tab === 'git' ? (
         <GitGraphView
           cwd={workspace.path}

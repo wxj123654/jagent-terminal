@@ -32,6 +32,7 @@ export function SelectField({
   onChange,
   testId,
   width = 220,
+  bare = false,
 }: {
   value: string
   options: SelectOption[]
@@ -40,6 +41,8 @@ export function SelectField({
   testId: string
   /** 宽度：数字 = 固定 px；'fill' = 撑满容器（弹窗表单） */
   width?: number | 'fill'
+  /** 裸触发器（原型 .tool-ctx select：无壳无底无边，嵌在自带壳的行内） */
+  bare?: boolean
 }): ReactElement {
   const [focused, setFocused] = useState(false)
   const current = options.find((o) => o.value === value)
@@ -62,17 +65,17 @@ export function SelectField({
           alignItems: 'center',
           justifyContent: 'space-between',
           width: width === 'fill' ? '100%' : width,
-          height: 28,
-          paddingLeft: 9,
-          paddingRight: 6,
+          height: bare ? 24 : 28,
+          paddingLeft: bare ? 0 : 9,
+          paddingRight: bare ? 0 : 6,
           borderRadius: 4,
           cursor: disabled ? 'default' : 'pointer',
           opacity: disabled ? 0.5 : 1,
-          backgroundColor: COLORS.inputBg,
-          borderWidth: 1,
+          backgroundColor: bare ? 'transparent' : COLORS.inputBg,
+          borderWidth: bare ? 0 : 1,
           borderColor: open || focused ? COLORS.focusBorder : COLORS.borderSubtle,
-          boxShadow: focused && !open ? focusRing() : undefined,
-          hover: disabled ? undefined : { borderColor: COLORS.focusBorder },
+          boxShadow: focused && !open && !bare ? focusRing() : undefined,
+          hover: disabled || bare ? undefined : { borderColor: COLORS.focusBorder },
         })}
       >
         <SelectValue placeholder="—">

@@ -98,16 +98,21 @@ function clickCenter(testId: string) {
   const el = t.renderer.findByTestId(testId)
   if (!el) throw new Error(`element not found: ${testId}`)
   const b = t.renderer.getElementBounds(el.id)!
-  t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2, 0)
+  t.renderer.nativeSimulateClick(b.x + b.width / 2, b.y + b.height / 2, 0)
   t.renderer.flush()
 }
 
 /** scrim 点击（带 blur 规避：GPUUIX input 聚焦中时 nativeSimulateClick
- *  到 scrim 的命中被吞——W7 实测；先 blur 再点） */
+ *  到 scrim 的命中被吞——W7 实测；先 blur 再点）。弹窗真居中后 scrim
+ *  几何中心被卡片盖住——点左上角（卡片外区域） */
 /** eslint-disable @typescript-eslint/no-explicit-any -- TestRenderer 无 blur 类型（native 有） */
 function clickScrim() {
   ;(t.renderer as any).blur?.()
-  clickCenter('modal-scrim')
+  const el = t.renderer.findByTestId('modal-scrim')
+  if (!el) throw new Error('element not found: modal-scrim')
+  const b = t.renderer.getElementBounds(el.id)!
+  t.renderer.nativeSimulateClick(b.x + 10, b.y + 10, 0)
+  t.renderer.flush()
 }
 
 beforeAll(() => {
@@ -292,8 +297,8 @@ describe('WorkspaceList：分组树', () => {
       'tool dialog opens from empty-group hint',
       () => t.renderer.findByTestId('modal-card') != null,
     )
-    // cwd 行是单文本节点（{`cwd ${path}`}——gpuix text 多子节点会断行）
-    expect(t.renderer.getAllText().some((s) => s === 'cwd /w/beta')).toBe(true)
+    // cwd 在 tool-ctx 行右侧（原型 .cwd：mono 路径，无「cwd」前缀）
+    expect(t.renderer.getAllText().some((s) => s === '/w/beta')).toBe(true)
     clickCenter('tool-preset-shell')
     await until('spawned into beta from dialog', () =>
       store.getState().threads.some((x) => x.kind === 'terminal' && x.workspaceId === wsB),
@@ -347,6 +352,10 @@ describe('WorkspaceList：＋ 新建会话弹窗（W7 ToolDialog）', () => {
     t.renderer.flush()
     clickCenter(`new-menu-${wsA}`)
     await until('dialog open', () => t.renderer.findByTestId('new-chat') != null)
+    // 原型 .tool-list max-height 320：「对话」组在视口下——先滚到底再点
+    const list = t.renderer.findByTestId('tool-list')!
+    t.renderer.scrollTo(list.id, 0, -100000)
+    t.renderer.flush()
     clickCenter('new-chat')
     await until('chat created with workspace', () => {
       const c = store.getState().threads.find((x) => x.kind === 'chat')

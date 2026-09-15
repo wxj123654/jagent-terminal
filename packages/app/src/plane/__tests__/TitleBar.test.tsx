@@ -13,6 +13,8 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
+import { TRAFFIC_LIGHT_WIDTH } from '@jagent/ui'
+
 import { SidebarHeader } from '../Sidebar'
 import { TitleBar, type WindowControls } from '../TitleBar'
 
@@ -78,17 +80,35 @@ describe('TitleBar · mac', () => {
     expect(header[2]).toBe(248)
     expect(header[3]).toBe(52)
 
+    // SidebarHeader marginRight:6 给拖拽把手让出命中带 → 右列从 254 起
     const bar = boundsOf('titlebar')
-    expect(bar[0]).toBe(248)
-    expect(bar[2]).toBe(900 - 248) // 主列撑满剩余宽
+    expect(bar[0]).toBe(248 + 6)
+    expect(bar[2]).toBe(900 - 248 - 6) // 主列撑满剩余宽
     expect(bar[3]).toBe(46)
-    // 左 padding 12 → 常驻侧栏钮 x = 248+12；会话 chip 跟在其后（gap 8）
-    expect(boundsOf('toggle-sidebar')[0]).toBe(248 + 12)
-    expect(boundsOf('chip-session')[0]).toBe(248 + 12 + 28 + 8)
+    // 原型：侧栏可见时无 panelLeft 钮（收起入口在侧栏头）——
+    // 左 padding 12 → 会话 chip 直接在 x = 254+12
+    expect(t.renderer.findByTestId('toggle-sidebar')).toBeUndefined()
+    expect(boundsOf('chip-session')[0]).toBe(248 + 6 + 12)
     const texts = t.renderer.getAllText()
     expect(texts.join('\n')).toContain('j-agent')
     // 面板开关常驻右端前（三键在 mac 不渲染）
     expect(boundsOf('panel-toggle')[0] + 28).toBeLessThanOrEqual(900)
+  })
+
+  test('sidebarHidden：panelLeft 恢复钮出现（原型：仅收起态渲染）', () => {
+    const { wc } = controlsSpy()
+    t.render(
+      plane(wc, 'mac', {
+        chipIcon: 'agent' as const,
+        chipLabel: 'j-agent',
+        sidebarHidden: true,
+      }),
+    )
+    t.renderer.flush()
+    // mac 收起态：红绿灯让位 TRAFFIC_LIGHT_WIDTH（本机平台值）+ 恢复钮
+    // （fixture 中 SidebarHeader marginRight:6 → 右列从 254 起）
+    expect(boundsOf('toggle-sidebar')[0]).toBe(248 + 6 + TRAFFIC_LIGHT_WIDTH)
+    expect(boundsOf('chip-session')[0]).toBe(248 + 6 + TRAFFIC_LIGHT_WIDTH + 28 + 8)
   })
 
   test('drag：mousedown + 按住 move → startMove 一次；单击不误触 zoom', () => {

@@ -42,7 +42,10 @@ function makeDeps(): ThreadDeps {
   } as never as ThreadDeps
 }
 
-function setup(width: number): { store: ThreadStore; settings: SettingsStore } {
+function setup(
+  width: number,
+  opts: { branch?: string } = {},
+): { store: ThreadStore; settings: SettingsStore } {
   const settings = createSettingsStore(memoryAdapter())
   const store = createThreadStore(makeDeps(), {
     initialWorkspaces: [defaultWorkspace('/w/x')],
@@ -53,9 +56,10 @@ function setup(width: number): { store: ThreadStore; settings: SettingsStore } {
       store,
       settings,
       gitStore: createGitGraphStore(),
-      // 假 deps：不起 git 子进程（status null → not-a-repo 静默态）
+      // 假 deps：不起 git 子进程（status null → not-a-repo 静默态；
+      // opts.branch 给分支名 → 顶栏 chip-branch 渲染）
       worktree: createWorktreeStore({
-        status: async () => null,
+        status: async () => (opts.branch ? { root: '/w/x', branch: opts.branch, files: [] } : null),
         diff: async () => '',
         readFile: async () => null,
       }),
@@ -80,12 +84,22 @@ function key(testId: string, k: string) {
   t.renderer.flush()
 }
 
-describe('AgentPlane：顶栏 Git 图按钮', () => {
-  test('titlebar-git 点击 → paneTab=git 并激活工作区', () => {
-    const { store } = setup(800)
-    expect(t.renderer.findByTestId('titlebar-git') != null).toBe(true)
+describe('AgentPlane：分支 chip 菜单（原型 chip-branch → ctx 菜单）', () => {
+  test('chip-branch 点击 → 菜单；「打开 Git 图」→ paneTab=git 并激活工作区', async () => {
+    const { store } = setup(800, { branch: 'main' })
+    // contextCwd 需激活工作区才有值（worktree.mount 的输入）
+    store.activate({ type: 'workspace', id: store.getState().workspaces[0]!.id })
+    // worktree.mount 是 effect + async status——等分支 chip 出现
+    await until2(() => t.renderer.findByTestId('chip-branch') != null)
+    // 原型：无独立 titlebar-git 钮（入口 = 分支 chip 菜单）
+    expect(t.renderer.findByTestId('titlebar-git')).toBeUndefined()
     expect(store.getState().workspaces[0]!.paneTab).toBe('home')
-    click('titlebar-git')
+    click('chip-branch')
+    t.renderer.flush()
+    expect(t.renderer.findByTestId('ctx-graph') != null).toBe(true)
+    expect(t.renderer.findByTestId('ctx-changes') != null).toBe(true)
+    click('ctx-graph')
+    t.renderer.flush()
     expect(store.getState().workspaces[0]!.paneTab).toBe('git')
   })
 })
@@ -185,17 +199,18 @@ describe('AgentPlane：侧栏收起（D2 ⌘B）', () => {
     expect(t.renderer.findByTestId('open-settings') != null).toBe(true)
   })
 
-  // D4：宽窗口收起后，TitleBar 常驻侧栏钮仍可鼠标恢复（此前唯一按钮
-  // 随 SidebarHeader 卸载，宽窗收起后只能靠 ⌘B 恢复）
-  test('宽窗口收起后：toggle-sidebar 常驻，点击可鼠标恢复（D4）', async () => {
+  // D4：宽窗口收起后，TitleBar 出现 panelLeft 恢复钮（原型：侧栏可见时
+  // 无此钮——收起入口在侧栏头；收起后才渲染恢复钮）
+  test('宽窗口收起后：toggle-sidebar 出现，点击可鼠标恢复（D4）', async () => {
     setup(900)
     await new Promise((r) => setTimeout(r, 0))
     t.renderer.flush()
-    expect(t.renderer.findByTestId('toggle-sidebar') != null).toBe(true)
+    // 侧栏可见时无 panelLeft 钮
+    expect(t.renderer.findByTestId('toggle-sidebar')).toBeUndefined()
     planeKeyboard.toggleSidebar()
     await new Promise((r) => setTimeout(r, 0))
     t.renderer.flush()
-    // 侧栏隐藏但恢复钮仍在场
+    // 侧栏隐藏 → 恢复钮出现
     expect(t.renderer.findByTestId('open-settings')).toBeUndefined()
     expect(t.renderer.findByTestId('toggle-sidebar') != null).toBe(true)
     click('toggle-sidebar')

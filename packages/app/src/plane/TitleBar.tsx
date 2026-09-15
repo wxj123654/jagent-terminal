@@ -24,7 +24,7 @@
  * 本组件零 store 依赖，测试直接传字符串。
  */
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import type { AppPlatform } from '@jagent/ui'
@@ -210,15 +210,22 @@ function Chip({
   mono?: boolean
   maxWidth?: number
   testId: string
-  onClick?: () => void
+  /** 点击回调带窗口坐标（分支 chip 开 anchored 菜单用；键盘触发用
+      行上最后一次指针位置兜底） */
+  onClick?: (pos: { x: number; y: number }) => void
 }) {
+  /** 行上最后一次指针位置（键盘打开菜单的定位兜底——GPUIX 无元素 bounds 读面） */
+  const lastPointer = useRef({ x: 0, y: 0 })
   return (
     <div
       tabIndex={0}
       testId={testId}
-      onClick={onClick}
+      onClick={(e) => onClick?.({ x: e.x ?? 0, y: e.y ?? 0 })}
+      onMouseMove={(e) => {
+        lastPointer.current = { x: e.x ?? 0, y: e.y ?? 0 }
+      }}
       onKeyDown={(e) => {
-        if (e.key === 'enter' || e.key === 'space') onClick?.()
+        if (e.key === 'enter' || e.key === 'space') onClick?.(lastPointer.current)
       }}
       style={{
         display: 'flex',
@@ -234,10 +241,13 @@ function Chip({
         backgroundColor: COLORS.tile,
         cursor: 'pointer',
         flexShrink: 0,
+        // win 整条 titlebar 是 HTCAPTION drag 区：必须 occlude 才能赢过
+        // 系统命中测试（trailing 插槽同款；否则点击被当拖拽吃掉）
+        pointerEvents: 'auto',
         hover: { backgroundColor: COLORS.tileHover },
       }}
     >
-      <Icon name={icon} size={13} color={COLORS.muted} />
+      <Icon name={icon} size={14} color={COLORS.muted} />
       <text
         style={{
           minWidth: 0,
@@ -252,7 +262,7 @@ function Chip({
       >
         {label}
       </text>
-      {caret ? <Icon name="chevronDown" size={11} color={COLORS.faint} /> : null}
+      {caret ? <Icon name="chevronDown" size={12} color={COLORS.faint} /> : null}
     </div>
   )
 }
@@ -289,6 +299,8 @@ function ToolButton({
         borderRadius: 9999,
         flexShrink: 0,
         cursor: 'pointer',
+        // 同 Chip：win HTCAPTION 下必须 occlude 才可点
+        pointerEvents: 'auto',
         backgroundColor: on ? COLORS.surfaceActive : 'transparent',
         boxShadow: focused ? focusRing() : undefined,
         hover: { backgroundColor: on ? COLORS.surfaceActive : COLORS.surfaceHover },
@@ -342,9 +354,9 @@ export function TitleBar({
   onChipClick?: () => void
   /** 当前 cwd（窄屏隐藏；原型 .cwd 11.5px text-4） */
   cwd?: string | null
-  /** 当前分支（null → 不渲染；窄屏隐藏。点击 → 打开工作面板变更页） */
+  /** 当前分支（null → 不渲染；窄屏隐藏。点击 → Git 菜单，回调带点击坐标） */
   branch?: string | null
-  onBranchClick?: () => void
+  onBranchClick?: (pos: { x: number; y: number }) => void
   /** 搜索钮（原型 #btn-search：侧栏隐藏或窄屏时显） */
   onSearch?: () => void
   /** 工作面板开关（panelRight；on 态抬亮） */
@@ -380,17 +392,13 @@ export function TitleBar({
       }}
       {...(dragOnBar ? drag : {})}
     >
-      {/* 侧栏开关（D4）：宽窗口 panelLeft / 窄窗口汉堡钮 */}
+      {/* 侧栏开关（原型：侧栏可见时无 panelLeft 钮——收起入口在
+          侧栏头；仅窄窗口汉堡钮 / 宽窗口收起态的恢复钮） */}
       {narrow ? (
         <ToolButton icon="menu" testId="drawer-toggle" on={drawerOpen} onClick={onToggleDrawer} />
-      ) : (
-        <ToolButton
-          icon="panelLeft"
-          testId="toggle-sidebar"
-          on={sidebarHidden === false}
-          onClick={onToggleSidebar}
-        />
-      )}
+      ) : sidebarHidden ? (
+        <ToolButton icon="panelLeft" testId="toggle-sidebar" onClick={onToggleSidebar} />
+      ) : null}
 
       {/* 会话 chip（原型 #chip-session：当前上下文 + caret → 新建会话弹窗） */}
       <Chip
@@ -429,11 +437,13 @@ export function TitleBar({
         {...(dragOnMid ? drag : {})}
       />
 
-      {/* 分支 chip（原型 #chip-branch：mono；点击 → 面板变更页；窄屏隐藏） */}
+      {/* 分支 chip（原型 #chip-branch：mono + caret；点击 → Git 菜单
+          （打开图 / 查看变更）；窄屏隐藏） */}
       {!narrow && branch ? (
         <Chip
           icon="gitBranch"
           label={branch}
+          caret
           mono
           maxWidth={180}
           testId="chip-branch"

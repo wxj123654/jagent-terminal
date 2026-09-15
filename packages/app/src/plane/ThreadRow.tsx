@@ -238,10 +238,10 @@ export function ThreadRow({
         <Dot state={dot} />
       </div>
 
-      {/* pin 图钉（原型 .pin：标题前 10px，faint） */}
+      {/* pin 图钉（原型 .pin-ic：标题前 12px，faint） */}
       {thread.pin ? (
         <div style={{ display: 'flex', marginRight: 2, flexShrink: 0, pointerEvents: 'none' }}>
-          <Icon name="pin" size={10} color={COLORS.faint} />
+          <Icon name="pin" size={12} color={COLORS.faint} />
         </div>
       ) : null}
 

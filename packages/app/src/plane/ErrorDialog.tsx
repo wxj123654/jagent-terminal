@@ -1,32 +1,24 @@
 /**
- * plane/ErrorDialog.tsx — 错误历史面板（方案 A；Modal 形态，对齐 SearchDialog）。
+ * plane/ErrorDialog.tsx — 错误历史面板（方案 A；Modal 形态，对齐原型
+ * renderErrorDialog）。
  *
- * 数据源 errors/bus 环形缓冲（新→旧）：level 色点（fatal/error 红、warn
- * 琥珀）+ kind 徽章 + 一行摘要；点击行展开 detail（stack/链）。清空 =
- * clearErrors。打开入口：TitleBar ErrorIndicator。
+ * 数据源 errors/bus 环形缓冲（新→旧）。行结构（原型 .err-item，~50px）：
+ * level 大写标签（mono 10px 着色）+ msg 列（12px 摘要 + 10px area 小字）
+ * + 右侧相对时间。点击行展开 detail（stack/链；原型无此交互，实现保留
+ * 详情可读面）。清空 = clearErrors（原型 mini-btn：trash 图标 + 文字）。
+ * body 固定 340px（原型 modal-body height:340px）。
  */
 
 import { useEffect, useState } from 'react'
 
-import { Modal, ModalBody, ModalHeading, COLORS, FONT } from '@jagent/ui'
+import { Icon, Modal, ModalHeading, COLORS, FONT } from '@jagent/ui'
 import { clearErrors, listErrors, subscribeErrors, type AppError } from '../errors/bus'
+import { relTime } from '../threads/workspaces'
 
 const LEVEL_COLOR: Record<AppError['level'], string> = {
   fatal: COLORS.bell,
   error: COLORS.bell,
   warn: COLORS.amber,
-}
-
-const LEVEL_LABEL: Record<AppError['level'], string> = {
-  fatal: '致命',
-  error: '错误',
-  warn: '警告',
-}
-
-function timeLabel(at: number): string {
-  const d = new Date(at)
-  const pad = (n: number) => `${n}`.padStart(2, '0')
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 export function ErrorDialog({ onClose }: { onClose: () => void }) {
@@ -36,12 +28,13 @@ export function ErrorDialog({ onClose }: { onClose: () => void }) {
   const [expanded, setExpanded] = useState<number | null>(null)
 
   return (
-    <Modal width={520} height={400} onClose={onClose}>
+    <Modal width={520} onClose={onClose}>
       <ModalHeading
         title="错误历史"
         onClose={onClose}
         trailing={
           errors.length > 0 ? (
+            // 原型 .mini-btn：trash 12 + 「清空」，无底色（hover 抬底）
             <div
               testId="error-dialog-clear"
               tabIndex={0}
@@ -50,22 +43,49 @@ export function ErrorDialog({ onClose }: { onClose: () => void }) {
                 if (e.key === 'enter') clearErrors()
               }}
               style={{
-                paddingLeft: 10,
-                paddingRight: 10,
-                paddingTop: 4,
-                paddingBottom: 4,
-                borderRadius: 6,
-                backgroundColor: COLORS.surface,
-                borderWidth: 1,
-                borderColor: COLORS.borderSubtle,
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+                height: 22,
+                paddingLeft: 8,
+                paddingRight: 8,
+                borderRadius: 5,
+                cursor: 'pointer',
+                hover: { backgroundColor: COLORS.surface },
               }}
             >
-              <text style={{ fontSize: 11, fontFamily: FONT.ui, color: COLORS.text }}>清空</text>
+              <Icon name="trash" size={12} color={COLORS.muted} />
+              <text
+                style={{
+                  fontSize: 11,
+                  fontFamily: FONT.ui,
+                  color: COLORS.muted,
+                  pointerEvents: 'none',
+                }}
+              >
+                清空
+              </text>
             </div>
           ) : null
         }
       />
-      <ModalBody>
+      {/* 原型 .modal-body 固定 340px（内容少不塌、多滚动） */}
+      <div
+        testId="modal-body"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          height: 340,
+          paddingLeft: 14,
+          paddingRight: 14,
+          paddingTop: 12,
+          paddingBottom: 16,
+          overflowY: 'scroll',
+          flexShrink: 0,
+        }}
+      >
         {errors.length === 0 ? (
           <div
             testId="error-dialog-empty"
@@ -77,104 +97,117 @@ export function ErrorDialog({ onClose }: { onClose: () => void }) {
             }}
           >
             <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted }}>
-              没有记录的错误
+              没有记录的错误。
             </text>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            {errors.map((e) => {
-              const isOpen = expanded === e.id
-              return (
-                <div
-                  key={e.id}
-                  testId={`error-dialog-row-${e.id}`}
-                  tabIndex={0}
-                  onClick={() => setExpanded(isOpen ? null : e.id)}
-                  onKeyDown={(ev) => {
-                    if (ev.key === 'enter') setExpanded(isOpen ? null : e.id)
+          errors.map((e) => {
+            const isOpen = expanded === e.id
+            return (
+              // 原型 .err-item：border 卡行（padding 8 10 / radius 6 /
+              // gap 8 / 行间 6px）
+              <div
+                key={e.id}
+                testId={`error-dialog-row-${e.id}`}
+                tabIndex={0}
+                onClick={() => setExpanded(isOpen ? null : e.id)}
+                onKeyDown={(ev) => {
+                  if (ev.key === 'enter') setExpanded(isOpen ? null : e.id)
+                }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  gap: 8,
+                  paddingTop: 8,
+                  paddingBottom: 8,
+                  paddingLeft: 10,
+                  paddingRight: 10,
+                  borderRadius: 6,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                  marginBottom: 6,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                {/* level 大写标签（原型 .lv：mono 10px 着色，顶对齐 1px） */}
+                <text
+                  style={{
+                    fontSize: 10,
+                    fontFamily: FONT.mono,
+                    color: LEVEL_COLOR[e.level],
+                    flexShrink: 0,
+                    marginTop: 1,
+                    pointerEvents: 'none',
                   }}
+                >
+                  {e.level.toUpperCase()}
+                </text>
+                {/* msg 列（原型 .msg：12px 摘要 + 10px area 小字） */}
+                <div
                   style={{
                     display: 'flex',
                     flexDirection: 'column',
-                    paddingTop: 6,
-                    paddingBottom: 6,
-                    paddingLeft: 10,
-                    paddingRight: 10,
-                    borderRadius: 6,
-                    backgroundColor: isOpen ? COLORS.surface : 'transparent',
+                    flexGrow: 1,
+                    minWidth: 0,
                   }}
                 >
-                  <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-                    <div
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 4,
-                        backgroundColor: LEVEL_COLOR[e.level],
-                        marginRight: 8,
-                      }}
-                    />
-                    <text
-                      style={{ fontSize: 10, fontFamily: FONT.ui, color: COLORS.muted, width: 64 }}
-                    >
-                      {timeLabel(e.at)}
-                    </text>
+                  <text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: FONT.ui,
+                      color: COLORS.text,
+                      whiteSpace: 'normal',
+                      minWidth: 0,
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    {e.message}
+                  </text>
+                  <text
+                    style={{
+                      fontSize: 10,
+                      fontFamily: FONT.ui,
+                      color: COLORS.faint,
+                      marginTop: 2,
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    {`${e.kind}${e.context ? ` · ${e.context}` : ''}`}
+                  </text>
+                  {isOpen && e.detail ? (
                     <text
                       style={{
                         fontSize: 10,
-                        fontFamily: FONT.ui,
-                        color: LEVEL_COLOR[e.level],
-                        width: 36,
+                        fontFamily: FONT.mono,
+                        color: COLORS.text,
+                        whiteSpace: 'normal',
+                        marginTop: 4,
+                        pointerEvents: 'none',
                       }}
                     >
-                      {LEVEL_LABEL[e.level]}
+                      {e.detail}
                     </text>
-                    <text
-                      style={{
-                        fontSize: 11,
-                        fontFamily: FONT.ui,
-                        color: COLORS.textBright,
-                        minWidth: 0,
-                        whiteSpace: 'nowrap',
-                        textOverflow: 'ellipsis',
-                        flexGrow: 1,
-                      }}
-                    >
-                      {e.message}
-                    </text>
-                  </div>
-                  {isOpen ? (
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        paddingLeft: 16,
-                        paddingTop: 4,
-                      }}
-                    >
-                      <text style={{ fontSize: 10, fontFamily: FONT.ui, color: COLORS.muted }}>
-                        {`类型 ${e.kind}${e.context ? ` · ${e.context}` : ''}`}
-                      </text>
-                      {e.detail ? (
-                        <text
-                          style={{
-                            fontSize: 10,
-                            fontFamily: FONT.mono,
-                            color: COLORS.text,
-                            whiteSpace: 'normal',
-                          }}
-                        >
-                          {e.detail}
-                        </text>
-                      ) : null}
-                    </div>
                   ) : null}
                 </div>
-              )
-            })}
-          </div>
+                {/* 相对时间（原型 .tm：mono 10px faint 右侧） */}
+                <text
+                  style={{
+                    fontSize: 10,
+                    fontFamily: FONT.mono,
+                    color: COLORS.faint,
+                    flexShrink: 0,
+                    whiteSpace: 'nowrap',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {relTime(e.at)}
+                </text>
+              </div>
+            )
+          })
         )}
-      </ModalBody>
+      </div>
     </Modal>
   )
 }

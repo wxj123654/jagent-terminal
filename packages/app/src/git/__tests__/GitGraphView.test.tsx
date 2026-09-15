@@ -107,38 +107,21 @@ async function until(ms = 0) {
   t.renderer.flush()
 }
 
-/** 中心点点击（GPUI hit-test 全管线，ui.test.tsx 同款）；bounds 未就绪时重试 */
-async function click(testId: string) {
-  const el = t.renderer.findByTestId(testId)
-  expect(el, `element not found: ${testId}`).toBeDefined()
-  let b: number[] | null | undefined = null
-  // bounds 就绪需要 layout 帧同步（React 提交 macrotask 让出，时序三律）
-  for (let i = 0; i < 20 && !b; i++) {
-    b = t.renderer.getElementBounds(el!.id)
-    if (!b) {
-      await new Promise<void>((r) => setTimeout(r, 5))
-      t.renderer.flush()
-    }
-  }
-  expect(b, `no bounds: ${testId}`).toBeDefined()
-  t.renderer.nativeSimulateClick(b![0] + b![2] / 2, b![1] + b![3] / 2)
-}
-
-describe('WorkspacePage tab 切换', () => {
-  test('默认 home tab → 起始页；点 Git 图 → git-graph-view', async () => {
+describe('WorkspacePage paneTab 切换（无 tab 条：整页切换）', () => {
+  test('默认 home → 起始页；paneTab=git → git-graph-view', async () => {
     renderPage()
     await until()
-    expect(has('workspace-tab-home')).toBe(true)
-    expect(has('workspace-tab-git')).toBe(true)
+    // 原型：无 tab 条（paneTab=git 时整页为 Git 图）
+    expect(has('workspace-tab-home')).toBe(false)
+    expect(has('workspace-tab-git')).toBe(false)
     expect(has('git-graph-view')).toBe(false)
 
-    await click('workspace-tab-git')
+    store.setWorkspacePaneTab(store.getState().workspaces[0]!.id, 'git')
     await until()
     expect(has('git-graph-view')).toBe(true)
-    // tab 状态持久化（persistWorkspaces 未注入 deps → 仅内存，但 getState 可查）
     expect(store.getState().workspaces[0]!.paneTab).toBe('git')
 
-    await click('workspace-tab-home')
+    store.setWorkspacePaneTab(store.getState().workspaces[0]!.id, 'home')
     await until()
     expect(has('git-graph-view')).toBe(false)
   })
@@ -174,14 +157,14 @@ describe('GitGraphView 渲染与选中', () => {
       }),
     )
     t.renderer.flush()
-    await click('workspace-tab-git')
-    await until(10)
+    store.setWorkspacePaneTab(store.getState().workspaces[0]!.id, 'git')
+    await until(200)
     expect(has('git-not-a-repo')).toBe(true)
   })
 
   test('行渲染 + 点击选中 → 详情列出现（元数据 + 说明）', async () => {
     const gitStore = renderPage()
-    await click('workspace-tab-git')
+    store.setWorkspacePaneTab(store.getState().workspaces[0]!.id, 'git')
     await until(10)
     expect(has('git-not-a-repo')).toBe(false)
 
@@ -211,7 +194,7 @@ describe('GitGraphView 渲染与选中', () => {
 
   test('选中后详情作为独立行插在提交下方，不与下一提交重叠', async () => {
     const gitStore = renderPage()
-    await click('workspace-tab-git')
+    store.setWorkspacePaneTab(store.getState().workspaces[0]!.id, 'git')
     await until(10)
     pushChunk?.([c('c3', ['c2']), c('c2', ['c1']), c('c1', [])])
     finishLog?.(true)
@@ -295,7 +278,7 @@ describe('GitGraphView 渲染与选中', () => {
     expect(bs).toBeDefined()
     expect(bf).toBeDefined()
     // 左栏裁剪盒右缘不得越过右栏左缘（允许 1px 分割线误差）
-    expect(bs![0] + bs![2]).toBeLessThanOrEqual(bf![0] + 1)
+    expect(bs!.x + bs!.width).toBeLessThanOrEqual(bf!.x + 1)
     expect(texts()).toContain('packages / app / src / very / long / path')
     expect(texts()).toContain('name.ts')
     expect(texts()).toContain('+2')

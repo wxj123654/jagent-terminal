@@ -155,9 +155,13 @@ describe('SearchDialog（⌘K 搜索弹窗）', () => {
     await until('empty state', () =>
       t.renderer.getAllText().some((s) => s.includes('没有匹配的会话')),
     )
-    // 命令面板形态无关闭钮：遮罩点击关闭（input 聚焦中先 blur——W7 实测）
+    // 命令面板形态无关闭钮：遮罩点击关闭（input 聚焦中先 blur——W7 实测）。
+    // 弹窗真居中后 scrim 几何中心被卡片盖住——点 scrim 左上角（卡片外）
     ;(t.renderer as { blur?: () => void }).blur?.()
-    clickCenter('modal-scrim')
+    const scrim = t.renderer.findByTestId('modal-scrim')!
+    const sb = t.renderer.getElementBounds(scrim.id)!
+    t.renderer.nativeSimulateClick(sb.x + 10, sb.y + 10, 0)
+    t.renderer.flush()
     await until('closed', () => t.renderer.findByTestId('modal-card') == null)
   })
 })

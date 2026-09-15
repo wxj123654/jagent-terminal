@@ -6,7 +6,8 @@
  *   图标条——头部只剩收起钮）。
  * - 「工作区」区：pin 排序的工作区分组（箭头 toggle / 点名激活恢复
  *   lastSession / ＋ 新建会话 / 「…」+ 右键项目菜单）。当前工作区
- *   （含活跃会话或起始页激活）= 4% 白底 + 名后 5px 状态点。
+ *   （含活跃会话或起始页激活）= 名字提亮 + 名后 5px 状态点（原型
+ *   .ws-row.cur：无整行底色）。
  * - 「未归属」虚拟组：无工作区会话归入（替代 v2 独立「会话」区）；有
  *   内容才渲染，无 … 菜单（虚拟组不可 pin/rename/remove）。
  * - 组内会话：priority 排序（pin > run > queue > unread > recency，
@@ -478,12 +479,6 @@ function UnassignedGroup({
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
-          height: 28,
-          paddingLeft: 2,
-          paddingRight: 2,
-          borderRadius: SIZES.rowRadius,
-          // 原型 .ws-head:hover 整行高亮
-          hover: { backgroundColor: COLORS.surface },
           userSelect: 'none',
         }}
       >
@@ -521,6 +516,7 @@ function UnassignedGroup({
             gap: 5,
             borderRadius: SIZES.rowRadius,
             cursor: 'pointer',
+            hover: { backgroundColor: COLORS.surface },
           }}
         >
           <div
@@ -590,14 +586,13 @@ function UnassignedGroup({
       </div>
 
       {expanded ? (
+        // 原型 .ws-body：margin-left 13 + padding-left 9，无竖引导线
         <div
           style={{
             display: 'flex',
             flexDirection: 'column',
             marginLeft: 13,
             paddingLeft: 9,
-            borderLeftWidth: 1,
-            borderColor: COLORS.borderSubtle,
           }}
         >
           <SessionRows
@@ -665,7 +660,7 @@ function WorkspaceGroup({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
-      {/* 原型 .ws-head：padding 0 2，仅当前工作区 4% 底；hover 在 .ws-name 段。
+      {/* 原型 .ws-head：无 padding/定高（高 = 子行 26px）；hover 在 .ws-name 段。
           右键 = 「…」同一面项目菜单 */}
       <div
         onMouseEnter={() => setHovered(true)}
@@ -682,13 +677,6 @@ function WorkspaceGroup({
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
-          height: 28,
-          paddingLeft: 2,
-          paddingRight: 2,
-          borderRadius: SIZES.rowRadius,
-          backgroundColor: isCurrent ? COLORS.tile : 'transparent',
-          // 原型 .ws-head:hover 整行高亮；.cur:hover 保持 cur 底不再叠加
-          hover: { backgroundColor: isCurrent ? COLORS.tile : COLORS.surface },
           userSelect: 'none',
         }}
       >
@@ -724,6 +712,8 @@ function WorkspaceGroup({
             gap: 5,
             borderRadius: SIZES.rowRadius,
             cursor: 'pointer',
+            // 原型 .ws-row:hover（hover 在行上，非 ws-head 容器）
+            hover: { backgroundColor: COLORS.surface },
           }}
         >
           {/* 展开箭头：仅 toggle，不激活（原型：点箭头仅展开/收起） */}
@@ -791,7 +781,8 @@ function WorkspaceGroup({
                   fontSize: 13,
                   fontFamily: FONT.ui,
                   fontWeight: '500',
-                  color: COLORS.text,
+                  // 原型 .ws-row.cur .name：当前工作区名提亮
+                  color: isCurrent ? COLORS.textBright : COLORS.text,
                   whiteSpace: 'nowrap',
                   textOverflow: 'ellipsis',
                   overflow: 'hidden',
@@ -868,15 +859,13 @@ function WorkspaceGroup({
       </div>
 
       {ws.expanded ? (
-        // 原型 .ws-body：左缩进 13 + 9 padding + 1px 竖线
+        // 原型 .ws-body：margin-left 13 + padding-left 9，无竖引导线
         <div
           style={{
             display: 'flex',
             flexDirection: 'column',
             marginLeft: 13,
             paddingLeft: 9,
-            borderLeftWidth: 1,
-            borderColor: COLORS.borderSubtle,
           }}
         >
           {sessions.length === 0 ? (

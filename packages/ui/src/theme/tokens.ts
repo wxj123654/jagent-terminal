@@ -74,7 +74,23 @@ export const COLORS = {
   statusError: '#e06c75',
 } as const
 
+/** gpui font_family 是单名精确查找（direct_write GetMatchingFonts）——
+ *  CSS 逗号列表整串查不到会落内嵌 fallback 字体（走查 D1：所有文本
+ *  宽度/行高偏差的根因）。这里按平台给「保证存在」的单名：
+ *  win = Segoe UI / Consolas（系统自带）；mac = Helvetica Neue / Menlo；
+ *  linux = fontconfig 泛名。IBM Plex Sans / JetBrains Mono 不随应用分发，
+ *  不作默认（终端字体同理，见 app settings/schema DEFAULT_TERMINAL_FONT）。 */
 export const FONT = {
-  ui: 'IBM Plex Sans, Segoe UI, system-ui, -apple-system, Helvetica Neue, sans-serif',
-  mono: 'JetBrains Mono, Cascadia Code, Menlo, Consolas, monospace',
+  ui:
+    process.platform === 'darwin'
+      ? 'Helvetica Neue'
+      : process.platform === 'win32'
+        ? 'Segoe UI'
+        : 'sans-serif',
+  mono:
+    process.platform === 'darwin'
+      ? 'Menlo'
+      : process.platform === 'win32'
+        ? 'Consolas'
+        : 'monospace',
 } as const

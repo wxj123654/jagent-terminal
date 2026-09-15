@@ -55,6 +55,11 @@ export function SidebarHeader({
         flexDirection: 'row',
         alignItems: 'center',
         height: SIZES.sidebarHeadHeight,
+        // 右缘让出 6px 给侧栏拖拽把手：本头有不透明底色 → hitbox
+        // （BlockMouseExceptScroll）会盖住先绘制的把手，头部区域 hover/
+        // 拖拽都到不了把手。底色与侧栏同色，让位无视觉差异；win 下
+        // drag 区右端少 6px，正好变成 resize 条。
+        marginRight: 6,
         // 不把 padding 放在横向 flex item 上：gpuix 的 padding 不计入
         // flex 占位——用子项 margin 保留视觉内缩。
         backgroundColor: COLORS.sidebar,
@@ -65,16 +70,20 @@ export function SidebarHeader({
     >
       {/* 左占位：mac 红绿灯让位；win/linux 留对称内缩 */}
       <div style={{ width: (platform === 'mac' ? TRAFFIC_LIGHT_WIDTH : 0) + 10, flexShrink: 0 }} />
-      <IconButton
-        name="panelLeft"
-        label="收起侧栏"
-        testId="sidebar-collapse"
-        size={15}
-        hitSize={28}
-        radius={9999}
-        tooltip={false}
-        onClick={() => onCollapse?.()}
-      />
+      {/* win 下本头是 HTCAPTION drag 区：必须 occlude 才能赢过系统命中
+          测试（TitleBar trailing 同款；否则点击被当拖拽吃掉） */}
+      <div style={{ display: 'flex', pointerEvents: 'auto' }}>
+        <IconButton
+          name="panelLeft"
+          label="收起侧栏"
+          testId="sidebar-collapse"
+          size={15}
+          hitSize={28}
+          radius={9999}
+          tooltip={false}
+          onClick={() => onCollapse?.()}
+        />
+      </div>
     </div>
   )
 }
@@ -115,9 +124,10 @@ function NotifPopover({
       >
         <text
           style={{
-            fontSize: 13,
+            // 原型 .notif-head .t：12px/600
+            fontSize: 12,
             fontFamily: FONT.ui,
-            fontWeight: '500',
+            fontWeight: '600',
             color: COLORS.textBright,
             flexGrow: 1,
             pointerEvents: 'none',
@@ -145,10 +155,10 @@ function NotifPopover({
             hover: { backgroundColor: COLORS.surface },
           }}
         >
-          <Icon name="check" size={10} color={COLORS.muted} />
+          <Icon name="check" size={12} color={COLORS.muted} />
           <text
             style={{
-              fontSize: 10.5,
+              fontSize: 11,
               fontFamily: FONT.ui,
               color: COLORS.muted,
               pointerEvents: 'none',
@@ -200,9 +210,11 @@ function NotifPopover({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                 <text
                   style={{
-                    fontSize: 11.5,
+                    // 原型 .nt：12px text / line-height 1.4
+                    fontSize: 12,
                     fontFamily: FONT.ui,
                     color: COLORS.text,
+                    lineHeight: 17,
                     whiteSpace: 'normal',
                     pointerEvents: 'none',
                   }}
@@ -211,8 +223,9 @@ function NotifPopover({
                 </text>
                 <text
                   style={{
-                    fontSize: 10,
-                    fontFamily: FONT.mono,
+                    // 原型 .ns：10.5px faint
+                    fontSize: 10.5,
+                    fontFamily: FONT.ui,
                     color: COLORS.faint,
                     pointerEvents: 'none',
                   }}
@@ -252,6 +265,8 @@ export function Sidebar({
   onCollapse?: () => void
 }) {
   const [notifOpen, setNotifOpen] = useState(false)
+  const [resizing, setResizing] = useState(false)
+  const [resizeHover, setResizeHover] = useState(false)
   const { height: winH } = useWindowSize()
   // 宽度单值订阅：设置页拖滑块时只重渲染侧栏（不碰会话树）
   const width = useSettingsValue(settings, (s) => s.appearance.sidebarWidth)
@@ -275,6 +290,45 @@ export function Sidebar({
         height: '100%',
       }}
     >
+      {/* 右缘拖拽把手（原型 .sb-resize：col-resize，拖拽实时写回
+          appearance.sidebarWidth 200–400）。命中区 6px 透明；视觉指示
+          是 2px accent 细线，仅 hover/拖拽时显示（6px 泛蓝太显眼）。
+          mouseDown+mouseMove 组合 → renderer 自动 capture_pointer，
+          拖出把手不中断（WorkPanel 左缘把手同款）。 */}
+      <div
+        testId="sidebar-resize"
+        onMouseEnter={() => setResizeHover(true)}
+        onMouseLeave={() => {
+          setResizeHover(false)
+          setResizing(false)
+        }}
+        onMouseDown={(e) => {
+          if (e.button === 0) setResizing(true)
+        }}
+        onMouseUp={() => setResizing(false)}
+        onMouseMove={(e) => {
+          if (!resizing || e.pressedButton !== 0) return
+          settings.patch(
+            'appearance.sidebarWidth',
+            Math.round(Math.min(400, Math.max(200, e.x ?? 0))),
+          )
+        }}
+        style={{
+          position: 'absolute',
+          // 全收在侧栏内（不外探 -3）：Pane 后绘制，外探部分会被其
+          // BlockMouse hitbox 截断 hit_test 而失效
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 6,
+          cursor: 'col-resize',
+          // 把手先绘制（hitbox 在栈底）：兄弟元素的 hitbox 压在上面会
+          // 先封口 hover 集合（BlockMouseExceptScroll 处截止）——所以
+          // SidebarHeader 用 marginRight:6 在头部区域让出这条命中带；
+          // 列表/脚部无不透明底色不产生 hitbox，天然不挡
+          pointerEvents: 'auto',
+        }}
+      />
       <SidebarHeader platform={platform} windowControls={windowControls} onCollapse={onCollapse} />
       <WorkspaceList store={store} dialog={dialog} onNewSession={onNewSession} />
 
@@ -319,11 +373,14 @@ export function Sidebar({
             <div
               testId="notif-unread-dot"
               style={{
+                // 原型 .badge-dot：7px 点 + 1.5px 描边（CSS border 在盒外）。
+                // gpuix 把 border 算进盒内 → 盒 10px 才等效 7px 点 + 描边；
+                // 位置回退 1.5px 保持点中心不变
                 position: 'absolute',
-                right: 4,
-                top: 4,
-                width: 7,
-                height: 7,
+                right: 2.5,
+                top: 2.5,
+                width: 10,
+                height: 10,
                 borderRadius: 9999,
                 backgroundColor: COLORS.bell,
                 borderWidth: 1.5,
@@ -352,6 +409,22 @@ export function Sidebar({
           </text>
         ) : null}
       </div>
+
+      {/* 指示线独立成最后绘制的兄弟节点：把手必须先画（hitbox 栈底，
+          见上），accent 线若作其子节点会随把手一起被 header 底色与脚部
+          分隔线盖住（顶部缺一段 + 底部 1px 缺口）。pointerEvents:none
+          只画不挡命中 */}
+      <div
+        style={{
+          position: 'absolute',
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 2,
+          backgroundColor: resizing || resizeHover ? COLORS.accent : 'transparent',
+          pointerEvents: 'none',
+        }}
+      />
 
       {notifOpen ? (
         <NotifPopover store={store} position={notifPos} onClose={() => setNotifOpen(false)} />

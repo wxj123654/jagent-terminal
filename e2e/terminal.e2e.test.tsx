@@ -507,6 +507,11 @@ describe('T3.2 e2e: chat 全链（菜单入口 → ChatSurface → echo 回复 �
       })
 
       // ② 点击 New Chat → ChatSurface 挂载（CHAT pill + composer autoFocus）
+      //    对话组在 tool-list 底部：320px 视口先滚到底再取 bounds，
+      //    否则点击落在滚动容器外被裁剪。
+      const toolList = t.renderer.findByTestId('tool-list')!
+      t.renderer.scrollTo(toolList.id, 0, -100000)
+      t.renderer.flush()
       const item = t.renderer.findByTestId('new-chat')!
       const ib = t.renderer.getElementBounds(item.id)!
       t.renderer.nativeSimulateClick(ib.x + ib.width / 2, ib.y + ib.height / 2)
@@ -582,6 +587,9 @@ describe('T3+.1 e2e: ACP 全链（菜单入口 → AcpSurface → 真子进程 J
       const menuBtn = t.renderer.findByTestId(`new-menu-${e2eWorkspace.id}`)!
       const mb = t.renderer.getElementBounds(menuBtn.id)!
       t.renderer.nativeSimulateClick(mb.x + mb.width / 2, mb.y + mb.height / 2)
+      const toolList = t.renderer.findByTestId('tool-list')!
+      t.renderer.scrollTo(toolList.id, 0, -100000)
+      t.renderer.flush()
       await until('agent entry in menu', () => {
         const item = t.renderer.findByTestId('new-acp-e2e-fake')
         return item !== undefined && t.renderer.getElementBounds(item.id) != null

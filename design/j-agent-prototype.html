@@ -84,7 +84,9 @@ svg{display:block}
 .ws-row .name{flex:1;min-width:0;font-size:13px;font-weight:500;color:var(--text);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ws-row .cur-dot{width:5px;height:5px;border-radius:9999px;background:var(--g300);flex-shrink:0}
-.ws-row .acts{display:flex;flex-direction:row;flex-shrink:0}
+/* .acts 是 .ws-head 的子元素（非 .ws-row 后代）——原选择器失效导致
+   ghost 钮竖排、ws-head 撑到 44px（意图 28px） */
+.ws-head .acts{display:flex;flex-direction:row;flex-shrink:0}
 .ws-body{display:flex;flex-direction:column;margin-left:13px;padding-left:9px}
 .ws-empty-hint{display:flex;align-items:center;height:22px;margin-left:4px;padding:0 8px;
   border-radius:4px;cursor:pointer;font-size:11px;color:var(--muted)}
@@ -1947,7 +1949,9 @@ function mountTerminals(){
     el.style.fontSize=S.settings.terminal.fontSize+'px';
     el.style.fontFamily=S.settings.terminal.fontFamily+',monospace';
     el.classList.toggle('noblink',!S.settings.terminal.cursorBlink);
-    slot.replaceWith(el);
+    // replaceWith 会把带 --terminal 底的 .term-surface 容器换掉（终端透出
+    // pane 色）——改为挂进 slot 内，保留容器背景
+    slot.appendChild(el);
     // 挂载即请求焦点（focused prop）——但弹窗/输入态不抢焦
     const ae=document.activeElement;
     const inputBusy=/INPUT|TEXTAREA|SELECT/.test(ae?.tagName??'');

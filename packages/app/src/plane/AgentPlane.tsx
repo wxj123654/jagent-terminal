@@ -12,7 +12,7 @@
  */
 
 import { useWindowSize } from '@gpuix/react'
-import { IconButton, PLATFORM, ToastHost, COLORS, FONT } from '@jagent/ui'
+import { PLATFORM, ToastHost, COLORS, FONT } from '@jagent/ui'
 import { useEffect, useRef, useState } from 'react'
 import type { PerfSource } from '../diagnostics/PerfHud'
 import { PerfHud } from '../diagnostics/PerfHud'
@@ -27,6 +27,7 @@ import type { ThreadStore } from '../threads/store'
 import { displayTitle } from '../threads/terminal'
 import { useThreadStore } from '../threads/useThreadStore'
 import { SIZES } from '../tokens'
+import { ContextMenu } from './ContextMenu'
 import { DialogHost, type DialogState } from './DialogHost'
 import { dialogKeyboard } from './dialogKeyboard'
 import { Pane } from './Pane'
@@ -115,6 +116,9 @@ export function App({
   toggleRef.current = toggleSidebar
   const drawerRef = useRef({ narrow, drawerOpen })
   drawerRef.current = { narrow, drawerOpen }
+
+  // 分支 chip 菜单（原型 chip-branch → ctx 菜单：打开 Git 图 / 查看变更）
+  const [branchMenu, setBranchMenu] = useState<{ x: number; y: number } | null>(null)
 
   // 工作面板（D5）：开关 / tab / 宽（本地态——原型同款非持久 UI 态）
   const [panelOpen, setPanelOpen] = useState(false)
@@ -272,22 +276,13 @@ export function App({
           onChipClick={() => dialogOpener.openToolMenu(newSessionWorkspace())}
           cwd={contextCwd}
           branch={branch}
-          onBranchClick={() => openPanel('changes')}
+          // 原型 chip-branch：点击点下方开菜单（打开 Git 图 / 查看变更）
+          onBranchClick={(pos) => setBranchMenu({ x: pos.x, y: pos.y + 16 })}
           onSearch={() => dialogOpener.openSearch()}
           panelOpen={panelOpen}
           onTogglePanel={() => (panelOpen ? setPanelOpen(false) : openPanel())}
           trailing={
             <>
-              <IconButton
-                name="gitBranch"
-                label="Git 图"
-                testId="titlebar-git"
-                size={15}
-                hitSize={28}
-                radius={9999}
-                tooltip={false}
-                onClick={() => store.openGitGraph()}
-              />
               <ErrorIndicator onOpen={dialogOpener.openErrors} />
               {perfHud && perfSource ? <PerfHud source={perfSource} /> : null}
             </>
@@ -351,6 +346,22 @@ export function App({
         setState={setDialog}
         pickDirectory={pickDirectory}
       />
+
+      {/* 分支 chip 菜单（原型 tbgit ctx 菜单：打开 Git 图 / 查看变更） */}
+      {branchMenu ? (
+        <ContextMenu
+          position={branchMenu}
+          items={[
+            { id: 'graph', label: '打开 Git 图（Ctrl-Shift-G）' },
+            { id: 'changes', label: '查看变更（工作面板）' },
+          ]}
+          onPick={(id) => {
+            if (id === 'graph') store.openGitGraph()
+            else if (id === 'changes') openPanel('changes')
+          }}
+          onClose={() => setBranchMenu(null)}
+        />
+      ) : null}
       <ToastHost />
     </div>
   )

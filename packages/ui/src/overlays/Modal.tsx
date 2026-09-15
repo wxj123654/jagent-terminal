@@ -45,9 +45,11 @@ export function Modal({
   // 高不超出 vh-48。原固定宽 440/460/480 在 390px 窗口会横向溢出。
   const cardWidth = Math.min(width, vw - 24)
   const cardHeight = height ? Math.min(height, vh - 48) : undefined
-  // 居中（窗口比卡片窄时贴边防御——测试窗口 800×600 场景）
+  // 居中（原型 .modal-scrim flex center）：x 按已知卡宽算；y 用
+  // anchored 的 leftCenter 锚点（卡左缘中点贴视口中线）——内容自适应
+  // 高也能真垂直居中，不再用 360 估高（走查 C2：search 弹窗偏上 117px）
   const x = Math.max((vw - cardWidth) / 2, 12)
-  const y = cardHeight ? Math.max((vh - cardHeight) / 2, 12) : Math.max((vh - 360) / 2, 12)
+  const y = vh / 2
 
   // 覆盖层定位：absolute 四边 0。W7 实测：GPUIX absolute 需要最近定位
   // 祖先 relative，否则塌缩 0×0——本组件要求挂载点在有 relative 的容器
@@ -84,6 +86,7 @@ export function Modal({
       />
       <anchored
         position={{ x, y }}
+        anchor="leftCenter"
         deferred
         occlude
         style={{
@@ -147,7 +150,8 @@ export function ModalHeading({
     >
       <text
         style={{
-          fontSize: 16,
+          // 原型 .modal-head .t：14px/600
+          fontSize: 14,
           fontFamily: FONT.ui,
           fontWeight: '600',
           color: COLORS.textBright,

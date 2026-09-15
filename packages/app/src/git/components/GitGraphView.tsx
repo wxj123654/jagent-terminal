@@ -11,7 +11,6 @@ import { useGpuix, useWindowSize } from '@gpuix/react'
 import type { PublicInstance } from '@gpuix/react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
-import type { IconName } from '@jagent/ui'
 import {
   Icon,
   IconButton,
@@ -83,18 +82,15 @@ type PromptState = { item: GitMenuItem; at?: string }
 
 function RefBadges({
   decors,
-  colorIdx,
   showRemote,
   onAux,
 }: {
   decors: RefDecor[]
-  colorIdx: number
   showRemote: boolean
   onAux: (d: RefDecor, e: { x?: number; y?: number }) => void
 }) {
   const visible = showRemote ? decors : decors.filter((d) => d.kind !== 'remote')
   if (visible.length === 0) return null
-  const lane = GRAPH_LANE_COLORS[colorIdx % GRAPH_LANE_COLORS.length]
   return (
     <div
       style={{
@@ -106,17 +102,18 @@ function RefBadges({
       }}
     >
       {visible.map((d, i) => {
-        const ico: IconName = d.kind === 'tag' ? 'tag' : 'gitBranch'
-        const icoBg = d.kind === 'tag' ? COLORS.amber : d.kind === 'remote' ? COLORS.muted : lane
-        const border = d.kind === 'head' ? lane : COLORS.borderSubtle
-        const color =
+        // 原型 .ref-chip：h16 / 8px 色块 / 10px mono / 透明底；
+        // head 边框 accent，tag 文字 amber，remote 色块 muted
+        const sq =
           d.kind === 'head'
-            ? COLORS.textBright
+            ? COLORS.accent
             : d.kind === 'tag'
               ? COLORS.amber
               : d.kind === 'remote'
                 ? COLORS.muted
-                : COLORS.textBright
+                : COLORS.terminalKind
+        const border = d.kind === 'head' ? COLORS.accent : COLORS.borderSubtle
+        const color = d.kind === 'tag' ? COLORS.amber : COLORS.textBright
         return (
           <div
             key={`${d.kind}-${d.label}-${i}`}
@@ -126,36 +123,30 @@ function RefBadges({
               display: 'flex',
               flexDirection: 'row',
               alignItems: 'center',
-              height: 18,
+              gap: 4,
+              height: 16,
+              paddingLeft: 6,
+              paddingRight: 6,
               borderWidth: 1,
               borderColor: border,
-              borderRadius: 5,
-              overflow: 'hidden',
+              borderRadius: 3,
               flexShrink: 0,
-              backgroundColor: 'rgba(128,128,128,0.12)',
             }}
           >
             <div
               style={{
-                width: 15,
-                height: 15,
-                backgroundColor: icoBg,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                width: 8,
+                height: 8,
+                borderRadius: 2,
+                backgroundColor: sq,
                 flexShrink: 0,
               }}
-            >
-              <Icon name={ico} size={10} color={COLORS.pane} />
-            </div>
+            />
             <text
               style={{
-                fontSize: 11,
+                fontSize: 10,
                 fontFamily: FONT.mono,
                 color,
-                paddingLeft: 4,
-                paddingRight: 5,
-                fontWeight: d.kind === 'head' ? '700' : undefined,
               }}
             >
               {d.label}
@@ -689,7 +680,6 @@ function GraphRowView({
         ) : null}
         <RefBadges
           decors={decors}
-          colorIdx={row.colorIdx}
           showRemote={showRemote}
           onAux={(d, e) => {
             suppressRowMenu.current = true

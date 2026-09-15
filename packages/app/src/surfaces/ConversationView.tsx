@@ -121,8 +121,8 @@ export function ConversationView({
           flexGrow: 1,
           paddingTop: 20,
           paddingBottom: 20,
-          paddingLeft: 24,
-          paddingRight: 24,
+          // 水平 padding 不能放列表上：virtual-list 行根 width:100% 吃
+          // 的是列表全宽（走查 D2 真 bug）——24px 内距改由行根自携
         }}
       >
         {messages.map((m) => (
@@ -137,6 +137,8 @@ export function ConversationView({
               flexShrink: 0,
               marginBottom: 16,
               width: '100%',
+              paddingLeft: 24,
+              paddingRight: 24,
             }}
           >
             <text
@@ -244,8 +246,11 @@ export function MessageRow({ m }: { m: ChatMessage }): ReactElement {
           flexShrink: 0,
           marginBottom: 16,
           // virtual-list 行根节点 shrink-wrap（gpui list 不给行撑满宽）——
-          // 不显式 100% 时 justifyContent:flex-end 无横向空间可用，气泡贴左
+          // 不显式 100% 时 justifyContent:flex-end 无横向空间可用，气泡贴左。
+          // 水平 24px 内距在行根（列表 paddingLeft/Right 不作用到行）
           width: '100%',
+          paddingLeft: 24,
+          paddingRight: 24,
         }}
       >
         <div
@@ -282,6 +287,8 @@ export function MessageRow({ m }: { m: ChatMessage }): ReactElement {
         flexShrink: 0,
         marginBottom: 16,
         width: '100%',
+        paddingLeft: 24,
+        paddingRight: 24,
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', maxWidth: 640 }}>

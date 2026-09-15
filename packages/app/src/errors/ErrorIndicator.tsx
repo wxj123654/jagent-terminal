@@ -24,19 +24,15 @@ export function ErrorIndicator({ onOpen }: { onOpen: () => void }) {
       onKeyDown={(e) => {
         if (e.key === 'enter') onOpen()
       }}
+      // 原型 #err-ind：纯文本「⚠ n」（11px 红，无背景/边框徽章）
       style={{
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
-        paddingLeft: 8,
-        paddingRight: 8,
-        paddingTop: 3,
-        paddingBottom: 3,
-        marginLeft: 8,
-        borderRadius: 6,
-        backgroundColor: 'rgba(224, 108, 117, 0.15)',
-        borderWidth: 1,
-        borderColor: 'rgba(224, 108, 117, 0.4)',
+        paddingLeft: 4,
+        paddingRight: 4,
+        cursor: 'pointer',
+        userSelect: 'none',
       }}
     >
       <text

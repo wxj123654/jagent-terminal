@@ -215,7 +215,17 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
           （空滚 40px + 内容滚出顶部）——已用 TestRenderer 复现锁定 */}
       <div
         testId="settings-content-scroll"
-        style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflowY: 'scroll' }}
+        style={{
+          flexGrow: 1,
+          // minWidth: 0 —— 行向 flex item 的 auto 最小尺寸 = 内容固有宽度；
+          // overflowY scroll 在 gpuix/taffy 里不清零横轴 auto min，长描述
+          // （CJK 不可断行）会把整列撑出视口、右侧控件被裁。显式归零让
+          // 列宽回到可用空间，文本正常换行。
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          overflowY: 'scroll',
+        }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', padding: 20 }}>
           {searching ? (

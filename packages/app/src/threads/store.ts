@@ -555,7 +555,7 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
                 const row = s.threads.find((x) => x.id === id)
                 if (row && row.kind === 'terminal') row.hasBell = true
               })
-              pushNotice(t, 'warn', `「${displayTitle(t)}」等待注意`)
+              pushNotice(t, 'warn', `「${displayTitle(t)}」等待注意`, 'BEL')
               deps.notify(t)
             }
           }
@@ -593,16 +593,22 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
     return deps.activeThreadId?.() ?? null
   }
 
-  /** 通知落列（D8）：sub = 归属工作区名 / 未归属；容量 50（截断时
-   *  已读计数 clamp——未读数非负不变量） */
-  function pushNotice(t: TerminalThread, tone: SessionNotice['tone'], text: string) {
+  /** 通知落列（D8）：sub = 归属工作区名 / 未归属 + 可选原因（原型
+   *  「dotfiles · BEL」格式）；容量 50（截断时已读计数 clamp——未读数
+   *  非负不变量） */
+  function pushNotice(
+    t: TerminalThread,
+    tone: SessionNotice['tone'],
+    text: string,
+    reason?: string,
+  ) {
     set((s) => {
       const ws = t.workspaceId ? s.workspaces.find((w) => w.id === t.workspaceId) : undefined
       s.notices.push({
         id: `n${++noticeSeq}`,
         tone,
         text,
-        sub: ws?.name ?? '未归属',
+        sub: `${ws?.name ?? '未归属'}${reason ? ` · ${reason}` : ''}`,
         at: now(),
       })
       if (s.notices.length > 50) s.notices.splice(0, s.notices.length - 50)
