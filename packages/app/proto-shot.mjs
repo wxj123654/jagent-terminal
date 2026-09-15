@@ -17,7 +17,7 @@
  * 同款提示行）；其余 terminal 行用假 sessionId（不渲染，无影响）。
  */
 
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createTestRoot } from '@gpuix/react/testing'
 import { setAutoFreeze } from 'immer'
@@ -53,6 +53,7 @@ const arg = (name, dflt) => {
 }
 const WIDTH = Number(arg('width', 1280))
 const HEIGHT = Number(arg('height', 800))
+const GEOM = args.includes('--geom')
 const STATES = String(
   arg('states', 'main,home,chat,ws,git,settings,panel,search,tool,notif,ctxmenu'),
 ).split(',')
@@ -237,7 +238,13 @@ const acpId = lastThread().id
   const s = store.getState()
   const rt = Date.now() // relTime 用真实时钟——at 用真值才能出「N 分钟前」
   s.notices.push(
-    { id: 'nx1', tone: 'warn', text: '「同步 nvim 配置」等待注意', sub: 'dotfiles', at: rt - 3e5 },
+    {
+      id: 'nx1',
+      tone: 'warn',
+      text: '「同步 nvim 配置」等待注意',
+      sub: 'dotfiles · BEL',
+      at: rt - 3e5,
+    },
     { id: 'nx2', tone: 'ok', text: '「侧栏重构」已完成回复', sub: 'jagent-terminal', at: rt - 6e5 },
     { id: 'nx3', tone: 'err', text: 'PTY 写入失败：会话 5', sub: '未归属 · EPIPE', at: rt - 9e5 },
   )
@@ -447,6 +454,57 @@ const shot = (name) => {
   const out = join(OUT_DIR, `impl-${name}${suffix}.png`)
   t.renderer.captureScreenshot(out)
   console.log('saved:', out)
+  if (GEOM) dumpGeom(name)
+}
+
+/**
+ * --geom：连同截图导出整棵元素树的实测几何（bounds + 文本 + 关键样式）到
+ * .shots/cmp/geom-impl-<state>.json。原型侧的同名脚本是
+ * .shots/cmp/geom-proto.mjs（chrome getBoundingClientRect），两边逐字段
+ * 比对即可做像素级核对，不必靠肉眼看截图。
+ */
+function dumpGeom(name) {
+  const root = t.renderer.getRoot()
+  const nodes = []
+  const walk = (el, depth, path) => {
+    if (!el) return
+    const b = t.renderer.getElementBounds(el.id)
+    const s = el.style ?? {}
+    nodes.push({
+      path,
+      depth,
+      type: el.type,
+      testId: el.testId ?? null,
+      text: el.text ?? null,
+      x: b ? +b.x.toFixed(1) : null,
+      y: b ? +b.y.toFixed(1) : null,
+      w: b ? +b.width.toFixed(1) : null,
+      h: b ? +b.height.toFixed(1) : null,
+      bg: s.backgroundColor ?? null,
+      color: s.color ?? null,
+      fs: s.fontSize ?? null,
+      fw: s.fontWeight ?? null,
+      pl: s.paddingLeft ?? null,
+      pr: s.paddingRight ?? null,
+      ml: s.marginLeft ?? null,
+      mt: s.marginTop ?? null,
+      gap: s.gap ?? null,
+      br: s.borderRadius ?? null,
+      bl: s.borderLeftWidth ?? null,
+    })
+    let i = 0
+    for (const cid of el.children ?? []) {
+      walk(t.renderer.getElement(cid), depth + 1, `${path}/${i}`)
+      i++
+    }
+  }
+  walk(root, 0, '')
+  const out = join(OUT_DIR, 'cmp', `geom-impl-${name}${WIDTH === 1280 ? '' : `-${WIDTH}`}.json`)
+  try {
+    mkdirSync(join(OUT_DIR, 'cmp'), { recursive: true })
+  } catch {}
+  writeFileSync(out, JSON.stringify(nodes, null, 0))
+  console.log('geom:', out, nodes.length, 'nodes')
 }
 const clickTestId = (testId, button = 0) => {
   const el = t.renderer.findByTestId(testId)
@@ -513,6 +571,10 @@ for (const state of STATES) {
       worktree.select('packages/app/src/plane/Sidebar.tsx')
       await flush()
       shot('panel')
+      // 面板是持续态：不关会污染后续 search/tool/notif/ctxmenu 截图
+      // （原型的 ?view=search 等不带面板）。
+      clickTestId('panel-toggle')
+      await flush()
       break
     case 'search':
       clickTestId('nav-search')
