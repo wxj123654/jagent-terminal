@@ -186,6 +186,13 @@ function NotifPopover({
           [...notices].reverse().map((n) => (
             <div
               key={n.id}
+              testId={`notif-item-${n.id}`}
+              tabIndex={0}
+              // 点击 = openNotice：标已读 + 来源会话仍在则跳转（D8）
+              onClick={() => store.openNotice(n.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'enter' || e.key === 'space') store.openNotice(n.id)
+              }}
               style={{
                 display: 'flex',
                 flexDirection: 'row',
@@ -195,6 +202,9 @@ function NotifPopover({
                 paddingRight: 10,
                 paddingTop: 7,
                 paddingBottom: 7,
+                borderRadius: 4,
+                cursor: 'pointer',
+                hover: { backgroundColor: COLORS.surface },
               }}
             >
               <div
@@ -202,7 +212,9 @@ function NotifPopover({
                   width: 6,
                   height: 6,
                   borderRadius: 9999,
+                  // 未读 = tone 实色；已读压淡（条目保留，视觉退场）
                   backgroundColor: TONE[n.tone],
+                  opacity: n.read ? 0.35 : 1,
                   marginTop: 5,
                   flexShrink: 0,
                 }}
@@ -210,10 +222,11 @@ function NotifPopover({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                 <text
                   style={{
-                    // 原型 .nt：12px text / line-height 1.4
+                    // 原型 .nt：12px text / line-height 1.4；未读提亮加粗
                     fontSize: 12,
                     fontFamily: FONT.ui,
-                    color: COLORS.text,
+                    fontWeight: n.read ? undefined : '600',
+                    color: n.read ? COLORS.faint : COLORS.textBright,
                     lineHeight: 17,
                     whiteSpace: 'normal',
                     pointerEvents: 'none',
@@ -270,7 +283,7 @@ export function Sidebar({
   const { height: winH } = useWindowSize()
   // 宽度单值订阅：设置页拖滑块时只重渲染侧栏（不碰会话树）
   const width = useSettingsValue(settings, (s) => s.appearance.sidebarWidth)
-  const unread = useThreadStore(store, (s) => s.notices.length - s.noticesRead)
+  const unread = useThreadStore(store, (s) => s.notices.reduce((n, x) => n + (x.read ? 0 : 1), 0))
   // 浮层锚定铃铛上方（原型 .notif-pop bottom:100%+8）：bottomLeft 角贴
   // 脚条上缘左端（GPUIX 无元素 bounds 读面，侧栏贴左底 → 窗口坐标可算）
   const notifPos = { x: 8, y: winH - 40 }

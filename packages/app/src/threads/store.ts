@@ -111,6 +111,10 @@ export type SessionNotice = {
   /** 副文案（工作区名 · 相对时间在 UI 层格式化） */
   sub: string
   at: number
+  /** 来源会话（点击条目 → activate 跳转；会话已关闭则仅标已读） */
+  threadId: string
+  /** 已读标记（未读 = notices.filter(!read)；activate 该会话时自动标读） */
+  read: boolean
 }
 
 export type ThreadState = {
@@ -120,10 +124,8 @@ export type ThreadState = {
   workspaces: Workspace[]
   /** 运行时态，不写 settings.json */
   lastUsedPreset: string | null
-  /** 通知中心事件流（D8；未读 = notices.length - noticesRead） */
+  /** 通知中心事件流（D8；未读 = notices.filter(n => !n.read)） */
   notices: SessionNotice[]
-  /** 已读计数（notices 截断时随之 clamp——未读数非负不变量） */
-  noticesRead: number
   // 注意：active 不在此——导航唯一事实源是 router（§3.5）
 }
 
@@ -205,6 +207,9 @@ export interface ThreadStore {
   setWorkspacePinned(id: string, pin: boolean): void
   /** 通知中心（D8）：全部已读——红点清除，条目保留 */
   markNoticesRead(): void
+  /** 通知条目点击（D8）：标已读 + 来源会话仍在则 activate 跳转；
+   *  会话已关闭仅标已读（不导航——路由不得指向不存在的行） */
+  openNotice(noticeId: string): void
   /** 工作区内 tab（git-graph.md §4.1）：'home'/'git'；持久化，不导航 */
   setWorkspacePaneTab(id: string, tab: 'home' | 'git'): void
   /** 打开 Git 图：当前工作区（会话归属 / 已激活 / 第一个）切 paneTab=git 并激活。无工作区 no-op。 */
@@ -224,7 +229,6 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
     workspaces: opts.initialWorkspaces ?? [],
     lastUsedPreset: null,
     notices: [],
-    noticesRead: 0,
   }))
   const set = (recipe: (s: ThreadState) => void) => store.setState(produce(recipe))
   const state = () => store.getState()
@@ -248,6 +252,8 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
         const t = s.threads.find((x) => x.id === target.id)
         if (t && t.kind === 'terminal' && t.hasBell) t.hasBell = false
         if (t && t.unread) t.unread = false
+        // 进入会话即已读其通知（D8：activate 是「已看到」的唯一判定）
+        for (const n of s.notices) if (n.threadId === target.id) n.read = true
         // Phase W：会话聚焦 → 归属工作区 lastSession 记录（activateWorkspace 恢复源）
         if (t?.workspaceId) {
           touchedWorkspace = recordLastSession(s.workspaces, t.workspaceId, t.id)
@@ -504,8 +510,21 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
 
     markNoticesRead() {
       set((s) => {
-        s.noticesRead = s.notices.length
+        for (const n of s.notices) n.read = true
       })
+    },
+
+    openNotice(noticeId) {
+      const n = state().notices.find((x) => x.id === noticeId)
+      if (!n) return
+      set((s) => {
+        const row = s.notices.find((x) => x.id === noticeId)
+        if (row) row.read = true
+      })
+      // 来源会话仍在才导航（已关闭的会话只标已读——activate 会再标一次，幂等）
+      if (state().threads.some((t) => t.id === n.threadId)) {
+        activate({ type: 'thread', id: n.threadId })
+      }
     },
 
     setWorkspacePaneTab(id, tab) {
@@ -594,8 +613,8 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
   }
 
   /** 通知落列（D8）：sub = 归属工作区名 / 未归属 + 可选原因（原型
-   *  「dotfiles · BEL」格式）；容量 50（截断时已读计数 clamp——未读数
-   *  非负不变量） */
+   *  「dotfiles · BEL」格式）；容量 50（溢出丢最旧——read 随条目走，
+   *  无计数器不变量要维护） */
   function pushNotice(
     t: TerminalThread,
     tone: SessionNotice['tone'],
@@ -610,9 +629,10 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
         text,
         sub: `${ws?.name ?? '未归属'}${reason ? ` · ${reason}` : ''}`,
         at: now(),
+        threadId: t.id,
+        read: false,
       })
       if (s.notices.length > 50) s.notices.splice(0, s.notices.length - 50)
-      if (s.noticesRead > s.notices.length) s.noticesRead = s.notices.length
     })
   }
 

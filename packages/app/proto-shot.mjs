@@ -244,11 +244,28 @@ const acpId = lastThread().id
       text: '「同步 nvim 配置」等待注意',
       sub: 'dotfiles · BEL',
       at: rt - 3e5,
+      threadId: 'shot-none',
+      read: false,
     },
-    { id: 'nx2', tone: 'ok', text: '「侧栏重构」已完成回复', sub: 'jagent-terminal', at: rt - 6e5 },
-    { id: 'nx3', tone: 'err', text: 'PTY 写入失败：会话 5', sub: '未归属 · EPIPE', at: rt - 9e5 },
+    {
+      id: 'nx2',
+      tone: 'ok',
+      text: '「侧栏重构」已完成回复',
+      sub: 'jagent-terminal',
+      at: rt - 6e5,
+      threadId: 'shot-none',
+      read: false,
+    },
+    {
+      id: 'nx3',
+      tone: 'err',
+      text: 'PTY 写入失败：会话 5',
+      sub: '未归属 · EPIPE',
+      at: rt - 9e5,
+      threadId: 'shot-none',
+      read: true,
+    },
   )
-  s.noticesRead = 1
 }
 
 // 错误总线（titlebar ⚠1）

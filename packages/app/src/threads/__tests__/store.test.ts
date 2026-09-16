@@ -850,3 +850,78 @@ describe('方案 C：pin / unread（codex-sidebar-v2）', () => {
     expect(store.getState().workspaces.filter((w) => w.pin)).toHaveLength(1)
   })
 })
+
+describe('通知中心（D8）：threadId / read / openNotice', () => {
+  let store: ThreadStore
+  let ctx: ReturnType<typeof makeDeps>
+  beforeEach(() => {
+    void router.navigate({ to: '/' })
+    ctx = makeDeps()
+    store = createThreadStore(ctx.deps)
+  })
+
+  const unreadCount = () => store.getState().notices.filter((n) => !n.read).length
+
+  test('bell/exit 落 notice：带 threadId + read=false；activate 自动已读该会话条目', async () => {
+    await store.spawnFromPreset('shell') // t1 active
+    await store.spawnFromPreset('shell') // t2 active，t1 转后台
+    store.onSessionEvent({ type: 'bell', sessionId: 1 })
+    store.onSessionEvent({ type: 'exit', sessionId: 1, code: 0 })
+
+    const notices = store.getState().notices
+    expect(notices).toHaveLength(2)
+    expect(notices.every((n) => n.threadId === 't1' && !n.read)).toBe(true)
+    expect(unreadCount()).toBe(2)
+
+    // 进入 t1 → 其 notice 全部已读（activate 是「已看到」的判定）
+    store.activate({ type: 'thread', id: 't1' })
+    expect(unreadCount()).toBe(0)
+    expect(store.getState().notices.every((n) => n.read)).toBe(true)
+  })
+
+  test('activate 只清目标会话的 notice，其他会话未读保留', async () => {
+    await store.spawnFromPreset('shell') // t1
+    await store.spawnFromPreset('shell') // t2
+    await store.spawnFromPreset('shell') // t3 active
+    store.onSessionEvent({ type: 'bell', sessionId: 1 })
+    store.onSessionEvent({ type: 'bell', sessionId: 2 })
+    expect(unreadCount()).toBe(2)
+
+    store.activate({ type: 'thread', id: 't1' })
+    const notices = store.getState().notices
+    expect(notices.find((n) => n.threadId === 't1')?.read).toBe(true)
+    expect(notices.find((n) => n.threadId === 't2')?.read).toBe(false)
+    expect(unreadCount()).toBe(1)
+  })
+
+  test('openNotice：标已读 + 跳来源会话；已关闭会话仅标已读不导航', async () => {
+    await store.spawnFromPreset('shell') // t1
+    await store.spawnFromPreset('shell') // t2 active
+    store.onSessionEvent({ type: 'bell', sessionId: 1 })
+    const n = store.getState().notices[0]!
+
+    store.openNotice(n.id)
+    expect(store.getState().notices[0]!.read).toBe(true)
+    expect(currentActiveThreadId()).toBe('t1')
+
+    // exit 落 notice（closeOnExit=false → 行保留）→ 再 close 掉 t1，
+    // 模拟「通知还在、会话已不在」的点击路径
+    store.onSessionEvent({ type: 'exit', sessionId: 1, code: 1 })
+    const dead = store.getState().notices.at(-1)!
+    expect(dead.threadId).toBe('t1')
+    store.close('t1')
+    store.openNotice(dead.id)
+    expect(store.getState().notices.at(-1)!.read).toBe(true)
+    expect(currentActiveThreadId()).not.toBe('t1') // 未导航到不存在的行
+  })
+
+  test('markNoticesRead：全部已读，条目保留；openNotice 未知 id no-op', async () => {
+    await store.spawnFromPreset('shell')
+    await store.spawnFromPreset('shell')
+    store.onSessionEvent({ type: 'bell', sessionId: 1 })
+    store.markNoticesRead()
+    expect(unreadCount()).toBe(0)
+    expect(store.getState().notices).toHaveLength(1)
+    store.openNotice('n-void') // 不炸
+  })
+})
