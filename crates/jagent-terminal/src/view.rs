@@ -28,17 +28,18 @@ pub use render::TerminalRenderer;
 
 use std::cell::Cell;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Column, Line, Point as AlacPoint, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::term::TermMode;
 use gpui::{
-    canvas, div, px, quad, transparent_black, App, Bounds, ClipboardItem, Context,
-    DispatchPhase, Edges, Entity, FocusHandle, InputHandler, InteractiveElement, IntoElement,
-    KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement,
-    Pixels, Point, Render, ScrollDelta, ScrollWheelEvent, Size, Styled, Subscription,
-    UTF16Selection, Window,
+    App, Bounds, ClipboardItem, Context, DispatchPhase, Edges, Entity, FocusHandle, InputHandler,
+    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseExitEvent,
+    MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render, ScrollDelta,
+    ScrollWheelEvent, Size, Styled, Subscription, UTF16Selection, Window, canvas, div, px, quad,
+    transparent_black,
 };
 
 use crate::model::{Event, TerminalModel};
@@ -77,6 +78,12 @@ pub struct TerminalView {
     content_metrics: Rc<Cell<Option<ContentMetrics>>>,
     /// 本帧滚动条几何（paint 阶段写入）：命中测试与拖拽映射用。
     scrollbar_layout: Rc<Cell<Option<ScrollbarLayout>>>,
+    /// 滚动条淡入淡出状态（paint 阶段推进动画，事件阶段读写）。
+    scrollbar_fx: Rc<Cell<ScrollbarFx>>,
+    /// 本帧视图 bounds（paint 阶段写入）：鼠标移入/移出检测用。
+    view_bounds: Rc<Cell<Bounds<Pixels>>>,
+    /// 鼠标当前是否在视图内（MouseExitEvent/移动事件维护）。
+    mouse_inside: bool,
 }
 
 /// 终端内容区几何快照（paint 阶段写入，事件阶段读取）。
@@ -89,6 +96,53 @@ struct ContentMetrics {
     cols: usize,
     rows: usize,
 }
+
+/// 滚动条淡入淡出（Zed `ui::components::scrollbar` 同款语义）：
+/// 移入视图/滚动 → 渐入；悬停 thumb 或拖拽 → 保持；停止滚动 1s 或
+/// 移出视图 → 渐出。Animating 存起止 alpha，paint 阶段按帧推进。
+#[derive(Clone, Copy, PartialEq)]
+enum ScrollbarVisibility {
+    Hidden,
+    Visible,
+    Animating {
+        start: Instant,
+        duration: Duration,
+        from: f32,
+        to: f32,
+    },
+}
+
+/// 滚动条动效快照（Rc<Cell>：paint 闭包推进动画，事件阶段读写）。
+#[derive(Clone, Copy)]
+struct ScrollbarFx {
+    visibility: ScrollbarVisibility,
+    /// 鼠标是否悬停在滚动条命中区（thumb 加亮 + 抑制自动隐藏）。
+    hovered: bool,
+    /// 是否正在拖拽 thumb（镜像 scrollbar_drag，paint 阶段读不到
+    /// view 实体——App::read 会 double-lease panic——走 Cell 传递）。
+    dragging: bool,
+    /// 自动隐藏计时器代次：每次 show 递增，过期 timer 不再隐藏。
+    generation: u64,
+}
+
+/// 滚动条渐入时长（Zed 是瞬现；按需求做成渐入）。
+const SCROLLBAR_FADE_IN: Duration = Duration::from_millis(150);
+/// 滚动条渐出时长（Zed 同款 400ms）。
+const SCROLLBAR_FADE_OUT: Duration = Duration::from_millis(400);
+/// 停止滚动后自动隐藏的延迟（Zed 同款 1s）。
+const SCROLLBAR_HIDE_DELAY: Duration = Duration::from_secs(1);
+/// 常态 thumb 不透明度。Zed One Dark 实测：常态 thumb（浅灰 30%）
+/// blend 到不透明 editor 背景上，是三态中【最亮】的。
+const SCROLLBAR_OPACITY: f32 = 0.6;
+/// 悬停 thumb 不透明度：Zed hover 换成不透明的深灰主题色
+/// （#363c46，≈轨道色），是三态中【最暗】的——悬停反而变暗。
+const SCROLLBAR_HOVER_OPACITY: f32 = 0.35;
+/// 拖拽 thumb 不透明度：Zed active（fallback step5 14%）blend 后
+/// 介于常态和悬停之间、偏悬停（rgb 69 vs 悬停 54 vs 常态 88）。
+const SCROLLBAR_ACTIVE_OPACITY: f32 = 0.45;
+/// thumb 最小高度（Zed `MINIMUM_THUMB_SIZE` = 25px）：内容极长时
+/// 等比缩出来的 thumb 会小到看不见/抓不到，兜底一个可点击尺寸。
+const SCROLLBAR_MIN_THUMB: f32 = 25.0;
 
 /// 滚动条几何快照（paint 阶段写入，事件阶段读取）。
 #[derive(Clone, Copy)]
@@ -161,6 +215,14 @@ impl TerminalView {
             scrollbar_drag: None,
             content_metrics: Rc::new(Cell::new(None)),
             scrollbar_layout: Rc::new(Cell::new(None)),
+            scrollbar_fx: Rc::new(Cell::new(ScrollbarFx {
+                visibility: ScrollbarVisibility::Hidden,
+                hovered: false,
+                dragging: false,
+                generation: 0,
+            })),
+            view_bounds: Rc::new(Cell::new(Bounds::default())),
+            mouse_inside: false,
         }
     }
 
@@ -253,7 +315,12 @@ impl TerminalView {
     /// 选区语义与 Zed/alacritty 一致：单击 Simple、双击 Semantic（词）、
     /// 三击 Lines（整行）、Shift+单击扩展现有选区。应用接管鼠标
     /// （MOUSE_MODE，如 vim）时按住 Shift 才走本地选区，否则留给应用。
-    fn on_mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_mouse_down(
+        &mut self,
+        event: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.focus_handle.focus(window, cx);
 
         // 滚动条命中：拖拽 thumb 或点击轨道翻页。
@@ -262,6 +329,9 @@ impl TerminalView {
         {
             if layout.thumb.contains(&event.position) {
                 self.scrollbar_drag = Some(event.position.y - layout.thumb.origin.y);
+                let mut fx = self.scrollbar_fx.get();
+                fx.dragging = true;
+                self.scrollbar_fx.set(fx);
             } else {
                 let page = self
                     .content_metrics
@@ -278,6 +348,9 @@ impl TerminalView {
                     .read(cx)
                     .with_term_mut(|term| term.scroll_display(Scroll::Delta(delta)));
             }
+            // 点击滚动条也视为一次交互：保持显示并重置自动隐藏。
+            self.mouse_inside = true;
+            self.show_scrollbar(cx);
             cx.notify();
             return;
         }
@@ -297,11 +370,8 @@ impl TerminalView {
 
         self.selecting = true;
         model.with_term_mut(|term| {
-            let (point, side) = grid_point_and_side(
-                event.position,
-                metrics,
-                term.grid().display_offset(),
-            );
+            let (point, side) =
+                grid_point_and_side(event.position, metrics, term.grid().display_offset());
             let selection_type = match event.click_count {
                 1 => SelectionType::Simple,
                 2 => SelectionType::Semantic,
@@ -321,27 +391,73 @@ impl TerminalView {
 
     /// 左键抬起：结束滚动条拖拽；选区非空则复制到剪贴板
     /// （终端惯例 copy-on-release；当前没有显式 copy 快捷键路径）。
-    fn on_mouse_up(&mut self, _event: &MouseUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
-        self.scrollbar_drag = None;
+    fn on_mouse_up(&mut self, event: &MouseUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        let was_dragging = self.scrollbar_drag.take().is_some();
         if self.selecting {
             self.selecting = false;
             self.copy_selection(cx);
+        }
+        // 拖拽结束：松手点不在滚动条上 → 渐出（Zed 同款）。
+        if was_dragging {
+            let hovered = self
+                .scrollbar_layout
+                .get()
+                .is_some_and(|l| l.hit.contains(&event.position));
+            let mut fx = self.scrollbar_fx.get();
+            fx.hovered = hovered;
+            fx.dragging = false;
+            self.scrollbar_fx.set(fx);
+            if !hovered {
+                self.hide_scrollbar(cx);
+            } else {
+                cx.notify(); // 拖拽态 → 悬停态，重绘换色
+            }
         }
     }
 
     /// 窗口级 mouse_move（paint 阶段注册）：拖拽越出元素 bounds 时仍能
     /// 收到事件——选区拖到边界外自动滚动，滚动条拖拽同理。按钮已松开
     /// （在窗外松开等场景）时兜底收尾选区。
+    ///
+    /// 滚动条可见性（Zed 语义）：移入视图 → 渐入；悬停 thumb → 保持；
+    /// 移出视图 → 渐出；拖拽中移出视图不隐藏。
     fn handle_mouse_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
+        // 按钮已松开（窗外松开等）→ 兜底收尾拖拽/选区。
         if event.pressed_button != Some(MouseButton::Left) {
             if self.selecting {
                 self.selecting = false;
                 self.copy_selection(cx);
             }
-            self.scrollbar_drag = None;
-            return;
+            if self.scrollbar_drag.take().is_some() {
+                let mut fx = self.scrollbar_fx.get();
+                fx.dragging = false;
+                self.scrollbar_fx.set(fx);
+            }
         }
 
+        let inside = self.view_bounds.get().contains(&event.position);
+        let hovered = self
+            .scrollbar_layout
+            .get()
+            .is_some_and(|l| l.hit.contains(&event.position));
+        {
+            let mut fx = self.scrollbar_fx.get();
+            fx.hovered = hovered;
+            self.scrollbar_fx.set(fx);
+        }
+        if inside {
+            // 移入/视图内移动：渐入并重置自动隐藏计时
+            // （Zed 同款 last_show 语义）。
+            self.show_scrollbar(cx);
+        } else if self.mouse_inside && self.scrollbar_drag.is_none() {
+            // 移出视图：立即渐出。
+            self.hide_scrollbar(cx);
+        }
+        self.mouse_inside = inside;
+
+        if event.pressed_button != Some(MouseButton::Left) {
+            return;
+        }
         if self.scrollbar_drag.is_some() {
             self.update_scrollbar_drag(event.position, cx);
             return;
@@ -368,11 +484,8 @@ impl TerminalView {
                 term.scroll_display(Scroll::Delta(scroll_lines.clamp(-5, 5)));
                 changed = true;
             }
-            let (point, side) = grid_point_and_side(
-                event.position,
-                metrics,
-                term.grid().display_offset(),
-            );
+            let (point, side) =
+                grid_point_and_side(event.position, metrics, term.grid().display_offset());
             // 同一 cell 内的移动不改变选区——跳过重绘。鼠标移动事件频率
             // 可达数百 Hz，慢速拖拽时大部分事件落在同一格，去重能省掉
             // 大量全量 repaint。
@@ -384,6 +497,17 @@ impl TerminalView {
         });
         if changed {
             cx.notify();
+        }
+    }
+
+    /// 鼠标离开窗口（平台级 MouseExited）：等价移出视图，渐出滚动条。
+    fn handle_mouse_exit(&mut self, _event: &MouseExitEvent, cx: &mut Context<Self>) {
+        self.mouse_inside = false;
+        let mut fx = self.scrollbar_fx.get();
+        fx.hovered = false;
+        self.scrollbar_fx.set(fx);
+        if self.scrollbar_drag.is_none() {
+            self.hide_scrollbar(cx);
         }
     }
 
@@ -399,8 +523,8 @@ impl TerminalView {
         }
         // thumb 位置公式是 frac = 1 - offset/max（顶部=最新、底部=最旧），
         // 反解 display_offset 时要取 1 - frac。
-        let frac = ((position.y - layout.track_top - grab_offset) / px(track_space))
-            .clamp(0.0, 1.0);
+        let frac =
+            ((position.y - layout.track_top - grab_offset) / px(track_space)).clamp(0.0, 1.0);
         let offset = ((1.0 - frac) * layout.max_offset as f32).round() as usize;
         let changed = self.model.read(cx).with_term_mut(|term| {
             let current = term.grid().display_offset();
@@ -414,6 +538,64 @@ impl TerminalView {
         if changed {
             cx.notify();
         }
+    }
+
+    /// 从当前不透明度渐变到目标态（Visible=1 / Hidden=0）。
+    /// 已在朝同一目标动画时不重启，避免连续 mousemove 把渐入卡死在起点。
+    fn fade_scrollbar(&mut self, to: ScrollbarVisibility, duration: Duration) {
+        let mut fx = self.scrollbar_fx.get();
+        // Animating.to 存的是目标不透明度（f32），与目标态换算后比较。
+        if let ScrollbarVisibility::Animating { to: t, .. } = fx.visibility {
+            if (t - scrollbar_opacity(to)).abs() < f32::EPSILON {
+                return;
+            }
+        }
+        let from = scrollbar_opacity(fx.visibility);
+        if (from - scrollbar_opacity(to)).abs() < f32::EPSILON {
+            fx.visibility = to;
+        } else {
+            fx.visibility = ScrollbarVisibility::Animating {
+                start: Instant::now(),
+                duration,
+                from,
+                to: scrollbar_opacity(to),
+            };
+        }
+        self.scrollbar_fx.set(fx);
+    }
+
+    /// 显示滚动条并重置自动隐藏计时（Zed `show_scrollbars` 同款：
+    /// 滚动/视图内移动都会调用，generation 防止过期 timer 提前隐藏）。
+    fn show_scrollbar(&mut self, cx: &mut Context<Self>) {
+        let mut fx = self.scrollbar_fx.get();
+        fx.generation += 1;
+        self.scrollbar_fx.set(fx);
+        if fx.visibility != ScrollbarVisibility::Visible {
+            self.fade_scrollbar(ScrollbarVisibility::Visible, SCROLLBAR_FADE_IN);
+        }
+        let generation = fx.generation;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(SCROLLBAR_HIDE_DELAY).await;
+            this.update(cx, |v, cx| {
+                let fx = v.scrollbar_fx.get();
+                if fx.generation == generation
+                    && !fx.hovered
+                    && v.scrollbar_drag.is_none()
+                    && v.mouse_inside
+                {
+                    v.fade_scrollbar(ScrollbarVisibility::Hidden, SCROLLBAR_FADE_OUT);
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// 鼠标离开视图/松手后不在滚动条上 → 渐出（Zed：leave 立即渐出）。
+    fn hide_scrollbar(&mut self, cx: &mut Context<Self>) {
+        self.fade_scrollbar(ScrollbarVisibility::Hidden, SCROLLBAR_FADE_OUT);
+        cx.notify();
     }
 
     /// 当前选区文本写入剪贴板。
@@ -435,7 +617,12 @@ impl TerminalView {
     ///   Up/Down 方向键（多数 TUI 靠方向键滚动自己的视口）；
     /// - 应用接管鼠标（MOUSE_MODE）：忽略——SGR wheel 上报需要 cell
     ///   坐标换算，待需要时再补。
-    fn on_scroll(&mut self, event: &ScrollWheelEvent, _window: &mut Window, cx: &mut Context<Self>) {
+    fn on_scroll(
+        &mut self,
+        event: &ScrollWheelEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         // GPUI 约定 delta.y > 0 = 向内容顶部滚动（向上）
         let lines_f32 = match event.delta {
             ScrollDelta::Lines(l) => l.y,
@@ -460,6 +647,9 @@ impl TerminalView {
                 }
             } else {
                 model.with_term_mut(|term| term.scroll_display(Scroll::Delta(lines)));
+                // 真实滚动 → 渐入滚动条并重置自动隐藏（Zed 同款）。
+                self.mouse_inside = true;
+                self.show_scrollbar(cx);
             }
         }
         cx.notify();
@@ -473,6 +663,24 @@ trait Pipe: Sized {
     }
 }
 impl<T> Pipe for T {}
+
+/// 滚动条可见性 → 不透明度：Animating 按经过时间线性插值，
+/// 动画完成由 paint 阶段收敛到终态（request_animation_frame 驱动）。
+fn scrollbar_opacity(visibility: ScrollbarVisibility) -> f32 {
+    match visibility {
+        ScrollbarVisibility::Hidden => 0.0,
+        ScrollbarVisibility::Visible => 1.0,
+        ScrollbarVisibility::Animating {
+            start,
+            duration,
+            from,
+            to,
+        } => {
+            let t = (start.elapsed().as_secs_f32() / duration.as_secs_f32()).min(1.0);
+            from + (to - from) * t
+        }
+    }
+}
 
 /// 窗口坐标 → grid 坐标 + 半格侧（左/右）。移植自 Zed
 /// `mappings/mouse.rs::grid_point_and_side`：pos 为窗口坐标，先减去
@@ -543,6 +751,8 @@ impl Render for TerminalView {
         let focus_handle = self.focus_handle.clone();
         let content_metrics = self.content_metrics.clone();
         let scrollbar_layout = self.scrollbar_layout.clone();
+        let scrollbar_fx = self.scrollbar_fx.clone();
+        let view_bounds = self.view_bounds.clone();
 
         div()
             .size_full()
@@ -621,37 +831,33 @@ impl Render for TerminalView {
                         // 拖拽选区/滚动条时鼠标可能越出元素 bounds，div 的
                         // on_mouse_move/on_mouse_up 收不到；窗口级监听在
                         // paint 阶段注册、下一帧有效（Zed terminal_element
-                        // 同款做法）。
+                        // 同款做法）。MouseExited 同理：离开窗口渐出滚动条。
                         {
                             let view = this.clone();
-                            window.on_mouse_event(
-                                move |e: &MouseMoveEvent, phase, _window, cx| {
-                                    if phase == DispatchPhase::Bubble {
-                                        view.update(cx, |v, cx| v.handle_mouse_move(e, cx));
-                                    }
-                                },
-                            );
+                            window.on_mouse_event(move |e: &MouseMoveEvent, phase, _window, cx| {
+                                if phase == DispatchPhase::Bubble {
+                                    view.update(cx, |v, cx| v.handle_mouse_move(e, cx));
+                                }
+                            });
                             let view = this.clone();
-                            window.on_mouse_event(
-                                move |e: &MouseUpEvent, phase, _window, cx| {
-                                    if phase == DispatchPhase::Bubble
-                                        && e.button == MouseButton::Left
-                                    {
-                                        view.update(cx, |v, cx| v.on_mouse_up(e, _window, cx));
-                                    }
-                                },
-                            );
+                            window.on_mouse_event(move |e: &MouseUpEvent, phase, _window, cx| {
+                                if phase == DispatchPhase::Bubble && e.button == MouseButton::Left {
+                                    view.update(cx, |v, cx| v.on_mouse_up(e, _window, cx));
+                                }
+                            });
+                            let view = this.clone();
+                            window.on_mouse_event(move |e: &MouseExitEvent, phase, _window, cx| {
+                                if phase == DispatchPhase::Bubble {
+                                    view.update(cx, |v, cx| v.handle_mouse_exit(e, cx));
+                                }
+                            });
                         }
 
+                        // 视图 bounds 快照：移入/移出检测用。
+                        view_bounds.set(bounds);
+
                         let term = term_lock.lock();
-                        measured.paint(
-                            bounds,
-                            padding,
-                            &term,
-                            marked_text.as_deref(),
-                            window,
-                            cx,
-                        );
+                        measured.paint(bounds, padding, &term, marked_text.as_deref(), window, cx);
 
                         // 滚动条：仅在有回滚历史时出现（alt screen 无历史
                         // 不画）。轨道贴内容区右缘，命中区放宽到 12px。
@@ -661,14 +867,45 @@ impl Render for TerminalView {
                             let screen_lines = grid.screen_lines();
                             let display_offset = grid.display_offset();
                             let total = history + screen_lines;
-                            if history > 0 {
+                            // 淡入淡出：Animating 期间每帧推进不透明度并
+                            // 请求下一帧；完全透明时连命中区都不留（不可见
+                            // 的滚动条不应抢走右缘的选区点击）。
+                            let mut fx = scrollbar_fx.get();
+                            let mut opacity = scrollbar_opacity(fx.visibility);
+                            if let ScrollbarVisibility::Animating { to, .. } = fx.visibility {
+                                if opacity >= 1.0 || opacity <= 0.0 {
+                                    fx.visibility = if to > 0.5 {
+                                        ScrollbarVisibility::Visible
+                                    } else {
+                                        ScrollbarVisibility::Hidden
+                                    };
+                                    scrollbar_fx.set(fx);
+                                } else {
+                                    window.request_animation_frame();
+                                }
+                            }
+                            // thumb 三态（Zed ThumbState）：拖拽 > 悬停 > 常态。
+                            let state_alpha = if fx.dragging {
+                                SCROLLBAR_ACTIVE_OPACITY
+                            } else if fx.hovered {
+                                SCROLLBAR_HOVER_OPACITY
+                            } else {
+                                SCROLLBAR_OPACITY
+                            };
+                            if history == 0 && fx.visibility != ScrollbarVisibility::Hidden {
+                                // 历史清空（clear/alt screen 切换）→ 直接复位，
+                                // 下次有历史时重新走渐入。
+                                fx.visibility = ScrollbarVisibility::Hidden;
+                                scrollbar_fx.set(fx);
+                                opacity = 0.0;
+                            }
+                            if history > 0 && opacity > 0.0 {
                                 let track_top = bounds.origin.y + padding.top;
                                 let track_height =
                                     bounds.size.height - padding.top - padding.bottom;
-                                let visible_frac =
-                                    screen_lines as f32 / total.max(1) as f32;
+                                let visible_frac = screen_lines as f32 / total.max(1) as f32;
                                 let thumb_height = (track_height * visible_frac)
-                                    .max(px(20.0))
+                                    .max(px(SCROLLBAR_MIN_THUMB))
                                     .min(track_height);
                                 let track_space = track_height - thumb_height;
                                 let frac = if history > 0 {
@@ -677,8 +914,8 @@ impl Render for TerminalView {
                                     1.0
                                 };
                                 let thumb_top = track_top + track_space * frac;
-                                let track_right = bounds.origin.x + bounds.size.width
-                                    - padding.right;
+                                let track_right =
+                                    bounds.origin.x + bounds.size.width - padding.right;
                                 let thumb = Bounds {
                                     origin: Point {
                                         x: track_right - px(6.0),
@@ -709,7 +946,10 @@ impl Render for TerminalView {
                                 window.paint_quad(quad(
                                     thumb,
                                     px(2.0),
-                                    measured.palette.foreground().alpha(0.35),
+                                    measured
+                                        .palette
+                                        .foreground()
+                                        .alpha(state_alpha * opacity),
                                     Edges::<Pixels>::default(),
                                     transparent_black(),
                                     Default::default(),
@@ -835,7 +1075,9 @@ impl TerminalInputHandler {
     /// 光标 cell 宽度近似（cursor_bounds 已含一格宽度，这里只需要 x 偏移量
     /// 的步进）。从 bounds 宽度取，避免再锁 model。
     fn cell_width_hint(&self) -> Pixels {
-        self.cursor_bounds.map(|b| b.size.width).unwrap_or(Pixels::ZERO)
+        self.cursor_bounds
+            .map(|b| b.size.width)
+            .unwrap_or(Pixels::ZERO)
     }
 }
 
