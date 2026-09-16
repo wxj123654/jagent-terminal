@@ -40,6 +40,7 @@ export type PatchManifest = Readonly<Record<Suite, PatchEntry>>
 export const MANIFEST = {
   gpuix: {
     '0002-jagent-native-seam.patch': [
+      'packages/native/index.d.ts',
       'packages/native/src/custom_elements/mod.rs',
       'packages/native/src/lib.rs',
       'packages/native/src/renderer.rs',
@@ -47,6 +48,10 @@ export const MANIFEST = {
       'packages/native/src/test_renderer.rs',
     ],
     '0003-bounds-tracker-inset.patch': ['packages/native/src/automation.rs'],
+    '0004-input-caret-zed-bar.patch': [
+      'packages/native/src/custom_elements/input.rs',
+      'packages/native/src/theme.rs',
+    ],
   },
   'gpuix-zed': {
     '0001-gpui-workspace-root.patch': ['crates/gpui/Cargo.toml'],

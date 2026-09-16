@@ -1,3 +1,65 @@
+diff --git a/packages/native/index.d.ts b/packages/native/index.d.ts
+index 282cce9..a0e80be 100644
+--- a/packages/native/index.d.ts
++++ b/packages/native/index.d.ts
+@@ -83,6 +83,19 @@ export declare class GpuixRenderer {
+    */
+   activateWindow(): void
+   setWindowTitle(title: string): void
++  /**
++   * Begin a user-driven window move from the current pointer position —
++   * the custom title bar's drag gesture on macOS and Linux (call from a
++   * mouse-move handler after a mouse-down on the drag region). On Windows
++   * this is not needed: dragging is handled by the OS through
++   * `windowControlArea: "drag"` hit-testing.
++   */
++  startWindowMove(): void
++  /**
++   * Respond to a double click on the custom-drawn title bar: macOS zooms
++   * per the system preference, other platforms toggle maximize.
++   */
++  titlebarDoubleClick(): void
+   focusElement(elementId: number): void
+   /** Move focus to the next GPUI tab stop. */
+   focusNext(): void
+@@ -572,18 +585,6 @@ export interface HighlightRect {
+   height: number
+ }
+ 
+-/** One extra HTTP header on the feed or download request. */
+-export interface UpdaterHeader {
+-  name: string
+-  value: string
+-}
+-
+-export interface WindowInsets {
+-  safeArea: EdgeInsets
+-  ime: EdgeInsets
+-  effective: EdgeInsets
+-}
+-
+ /**
+  * Wayland `wlr-layer-shell` surface options. Linux/Wayland only; ignored on
+  * every other platform. When present on `WindowOptions`, the window is opened
+@@ -630,6 +631,18 @@ export interface LayerShellOptions {
+   keyboardInteractivity?: string
+ }
+ 
++/** One extra HTTP header on the feed or download request. */
++export interface UpdaterHeader {
++  name: string
++  value: string
++}
++
++export interface WindowInsets {
++  safeArea: EdgeInsets
++  ime: EdgeInsets
++  effective: EdgeInsets
++}
++
+ export interface WindowOptions {
+   title?: string
+   /**
 diff --git a/packages/native/src/custom_elements/mod.rs b/packages/native/src/custom_elements/mod.rs
 index 6a31751..5afa199 100644
 --- a/packages/native/src/custom_elements/mod.rs
