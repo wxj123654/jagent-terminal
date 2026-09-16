@@ -115,7 +115,14 @@ impl CustomElement for TerminalElement {
 
         self.apply_style(&view.read(cx).model(), cx);
 
-        if self.focused {
+        // focused = 「无焦点持有者时兜底聚焦」，不是每帧抢焦点。
+        // 每帧 focus() 会把焦点从用户刚点击的输入框抢回来（PTY 输出 →
+        // Wakeup → 重渲染，打字时每秒几十次）；gpuix sync_focus_handles
+        // 同款纪律：autoFocus 只在创建时聚焦一次。这里放宽为「真空才
+        // 聚焦」以保住两条语义：挂载/激活时聚焦终端；弹窗输入框卸载后
+        // （gpui release_dropped_focus_handles 把 window.focus 清为
+        // None）焦点自动落回终端。
+        if self.focused && window.focused(cx).is_none() {
             let handle = view.read(cx).focus_handle().clone();
             handle.focus(window, cx);
         }
