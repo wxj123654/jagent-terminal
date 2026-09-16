@@ -59,16 +59,16 @@
 //! );
 //! ```
 
-use crate::view::box_drawing;
-use crate::view::colors::ColorPalette;
 use crate::model::SessionListener;
 use crate::perf::PaintGuard;
+use crate::view::box_drawing;
+use crate::view::colors::ColorPalette;
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::{Column, Line, Point as AlacPoint};
 use alacritty_terminal::term::Term;
+use alacritty_terminal::term::TermMode;
 use alacritty_terminal::term::cell::{Cell, Flags};
 use alacritty_terminal::term::color::Colors;
-use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::Color;
 use gpui::{
     App, Bounds, Edges, Font, FontFeatures, FontStyle, FontWeight, Hsla, Pixels, Point,
@@ -649,8 +649,7 @@ impl TerminalRenderer {
                 .collect();
 
             // 一次布局同时产出背景段和批量文字段。
-            let (backgrounds, text_runs) =
-                self.layout_row(line_idx, cells.iter().cloned(), colors);
+            let (backgrounds, text_runs) = self.layout_row(line_idx, cells.iter().cloned(), colors);
 
             // Paint backgrounds
             for bg_rect in backgrounds {
@@ -692,7 +691,8 @@ impl TerminalRenderer {
 
             // First pass: find and draw horizontal spans of box-drawing characters
             // This draws continuous lines across multiple cells to avoid gaps
-            let mut processed_horizontal: std::collections::HashSet<usize> = std::collections::HashSet::new();
+            let mut processed_horizontal: std::collections::HashSet<usize> =
+                std::collections::HashSet::new();
 
             let mut i = 0;
             while i < cells_vec.len() {
@@ -1032,16 +1032,17 @@ mod tests {
 
     #[test]
     fn test_layout_row_splits_text_around_custom_drawn_box_characters() {
-        let renderer = TerminalRenderer::new(
-            "Menlo".to_string(),
-            px(14.0),
-            1.0,
-            ColorPalette::default(),
-        );
-        let cells = "ab│cd"
-            .chars()
-            .enumerate()
-            .map(|(col, c)| (col, Cell { c, ..Cell::default() }));
+        let renderer =
+            TerminalRenderer::new("Menlo".to_string(), px(14.0), 1.0, ColorPalette::default());
+        let cells = "ab│cd".chars().enumerate().map(|(col, c)| {
+            (
+                col,
+                Cell {
+                    c,
+                    ..Cell::default()
+                },
+            )
+        });
         let (_, runs) = renderer.layout_row(0, cells, &Colors::default());
         let texts: Vec<&str> = runs.iter().map(|run| run.text.as_str()).collect();
         assert_eq!(texts, vec!["ab", "cd"]);
@@ -1051,14 +1052,16 @@ mod tests {
     fn test_layout_row_inverts_fg_bg_for_sgr7_cells() {
         // pi 等 TUI 用反色 cell 画软光标/选中块：SGR 7 必须交换 fg/bg，
         // 否则光标块在深色主题下不可见。
-        let renderer = TerminalRenderer::new(
-            "Menlo".to_string(),
-            px(14.0),
-            1.0,
-            ColorPalette::default(),
-        );
-        let plain = Cell { c: 'a', ..Cell::default() };
-        let mut inverted = Cell { c: ' ', ..Cell::default() };
+        let renderer =
+            TerminalRenderer::new("Menlo".to_string(), px(14.0), 1.0, ColorPalette::default());
+        let plain = Cell {
+            c: 'a',
+            ..Cell::default()
+        };
+        let mut inverted = Cell {
+            c: ' ',
+            ..Cell::default()
+        };
         inverted.flags.insert(Flags::INVERSE);
 
         // 空格不进文字 run，但背景段必须存在且颜色被交换（= 前景色）
@@ -1067,25 +1070,46 @@ mod tests {
             vec![(0, plain), (1, inverted)].into_iter(),
             &Colors::default(),
         );
-        assert_eq!(backgrounds.len(), 2, "反色 cell 背景与默认背景不同，应独立成段");
+        assert_eq!(
+            backgrounds.len(),
+            2,
+            "反色 cell 背景与默认背景不同，应独立成段"
+        );
         assert_ne!(backgrounds[0].color, backgrounds[1].color);
         let _ = runs;
     }
 
     #[test]
     fn test_layout_row_batches_plain_text_and_skips_wide_spacer() {
-        let renderer = TerminalRenderer::new(
-            "Menlo".to_string(),
-            px(14.0),
-            1.0,
-            ColorPalette::default(),
-        );
-        let mut wide = Cell { c: '中', ..Cell::default() };
+        let renderer =
+            TerminalRenderer::new("Menlo".to_string(), px(14.0), 1.0, ColorPalette::default());
+        let mut wide = Cell {
+            c: '中',
+            ..Cell::default()
+        };
         wide.flags.insert(Flags::WIDE_CHAR);
         let mut spacer = Cell::default();
         spacer.flags.insert(Flags::WIDE_CHAR_SPACER);
-        let mut cells = vec![(0, wide), (1, spacer), (2, Cell { c: 'x', ..Cell::default() })];
-        cells.extend((3..80).map(|col| (col, Cell { c: 'a', ..Cell::default() })));
+        let mut cells = vec![
+            (0, wide),
+            (1, spacer),
+            (
+                2,
+                Cell {
+                    c: 'x',
+                    ..Cell::default()
+                },
+            ),
+        ];
+        cells.extend((3..80).map(|col| {
+            (
+                col,
+                Cell {
+                    c: 'a',
+                    ..Cell::default()
+                },
+            )
+        }));
 
         let (_, runs) = renderer.layout_row(0, cells.into_iter(), &Colors::default());
         assert_eq!(runs.len(), 2, "宽字符单独 shape，后续 ASCII 合为一个 run");

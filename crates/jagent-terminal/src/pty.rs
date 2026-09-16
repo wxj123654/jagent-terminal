@@ -114,9 +114,12 @@ impl PtySender {
 
     /// Resize the PTY (kernel + child see the new size).
     pub fn resize(&self, size: TerminalSize) {
-        let _ = self.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(
-            size.to_window_size(),
-        ));
+        let _ = self
+            .notifier
+            .0
+            .send(alacritty_terminal::event_loop::Msg::Resize(
+                size.to_window_size(),
+            ));
     }
 
     /// Ask the event loop (reader/writer threads) to shut down.

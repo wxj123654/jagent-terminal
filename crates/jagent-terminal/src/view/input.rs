@@ -403,7 +403,10 @@ mod tests {
         let tab = Keystroke::parse("tab").unwrap();
         assert_eq!(keystroke_to_bytes(&tab, mode), Some(b"\t".to_vec()));
         let shift_tab = Keystroke::parse("shift-tab").unwrap();
-        assert_eq!(keystroke_to_bytes(&shift_tab, mode), Some(b"\x1b[Z".to_vec()));
+        assert_eq!(
+            keystroke_to_bytes(&shift_tab, mode),
+            Some(b"\x1b[Z".to_vec())
+        );
     }
 
     fn test_ctrl_combinations() {

@@ -20,12 +20,12 @@ use alacritty_terminal::index::Column;
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::Config as TermConfig;
 use alacritty_terminal::term::{Term, TermMode};
-use futures::channel::mpsc::UnboundedSender;
 use futures::StreamExt;
+use futures::channel::mpsc::UnboundedSender;
 use gpui::{App, AppContext, Context, Entity, EventEmitter, Pixels, SharedString};
 
-use crate::pool::{forward_session_event, SessionEvent};
-use crate::pty::{open_pty, PtySender, SpawnOptions, TerminalSize};
+use crate::pool::{SessionEvent, forward_session_event};
+use crate::pty::{PtySender, SpawnOptions, TerminalSize, open_pty};
 
 /// Events forwarded out of a terminal session on the gpui event bus.
 /// Views subscribe to `Wakeup` for repaints; the pool sink receives
@@ -159,7 +159,8 @@ impl TerminalModel {
             ..Default::default()
         };
 
-        let (events_tx, mut events_rx) = futures::channel::mpsc::unbounded::<crate::pty::PtyEvent>();
+        let (events_tx, mut events_rx) =
+            futures::channel::mpsc::unbounded::<crate::pty::PtyEvent>();
         let default_size = TerminalSize::default();
         let dims = TermDimensions::new(default_size.columns as usize, default_size.rows as usize);
         let term = Term::new(
@@ -174,19 +175,20 @@ impl TerminalModel {
             Ok(handle) => handle,
             Err(error) => {
                 // Surface the spawn failure as an immediately-exited session.
-                return cx.new(|_| Self {
-                    id: 0,
-                    term: Arc::new(FairMutex::new(Term::new(
-                        TermConfig::default(),
-                        &dims,
-                        SessionListener { tx: events_tx },
-                    ))),
-                    pty: None,
-                    style: TerminalStyle::default(),
-                    scrollback_lines: scrollback,
-                    exited: true,
-                })
-                .tap_error(error);
+                return cx
+                    .new(|_| Self {
+                        id: 0,
+                        term: Arc::new(FairMutex::new(Term::new(
+                            TermConfig::default(),
+                            &dims,
+                            SessionListener { tx: events_tx },
+                        ))),
+                        pty: None,
+                        style: TerminalStyle::default(),
+                        scrollback_lines: scrollback,
+                        exited: true,
+                    })
+                    .tap_error(error);
             }
         };
 
@@ -316,7 +318,10 @@ impl TerminalModel {
                 if !self.exited {
                     self.exited = true;
                     if self.id != 0 {
-                        forward_session_event(&SessionEvent::Exit { id: self.id, code: None });
+                        forward_session_event(&SessionEvent::Exit {
+                            id: self.id,
+                            code: None,
+                        });
                     }
                     cx.emit(Event::Exit);
                 }
@@ -352,8 +357,8 @@ impl TerminalModel {
         self.term.lock().resize(TermDimensions::new(columns, rows));
         if let Some(pty) = &self.pty {
             pty.resize(TerminalSize {
-            columns: columns as u16,
-            rows: rows as u16,
+                columns: columns as u16,
+                rows: rows as u16,
                 cell_width,
                 cell_height,
             });
