@@ -301,6 +301,16 @@ impl TerminalView {
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        let ks = &event.keystroke;
+        // Ctrl+V / Ctrl+Shift+V / Shift+Insert = 粘贴（Zed windows keymap 同款）。
+        // 不能走 keystroke_to_bytes：Ctrl+V 会被编码成 0x16 (SYN) 写进 PTY，
+        // readline 把它当 quoted-insert 吃掉，表现就是「粘贴没反应」。
+        if (ks.key == "v" && ks.modifiers.control && !ks.modifiers.alt && !ks.modifiers.platform)
+            || (ks.key == "insert" && ks.modifiers.shift && !ks.modifiers.control)
+        {
+            self.paste_clipboard(cx);
+            return;
+        }
         let bytes = self
             .model
             .read(cx)
@@ -309,6 +319,29 @@ impl TerminalView {
         if let Some(bytes) = bytes {
             self.model.read(cx).write_to_pty(&bytes);
         }
+    }
+
+    /// 剪贴板文本写入 PTY（Zed `terminal.paste` 同款语义）：
+    /// - 应用开启 bracketed paste（BRACKETED_PASTE）时包 \x1b[200~ … \x1b[201~，
+    ///   并剥掉文本内的 \x1b 防止提前闭合转义序列；
+    /// - 否则把 \r\n / \n 归一成 \r（回车），多行文本逐行执行。
+    /// 剪贴板无文本（图片等）时退化为转发原始 0x16，让能读 OS 剪贴板的
+    /// TUI agent 走自己的粘贴路径。
+    fn paste_clipboard(&mut self, cx: &mut Context<Self>) {
+        let model = self.model.read(cx);
+        let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
+            model.write_to_pty(&[0x16]);
+            return;
+        };
+        if text.is_empty() {
+            return;
+        }
+        let bytes = if model.mode().contains(TermMode::BRACKETED_PASTE) {
+            format!("\x1b[200~{}\x1b[201~", text.replace('\x1b', "")).into_bytes()
+        } else {
+            text.replace("\r\n", "\r").replace('\n', "\r").into_bytes()
+        };
+        model.write_to_pty(&bytes);
     }
 
     /// 左键按下：优先命中滚动条（拖拽/翻页），否则开始/调整选区。
