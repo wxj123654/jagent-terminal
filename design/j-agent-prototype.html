@@ -135,20 +135,35 @@ svg{display:block}
 /* 图标规范：装饰性图标统一 --muted（语义色只给状态点/徽标）；尺寸三档见 JS 侧 icon() 注释 */
 .ws-row>svg,.ws-head>svg,.ftree .frow>svg,.git-branch-btn>svg,.branch-pop svg{color:var(--muted)}
 
-/* ═══ 主列：工具栏 46px + workbench ═══ */
+/* ═══ 主列：Zed 式分段面板条 46px + workbench ═══ */
 #main{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--pane)}
-#titlebar{flex-shrink:0;min-width:0;display:flex;flex-direction:row;align-items:center;gap:8px;
-  height:var(--toolbarH);padding-left:12px;padding-right:0;background:var(--app);user-select:none}
-#titlebar .cwd{min-width:0;font-size:11.5px;color:var(--faint);white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis}
-#titlebar .spacer{flex:1;min-width:0;height:100%}
-.chip{display:flex;flex-direction:row;align-items:center;gap:6px;min-width:0;height:28px;
-  padding:0 10px;border-radius:9999px;background:var(--tile);cursor:pointer;flex-shrink:0;color:var(--muted)}
-.chip:hover{background:var(--tileHover)}
-.chip .t{min-width:0;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.chip .t.mono{font-family:var(--font-mono)}
-.tb-trailing{display:flex;flex-direction:row;align-items:center;gap:2px;flex-shrink:0}
-.win-ctl{display:flex;flex-direction:row;height:100%;flex-shrink:0}
+/* titlebar = 一格一格满高面板拼成：直角、1px 右分隔、整列底部分隔线（对齐 Zed tab strip） */
+#titlebar{flex-shrink:0;min-width:0;display:flex;flex-direction:row;align-items:stretch;
+  height:var(--toolbarH);padding:0;background:var(--titlebar);user-select:none;
+  border-bottom:1px solid var(--border)}
+#titlebar .cwd{min-width:0;flex-shrink:1;align-self:center;padding:0 8px;font-size:11.5px;
+  color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-cell{display:flex;flex-direction:row;align-items:center;gap:5px;height:100%;padding:0 9px;
+  border-right:1px solid var(--border);color:var(--muted);cursor:pointer;flex-shrink:0}
+.tb-cell:hover{background:var(--surface);color:var(--text)}
+.tb-cell.on{background:var(--surface);color:var(--textBright)}
+.tb-cell.off{opacity:.38;cursor:default}
+.tb-cell.off:hover{background:none;color:var(--muted)}
+.tb-cell .bt{font-size:12px;font-family:var(--font-mono);color:var(--text);white-space:nowrap}
+#tb-tabs{flex:1;min-width:0;display:flex;flex-direction:row;align-items:stretch;overflow:hidden}
+.tab{display:flex;flex-direction:row;align-items:center;gap:6px;height:100%;min-width:0;max-width:190px;
+  flex:0 1 auto;padding:0 6px 0 10px;border-right:1px solid var(--border);color:var(--muted);cursor:pointer}
+.tab:hover{background:var(--surface)}
+.tab.active{background:var(--app);color:var(--textBright)}
+.tab .tic{display:flex;flex-shrink:0;color:var(--muted)}
+.tab.active .tic{color:var(--text)}
+.tab .ttl{min-width:0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab.exited .ttl{color:var(--exited)}
+.tab .tx{width:16px;height:16px;border-radius:4px;display:none;align-items:center;justify-content:center;
+  color:var(--muted);flex-shrink:0}
+.tab:hover .tx,.tab.active .tx{display:flex}
+.tab .tx:hover{background:var(--closeHover);color:var(--textBright)}
+.win-ctl{display:flex;flex-direction:row;height:100%;flex-shrink:0;border-left:1px solid var(--border)}
 .win-ctl .wb{width:36px;height:100%;display:flex;align-items:center;justify-content:center;
   color:var(--text);cursor:default;font-family:'Segoe MDL2 Assets';font-size:10px}
 .win-ctl .wb:hover{background:var(--surface);color:var(--textBright)}
@@ -604,9 +619,8 @@ svg{display:block}
   box-shadow:8px 0 32px rgba(0,0,0,.4)}
 
 /* PerfHud / ErrorIndicator */
-#perf-hud{font-size:10px;font-family:var(--font-mono);color:var(--muted);white-space:nowrap;
-  padding:0 6px;user-select:none}
-#err-ind{font-size:11px;color:var(--bell);cursor:pointer;padding:0 4px;user-select:none}
+#perf-hud{display:flex;align-items:center;flex-shrink:0;font-size:10px;
+  font-family:var(--font-mono);color:var(--muted);white-space:nowrap;padding:0 6px;user-select:none}
 
 /* 演示控制条（原型辅助，非应用 UI） */
 #demo{position:fixed;right:10px;bottom:10px;z-index:100;display:flex;flex-direction:column;
@@ -658,6 +672,8 @@ const IC = {
   chevronDown:'<path d="m6 9 6 6 6-6"/>',
   chevronUp:'<path d="m18 15-6-6-6 6"/>',
   chevronRight:'<path d="m9 18 6-6-6-6"/>',
+  arrowLeft:'<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>',
+  arrowRight:'<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
   reset:'<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
   search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
   copy:'<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
@@ -757,6 +773,8 @@ function seedState(){
       expandedPreset:null, expandedAgent:null, kbCapturing:null,
       gitFindOpen:false, gitFindDraft:'', gitBranchOpen:false,
       fontPicker:null,
+      tabs:[{type:'thread',id:'t-sidebar'},{type:'thread',id:'t-ime'},{type:'thread',id:'t-acp'}],
+      navBack:[],navFwd:[],
       winW:1280, winH:800,
     },
     git:{
@@ -829,13 +847,19 @@ const presetIcon = p=>p.category==='agent'?'agent':'terminal';
 const KIND_ICON = {terminal:'terminal',chat:'chat',acp:'acp'};
 
 /* ── store 动作（对齐 store.ts 规则表）── */
-function activate(target){
+function activate(target,opts){
+  const prev=S.route;
   if(target?.type==='thread'){
     const t=threadById(target.id);
     if(t){ t.unread=false; t.hasBell=false; }
   }
   if(target?.type!=='settings') S.lastNonSettings=target??S.lastNonSettings;
+  if(!opts?.nav){
+    if(prev&&(prev.type!==target?.type||prev.id!==target?.id)) S.ui.navBack.push(prev);
+    S.ui.navFwd=[];
+  }
   S.route=target;
+  if(target) ensureTab(target);
   render();
 }
 function activateWorkspace(id){
@@ -1058,29 +1082,31 @@ function renderThreadRow(t){
   </div>`;
 }
 
-/* ═══ 工具栏（TitleBar 46px）═══ */
+/* ═══ 工具栏（Zed 式分段面板条：导航格 + 分支格 + tab 格 + 工具格 + 窗口格）═══ */
 function renderTitleBar(narrow,sidebarHidden){
-  const chip=sessionChip();
-  const ctxCwd=contextCwd();
+  S.ui.tabs=S.ui.tabs.filter(r=>tabInfo(r));   // 清掉目标已死的 tab
+  if(S.route) ensureTab(S.route);              // 深链/直写 route 也补开 tab
   const branch=S.worktree.branch;
   const showSearch=narrow||sidebarHidden;
+  const ctxCwd=contextCwd();
   return `<div id="titlebar">
     ${narrow
-      ?`<div class="ibtn${S.ui.drawerOpen?' on':''}" data-act="drawer-toggle">${icon('menu',16)}</div>`
-      :sidebarHidden?`<div class="ibtn" data-act="toggle-sidebar" title="展开侧栏（Ctrl-B）">${icon('panelLeft',16)}</div>`:''}
-    <div class="chip" data-act="chip-session" style="max-width:320px">
-      ${icon(chip.icon,14)}<span class="t">${esc(chip.label)}</span>${icon('chevronDown',12)}
+      ?`<div class="tb-cell${S.ui.drawerOpen?' on':''}" data-act="drawer-toggle">${icon('menu',16)}</div>`
+      :sidebarHidden?`<div class="tb-cell" data-act="toggle-sidebar" title="展开侧栏（Ctrl-B）">${icon('panelLeft',16)}</div>`:''}
+    ${!narrow?`
+    <div class="tb-cell${S.ui.navBack.length?'':' off'}" data-act="nav-back" title="后退">${icon('arrowLeft',15)}</div>
+    <div class="tb-cell${S.ui.navFwd.length?'':' off'}" data-act="nav-fwd" title="前进">${icon('arrowRight',15)}</div>`:''}
+    ${!narrow&&branch?`<div class="tb-cell" data-act="chip-branch" title="Git：切换分支 / 打开图 / 查看变更">
+      ${icon('gitBranch',14)}<span class="bt">${esc(branch)}</span>${icon('chevronDown',12)}</div>`:''}
+    <div id="tb-tabs">
+      ${S.ui.tabs.map(renderTab).join('')}
+      <div class="tb-cell" data-act="nav-new" title="新建会话（Ctrl-Shift-N）">${icon('plus',15)}</div>
     </div>
     ${!narrow&&ctxCwd?`<span class="cwd">${esc(ctxCwd)}</span>`:''}
-    <div class="spacer"></div>
-    ${!narrow&&branch?`<div class="chip" data-act="chip-branch" style="max-width:180px" title="Git：切换分支 / 打开图 / 查看变更">
-      ${icon('gitBranch',14)}<span class="t mono">${esc(branch)}</span>${icon('chevronDown',12)}</div>`:''}
-    ${showSearch?`<div class="ibtn" data-act="nav-search">${icon('search',16)}</div>`:''}
-    <div class="tb-trailing">
-      ${S.errors.length?`<span id="err-ind" data-act="open-errors" title="错误历史">⚠ ${S.errors.length}</span>`:''}
-      ${S.settings.advanced.perfHud?`<span id="perf-hud">60fps · draw 2.1/4.8ms · term 0.6/1.2ms · cpu 3% · mem 214MB</span>`:''}
-    </div>
-    <div class="ibtn${S.ui.panelOpen?' on':''}" data-act="panel-toggle" title="工作面板">${icon('panelRight',16)}</div>
+    ${showSearch?`<div class="tb-cell" data-act="nav-search" title="搜索会话（Ctrl-K）">${icon('search',15)}</div>`:''}
+    ${S.errors.length?`<div class="tb-cell" data-act="open-errors" title="错误历史" style="color:var(--bell)">⚠ ${S.errors.length}</div>`:''}
+    ${S.settings.advanced.perfHud?`<span id="perf-hud">60fps · draw 2.1/4.8ms · term 0.6/1.2ms · cpu 3% · mem 214MB</span>`:''}
+    <div class="tb-cell${S.ui.panelOpen?' on':''}" data-act="panel-toggle" title="工作面板">${icon('panelRight',15)}</div>
     <div class="win-ctl">
       <div class="wb" data-act="win-min" title="最小化">&#xE921;</div>
       <div class="wb" data-act="win-max" title="最大化">&#xE922;</div>
@@ -1088,15 +1114,56 @@ function renderTitleBar(narrow,sidebarHidden){
     </div>
   </div>`;
 }
-function sessionChip(){
-  const r=S.route;
-  if(r?.type==='thread'){
-    const t=threadById(r.id);
-    if(t) return {icon:KIND_ICON[t.kind],label:rowTitle(t)};
-  }
-  if(r?.type==='workspace'){const ws=wsById(r.id); if(ws) return {icon:'folder',label:ws.name};}
-  if(r?.type==='settings') return {icon:'gear',label:'设置'};
-  return {icon:'agent',label:'j-agent'};
+function renderTab(r){
+  const info=tabInfo(r); if(!info) return '';
+  const k=tabKey(r), active=k===tabKey(S.route);
+  const t=r.type==='thread'?threadById(r.id):null;
+  const exited=t?.kind==='terminal'&&t.status==='exited';
+  const dot=info.dot&&!['idle','idle-on','exited'].includes(info.dot)?info.dot:null;
+  return `<div class="tab${active?' active':''}${exited?' exited':''}" data-act="tab-activate"
+      data-key="${esc(k)}" data-tab="${esc(k)}" title="${esc(info.tip)}">
+    <span class="tic">${icon(info.icon,13)}</span>
+    ${dot?`<span class="dot ${dot}"></span>`:''}
+    <span class="ttl">${esc(info.label)}</span>
+    <span class="tx" data-act="tab-close" data-key="${esc(k)}">${icon('close',11)}</span>
+  </div>`;
+}
+/* ── tab / 导航模型：每个打开的目标是 strip 里一格；激活时前一路由压入 navBack ── */
+function tabKey(r){return r?`${r.type}:${r.id??''}`:null}
+function routeFromKey(k){
+  const i=k.indexOf(':'),type=k.slice(0,i),id=k.slice(i+1);
+  if(type==='thread'&&!threadById(id)) return null;
+  if(type==='workspace'&&!wsById(id)) return null;
+  return type==='settings'?{type:'settings'}:{type,id};
+}
+function ensureTab(r){
+  const k=tabKey(r); if(!k) return;
+  if(!S.ui.tabs.some(x=>tabKey(x)===k)) S.ui.tabs.push({...r});
+}
+function tabInfo(r){
+  if(r.type==='thread'){const t=threadById(r.id);if(!t)return null;
+    const label=rowTitle(t);
+    const cwd=t.kind==='terminal'?t.cwd:wsById(t.workspaceId)?.path;
+    return {icon:KIND_ICON[t.kind],label,tip:cwd?`${label} — ${cwd}`:label,dot:statusDot(t)};}
+  if(r.type==='workspace'){const ws=wsById(r.id);if(!ws)return null;
+    return {icon:ws.paneTab==='git'?'gitBranch':'folder',label:ws.name,tip:ws.path,dot:null};}
+  if(r.type==='settings') return {icon:'gear',label:'设置',tip:'设置',dot:null};
+  return null;
+}
+function closeTab(key){
+  const i=S.ui.tabs.findIndex(x=>tabKey(x)===key); if(i<0) return;
+  S.ui.tabs.splice(i,1);
+  if(tabKey(S.route)===key){
+    const nxt=S.ui.tabs[i]??S.ui.tabs[i-1]??null;
+    activate(nxt?{...nxt}:null);
+  } else render();
+}
+function navGo(d){
+  const from=d<0?S.ui.navBack:S.ui.navFwd,to=d<0?S.ui.navFwd:S.ui.navBack;
+  let t; while((t=from.pop())&&!tabInfo(t));   // 跳过目标已死的历史项
+  if(!t) return;
+  if(S.route) to.push(S.route);
+  activate(t,{nav:true});
 }
 function contextCwd(){
   const r=S.route;
@@ -1990,7 +2057,10 @@ function dispatch(act,el,e){
     case 'ws-rename': startWsRename(id); break;
     case 'preset-pick': spawnFromPreset(id,S.workspaces[0]?.id); break;
     case 'preset-pick-ws': spawnFromPreset(id,el.dataset.ws); break;
-    case 'chip-session': openToolDialog(newSessionWorkspace()); break;
+    case 'tab-activate': {const r=routeFromKey(el.dataset.key); if(r) activate(r); break;}
+    case 'tab-close': closeTab(el.dataset.key); break;
+    case 'nav-back': navGo(-1); break;
+    case 'nav-fwd': navGo(1); break;
     case 'chip-branch': {
       const r=el.getBoundingClientRect(),ar=app.getBoundingClientRect();
       S.ui.ctxMenu={kind:'tbgit',id:'',x:r.left-ar.left,y:r.bottom-ar.top+4,items:[
@@ -2290,6 +2360,7 @@ document.addEventListener('keydown',e=>{
 },true);
 /* 遮罩/外点关闭 */
 document.addEventListener('mousedown',e=>{
+  if(e.button===1){const tb=e.target.closest?.('[data-tab]');if(tb){e.preventDefault();closeTab(tb.dataset.tab);}return;}
   if(e.target.dataset?.scrim!==undefined){S.ui.dialog={kind:'none'};render();return;}
   if(S.ui.ctxMenu&&!e.target.closest('.ctx-menu')){S.ui.ctxMenu=null;render();}
   if(S.ui.notifOpen&&!e.target.closest('.notif-pop')&&!e.target.closest('[data-act="open-notif"]')){S.ui.notifOpen=false;render();}
