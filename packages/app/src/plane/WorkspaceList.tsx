@@ -19,7 +19,8 @@
  * Rename… / Remove project。Rename… → RenameDialog（DialogHost）。
  *
  * 事件命中模型（T3.1）：GPUIX 子元素自带 listener 时冒泡到父 listener
- * （deepest-first）——箭头/＋/「…」钮与行 onClick 的冲突用「抑制 ref」。
+ * （deepest-first）——箭头/＋/「…」钮是 .ws-name 的兄弟节点（非子级），
+ * 点击天然不触发行激活，无需抑制 ref。
  */
 
 import { useRef, useState } from 'react'
@@ -263,11 +264,10 @@ function SectionHeader({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 2,
-        minHeight: 26,
+        // 原型 .sec：定高 26 + padding 0 6/0 8（原 minHeight+上下 padding 撑到 ~32）
+        height: 26,
         paddingLeft: 8,
         paddingRight: 6,
-        paddingBottom: 4,
-        paddingTop: 2,
       }}
     >
       <text
@@ -281,6 +281,8 @@ function SectionHeader({
       >
         {label}
       </text>
+      {/* 原型 .sec .grow：ghost 钮推到行右缘 */}
+      <div style={{ flexGrow: 1 }} />
       {children?.(hovered)}
     </div>
   )
@@ -322,7 +324,7 @@ function GhostButton({
         hover: { backgroundColor: COLORS.surface, color: COLORS.textBright },
       }}
     >
-      <Icon name={icon} size={13} />
+      <Icon name={icon} size={12} />
     </div>
   )
 }
@@ -463,7 +465,6 @@ function UnassignedGroup({
   const [expanded, setExpanded] = useState(true)
   const [showAll, setShowAll] = useState(false)
   const [hovered, setHovered] = useState(false)
-  const skipRow = useRef(false)
 
   const sessions = sessionIds === '' ? [] : sessionIds.split(',')
   if (sessions.length === 0) return null
@@ -479,17 +480,38 @@ function UnassignedGroup({
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
+          height: 28,
+          paddingLeft: 2,
+          paddingRight: 2,
           userSelect: 'none',
         }}
       >
+        {/* 展开箭头（同 WorkspaceGroup .chev：16×26 独立钮 + 10px 图标） */}
+        <div
+          testId="workspace-toggle-unassigned"
+          tabIndex={0}
+          onClick={() => setExpanded((v) => !v)}
+          onKeyDown={(e) => {
+            if (e.key === 'enter' || e.key === 'space') setExpanded((v) => !v)
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 16,
+            height: 26,
+            flexShrink: 0,
+            borderRadius: 5,
+            cursor: 'pointer',
+            hover: { backgroundColor: COLORS.surface },
+          }}
+        >
+          <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={10} color={COLORS.faint} />
+        </div>
         <div
           testId="workspace-unassigned"
           tabIndex={0}
           onClick={() => {
-            if (skipRow.current) {
-              skipRow.current = false
-              return
-            }
             // 点组名 = 激活组内最高优先级会话（原型 ws-name 语义）
             const first = sortThreads(
               store.getState().threads.filter((t) => t.workspaceId == null),
@@ -519,26 +541,7 @@ function UnassignedGroup({
             hover: { backgroundColor: COLORS.surface },
           }}
         >
-          <div
-            testId="workspace-toggle-unassigned"
-            onClick={() => {
-              skipRow.current = true
-              setExpanded((v) => !v)
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 12,
-              height: 12,
-              flexShrink: 0,
-              borderRadius: 3,
-              hover: { backgroundColor: COLORS.surfaceHover },
-            }}
-          >
-            <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={12} color={COLORS.faint} />
-          </div>
-          <Icon name="folder" size={14} color={COLORS.muted} />
+          <Icon name="folder" size={12} color={COLORS.muted} />
           <text
             testId="workspace-name-unassigned"
             style={{
@@ -557,15 +560,12 @@ function UnassignedGroup({
             未归属
           </text>
         </div>
-        {/* ＋：新建会话弹窗（未归属目标；抑制行激活）。无 … 菜单——
+        {/* ＋：新建会话弹窗（未归属目标）。无 … 菜单——
             虚拟组不可 pin/rename/remove */}
         <div
           tabIndex={0}
           testId="new-menu-unassigned"
-          onClick={() => {
-            skipRow.current = true
-            dialog.openToolMenu('')
-          }}
+          onClick={() => dialog.openToolMenu('')}
           onKeyDown={(e) => {
             if (e.key === 'enter' || e.key === 'space') dialog.openToolMenu('')
           }}
@@ -586,13 +586,15 @@ function UnassignedGroup({
       </div>
 
       {expanded ? (
-        // 原型 .ws-body：margin-left 13 + padding-left 9，无竖引导线
+        // 原型 .ws-body：margin-left 17 + padding-left 8 + 1px 竖引导线
         <div
           style={{
             display: 'flex',
             flexDirection: 'column',
-            marginLeft: 13,
-            paddingLeft: 9,
+            marginLeft: 17,
+            paddingLeft: 8,
+            borderLeftWidth: 1,
+            borderColor: 'rgba(255,255,255,0.06)',
           }}
         >
           <SessionRows
@@ -648,8 +650,6 @@ function WorkspaceGroup({
     return false
   })
   const [hovered, setHovered] = useState(false)
-  /** 行内按钮 → 行 onClick 抑制（本行实例；同批 click 消费一次） */
-  const skipRow = useRef(false)
   /** 行上最后一次指针位置（键盘打开菜单的定位兜底） */
   const lastPointer = useRef({ x: 0, y: 0 })
 
@@ -658,8 +658,8 @@ function WorkspaceGroup({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
-      {/* 原型 .ws-head：无 padding/定高（高 = 子行 26px）；hover 在 .ws-name 段。
-          右键 = 「…」同一面项目菜单 */}
+      {/* 原型 .ws-head：height 28 + padding 0 2（名字行/ghost 钮内缩 2px）；
+          hover 在 .ws-name 段。右键 = 「…」同一面项目菜单 */}
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
@@ -675,18 +675,44 @@ function WorkspaceGroup({
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
+          height: 28,
+          paddingLeft: 2,
+          paddingRight: 2,
           userSelect: 'none',
         }}
       >
-        {/* .ws-name（chev + folder + 名 + dot5）：点行激活；重命名走菜单 Rename… */}
+        {/* 展开箭头（原型 .chev：16×26 独立钮 + 10px 图标，仅 toggle 不激活）。
+            移出 .ws-name 作兄弟节点——点击天然不触发行激活，无需 skipRow */}
+        <div
+          testId={`workspace-toggle-${ws.id}`}
+          tabIndex={0}
+          onClick={() => store.toggleWorkspaceExpanded(ws.id)}
+          onKeyDown={(e) => {
+            if (e.key === 'enter' || e.key === 'space') store.toggleWorkspaceExpanded(ws.id)
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 16,
+            height: 26,
+            flexShrink: 0,
+            borderRadius: 5,
+            cursor: 'pointer',
+            hover: { backgroundColor: COLORS.surface },
+          }}
+        >
+          <Icon
+            name={ws.expanded ? 'chevronDown' : 'chevronRight'}
+            size={10}
+            color={COLORS.faint}
+          />
+        </div>
+        {/* .ws-name（folder + 名 + dot5）：点行激活；重命名走菜单 Rename… */}
         <div
           testId={`workspace-${ws.id}`}
           tabIndex={0}
           onClick={() => {
-            if (skipRow.current) {
-              skipRow.current = false
-              return
-            }
             store.activateWorkspace(ws.id)
           }}
           onKeyDown={(e) => {
@@ -708,31 +734,7 @@ function WorkspaceGroup({
             hover: { backgroundColor: COLORS.surface },
           }}
         >
-          {/* 展开箭头：仅 toggle，不激活（原型：点箭头仅展开/收起） */}
-          <div
-            testId={`workspace-toggle-${ws.id}`}
-            onClick={() => {
-              skipRow.current = true
-              store.toggleWorkspaceExpanded(ws.id)
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 12,
-              height: 12,
-              flexShrink: 0,
-              borderRadius: 3,
-              hover: { backgroundColor: COLORS.surfaceHover },
-            }}
-          >
-            <Icon
-              name={ws.expanded ? 'chevronDown' : 'chevronRight'}
-              size={12}
-              color={COLORS.faint}
-            />
-          </div>
-          <Icon name="folder" size={14} color={COLORS.muted} />
+          <Icon name="folder" size={12} color={COLORS.muted} />
           <text
             testId={`workspace-name-${ws.id}`}
             style={{
@@ -764,70 +766,71 @@ function WorkspaceGroup({
             />
           ) : null}
         </div>
-        {/* 「…」项目菜单（方案 C：Pin/Rename/Remove；hover 行可见，槽位常驻防位移） */}
-        <div
-          tabIndex={0}
-          testId={`menu-workspace-${ws.id}`}
-          onClick={(e) => {
-            skipRow.current = true
-            onMenu({ x: e.x ?? lastPointer.current.x, y: e.y ?? lastPointer.current.y })
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'enter' || e.key === 'space') onMenu(lastPointer.current)
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 22,
-            height: 22,
-            flexShrink: 0,
-            borderRadius: 9999,
-            opacity: hovered ? 1 : 0,
-            hover: { backgroundColor: COLORS.surfaceHover },
-          }}
-        >
-          <Icon name="more" size={12} color={COLORS.muted} />
-        </div>
-        {/* ＋：新建会话弹窗（目标工作区；抑制行激活） */}
-        <div
-          tabIndex={0}
-          testId={`new-menu-${ws.id}`}
-          onClick={() => {
-            skipRow.current = true
-            dialog.openToolMenu(ws.id)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'enter' || e.key === 'space') dialog.openToolMenu(ws.id)
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 22,
-            height: 22,
-            flexShrink: 0,
-            borderRadius: 9999,
-            opacity: hovered ? 1 : 0,
-            hover: { backgroundColor: COLORS.surfaceHover },
-          }}
-        >
-          <Icon name="plus" size={12} color={COLORS.muted} />
+        {/* 行尾 ghost 钮组（原型 .gh 槽位常驻 + gap 2）：「…」项目菜单 + ＋ 新建会话。
+            与 .ws-name 是兄弟节点——点击不触发行激活，无需 skipRow */}
+        <div style={{ display: 'flex', flexDirection: 'row', gap: 2, flexShrink: 0 }}>
+          <div
+            tabIndex={0}
+            testId={`menu-workspace-${ws.id}`}
+            onClick={(e) => {
+              onMenu({ x: e.x ?? lastPointer.current.x, y: e.y ?? lastPointer.current.y })
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'enter' || e.key === 'space') onMenu(lastPointer.current)
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 22,
+              height: 22,
+              flexShrink: 0,
+              borderRadius: 9999,
+              opacity: hovered ? 1 : 0,
+              hover: { backgroundColor: COLORS.surfaceHover },
+            }}
+          >
+            <Icon name="more" size={12} color={COLORS.muted} />
+          </div>
+          <div
+            tabIndex={0}
+            testId={`new-menu-${ws.id}`}
+            onClick={() => dialog.openToolMenu(ws.id)}
+            onKeyDown={(e) => {
+              if (e.key === 'enter' || e.key === 'space') dialog.openToolMenu(ws.id)
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 22,
+              height: 22,
+              flexShrink: 0,
+              borderRadius: 9999,
+              opacity: hovered ? 1 : 0,
+              hover: { backgroundColor: COLORS.surfaceHover },
+            }}
+          >
+            <Icon name="plus" size={12} color={COLORS.muted} />
+          </div>
         </div>
       </div>
 
       {ws.expanded ? (
-        // 原型 .ws-body：margin-left 13 + padding-left 9，无竖引导线
+        // 原型 .ws-body：margin-left 17（对齐箭头中心）+ padding-left 8 +
+        // 1px 竖引导线（6% 白——会话行有归属锚点，选中高亮块不悬空）
         <div
           style={{
             display: 'flex',
             flexDirection: 'column',
-            marginLeft: 13,
-            paddingLeft: 9,
+            marginLeft: 17,
+            paddingLeft: 8,
+            borderLeftWidth: 1,
+            borderColor: 'rgba(255,255,255,0.06)',
           }}
         >
           {sessions.length === 0 ? (
-            /* 空组引导（原型 empty-hint）：可点按钮直接开工具弹窗 */
+            /* 空组引导（原型 .empty：h22 + padding 0 8，与会话行同槽位） */
             <div
               tabIndex={0}
               testId={`workspace-create-first-${ws.id}`}
@@ -839,7 +842,6 @@ function WorkspaceGroup({
                 display: 'flex',
                 alignItems: 'center',
                 height: 22,
-                marginLeft: 4,
                 paddingLeft: SIZES.rowPaddingX,
                 paddingRight: SIZES.rowPaddingX,
                 borderRadius: 4,

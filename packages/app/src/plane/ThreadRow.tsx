@@ -227,6 +227,7 @@ export function ThreadRow({
       <text
         style={{
           flexGrow: 1,
+          minWidth: 0,
           marginLeft: 4,
           marginRight: 4,
           fontSize: 13,
@@ -235,6 +236,7 @@ export function ThreadRow({
           color: titleColor,
           whiteSpace: 'nowrap',
           textOverflow: 'ellipsis',
+          overflow: 'hidden',
           pointerEvents: 'none',
         }}
       >
