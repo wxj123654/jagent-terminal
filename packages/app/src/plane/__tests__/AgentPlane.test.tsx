@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
+import { dialogKeyboard } from '../../dialogs/dialogKeyboard'
 import { createGitGraphStore } from '../../git/store'
 import { createWorktreeStore } from '../../git/worktree'
 import { navigateTarget } from '../../router'
@@ -16,7 +17,6 @@ import { createSettingsStore, type SettingsStore } from '../../settings/store'
 import { createThreadStore, type ThreadStore, type ThreadDeps } from '../../threads/store'
 import { defaultWorkspace } from '../../threads/workspaces'
 import { App } from '../AgentPlane'
-import { dialogKeyboard } from '../dialogKeyboard'
 import { planeKeyboard } from '../planeKeyboard'
 
 let t: TestRoot

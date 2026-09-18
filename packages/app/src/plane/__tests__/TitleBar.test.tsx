@@ -15,7 +15,7 @@ import { createElement } from 'react'
 
 import { TRAFFIC_LIGHT_WIDTH } from '@jagent/ui'
 
-import { SidebarHeader } from '../Sidebar'
+import { SidebarHeader } from '../../sidebar/Sidebar'
 import { TitleBar, type WindowControls } from '../TitleBar'
 
 let t: TestRoot

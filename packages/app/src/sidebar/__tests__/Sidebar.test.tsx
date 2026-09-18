@@ -10,6 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:tes
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
+import type { DialogOpener } from '../../dialogs/DialogHost'
 import {
   currentActiveThreadId,
   currentActiveWorkspaceId,
@@ -20,7 +21,6 @@ import { memoryAdapter } from '../../settings/file'
 import { createSettingsStore, type SettingsStore } from '../../settings/store'
 import { builtinPresetOf } from '../../threads/presets'
 import { createThreadStore, type ThreadStore } from '../../threads/store'
-import type { DialogOpener } from '../DialogHost'
 import { Sidebar } from '../Sidebar'
 
 let t: TestRoot

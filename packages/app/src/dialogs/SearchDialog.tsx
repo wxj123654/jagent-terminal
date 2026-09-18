@@ -12,11 +12,11 @@ import { useMemo, useState } from 'react'
 import { Icon, inputFocus, Modal, COLORS, FONT } from '@jagent/ui'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
+import { rowTitle } from '../sidebar/ThreadRow'
 import type { ThreadStore } from '../threads/store'
 import type { Thread } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
 import { searchThreads } from '../threads/workspaces'
-import { rowTitle } from './ThreadRow'
 
 export function SearchDialog({
   store,

@@ -14,11 +14,13 @@
  * FileSurface 真读盘预览，shell = SessionTerminal（独立 PTY）。
  */
 
+import type { DialogOpener } from '../dialogs/DialogHost'
 import { ErrorBoundary } from '../errors/ErrorBoundary'
 import { GitGraphView } from '../git/components/GitGraphView'
 import type { GitGraphStore } from '../git/store'
 import { useActiveTarget } from '../router'
 import type { SettingsStore } from '../settings/store'
+import { WorkspacePage } from '../sidebar/WorkspacePage'
 import { EmptyPresets } from '../surfaces/EmptyPresets'
 import { FileSurface } from '../surfaces/FileSurface'
 import { getSurface } from '../surfaces/registry'
@@ -26,8 +28,6 @@ import { SettingsView } from '../surfaces/SettingsView'
 import { SessionTerminal } from '../surfaces/TerminalSurface'
 import type { ThreadStore } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
-import type { DialogOpener } from './DialogHost'
-import { WorkspacePage } from './WorkspacePage'
 
 export function Pane({
   store,

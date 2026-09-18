@@ -16,9 +16,9 @@ import { useRef, useState } from 'react'
 import { Icon, Popover, COLORS, FONT } from '@jagent/ui'
 import type { IconName } from '@jagent/ui'
 import type { WorktreeStore } from '../git/worktree'
+import { Dot, statusDot, type DotState } from '../sidebar/ThreadRow'
 import type { SessionView, Thread, ThreadStore } from '../threads/store'
 import { displayTitle } from '../threads/terminal'
-import { Dot, statusDot, type DotState } from './ThreadRow'
 import { useWorktree } from './WorkPanel'
 
 const KIND_ICON: Record<Thread['kind'], IconName> = {

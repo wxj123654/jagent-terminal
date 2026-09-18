@@ -29,11 +29,11 @@ import { installTerminalElement, destroyTerminalSession, onSessionEvent } from '
 
 import { inputFocus } from '@jagent/ui'
 import { createElement } from 'react'
+import { dialogKeyboard } from '../packages/app/src/dialogs/dialogKeyboard'
 import { createGitGraphStore } from '../packages/app/src/git/store'
 import { createWorktreeStore } from '../packages/app/src/git/worktree'
 import { createGlobalKeydown, type GlobalKeydown } from '../packages/app/src/keybindings'
 import { App } from '../packages/app/src/plane/AgentPlane'
-import { dialogKeyboard } from '../packages/app/src/plane/dialogKeyboard'
 import { planeKeyboard } from '../packages/app/src/plane/planeKeyboard'
 import {
   currentActiveThreadId,

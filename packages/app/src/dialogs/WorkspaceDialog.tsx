@@ -19,8 +19,8 @@ import {
   COLORS,
   FONT,
 } from '@jagent/ui'
+import type { DirectoryPicker } from '../sidebar/WorkspaceList'
 import type { ThreadStore, Workspace } from '../threads/store'
-import type { DirectoryPicker } from './WorkspaceList'
 
 /** 绝对路径校验（原型正则同款）：~/…、/…、C:\\…、\\\\… */
 const ABSOLUTE_PATH = /^(?:\/|~\/|[A-Za-z]:[\\/]|\\\\)/

@@ -13,13 +13,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:tes
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement, useState } from 'react'
 
+import { DialogHost } from '../../dialogs/DialogHost'
 import { currentActiveThreadId, navigateTarget, router } from '../../router'
 import { memoryAdapter } from '../../settings/file'
 import { createSettingsStore, type SettingsStore } from '../../settings/store'
 import { builtinPresetOf } from '../../threads/presets'
 import { createThreadStore, type ThreadStore } from '../../threads/store'
 import { defaultWorkspace } from '../../threads/workspaces'
-import { DialogHost } from '../DialogHost'
 import { WorkspaceList } from '../WorkspaceList'
 
 let t: TestRoot

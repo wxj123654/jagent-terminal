@@ -13,6 +13,7 @@
 
 import type { LastCrash } from '../errors/crashReport'
 import type { SettingsStore } from '../settings/store'
+import type { DirectoryPicker } from '../sidebar/WorkspaceList'
 import type { ThreadStore } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
 import { CrashDialog } from './CrashDialog'
@@ -21,7 +22,6 @@ import { RenameDialog, type RenameTarget } from './RenameDialog'
 import { SearchDialog } from './SearchDialog'
 import { ToolDialog } from './ToolDialog'
 import { WorkspaceDialog } from './WorkspaceDialog'
-import type { DirectoryPicker } from './WorkspaceList'
 
 export type DialogState =
   | { kind: 'none' }

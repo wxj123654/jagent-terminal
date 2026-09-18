@@ -26,13 +26,13 @@
 import { useRef, useState } from 'react'
 
 import { Icon, COLORS, FONT } from '@jagent/ui'
+import type { DialogOpener } from '../dialogs/DialogHost'
 import { useActiveTarget } from '../router'
 import type { ThreadStore } from '../threads/store'
 import { useThreadStore } from '../threads/useThreadStore'
 import { sortThreads, sortWorkspaces } from '../threads/workspaces'
 import { SIZES } from '../tokens'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
-import type { DialogOpener } from './DialogHost'
 import { ThreadRow } from './ThreadRow'
 
 /** 原生目录选择 seam（W3）：resolve(path) / resolve(null) = 取消或不可用 */

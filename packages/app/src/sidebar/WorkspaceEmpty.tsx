@@ -7,6 +7,7 @@
  * 不传 thread → spawnFromPreset 走 cwd = workspace.path 分支。
  */
 
+import type { DialogOpener } from '../dialogs/DialogHost'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
 import {
@@ -20,7 +21,6 @@ import {
 } from '../surfaces/EmptyPresets'
 import type { ThreadStore } from '../threads/store'
 import type { Workspace } from '../threads/workspaces'
-import type { DialogOpener } from './DialogHost'
 
 export function WorkspaceEmpty({
   workspace,
