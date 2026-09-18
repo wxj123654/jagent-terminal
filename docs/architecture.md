@@ -40,7 +40,7 @@
 │   packages/native（薄壳：createRenderer + registry 装配 + 3 个命令）  │
 │        │                                                           │
 │   crates/jagent-terminal（深库）                                    │
-│     TerminalPool ── pty.rs / view.rs(TerminalModel) / element.rs   │
+│     TerminalPool ── pty.rs / view.rs(TerminalModel)                │
 │     examples/window.rs（Phase 0 验证载体）                           │
 └────────────────────────────────────────────────────────────────────┘
 ```
@@ -81,10 +81,18 @@ j-agent/
 │       │   │                          #   memory history + useActiveTarget + 手动桥（R-V1）
 │       │   ├── keybindings.ts         #   全局键位层 + Keybindings 类型派生
 │       │   │                          #   （schema 单源）+ createKeyboardSlot
-│       │   ├── plane/                 #   AgentPlane / Sidebar / WorkspaceList /
-│       │   │                          #   ThreadRow / ContextMenu / RenameDialog /
-│       │   │                          #   Pane + planeKeyboard/dialogKeyboard（模块单例槽）
-│       │   ├── threads/               #   store.ts + terminal.ts + presets.ts +
+│       │   ├── plane/                 #   壳：AgentPlane / Pane（唯一表面调度）/
+│       │   │                          #   TitleBar / SessionTabs / planeKeyboard
+│       │   ├── sidebar/               #   侧栏族：Sidebar / WorkspaceList /
+│       │   │                          #   ThreadRow / ContextMenu / WorkspaceEmpty /
+│       │   │                          #   WorkspacePage（plane/ 拆分出，2026-09-18）
+│       │   ├── dialogs/               #   弹窗族：DialogHost + Crash/Error/Rename/
+│       │   │                          #   Search/Tool/Workspace 六弹窗 + dialogKeyboard
+│       │   ├── threads/               #   store.ts（类型契约 + interface + 装配；
+│       │   │                          #   唯一会话事实源）+ internal/（实现按簇：
+│       │   │                          #   ctx/sessionViews/notices/workspaceOps/
+│       │   │                          #   conversations——internal seam，接口不变）+
+│       │   │                          #   terminal.ts + presets.ts +
 │       │   │                          #   events.ts（SessionEvent 窄化）+ chat.ts
 │       │   │                          #   （ChatAgent seam + EchoAgent，T3.2）+
 │       │   │                          #   acp.ts（ACP v1 JSON-RPC 子进程客户端，
@@ -94,23 +102,28 @@ j-agent/
 │       │   │                          #   workspaces.ts（工作区模型 + state.json
 │       │   │                          #   schema/序列化，Phase W）
 │       │   ├── git/                   #   store.ts（GitGraphStore）+ worktree.ts +
+│       │   │                          #   useWorktree.ts（worktree 工作面 hook）+
 │       │   │                          #   cli.ts（进程边界）+ types.ts（域类型）+
 │       │   │                          #   deps.ts（真适配器装配）+ generation.ts
 │       │   │                          #   （代际判废）+ commands.ts（菜单动作派发）+
 │       │   │                          #   graphKeys.ts（git 域键位）+
 │       │   │                          #   graph.ts/graphSvg.ts/fileTree.ts/format.ts/
-│       │   │                          #   rowColumns.ts + components/GitGraphView
-│       │   ├── surfaces/              #   registry + Terminal/Chat/Acp/Empty +
-│       │   │                          #   ConversationView（chat/acp 共享消息面）+
-│       │   │                          #   listEditorParts（列表分区共享：FieldRow/
-│       │   │                          #   LinesField/ModDot + ListEditorCard 外壳 +
-│       │   │                          #   Error/Empty/Add 惯用法）+ SettingRow +
-│       │   │                          #   PhaseBadge + PresetsSection/
-│       │   │                          #   AcpAgentsSection/SettingsView
+│       │   │                          #   rowColumns.ts + components/GitGraphView +
+│       │   │                          #   components/WorkPanel（worktree 工作面）
+│       │   ├── fs/                    #   readTextFile.ts——文件读取共享 adapter
+│       │   │                          #   （git/FileSurface 两个消费方 → seam 坐实）
+│       │   ├── surfaces/              #   registry + Terminal/Chat/Acp/File/Empty +
+│       │   │                          #   ConversationView（chat/acp 共享消息面）
+│       │   │                          #   ——surface 按 thread.kind 注册，设置面
+│       │   │                          #   不在此（settings 是路由表面，非 surface）
 │       │   ├── diagnostics/           #   PerfHud + perfSource（采样数学，native
 │       │   │                          #   打点注入）+ frameOverlay（设置→overlay 同步）
 │       │   ├── settings/              #   schema.ts（含 acpAgentCommandSummary）/
-│       │   │                          #   store.ts / file.ts
+│       │   │                          #   store.ts / file.ts / ui/（SettingsView +
+│       │   │                          #   SettingsSections + SettingRow +
+│       │   │                          #   PresetsSection + AcpAgentsSection +
+│       │   │                          #   listEditorParts + settingsKeyboard +
+│       │   │                          #   PhaseBadge——surfaces/ 归域，2026-09-18）
 │       │   └── errors/                #   bus/guards/native/crashReport/log/toastWire
 │       │                              #   + ErrorBoundary；测试统一收各 feature 的
 │       │                              #   __tests__/（src/ui/ 已删——业务件归域）
@@ -123,15 +136,16 @@ j-agent/
 
 ```
 main.tsx ──> router.ts（路由树装配，不依赖任何业务模块）
-    ├──> plane ──> threads（读类型+调方法）· router（useActiveTarget）
+    ├──> plane · sidebar · dialogs ──> threads（读类型+调方法）· router（useActiveTarget）
     │      └───> surfaces ──> threads（读类型）
-    │              └────────> settings（读值）        [仅 TerminalSurface/SettingsView]
-    ├──> settings（构造 SettingsStore）
+    │              └────────> settings（读值）        [仅 TerminalSurface]
+    │      └───> git ──> threads（读类型）            [WorkPanel/GitGraphView]
+    ├──> settings（构造 SettingsStore；ui/ 件读 store 接口）
     └──> native（仅 main.tsx 与 threads/store.ts 的注入参数可见）
 ```
 
 规则：
-- `threads` **不依赖** `surfaces`、`plane`（store 不知道谁在渲染它）；导航经注入的 `deps.navigate`（§3.2）
+- `threads` **不依赖** `surfaces`、`plane`、`sidebar`、`dialogs`（store 不知道谁在渲染它）；导航经注入的 `deps.navigate`（§3.2）
 - `router.ts` 只描述 URL 形状，不 import threads / surfaces / settings
 - `settings` 不依赖 `threads`（两个 store 平行；装配层桥接 `closeOnExit` 等）
 - `native` 的导入只允许出现在 `main.tsx`、`threads/nativeDeps.ts`（装配工厂，main 与 e2e 共用）与 `threads/store.ts` 的依赖注入参数类型里，及 `e2e/`（TestGpuixRenderer 环境）——跨语言 seam 的 JS 侧收口
@@ -261,7 +275,8 @@ interface TerminalElementProps {
 Rust 侧 element 职责：
 
 ```rust
-// crates/jagent-terminal/src/element.rs
+// packages/native/src/elements/terminal.rs（元素实现的唯一住所——见 §8.2；
+// 曾在 crates/jagent-terminal 留有占位，2026-09-04 审查后删除）
 pub struct TerminalFactory;                    // element_type() = "terminal"
 pub struct TerminalElement {
     session_id: Option<u64>,                   // set_prop("sessionId") 绑定
@@ -472,6 +487,18 @@ interface ThreadStore {
 
 ### 3.3 内部规则表（全部在 store 一处，locality 的兑现）
 
+> **internal seam（2026-09-18）**：实现按簇拆进 `threads/internal/`——
+> `sessionViews`（视图 CRUD + 视图 PTY 事件归属）· `notices`（通知落列/标读/
+> openNotice）· `workspaceOps`（工作区 CRUD + pin/showAll/paneTab + persist）·
+> `conversations`（chat/acp 创建 + 消息状态机），共享 `internal/ctx.ts` 上下文。
+> `store.ts` 留类型契约 + interface + 装配表 + 核心会话方法（spawn/activate/
+> close/rename/cycle/onSessionEvent）。**不拆 store**：`removeWorkspace→close`、
+> `openNotice→activate` 这类跨簇规则的 locality 必须留在同一闭环；跨簇调用
+> 单向 import（sessionViews→notices），会成环的两条边（workspaceOps→close、
+> notices→activateSessionView）经 ctx 接线点装配。interface 即测试面不变。
+
+
+
 | 事件/方法 | 规则 |
 |---|---|
 | `spawnFromPreset` | 查 preset → `spawnSession({cwd, program, args, env, initCommand, scrollbackLines})` → push thread → `lastUsedPreset = presetId` → `activate`。cwd 继承链（W1）：`preset.cwd ?? workspace.path ?? process.cwd()`（preset 显式 cwd = 用户配置意图优先；显式 workspaceId 不存在 → throw） |
@@ -599,7 +626,7 @@ function TerminalSurface({ thread, settings }: SurfaceProps) {
 //   toggleSettings（默认 ctrl-,）→ 设置路由开关；其余透传
 // - 设置面生命周期键（无修饰键，仅 inSettings() 时吃）：Esc（消费标记双跳
 //   时序，见 keybindings.ts 注释；搜索框与键位捕获格两个消费源，标记在
-//   surfaces/settingsKeyboard.ts 模块单例）/ focusSearch（默认 '/'，
+//   settings/ui/settingsKeyboard.ts 模块单例）/ focusSearch（默认 '/'，
 //   inputFocus 守卫 + renderer.focusElement(searchInputId)）
 // T3+.2：四动作键位从 settings.keybindings 读（opts.keys getter 注入，
 // 每次 keyDown 查快照——修改即时生效）；keystrokeMatches(ks, key, ctrl,
@@ -615,7 +642,12 @@ function TerminalSurface({ thread, settings }: SurfaceProps) {
 
 ---
 
-## 5. plane/ —— 组件树与状态流
+## 5. plane/ + sidebar/ + dialogs/ —— 组件树与状态流
+
+> 目录拆分（2026-09-18）：组件树逻辑不变——`AgentPlane`/`Pane`/`TitleBar`/
+> `SessionTabs`/`planeKeyboard` 留 `plane/`（壳）；`Sidebar` 族六件迁
+> `sidebar/`；`DialogHost` + 六弹窗 + `dialogKeyboard` 迁 `dialogs/`。
+> 下文组件名与文件一一对应，目录归属见 §1.1。
 
 ```
 App（useSyncExternalStore(threadStore) + useSettings()）
@@ -758,21 +790,37 @@ interface SettingsStore {
 | `model.rs` | TerminalModel | gpui `Event::{Title,Bell,Exit,Wakeup}` + `write_to_pty` / `resize` / `set_style` | Zed `Terminal` 同构：alacritty `Term`（FairMutex）+ `SessionListener` channel + 事件消费 task（4ms 批处理，首事件立即+Wakeup 单独+上限 100）；Exit/ChildExit 去重；外观设置存 model |
 | `pty.rs` | PTY 装配 | `open_pty` / `SpawnOptions` / `PtySender` | Zed `TerminalBuilder` 模式：`tty::new(options)` + `EventLoop::new(term, listener, pty).spawn()`；PtySender = Notifier 包装（write/resize/shutdown 走 Msg 通道）；alacritty_terminal 0.26（crates.io） |
 | `view.rs` + `view/` | 绘制 | `TerminalView::new(Entity<TerminalModel>)` | **已 vendoring（R6）**：view/render/input/colors/box_drawing 四文件来自 gpui-terminal（MIT/Apache 双证随拷）；view 重写为绑 model（订阅 Wakeup 重绘、resize 在 paint 检测、输入走 model）；fork API 适配仅两处（ShapedLine::paint 补参、focus 三参） |
-| `element.rs` | TerminalElement | `TerminalFactory`（注册用，占位） | §2.4：props 5+1、事件 focus/blur、destroy 不动会话；Phase 1 在 native 里接 GPUIX CustomElement |
+
+模块全部私有（`mod`，2026-09-18 收窄）：对外契约 = 根部 `pub use` re-export
+单面（`TerminalPool` / `TerminalModel` / `TerminalView` / `SpawnOptions` /
+`SessionEvent` / `set_session_event_fn` / `take_paint_perf` / `TerminalError` /
+`HostPanic` / `terminal_error_code` / `PaintPerfSnapshot` / `TerminalRenderer` /
+`ColorPalette` / `keystroke_to_bytes` / `Event` / `TerminalStyle` /
+`SessionEventFn`）。外部代码不得出现 `jagent_terminal::xxx::` 深路径。
 
 ### 8.2 packages/native（napi 壳）
 
-三个文件各司其职（2026-09-04 审查后定型）：
+文件按职责分两层（2026-09-18 整理；契约文本原为「三文件」，规模随
+feature adapter 增长——薄壳契约的对象是 lib.rs 协议面，不是文件数）：
 
-- `lib.rs` —— 纯协议镜像（SpawnOptionsJs / SessionEvent）+ 四个 napi 命令
-  （`install_terminal_element` / `create_terminal_session` / `destroy_terminal_session` /
-  `on_session_event`）。**修改它的理由只允许是 seam 协议变化**。
+- `lib.rs` —— 纯协议镜像（SpawnOptionsJs / SessionEvent / PaintPerfJs /
+  NativePanicEvent）+ napi 命令（`install_terminal_element` /
+  `install_git_graph_row_element` / `create_terminal_session` /
+  `destroy_terminal_session` / `on_session_event` / `apply_window_appearance` /
+  `notify_desktop` / `pick_directory` / `list_system_fonts` / `take_paint_perf` /
+  `on_native_panic` / `install_native_panic_hook`）。**修改它的理由只允许是
+  seam 协议变化**。
 - `host.rs` —— host 分发 module：`run_host<T>(f) → Result<T>` 一个 interface，
   两个 adapter（线程化通道 `run_on_gpuix` / 测试 `run_on_test_app`）；两条通道签名
   被 gpuix 锁在 serde_json::Value，typed↔JSON 装箱只发生在这里一处。
-- `element.rs` —— GPUIX `CustomElement` 实现（`<terminal>` 元素，§2.4；曾同时在
-  crates/jagent-terminal 留有占位 TerminalFactory，2026-09-04 审查后删除——元素实现的
-  唯一住所就是这里）。
+- `elements/` —— GPUIX `CustomElement` adapter 层（每文件一个元素）：
+  `terminal.rs`（`<terminal>`，§2.4；元素实现的唯一住所——crates 侧占位
+  2026-09-04 已删）+ `git_graph.rs`（`<git-graph-row>`，canvas 文本自绘，
+  perf 动机见文件头）。本层只做协议桥接，无业务规则。
+- `panic.rs` / `crash.rs` —— panic 边界（guarded catch_unwind → JS throw
+  ERR_NATIVE_PANIC）+ panic hook / crash 上报（方案 B，error-management.md）。
+- `appearance.rs` / `notify.rs` / `picker.rs` —— 单命令平台 adapter：
+  窗口外观 / Windows toast / 原生目录选择器（W3）。
 
 ### 8.3 examples/window.rs（Phase 0，已完成）
 
