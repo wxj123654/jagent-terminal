@@ -18,8 +18,9 @@ use std::sync::Arc;
 
 use gpui::prelude::*;
 use gpui::{App, AppContext};
-use jagent_terminal::pool::set_session_event_fn;
-use jagent_terminal::{SessionEvent, SpawnOptions, TerminalPool, TerminalView};
+use jagent_terminal::{
+    set_session_event_fn, SessionEvent, SpawnOptions, TerminalPool, TerminalView,
+};
 
 fn main() {
     #[cfg(windows)]

@@ -19,8 +19,7 @@
 
 mod appearance;
 mod crash;
-mod element;
-mod git_graph;
+mod elements;
 mod host;
 mod notify;
 mod panic;
@@ -36,12 +35,14 @@ use napi_derive::napi;
 
 use gpui::BorrowAppContext;
 
-use element::TerminalElementFactory;
-use git_graph::GitGraphRowFactory;
+use elements::git_graph::GitGraphRowFactory;
+use elements::terminal::TerminalElementFactory;
 use gpuix_native::custom_elements::register_global_factory;
-use jagent_terminal::pool::{set_session_event_fn, SessionEvent as RustSessionEvent};
 use jagent_terminal::terminal_error_code;
-use jagent_terminal::{perf, HostPanic, SpawnOptions, TerminalError, TerminalPool};
+use jagent_terminal::{
+    set_session_event_fn, take_paint_perf as rust_take_paint_perf,
+    HostPanic, SessionEvent as RustSessionEvent, SpawnOptions, TerminalError, TerminalPool,
+};
 
 /// Register the `<terminal>` element factory with GPUIX. Must run before the
 /// renderer is initialized (`main.tsx` calls it at startup, before
@@ -241,7 +242,7 @@ pub struct PaintPerfJs {
 
 #[napi]
 pub fn take_paint_perf() -> PaintPerfJs {
-    let s = perf::take_paint_perf();
+    let s = rust_take_paint_perf();
     PaintPerfJs {
         count: s.count as f64,
         total_ns: s.ns_total as f64,
