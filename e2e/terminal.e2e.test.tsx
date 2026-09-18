@@ -43,7 +43,7 @@ import {
 } from '../packages/app/src/router'
 import { memoryAdapter } from '../packages/app/src/settings/file'
 import { createSettingsStore } from '../packages/app/src/settings/store'
-import { settingsKeyboard } from '../packages/app/src/surfaces/settingsKeyboard'
+import { settingsKeyboard } from '../packages/app/src/settings/ui/settingsKeyboard'
 import { createEchoAgent } from '../packages/app/src/threads/chat'
 import { narrowSessionEvent, type TerminalSessionEvent } from '../packages/app/src/threads/events'
 import { createNativeThreadDeps } from '../packages/app/src/threads/nativeDeps'
