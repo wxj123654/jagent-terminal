@@ -20,7 +20,9 @@ import { DialogHost, type DialogState } from '../dialogs/DialogHost'
 import { dialogKeyboard } from '../dialogs/dialogKeyboard'
 import type { LastCrash } from '../errors/crashReport'
 import { ErrorIndicator } from '../errors/ErrorIndicator'
+import { WorkPanel, type WorkPanelTab } from '../git/components/WorkPanel'
 import type { GitGraphStore } from '../git/store'
+import { useWorktree } from '../git/useWorktree'
 import type { WorktreeStore } from '../git/worktree'
 import { useActiveTarget } from '../router'
 import type { SettingsStore } from '../settings/store'
@@ -35,7 +37,6 @@ import { Pane } from './Pane'
 import { planeKeyboard } from './planeKeyboard'
 import { ContextTab, SessionTabs } from './SessionTabs'
 import { TitleBar, type WindowControls } from './TitleBar'
-import { useWorktree, WorkPanel, type WorkPanelTab } from './WorkPanel'
 
 /** 窄窗口抽屉断点（原型 W0 契约）：低于此宽 sidebar 变 overlay 抽屉 */
 const NARROW_BREAKPOINT = 760

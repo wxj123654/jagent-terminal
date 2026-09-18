@@ -1,5 +1,5 @@
 /**
- * plane/WorkPanel.tsx — 右侧工作面板（D5；原型 aside.panel）。
+ * git/components/WorkPanel.tsx — 右侧工作面板（D5；原型 aside.panel）。
  *
  * 辅助 Git/文件面——不是第二内容区（终端始终在主区）：
  * - 「变更」tab：工作区变更文件表（M/A/D 徽章 + add/del 计数）+ 选中文件
@@ -14,12 +14,12 @@
  */
 
 import { useState } from 'react'
-import { useSyncExternalStore } from 'react'
 
 import { Icon, COLORS, FONT } from '@jagent/ui'
-import type { WorktreeFile } from '../git/types'
-import type { WorktreeStore } from '../git/worktree'
-import { SIZES } from '../tokens'
+import { SIZES } from '../../tokens'
+import type { WorktreeFile } from '../types'
+import { useWorktree } from '../useWorktree'
+import type { WorktreeStore } from '../worktree'
 
 export type WorkPanelTab = 'changes' | 'files'
 
@@ -40,17 +40,6 @@ const BADGE: Record<WorktreeFile['status'], { label: string; color: string }> = 
   m: { label: 'M', color: COLORS.statusRunning },
   a: { label: 'A', color: COLORS.statusDone },
   d: { label: 'D', color: COLORS.statusError },
-}
-
-export function useWorktree<T>(
-  store: WorktreeStore,
-  select: (s: ReturnType<WorktreeStore['getState']>) => T,
-): T {
-  return useSyncExternalStore(
-    (fn) => store.subscribe(fn),
-    () => select(store.getState()),
-    () => select(store.getState()),
-  )
 }
 
 /** 面板 tab 钮（原型 .ptab：胶囊底 + on 态抬亮） */

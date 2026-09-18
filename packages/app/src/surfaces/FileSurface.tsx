@@ -2,7 +2,7 @@
  * FileSurface — 会话内文件预览（最新原型 .file-surface；SessionTabs「打开
  * 文件」→ ThreadStore.openSessionFile 的目标面）。
  *
- * 真读盘：deps.readFile 默认 git/deps.ts 的 512KB/前 400 行截断适配器
+ * 真读盘：readFile 默认 fs/readTextFile 的 512KB/前 400 行截断适配器
  * （与 WorkPanel 预览同一边界——预览不是编辑器）。相对路径按 base
  * （会话 cwd / 归属工作区 path）解析为绝对路径后读。
  *
@@ -14,18 +14,18 @@ import { isAbsolute, resolve } from 'node:path'
 import { useEffect, useState } from 'react'
 
 import { Icon, COLORS, FONT } from '@jagent/ui'
-import { realWorktreeDeps } from '../git/deps'
+import { readTextFile } from '../fs/readTextFile'
 
 export function FileSurface({
   path,
   base,
-  readFile = realWorktreeDeps.readFile,
+  readFile = readTextFile,
 }: {
   /** 视图记录的路径（worktree 变更文件多为仓库相对路径） */
   path: string
   /** 相对路径的解析基准（会话 cwd / 工作区 path；null → 进程 CWD） */
   base: string | null
-  /** 文件读取 seam（测试注假；默认 realWorktreeDeps.readFile 截断适配器） */
+  /** 文件读取 seam（测试注假；默认 fs/readTextFile 截断适配器） */
   readFile?: (absPath: string) => Promise<string | null>
 }) {
   const abs = isAbsolute(path) ? path : resolve(base ?? '', path)
