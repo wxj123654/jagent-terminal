@@ -1,5 +1,5 @@
 /**
- * plane/SearchDialog.tsx — 搜索会话弹窗（Phase W7；原型 search-dialog）。
+ * dialogs/SearchDialog.tsx — 搜索会话弹窗（Phase W7；原型 search-dialog）。
  *
  * ⌘K/Ctrl-K 全局入口（keybindings.searchThreads 从「聚焦侧栏搜索框」改为
  * 「打开本弹窗」，原型语义）。跨工作区命中（searchThreads：标题/工具/

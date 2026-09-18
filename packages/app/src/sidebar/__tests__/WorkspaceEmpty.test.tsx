@@ -1,5 +1,5 @@
 /**
- * plane/WorkspaceEmpty.test.tsx — 工作区起始页（Phase W；原型体验路径 6）。
+ * sidebar/WorkspaceEmpty.test.tsx — 工作区起始页（Phase W；原型体验路径 6）。
  *
  * 真 createThreadStore（fake deps + 一个空工作区）+ 默认内置预设。
  * 覆盖：引导文案与快捷列表渲染 · 「新建 pi 会话」spawn 归属 ·

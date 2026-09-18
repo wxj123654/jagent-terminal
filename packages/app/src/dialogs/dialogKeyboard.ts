@@ -1,5 +1,5 @@
 /**
- * plane/dialogKeyboard.ts — 弹窗键盘入口（模块单例，W7；planeKeyboard/
+ * dialogs/dialogKeyboard.ts — 弹窗键盘入口（模块单例，W7；planeKeyboard/
  * settingsKeyboard 同款纪律：纯 UI 态不进 store/router）。
  *
  * ⌘K/Ctrl-K（keybindings.searchThreads）=「打开搜索会话弹窗」（原型语义；

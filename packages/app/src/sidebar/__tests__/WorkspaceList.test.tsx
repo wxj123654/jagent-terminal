@@ -1,5 +1,5 @@
 /**
- * plane/WorkspaceList.test.tsx — Phase W2 侧栏工作区分组树测试。
+ * sidebar/WorkspaceList.test.tsx — Phase W2 侧栏工作区分组树测试。
  *
  * 真 createThreadStore（fake deps + 两个初始工作区）+ TestGpuixRenderer。
  * 覆盖：分组渲染与缩进 · 箭头 toggle（不激活）/ 点行激活 · ＋ 工具菜单

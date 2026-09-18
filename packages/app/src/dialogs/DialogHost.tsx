@@ -1,5 +1,5 @@
 /**
- * plane/DialogHost.tsx — 弹窗状态中枢（Phase W7）。
+ * dialogs/DialogHost.tsx — 弹窗状态中枢（Phase W7）。
  *
  * AgentPlane 根挂载；四类弹窗（tool / add-workspace / search / manage
  * session）单一显示源。侧栏各入口（行 ＋ / 空组引导 / 添加工作区 /

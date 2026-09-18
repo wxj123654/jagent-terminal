@@ -1,5 +1,5 @@
 /**
- * plane/ContextMenu.tsx — 侧栏上下文菜单（codex-sidebar-v2 方案 C）。
+ * sidebar/ContextMenu.tsx — 侧栏上下文菜单（codex-sidebar-v2 方案 C）。
  *
  * 行内 hover 「…」与右键同一面菜单（原型 ctx：Pin / Rename / Mark as
  * unread / Remove）。承载 = Popover（anchored + deferred + occlude +

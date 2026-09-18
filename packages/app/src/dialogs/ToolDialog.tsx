@@ -1,5 +1,5 @@
 /**
- * plane/ToolDialog.tsx — 新建会话弹窗（Phase W7；原型 tool-dialog）。
+ * dialogs/ToolDialog.tsx — 新建会话弹窗（Phase W7；原型 tool-dialog）。
  *
  * 对齐原型：工作区上下文条（.tool-ctx：「工作区」label + 行内 select +
  * 右侧 mono cwd 同行）→ 工具筛选（.tool-filter：search 图标 + input）

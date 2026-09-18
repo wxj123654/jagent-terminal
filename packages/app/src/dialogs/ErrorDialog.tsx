@@ -1,5 +1,5 @@
 /**
- * plane/ErrorDialog.tsx — 错误历史面板（方案 A；Modal 形态，对齐原型
+ * dialogs/ErrorDialog.tsx — 错误历史面板（方案 A；Modal 形态，对齐原型
  * renderErrorDialog）。
  *
  * 数据源 errors/bus 环形缓冲（新→旧）。行结构（原型 .err-item，~50px）：

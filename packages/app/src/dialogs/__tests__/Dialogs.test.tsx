@@ -1,5 +1,5 @@
 /**
- * plane/Dialogs.test.tsx — W7 弹窗族测试（SearchDialog / RenameDialog /
+ * dialogs/Dialogs.test.tsx — W7 弹窗族测试（SearchDialog / RenameDialog /
  * ToolDialog 工作区切换 / Toast）。
  *
  * 独立装配（双工作区 + spawn 会话）；Harness 包 relative 容器（Modal

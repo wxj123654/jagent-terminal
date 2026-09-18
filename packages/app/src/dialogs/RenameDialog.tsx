@@ -1,5 +1,5 @@
 /**
- * plane/RenameDialog.tsx — 重命名弹窗（codex-sidebar-v2 方案 C；原型
+ * dialogs/RenameDialog.tsx — 重命名弹窗（codex-sidebar-v2 方案 C；原型
  * <dialog>.ren-dlg：Enter 提交，Esc/Cancel/点遮罩取消）。
  *
  * 上下文菜单 Rename… 的二级交互；会话（terminal customTitle / chat·acp

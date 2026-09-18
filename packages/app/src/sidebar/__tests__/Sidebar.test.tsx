@@ -1,5 +1,5 @@
 /**
- * plane/Sidebar.test.tsx — 通知中心（D8）交互测试。
+ * sidebar/Sidebar.test.tsx — 通知中心（D8）交互测试。
  *
  * 真 createThreadStore（fake deps）+ TestGpuixRenderer。覆盖：
  * 铃铛未读红点（read 字段计数）· 条目点击 → openNotice（标已读 +

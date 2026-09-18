@@ -1,5 +1,5 @@
 /**
- * plane/WorkspaceDialog.tsx — 添加工作区弹窗（Phase W7；原型
+ * dialogs/WorkspaceDialog.tsx — 添加工作区弹窗（Phase W7；原型
  * workspace-dialog）。
  *
  * 替代 W2 的侧栏内联表单：名称（空 = 目录名兜底，store 单点）+ 目录

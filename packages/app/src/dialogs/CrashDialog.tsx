@@ -1,5 +1,5 @@
 /**
- * plane/CrashDialog.tsx — 上次会话崩溃提示（方案 C 启动横幅）。
+ * dialogs/CrashDialog.tsx — 上次会话崩溃提示（方案 C 启动横幅）。
  *
  * 启动时 crash.json 存在 → 自动弹出（DialogState kind='crash'）：原因/
  * 位置/版本/时间 + 「打开崩溃目录」（openInSystemApp）+ 「知道了」（删

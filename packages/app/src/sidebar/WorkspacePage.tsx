@@ -1,5 +1,5 @@
 /**
- * plane/WorkspacePage.tsx — 工作区页内容宿主（git-graph.md §4.2）。
+ * sidebar/WorkspacePage.tsx — 工作区页内容宿主（git-graph.md §4.2）。
  *
  * workspace 路由的内容宿主：无 tab 条——paneTab==='git' 时整页为 Git 图
  * （由 titlebar 分支 chip / Ctrl-Shift-G 进入），否则为工作区起始页
