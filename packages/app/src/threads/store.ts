@@ -30,6 +30,42 @@ export type { Workspace } from './workspaces'
 
 // ── 类型（§3.1）──────────────────────────────────────────────────────
 
+/**
+ * 会话内视图（最新原型 40d30e8 的 SessionView：标题栏第二行 tab strip
+ * 的非「主面」页）。'main' 是虚拟 id（主面本身不落 views 数组）。
+ * 运行时态不持久化：shell 视图绑真 PTY（重启即死），file 视图按 path 重读。
+ */
+export type SessionView =
+  | { id: string; kind: 'git'; label: string }
+  | { id: string; kind: 'file'; label: string; path: string }
+  | {
+      /** `shell:${n}`（会话内递增） */
+      id: string
+      kind: 'shell'
+      /** `Shell n` 兜底标题（tab 展示 oscTitle ?? label） */
+      label: string
+      /** 独立 PTY（≠ thread.sessionId）；closeSessionView/close 连带销毁 */
+      sessionId: number
+      cwd: string
+      /** SessionEvent.title —— 视图 PTY 事件按 sessionId 归属到本视图 */
+      oscTitle?: string
+      /** 视图非前台时 BEL 落此；该视图被展示时清除（activate/activateSessionView） */
+      hasBell?: boolean
+      status: 'running' | 'exited'
+      exitCode?: number | null
+    }
+
+/** shell 视图别名（事件归属/视图消费方共用窄化，R2/R3 tab 也用） */
+export type ShellView = Extract<SessionView, { kind: 'shell' }>
+
+/** 三类 thread 共用的会话视图字段（原型 Thread.views/activeViewId） */
+type SessionViews = {
+  /** 副页签列表（git/file/shell；创建序） */
+  views?: SessionView[]
+  /** 当前视图 id；缺省/'main' = 主面 */
+  activeViewId?: string
+}
+
 export type TerminalThread = {
   kind: 'terminal'
   /** `t${sessionId}` —— 事件里的 sessionId 可直接定位行（R4） */
@@ -56,7 +92,7 @@ export type TerminalThread = {
   /** 置顶（组内排序首位；不持久化） */
   pin?: boolean
   createdAt: number
-}
+} & SessionViews
 
 /** chat thread（T3.2 实装：消息 + pendingReply 状态机在 store 一处） */
 export type ChatThread = {
@@ -75,7 +111,7 @@ export type ChatThread = {
   pin?: boolean
   /** 归属工作区（Phase W） */
   workspaceId?: string
-}
+} & SessionViews
 /** Phase 3+ 实装：外部 agent JSON-RPC 会话；消息面与 chat 同构（ConversationView 复用） */
 export type AcpThread = {
   kind: 'acp'
@@ -96,7 +132,7 @@ export type AcpThread = {
   pin?: boolean
   /** 归属工作区（Phase W） */
   workspaceId?: string
-}
+} & SessionViews
 
 export type Thread = TerminalThread | ChatThread | AcpThread
 
@@ -115,6 +151,8 @@ export type SessionNotice = {
   threadId: string
   /** 已读标记（未读 = notices.filter(!read)；activate 该会话时自动标读） */
   read: boolean
+  /** 来源会话内视图（shell PTY 事件）：openNotice 一并激活该视图 */
+  viewId?: string
 }
 
 export type ThreadState = {
@@ -135,8 +173,9 @@ export type ThreadDeps = {
   destroySession: (id: number) => Promise<void>
   /** 路由跳转薄包装（装配层 = router.navigate） */
   navigate: (t: ActiveTarget) => void
-  /** 桌面通知（Phase 2 定实现；读 settings.desktop 在装配层） */
-  notify: (t: TerminalThread) => void
+  /** 桌面通知（Phase 2 定实现；读 settings.desktop 在装配层）。入参放宽
+   *  到 Thread：shell 视图 PTY 的 bell 也可能属于 chat/acp 会话 */
+  notify: (t: Thread) => void
   /** 读 settings 终端区（装配层桥接） */
   closeOnExit: () => boolean
   presetOf: (id: string) => TerminalPreset | undefined
@@ -212,8 +251,19 @@ export interface ThreadStore {
   openNotice(noticeId: string): void
   /** 工作区内 tab（git-graph.md §4.1）：'home'/'git'；持久化，不导航 */
   setWorkspacePaneTab(id: string, tab: 'home' | 'git'): void
-  /** 打开 Git 图：当前工作区（会话归属 / 已激活 / 第一个）切 paneTab=git 并激活。无工作区 no-op。 */
+  /** 打开 Git 图：活跃会话已归属工作区 → 会话内 'git' 视图（不切路由，
+   *  原型 SessionTabs 语义）；否则当前/首个工作区切 paneTab=git 并激活 */
   openGitGraph(): void
+  // ── 会话内视图（最新原型 SessionTabs：main/git/file/shell tab）─────
+  /** 激活会话内视图（'main' = 回主面；不存在 id 忽略） */
+  activateSessionView(threadId: string, viewId: string): void
+  /** 关闭会话内视图（'main' 不可关；shell 视图连带销毁 PTY；
+   *  关的是当前视图 → 回退左邻或主面） */
+  closeSessionView(threadId: string, viewId: string): void
+  /** 打开文件视图（file:<path> 去重复用；原型「打开文件」列表项） */
+  openSessionFile(threadId: string, path: string): void
+  /** 新建会话内 shell 视图（真 PTY：spawnSession；cwd = 会话 cwd / 归属工作区 path） */
+  addSessionShell(threadId: string): Promise<void>
   /** 装配层专用：native → store（经 events.ts 窄化后的判别联合） */
   onSessionEvent(e: TerminalSessionEvent): void
 }
@@ -222,6 +272,19 @@ export interface ThreadStore {
 
 /** chat 默认标题（首条消息改写的哨兵值；rename 手改后不再改写） */
 export const CHAT_DEFAULT_TITLE = 'Chat'
+
+/** 主面虚拟视图 id（不落 views 数组；原型契约） */
+export const MAIN_VIEW_ID = 'main'
+
+/** 会话标题（通知文案；装配层 notify 共用）：terminal → displayTitle 兜底链，chat/acp → title */
+export function threadTitle(t: Thread): string {
+  return t.kind === 'terminal' ? displayTitle(t) : t.title
+}
+
+/** 视图展示名（tab/通知同一规则）：shell → oscTitle ?? label；其余 → label */
+export function sessionViewTitle(v: SessionView): string {
+  return v.kind === 'shell' ? (v.oscTitle ?? v.label) : v.label
+}
 
 export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {}): ThreadStore {
   const store = createStore<ThreadState>(() => ({
@@ -252,6 +315,8 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
         const t = s.threads.find((x) => x.id === target.id)
         if (t && t.kind === 'terminal' && t.hasBell) t.hasBell = false
         if (t && t.unread) t.unread = false
+        // 正在展示的视图其 hasBell 一并清（「已看到」单点同 activateSessionView）
+        clearViewBell(t)
         // 进入会话即已读其通知（D8：activate 是「已看到」的唯一判定）
         for (const n of s.notices) if (n.threadId === target.id) n.read = true
         // Phase W：会话聚焦 → 归属工作区 lastSession 记录（activateWorkspace 恢复源）
@@ -361,6 +426,10 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
       // destroySession 的 reject 已在 nativeDeps 的 trackNative 里进错误总线
       // （emit 后 rethrow）；这里只防空 rejection（错误不再二次处理）。
       if (thread.kind === 'terminal') deps.destroySession(thread.sessionId).catch(() => {})
+      // 会话内 shell 视图绑的是独立 PTY（非 thread.sessionId）——随会话行一起销毁
+      for (const v of thread.views ?? []) {
+        if (v.kind === 'shell') deps.destroySession(v.sessionId).catch(() => {})
+      }
       if (thread.kind === 'acp') {
         // 连接随行销毁（子进程 kill；释放失败不阻塞移除）
         const agent = acpAgents.get(id)
@@ -524,6 +593,8 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
       // 来源会话仍在才导航（已关闭的会话只标已读——activate 会再标一次，幂等）
       if (state().threads.some((t) => t.id === n.threadId)) {
         activate({ type: 'thread', id: n.threadId })
+        // 通知来自会话内视图（shell PTY）→ 一并激活该视图直达现场
+        if (n.viewId) this.activateSessionView(n.threadId, n.viewId)
       }
     },
 
@@ -538,10 +609,22 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
     openGitGraph() {
       const s = state()
       const threadId = deps.activeThreadId?.() ?? null
-      const fromThread = threadId
-        ? s.threads.find((t) => t.id === threadId)?.workspaceId
-        : undefined
-      const id = fromThread ?? deps.activeWorkspaceId?.() ?? s.workspaces[0]?.id
+      const t = threadId ? s.threads.find((x) => x.id === threadId) : undefined
+      // 最新原型（40d30e8）：活跃会话已归属工作区 → 会话内 git 视图，
+      // 不切路由（tab strip 里多一页，回主面用 'main' tab）
+      if (t?.workspaceId) {
+        set((st) => {
+          const tt = st.threads.find((x) => x.id === t.id)
+          if (!tt) return
+          tt.views ??= []
+          if (!tt.views.some((v) => v.id === 'git'))
+            tt.views.push({ id: 'git', kind: 'git', label: 'Git 图' })
+          tt.activeViewId = 'git'
+        })
+        return
+      }
+      // 非会话上下文（工作区页/未归属会话/起始页）→ 工作区 paneTab 路径
+      const id = deps.activeWorkspaceId?.() ?? s.workspaces[0]?.id
       if (!id) return
       set((st) => {
         const ws = st.workspaces.find((w) => w.id === id)
@@ -551,8 +634,82 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
       activate({ type: 'workspace', id })
     },
 
+    activateSessionView(threadId, viewId) {
+      // 「已看到」只对真正展示的视图成立——后台会话的程序化调用不清标记
+      const active = activeThreadId() === threadId
+      set((s) => {
+        const t = s.threads.find((x) => x.id === threadId)
+        if (!t) return
+        if (viewId !== MAIN_VIEW_ID && !t.views?.some((v) => v.id === viewId)) return
+        t.activeViewId = viewId
+        if (active) clearViewBell(t)
+      })
+    },
+
+    closeSessionView(threadId, viewId) {
+      if (viewId === MAIN_VIEW_ID) return // 主面不可关（原型契约）
+      removeSessionView(threadId, viewId)
+    },
+
+    openSessionFile(threadId, path) {
+      set((s) => {
+        const t = s.threads.find((x) => x.id === threadId)
+        if (!t) return
+        t.views ??= []
+        const id = `file:${path}`
+        if (!t.views.some((v) => v.id === id))
+          t.views.push({
+            id,
+            kind: 'file',
+            label: path.split(/[\\/]/).pop() || path,
+            path,
+          })
+        t.activeViewId = id
+      })
+    },
+
+    async addSessionShell(threadId) {
+      const t = state().threads.find((x) => x.id === threadId)
+      if (!t) return
+      // cwd 继承：会话 cwd（terminal）→ 归属工作区 path → 进程 CWD
+      const cwd =
+        (t.kind === 'terminal' ? t.cwd : undefined) ??
+        state().workspaces.find((w) => w.id === t.workspaceId)?.path ??
+        defaultCwd()
+      const sessionId = await deps.spawnSession({ cwd })
+      // spawn 期间会话被关 → 孤儿 PTY 立即回收（不落视图）
+      if (!state().threads.some((x) => x.id === threadId)) {
+        deps.destroySession(sessionId).catch(() => {})
+        return
+      }
+      set((s) => {
+        const tt = s.threads.find((x) => x.id === threadId)
+        if (!tt) return
+        tt.views ??= []
+        let n = 1
+        while (tt.views.some((v) => v.id === `shell:${n}`)) n++
+        tt.views.push({
+          id: `shell:${n}`,
+          kind: 'shell',
+          label: `Shell ${n}`,
+          sessionId,
+          cwd,
+          status: 'running',
+        })
+        tt.activeViewId = `shell:${n}`
+      })
+    },
+
     onSessionEvent(e) {
       const id = `t${e.sessionId}`
+      // 视图 PTY 归属（R1）：shell 视图绑独立会话——主会话定位落空时按
+      // view.sessionId 路由到所属视图（sessionId 与主会话 disjoint，无歧义；
+      // 视图终端也要能收事件——此前只认 t$sid，视图 PTY 事件被静默丢弃）
+      if (!state().threads.some((t) => t.id === id)) {
+        const owner = findShellViewOwner(state(), e.sessionId)
+        if (owner) handleShellViewEvent(owner.thread, owner.view, e)
+        return
+      }
       switch (e.type) {
         case 'title': {
           set((s) => {
@@ -574,7 +731,7 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
                 const row = s.threads.find((x) => x.id === id)
                 if (row && row.kind === 'terminal') row.hasBell = true
               })
-              pushNotice(t, 'warn', `「${displayTitle(t)}」等待注意`, 'BEL')
+              pushNotice(t, 'warn', `「${displayTitle(t)}」等待注意`, { reason: 'BEL' })
               deps.notify(t)
             }
           }
@@ -584,11 +741,7 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
           const t = state().threads.find((x) => x.id === id)
           if (!t || t.kind !== 'terminal') return
           // 通知中心（D8）：退出是真实会话事件——非零码 err、正常退出 ok
-          pushNotice(
-            t,
-            e.code === 0 || e.code == null ? 'ok' : 'err',
-            `「${displayTitle(t)}」已退出`,
-          )
+          pushNotice(t, exitTone(e.code), `「${displayTitle(t)}」已退出`)
           if (deps.closeOnExit()) {
             this.close(id)
           } else {
@@ -614,12 +767,12 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
 
   /** 通知落列（D8）：sub = 归属工作区名 / 未归属 + 可选原因（原型
    *  「dotfiles · BEL」格式）；容量 50（溢出丢最旧——read 随条目走，
-   *  无计数器不变量要维护） */
+   *  无计数器不变量要维护）。viewId = 来源会话内视图（openNotice 直达） */
   function pushNotice(
-    t: TerminalThread,
+    t: Thread,
     tone: SessionNotice['tone'],
     text: string,
-    reason?: string,
+    opts: { reason?: string; viewId?: string } = {},
   ) {
     set((s) => {
       const ws = t.workspaceId ? s.workspaces.find((w) => w.id === t.workspaceId) : undefined
@@ -627,13 +780,119 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
         id: `n${++noticeSeq}`,
         tone,
         text,
-        sub: `${ws?.name ?? '未归属'}${reason ? ` · ${reason}` : ''}`,
+        sub: `${ws?.name ?? '未归属'}${opts.reason ? ` · ${opts.reason}` : ''}`,
         at: now(),
         threadId: t.id,
         read: false,
+        viewId: opts.viewId,
       })
       if (s.notices.length > 50) s.notices.splice(0, s.notices.length - 50)
     })
+  }
+
+  /** 「已看到」单点：当前展示的 shell 视图清 hasBell（activate / activateSessionView 共用） */
+  function clearViewBell(t: Thread | undefined) {
+    const v = t?.views?.find((x) => x.id === t.activeViewId)
+    if (v?.kind === 'shell' && v.hasBell) v.hasBell = false
+  }
+
+  /** exit 事件 → notice 语气（0/无码 = 正常退出 ok；非零 err）——主会话与视图共用 */
+  function exitTone(code?: number): SessionNotice['tone'] {
+    return code === 0 || code == null ? 'ok' : 'err'
+  }
+
+  /** 视图 PTY 归属查找：按 view.sessionId 定位 → 属主对 {所属会话, shell 视图} */
+  function findShellViewOwner(
+    s: ThreadState,
+    sessionId: number,
+  ): { thread: Thread; view: ShellView } | undefined {
+    for (const t of s.threads)
+      for (const v of t.views ?? [])
+        if (v.kind === 'shell' && v.sessionId === sessionId) return { thread: t, view: v }
+  }
+
+  /** 视图移除单点（closeSessionView / 视图 PTY exit+closeOnExit 共用）：
+   *  shell 视图连带销毁 PTY（防空 rejection 同 close 纪律）；关的是当前
+   *  视图 → 回退左邻或主面（原型契约） */
+  function removeSessionView(threadId: string, viewId: string) {
+    const t = state().threads.find((x) => x.id === threadId)
+    const i = t?.views?.findIndex((v) => v.id === viewId) ?? -1
+    if (!t || i < 0) return
+    const view = t.views![i]!
+    if (view.kind === 'shell') deps.destroySession(view.sessionId).catch(() => {})
+    set((s) => {
+      const tt = s.threads.find((x) => x.id === threadId)
+      const j = tt?.views?.findIndex((v) => v.id === viewId) ?? -1
+      if (!tt || j < 0) return
+      tt.views!.splice(j, 1)
+      if (tt.activeViewId === viewId) tt.activeViewId = tt.views![j - 1]?.id ?? MAIN_VIEW_ID
+    })
+  }
+
+  /** 视图 PTY 事件（R1）：title/bell/exit 归属到所属 shell 视图——
+   *  title → view.oscTitle（空串忽略，同主会话）；
+   *  bell → 视图正显示则丢弃；否则 view.hasBell，且会话本身在后台时
+   *         走会话级提醒面（terminal=hasBell / chat·acp=unread）+ notice + notify；
+   *  exit → notice + status='exited'（closeOnExit → 移除视图） */
+  function handleShellViewEvent(thread: Thread, view: ShellView, e: TerminalSessionEvent) {
+    switch (e.type) {
+      case 'title': {
+        if (!e.title) return // 空串忽略（同主会话规则）
+        set((s) => {
+          const v = s.threads.find((x) => x.id === thread.id)?.views?.find((x) => x.id === view.id)
+          if (v?.kind === 'shell') v.oscTitle = e.title
+        })
+        break
+      }
+      case 'bell': {
+        const threadActive = activeThreadId() === thread.id
+        // 视图正在显示（会话 active 且它是活动视图）→ 同主面规则：不落标记
+        if (threadActive && (thread.activeViewId ?? MAIN_VIEW_ID) === view.id) return
+        set((s) => {
+          const tt = s.threads.find((x) => x.id === thread.id)
+          const v = tt?.views?.find((x) => x.id === view.id)
+          if (v?.kind === 'shell') v.hasBell = true
+          // 会话本身在后台 → 会话级提醒（activate 清除面与主会话对称）
+          if (tt && !threadActive) {
+            if (tt.kind === 'terminal') tt.hasBell = true
+            else tt.unread = true
+          }
+        })
+        if (!threadActive) {
+          pushNotice(
+            thread,
+            'warn',
+            `「${threadTitle(thread)} · ${sessionViewTitle(view)}」等待注意`,
+            { reason: 'BEL', viewId: view.id },
+          )
+          deps.notify(thread)
+        }
+        break
+      }
+      case 'exit': {
+        pushNotice(
+          thread,
+          exitTone(e.code),
+          `「${threadTitle(thread)} · ${sessionViewTitle(view)}」已退出`,
+          { viewId: view.id },
+        )
+        if (deps.closeOnExit()) {
+          // PTY 已死；destroySession 走同一移除单点（幂等 catch）
+          removeSessionView(thread.id, view.id)
+        } else {
+          set((s) => {
+            const v = s.threads
+              .find((x) => x.id === thread.id)
+              ?.views?.find((x) => x.id === view.id)
+            if (v?.kind === 'shell') {
+              v.status = 'exited'
+              v.exitCode = e.code ?? null
+            }
+          })
+        }
+        break
+      }
+    }
   }
 
   /** 显式传入的 workspaceId 必须存在（调用方 bug 早暴露；spawn 侧已内联同判） */

@@ -107,11 +107,12 @@ async function until(ms = 0) {
   t.renderer.flush()
 }
 
-describe('WorkspacePage paneTab 切换（无 tab 条：整页切换）', () => {
+describe('WorkspacePage paneTab 切换（工作区级整页切换；会话级 tab 见 SessionTabs）', () => {
   test('默认 home → 起始页；paneTab=git → git-graph-view', async () => {
     renderPage()
     await until()
-    // 原型：无 tab 条（paneTab=git 时整页为 Git 图）
+    // 工作区起始页内无页内 tab 条（paneTab=git 时整页为 Git 图；
+    // 顶栏第二行的 SessionTabs 只挂会话路由，工作区显示 ContextTab）
     expect(has('workspace-tab-home')).toBe(false)
     expect(has('workspace-tab-git')).toBe(false)
     expect(has('git-graph-view')).toBe(false)

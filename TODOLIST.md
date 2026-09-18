@@ -378,7 +378,7 @@
     死亡序列已理清（窗口 removed→trail 清理→DestroyWindow→LastWindowClosed quit），
     但复现是竞态（默认日志 ~2min 崩一次；RUST_LOG=debug 连跑 43min 未崩）。
     下一步：二分 WIP 确认是否新渲染路径触发窗口移除。
-- [ ] **R1 会话视图数据层（threads/store.ts）**
+- [x] **R1 会话视图数据层（threads/store.ts）** ✅ 2026-09-17
   - 锚点：prototype-react `src/types.ts` SessionView（git/file/shell 三 kind）+
     `src/store.ts`：`activateSessionView` / `closeSessionView`（'main' 不可关，
     关当前视图回退左邻→主面）/ `openSessionFile`（`file:<path>` 去重）/
@@ -391,6 +391,10 @@
     路由——视图终端也要能收（查事件定位是否只认 `t${sessionId}` 主会话）。
   - 验收：store 测试覆盖视图全规则（激活/关闭回退/去重/编号/PTY 生命周期/
     事件归属）；存量用例零回归。
+  - 结论：WIP 的 API 面与原型逐语义核对一致（file 去重/shell 编号/左邻回退/
+    openGitGraph 双路径）；**事件归属确为缺口**——原 `onSessionEvent` 只认
+    `t$sid` 主会话，视图 PTY 事件全被静默丢弃。已补归属路由，详见
+    Phase R 结论区（R1）。
 - [ ] **R2 顶栏两行 + SessionTabs**
   - 锚点：prototype-react `src/components/TitleBar.tsx` + index.css `#titlebar`
     `#titlebar-main` `#tb-tabs` `.tab` `.tb-context` `.tb-cell` `.tb-branch-btn`
@@ -482,6 +486,26 @@
   `docs/prototype-react-diff.md` + 真窗口手验清单 + commit。
 
 ### Phase R 结论区（各模块完成后填写）
+
+- **R1（会话视图数据层，2026-09-17）**：WIP API 面核对 = 与原型一致
+  （openGitGraph 归属双路径 / `file:<path>` 去重 / `shell:n` 递增 / 关闭
+  回退左邻→'main' / 孤儿 PTY 回收）。**真正缺口 = `onSessionEvent` 归属**：
+  只按 `t${sessionId}` 定位主会话，shell 视图的独立 PTY 事件全被静默
+  丢弃。补齐：主会话落空 → `findShellView` 按 `view.sessionId` 归属
+  （sessionId 与主会话 disjoint）；语义与主会话对称——title →
+  `view.oscTitle`（空串忽略）；bell 三级：视图正显示（会话 active 且为
+  活动视图）→ 丢弃 / 同会话他视图 → `view.hasBell` / 会话后台 → 会话级
+  提醒（terminal=`hasBell`，chat·acp=`unread`）+ notice + notify；
+  exit → notice + `view.status='exited'`+exitCode（closeOnExit → 共享
+  removeSessionView 单点移除）。`hasBell` 清除 = 「已看到」同一判定
+  （activateSessionView / activate 落在该视图）。配套放宽：shell 视图
+  类型 +oscTitle/hasBell/status/exitCode；`SessionNotice.viewId`（openNotice
+  直达视图）；`pushNotice`/`deps.notify` 放宽到 `Thread`（nativeDeps
+  title = terminal→displayTitle / 其余→title）。**R2/R3 消费点备忘**：
+  tab label 展示 `oscTitle ?? label`、shell tab 画 hasBell 标记、
+  SessionTerminal 按 `view.status==='exited'` 画 exited bar。
+  测试：store.test 64（+6 视图事件用例）+ app 354 + e2e 23 + tsc/fmt/lint
+  全绿；architecture.md §3.1/§3.2/§3.3 已同步。
 
 ---
 
@@ -597,5 +621,8 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-16 · **侧栏会话区布局对齐原型（用户截图走查）**：WorkspaceList 与 codex-sidebar-v2 几何对齐——① 展开箭头移出 .ws-name 作兄弟节点（原型 .chev：16×26 独立钮 + 10px 图标；原 12×12 嵌在名字行内，点击区小且靠 skipRow 抑制冒泡——兄弟节点天然不触发行激活，skipRow 机制整体删除）；② .ws-head 补 height 28 + padding 0 2（名字行/ghost 钮内缩）；③ 会话区 .ws-body 改 margin-left 17 + padding-left 8 + 恢复 1px 竖引导线（6% 白 rgba(255,255,255,0.06)，对齐箭头中心——选中高亮块有归属锚点不悬空；此前走查轮误删，原型 .ws-body 本有 border-left）；④ 「工作区」区头定高 26（原 minHeight+上下 padding 撑到 ~32）+ .grow 弹簧把 ＋ 推到右缘；⑤ ghost 钮组 gap 2、图标统一 12px（原 13）；⑥ 空组引导去掉多余 marginLeft 4 与会话行同槽位；⑦ folder 图标 14→12 · 未归属虚拟组同步同一套几何 · gate：app tsc + WorkspaceList 20 例绿 + oxlint/oxfmt 绿 + sidebar-shot.mjs 截图复核
 - 2026-09-16 · **单文件原型 → React 重构（design/prototype-react）**：用户要求「原型优化成 React 实现，单文件太大实现慢，组件库用 shadcn」· 落地独立 Vite 工程（不进根 bun workspace）：React 19.3 + Vite 8.3 + TS 5.9.3 + Tailwind v4.3 + Zustand/Immer + Radix 全家桶（dialog/dropdown/select/switch/slider/scroll-area/tooltip/popover/context-menu/tabs/separator）+ lucide 图标，版本全部 registry 联网核实正式 release · 2452 行 `j-agent-prototype.html` 拆分为 types/seed/model/store + Sidebar/TitleBar/panes/GitGraphView/WorkPanel/SettingsView/Dialogs + ui 封装层（shadcn 风格 Radix 封装）；全局 `S` 对象 → zustand+immer store，CSS 原样移植保 One Dark 视觉 · 覆盖面：侧栏分组/会话行/右键与…菜单、标题栏分段+tab strip、Home/工作区页/终端模拟/Chat/ACP 会话、Git 图、WorkPanel（变更/文件/diff/预览）、设置 7 分区（含搜索高亮/键位捕获/预设与 ACP 列表编辑/字体弹层）、工具选择/搜索/加工作区/重命名/错误历史/崩溃弹窗、通知 popover/Toast、全局键位/窄屏 drawer/侧栏与面板拖拽/`?view=` 深链/demo 控制条 · 修复点：`MdLite` 非法嵌套（`<ul>` 在 `<p>` 内）、Radix `Select.Item` 禁空串 value（''→哨兵映射，「跟随上次使用」/「未归属」选中态恢复显示）、index.html 空 favicon 消 404 · gate：`bun run typecheck` + `bun run build`（JS 481KB/gz 153KB）+ `smoke.mjs` 18 状态截图全量走查无 JS 错误（.shots/react/）· 用途：设计验证/快速迭代原型，不改正式 GPUIX 应用架构
 - 2026-09-17 · **gpuix 0.9.0 上游同步（pin d85a31e→7ac9880；GPUI/zed 81c99f81 不变）**：联网核实 remorses/gpuix main 为 `7ac9880`，包含 `onSelectionChange` 与文本选区拖拽嵌套更新 panic 修复；最新版 gpuix 的 zed gitlink及 remorses/zed `gpuix` 分支均仍为 `81c99f81`，因此 GPUI 已跟随到该上游可用最新 pin、无需独立迁移 · 本地 gpuix 补丁重放并重新导出，保留上游与项目 seam；两个 zed/GPUI 补丁套件继续校验 · 顺手修掉既有 flake：`errors/log.test.ts` 的 `flushWrites` 固定 5ms sleep 改落盘轮询（此前 Windows 上 mkdir+appendFile 常超时，基线 2/3 失败）· gate：`cargo check -p gpuix-native` + `build:debug` + app/ui 370 + e2e 23 + refs-state 11 + 双包 tsc + fmt:check + lint + `export-patches --check` + `setup-refs` 快速路径全绿 · 注：首次构建被 Windows commit charge 耗尽阻塞（50.3/50.8GB），用户释放内存后 21s 编完
+- 2026-09-18 · **最新原型会话视图 tab 条落地正式 app（两行顶栏 + SessionTabs）**：原型 store 的 ui.tabs/navBack/navFwd 实为死代码（无 UI 消费），真设计 = 标题栏第二行会话内视图 tab strip——据此实现而非应用级路由 tab · ① ThreadStore 增 SessionView 模型（git/file/shell + activeViewId；main 为虚拟 id）与四动作：openGitGraph 在归属会话上落会话内 'git' 视图（不切路由/不动 paneTab，未归属/工作区路由仍走 paneTab 整页路径）、openSessionFile（file:<path> 去重激活）、addSessionShell（spawnSession 独立 PTY + cwd 三级继承 + spawn 间会话已关→孤儿回收）、closeSessionView（shell 销毁 PTY + 当前视图回退左邻/主面）；close() 连带销毁 shell 视图 PTY · ② TitleBar 两行化（主行 40 + tb-tabs 36，tokens SIZES.toolbarHeight/tabBarHeight/topChrome=77；上下文块 tb-context + 新分支钮样式 + win-ctl 容器）· ③ 新组件 plane/SessionTabs.tsx（主面 tab + 视图 tab（中键/× 关）+「+」Popover：打开 Git 图/新建 Shell/打开文件=当前工作区变更文件列表；ContextTab 供非会话路由）· ④ Pane 视图调度：git→归属工作区 GitGraphView、file→新 FileSurface（真读盘 512KB/400 行截断 + 行号列）、shell→TerminalSurface 抽出的共享 TerminalView（SessionTerminal 绑 view.sessionId 独立 PTY）· ⑤ graphKeys 激活面扩展（工作区 paneTab=git ∨ 会话 git 视图激活），main.tsx 注入判定 · ⑥ Icon 增 home · **坑**：flex 子元素负 margin 让 Taffy 把父容器宽度塌成 padding（× 钮 marginRight:-4 → tab 16px、子元素溢出到容器外点不中）——已记入 .agents/skills/gpuix-usage；getElementBounds 报 content-box（定高 40+border 1 → h=39）· gate：app tsc + bun test 348 全绿（SessionTabs 4 例 + store 会话视图 6 例 + graphKeys 1 例 + TitleBar 两行断言更新）+ oxlint/oxfmt 绿
 - 2026-09-17 · **Phase R 立项（React 原型全模块重对齐）**：用户实测昨日 WIP（会话视图 tab 条轮）还原度差，拍板①基准=design/prototype-react 渲染面（HTML 原型窗口级 tabs/navGo 在 React 版是 store 死代码，不落地）②范围=全模块重对齐非只补标签栏 · 拆 13 块进看板：R0 截图/几何工具链适配 React 原型+基线报告+修 dev 崩溃（UI thread 停，根因未定）→ R1 store 会话视图语义核对 → R2 顶栏两行+SessionTabs → R3 Pane/FileSurface/SessionShell → R4 侧栏 → R5 WorkPanel → R6 Git 图 → R7 弹窗浮层 → R8 设置面 → R9 空态/会话面 → R10 tokens/图标 → R11 键位/窄屏/深链（含原型新增 newSession ⌘N）→ R12 收官 · 下一步：用户逐模块派 agent，从 R0 起
 - 2026-09-17 · **R0 完成（React 原型还原工具链 + 基线报告）**：新建 `scripts/cmp/` 九件套（chrome 共享层：playwright-core 复用原型 node_modules + 系统 Chrome + 1280×800 视口 + vite 自动拉起 + 规范化注入；shot-proto 23 态截图；geom-proto 几何导出 `#app` 原点含 Radix Portal 换算；pngdiff/region 逐像素+分区对比；report.mjs 批量报告 → report.json；probe-dom/crop/tree/show 辅助）· 原型 App.tsx 补 `?view=sess-main/git/file/shell` 深链 · proto-shot.mjs：getElementBounds 数组下标→对象 API（3 处）、t-ime 三视图种子、新状态 sess-main/git/file/shell/add + addws、ctxmenu 截图后 Esc 关 Popover（此前污染全部后续态）· **顺手修 FileSurface 真 bug**：代码区缺 column 布局 + `lineHeight:1.55` 被 GPUIX 当 px（非 CSS 倍数）→ 600 行叠成 2px 马赛克；修后 sess-file 差异 15.89%→7.20% · 基线：22 态全图差异 1.67–9.27%（文本整形底噪为主）+ 8 项人工复查文案差异入档 → **docs/prototype-react-diff.md** · dev 崩溃调查：理清死亡序列（窗口 removed→trail→DestroyWindow→LastWindowClosed quit），PerfHud 仅发现者；复现为竞态（RUST_LOG=debug 下 43min 未崩），panic.log 的 TerminalView 泄漏记录均为更早会话 · gate：proto typecheck/build/smoke ✓ + app tsc + bun test 348 + ui tsc + fmt/lint + export-patches --check 全绿 · 下一步：R1（会话视图语义核对）/ 崩溃二分 WIP
+- 2026-09-18 · **R1 两轴评审 + 修复收口**：Standards 轴 0 硬违规/7 judgement call，Spec 轴 0 缺失/5 可疑——已修实锤项：① 测试引用 bug（activate 't2' 不存在→threads[1].id，原靠无条件导航碰巧成立）② 视图 notice 文案改 `sessionViewTitle`（oscTitle ?? label，与 tab 规则同点）③ `activateSessionView` 清 view.hasBell 补 active 校验（后台程序化调用不算「已看到」）④ 清视图 bell 落 `clearViewBell` 单点（activate/activateSessionView 共用）⑤ `titleOf` 提升为模块级 `threadTitle`（nativeDeps notify 复用，消跨文件重复）⑥ `pushNotice` 五参→opts 对象 + `exitTone` 共享 ⑦ `findShellView`→`findShellViewOwner`、`ShellView` 别名、`MAIN_VIEW_ID` 常量、`openSessionFile` `??`→`||`（split 空串死兜底）⑧ architecture.md §3.1 补 SessionNotice/notices + Thread 公共字段（unread/pin）、§3.2/§3.3 activateSessionView 补 active 限定、git-graph.md §4.3 openGitGraph 双路径 · **权衡不修**：关闭被 bell 视图后 thread 级标记残留——hasBell 主/视图源不可分，重算会误清主会话 bell，残留随 activate 自愈更安全 · 测试 +2 断言（后台调用不清标记、notice oscTitle）· gate：store.test 64 + app 353 + e2e 23 + tsc/fmt/lint 全绿
+- 2026-09-17 · **R1 完成（会话视图数据层）**：WIP API 面与原型逐语义核对一致（openGitGraph 双路径/file:<path> 去重/shell:n 递增/左邻回退/独立 PTY spawn+孤儿回收/close 连带销毁视图 PTY）· **真缺口补齐：`onSessionEvent` 归属**——原实现只按 `t${sessionId}` 定位主会话，shell 视图独立 PTY 的 title/bell/exit 全被静默丢弃；现主会话落空 → `findShellView` 按 `view.sessionId` 归属（sessionId disjoint）· 语义与主会话对称：title→view.oscTitle（空串忽略）；bell 三级（视图正显示→丢弃/他视图→view.hasBell/会话后台→会话级提醒 terminal=hasBell·chat·acp=unread + notice + notify）；exit→notice+view.status=exited+exitCode（closeOnExit→共享 removeSessionView 单点）· hasBell 清除=「已看到」同一判定（activateSessionView/activate 落在该视图）· 配套：SessionNotice.viewId（openNotice 直达视图）、pushNotice/notify 放宽到 Thread、shell 视图类型 +oscTitle/hasBell/status/exitCode · R2/R3 消费点已备忘结论区（tab 展示 oscTitle??label、hasBell 标记、exited bar）· gate：store.test 64（+6）+ app 354 + e2e 23 + 双包 tsc + fmt/lint 全绿（window-visibility 单跑 4.2s 属基线 PowerShell 冷启动耗时，全量偶超时非本次引入）· architecture.md §3.1/§3.2/§3.3 已同步 · 下一步：R2（顶栏两行 + SessionTabs）或 R3（Pane 调度 + FileSurface + SessionShell）

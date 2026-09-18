@@ -36,10 +36,14 @@ export const SIZES = {
   panelWidthMax: 720,
   /** 工作面板覆盖阈值（原型 <1100px 转为浮层） */
   panelOverlayWidth: 1100,
-  /** 自绘顶栏高度（Zed platform_title_bar_height：非 Windows 为 max(1.75rem, 34px)） */
-  titleBarHeight: 34,
-  /** 主栏工具栏高（原型 --toolbar-h；Phase D0） */
-  toolbarHeight: 46,
+  /** 主栏工具栏高（原型 --toolbarH 40px；最新原型两行顶栏的第一行） */
+  toolbarHeight: 40,
+  /** 顶栏标签行高（原型 --tabbarH 36px；SessionTabs / ContextTab 条） */
+  tabBarHeight: 36,
+  /** 自绘顶栏总高（视觉占地）= toolbar 40 + tabbar 36 + 根底边 1px
+      （Taffy 定高盒 border 在盒内：main 的 1px 分隔线已在 40 内）；
+      GitGraphView 列表高度 / 弹层坐标换算用 */
+  topChrome: 77,
   /** 侧栏头高（原型 .sb-head 52px，含红绿灯让位；Phase D0） */
   sidebarHeadHeight: 52,
 } as const

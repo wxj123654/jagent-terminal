@@ -69,7 +69,8 @@ export function statusDot(thread: Thread): DotState {
   return 'idle'
 }
 
-function Dot({ state }: { state: DotState }) {
+/** 状态点（SessionTabs 主面 tab 复用同一视觉——无点态返回 null） */
+export function Dot({ state }: { state: DotState }) {
   // 无点态占位（exited / 非选中 idle）：槽位保留防标题位移
   if (state === 'exited' || state === 'idle') return null
   if (state === 'idle-on')

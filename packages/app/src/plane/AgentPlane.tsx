@@ -24,7 +24,6 @@ import { useActiveTarget } from '../router'
 import type { SettingsStore } from '../settings/store'
 import { useSettingsValue } from '../settings/useSettings'
 import type { ThreadStore } from '../threads/store'
-import { displayTitle } from '../threads/terminal'
 import { useThreadStore } from '../threads/useThreadStore'
 import { SIZES } from '../tokens'
 import { ContextMenu } from './ContextMenu'
@@ -32,6 +31,7 @@ import { DialogHost, type DialogState } from './DialogHost'
 import { dialogKeyboard } from './dialogKeyboard'
 import { Pane } from './Pane'
 import { planeKeyboard } from './planeKeyboard'
+import { ContextTab, SessionTabs } from './SessionTabs'
 import { Sidebar } from './Sidebar'
 import { TitleBar, type WindowControls } from './TitleBar'
 import { useWorktree, WorkPanel, type WorkPanelTab } from './WorkPanel'
@@ -39,28 +39,6 @@ import type { DirectoryPicker } from './WorkspaceList'
 
 /** 窄窗口抽屉断点（原型 W0 契约）：低于此宽 sidebar 变 overlay 抽屉 */
 const NARROW_BREAKPOINT = 760
-
-/** 工具栏会话 chip：当前上下文 → 图标 + 文案（原型 #chip-session） */
-function useSessionChip(store: ThreadStore): {
-  icon: 'terminal' | 'chat' | 'acp' | 'agent' | 'folder' | 'gear'
-  label: string
-} {
-  const active = useActiveTarget()
-  const thread = useThreadStore(store, (s) =>
-    active?.type === 'thread' ? s.threads.find((t) => t.id === active.id) : undefined,
-  )
-  const workspace = useThreadStore(store, (s) =>
-    active?.type === 'workspace' ? s.workspaces.find((w) => w.id === active.id) : undefined,
-  )
-  if (active?.type === 'settings') return { icon: 'gear', label: '设置' }
-  if (active?.type === 'workspace' && workspace) return { icon: 'folder', label: workspace.name }
-  if (!thread) return { icon: 'agent', label: 'j-agent' }
-  const icon = thread.kind === 'terminal' ? 'terminal' : thread.kind === 'acp' ? 'acp' : 'chat'
-  return {
-    icon,
-    label: thread.kind === 'terminal' ? displayTitle(thread) : thread.title,
-  }
-}
 
 export function App({
   store,
@@ -92,8 +70,39 @@ export function App({
   /** 侧栏脚版本号（装配层注入；缺省不显示） */
   version?: string
 }) {
-  const chip = useSessionChip(store)
   const active = useActiveTarget()
+  // 顶栏上下文（原型 contextLabel：会话→归属工作区名/未归属 Session；
+  // 工作区→名；设置→「设置」；其余→j-agent）。tab 条按路由装配。
+  const thread = useThreadStore(store, (s) =>
+    active?.type === 'thread' ? s.threads.find((t) => t.id === active.id) : undefined,
+  )
+  const workspace = useThreadStore(store, (s) =>
+    active?.type === 'workspace' ? s.workspaces.find((w) => w.id === active.id) : undefined,
+  )
+  const threadWs = useThreadStore(store, (s) =>
+    thread?.workspaceId ? s.workspaces.find((w) => w.id === thread.workspaceId) : undefined,
+  )
+  const context: { icon: 'folder' | 'gear'; label: string } =
+    active?.type === 'settings'
+      ? { icon: 'gear', label: '设置' }
+      : active?.type === 'workspace'
+        ? { icon: 'folder', label: workspace?.name ?? 'j-agent' }
+        : active?.type === 'thread'
+          ? { icon: 'folder', label: threadWs?.name ?? '未归属 Session' }
+          : { icon: 'folder', label: 'j-agent' }
+  // 标签行（原型 #tb-tabs）：会话 → SessionTabs；工作区/设置/起始页 → ContextTab
+  const tabStrip = thread ? (
+    <SessionTabs store={store} thread={thread} worktree={worktree} />
+  ) : active?.type === 'workspace' && workspace ? (
+    <ContextTab
+      icon={workspace.paneTab === 'git' ? 'gitBranch' : 'folder'}
+      label={workspace.name}
+    />
+  ) : active?.type === 'settings' ? (
+    <ContextTab icon="gear" label="设置" />
+  ) : (
+    <ContextTab icon="home" label="主页" />
+  )
   // 窄窗口抽屉（W4）：useWindowSize poll 100ms（TestRenderer 无窗口面时
   // fallback 800×600 → 宽窗口态，测试零影响）
   const { width } = useWindowSize()
@@ -271,9 +280,8 @@ export function App({
           onToggleDrawer={narrow ? () => setDrawerOpen((v) => !v) : undefined}
           sidebarHidden={!narrow && sidebarHidden}
           onToggleSidebar={!narrow ? toggleSidebar : undefined}
-          chipIcon={chip.icon}
-          chipLabel={chip.label}
-          onChipClick={() => dialogOpener.openToolMenu(newSessionWorkspace())}
+          contextIcon={context.icon}
+          contextLabel={context.label}
           cwd={contextCwd}
           branch={branch}
           // 原型 chip-branch：点击点下方开菜单（打开 Git 图 / 查看变更）
@@ -281,6 +289,7 @@ export function App({
           onSearch={() => dialogOpener.openSearch()}
           panelOpen={panelOpen}
           onTogglePanel={() => (panelOpen ? setPanelOpen(false) : openPanel())}
+          tabs={tabStrip}
           trailing={
             <>
               <ErrorIndicator onOpen={dialogOpener.openErrors} />

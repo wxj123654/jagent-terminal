@@ -42,13 +42,39 @@ declare module '@gpuix/react/jsx-runtime' {
 
 export function TerminalSurface({ thread, settings }: SurfaceProps) {
   const t = thread as TerminalThread
+  return <TerminalView sessionId={t.sessionId} settings={settings} />
+}
+
+/**
+ * 会话内 shell 视图（SessionView kind='shell'；原型 SessionShell）——
+ * 绑独立 PTY（view.sessionId，非 thread.sessionId）。与 TerminalSurface
+ * 共享 TerminalView：`<terminal>` 仍只有本文件一个写点（硬约束 2）。
+ */
+export function SessionTerminal({
+  sessionId,
+  settings,
+}: {
+  sessionId: number
+  settings: SurfaceProps['settings']
+}) {
+  return <TerminalView sessionId={sessionId} settings={settings} />
+}
+
+/** sessionId + 外观 → `<terminal>` 元素（唯一写点） */
+function TerminalView({
+  sessionId,
+  settings,
+}: {
+  sessionId: number
+  settings: SurfaceProps['settings']
+}) {
   const term = useSettings(settings).terminal
   return (
     <div
       style={{ display: 'flex', flexDirection: 'row', flexGrow: 1, width: '100%', height: '100%' }}
     >
       <terminal
-        sessionId={t.sessionId}
+        sessionId={sessionId}
         fontFamily={term.fontFamily}
         fontSize={term.fontSize}
         palette={term.palette}

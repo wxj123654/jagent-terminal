@@ -193,25 +193,76 @@ function LinuxWindowControls({ windowControls }: { windowControls?: WindowContro
   )
 }
 
-/** V2 胶囊 chip（原型 .chip：h28 / padding 0 10 / radius full / tile 底） */
-function Chip({
+/** 上下文块（原型 .tb-context：图标 + 名称 + cwd；纯展示不交互） */
+function ContextBlock({
   icon,
   label,
-  caret = false,
-  mono = false,
-  maxWidth,
-  testId,
+  cwd,
+  narrow,
+}: {
+  icon: 'folder' | 'gear'
+  label: string
+  cwd?: string | null
+  narrow?: boolean
+}) {
+  return (
+    <div
+      testId="tb-context"
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 7,
+        minWidth: 0,
+        paddingLeft: 12,
+        paddingRight: 12,
+        // 不交互——pe:none 让整条区域仍是顶栏拖拽面（mac/linux 拖拽冒泡
+        // 不依赖它；win HTCAPTION 下非 auto 子区并入 drag）
+        pointerEvents: 'none',
+      }}
+    >
+      <Icon name={icon} size={13} color={COLORS.muted} />
+      <text
+        style={{
+          fontSize: 12,
+          fontWeight: '500',
+          fontFamily: FONT.ui,
+          color: COLORS.text,
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+        }}
+      >
+        {label}
+      </text>
+      {!narrow && cwd ? (
+        <text
+          testId="toolbar-cwd"
+          style={{
+            minWidth: 0,
+            maxWidth: 420,
+            fontSize: 11.5,
+            fontFamily: FONT.ui,
+            color: COLORS.faint,
+            whiteSpace: 'nowrap',
+            textOverflow: 'ellipsis',
+            overflow: 'hidden',
+            pointerEvents: 'none',
+          }}
+        >
+          {cwd}
+        </text>
+      ) : null}
+    </div>
+  )
+}
+
+/** 分支钮（原型 .tb-branch-btn：border 方角小钮 + mono 分支名 + caret；
+ *  点击 → Git 菜单，回调带点击坐标） */
+function BranchButton({
+  branch,
   onClick,
 }: {
-  icon: 'terminal' | 'chat' | 'acp' | 'agent' | 'folder' | 'gear' | 'gitBranch'
-  label: string
-  /** 会话 chip 尾部下拉小三角（原型 .caret） */
-  caret?: boolean
-  mono?: boolean
-  maxWidth?: number
-  testId: string
-  /** 点击回调带窗口坐标（分支 chip 开 anchored 菜单用；键盘触发用
-      行上最后一次指针位置兜底） */
+  branch: string
   onClick?: (pos: { x: number; y: number }) => void
 }) {
   /** 行上最后一次指针位置（键盘打开菜单的定位兜底——GPUIX 无元素 bounds 读面） */
@@ -219,7 +270,7 @@ function Chip({
   return (
     <div
       tabIndex={0}
-      testId={testId}
+      testId="chip-branch"
       onClick={(e) => onClick?.({ x: e.x ?? 0, y: e.y ?? 0 })}
       onMouseMove={(e) => {
         lastPointer.current = { x: e.x ?? 0, y: e.y ?? 0 }
@@ -231,28 +282,36 @@ function Chip({
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
-        minWidth: 0,
-        maxWidth,
+        gap: 5,
         height: 28,
-        paddingLeft: 10,
-        paddingRight: 10,
-        borderRadius: 9999,
-        backgroundColor: COLORS.tile,
+        minWidth: 28,
+        maxWidth: 220,
+        paddingLeft: 7,
+        paddingRight: 7,
+        borderWidth: 1,
+        borderColor: COLORS.borderSubtle,
+        borderRadius: 6,
+        backgroundColor: 'rgba(255,255,255,0.025)',
+        boxShadow: {
+          offsetX: 0,
+          offsetY: 1,
+          blurRadius: 2,
+          spreadRadius: 0,
+          color: 'rgba(0,0,0,0.18)',
+        },
+        color: COLORS.muted,
         cursor: 'pointer',
         flexShrink: 0,
-        // win 整条 titlebar 是 HTCAPTION drag 区：必须 occlude 才能赢过
-        // 系统命中测试（trailing 插槽同款；否则点击被当拖拽吃掉）
         pointerEvents: 'auto',
-        hover: { backgroundColor: COLORS.tileHover },
+        hover: { backgroundColor: COLORS.surface, borderColor: COLORS.exited },
       }}
     >
-      <Icon name={icon} size={14} color={COLORS.muted} />
+      <Icon name="gitBranch" size={14} color={COLORS.muted} />
       <text
         style={{
           minWidth: 0,
           fontSize: 12,
-          fontFamily: mono ? FONT.mono : FONT.ui,
+          fontFamily: FONT.mono,
           color: COLORS.text,
           whiteSpace: 'nowrap',
           textOverflow: 'ellipsis',
@@ -260,14 +319,14 @@ function Chip({
           pointerEvents: 'none',
         }}
       >
-        {label}
+        {branch}
       </text>
-      {caret ? <Icon name="chevronDown" size={12} color={COLORS.faint} /> : null}
+      <Icon name="chevronDown" size={12} color={COLORS.faint} />
     </div>
   )
 }
 
-/** 工具栏圆钮（原型 .tb-btn：28px 圆；on 态 = bg-active + 亮字） */
+/** 工具栏方钮（原型 .tb-cell：28px 高 / radius 6；on 态 = bg-active + 亮字） */
 function ToolButton({
   icon,
   testId,
@@ -294,12 +353,14 @@ function ToolButton({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        width: 28,
+        minWidth: 28,
         height: 28,
-        borderRadius: 9999,
+        paddingLeft: 7,
+        paddingRight: 7,
+        borderRadius: 6,
         flexShrink: 0,
         cursor: 'pointer',
-        // 同 Chip：win HTCAPTION 下必须 occlude 才可点
+        // 同 tb-cell：win HTCAPTION 下必须 occlude 才可点
         pointerEvents: 'auto',
         backgroundColor: on ? COLORS.surfaceActive : 'transparent',
         boxShadow: focused ? focusRing() : undefined,
@@ -312,12 +373,14 @@ function ToolButton({
 }
 
 /**
- * 主栏工具栏（V2 原型 .toolbar，46px）：
- * [侧栏钮/抽屉钮] [会话 chip → 新建会话弹窗] [cwd] … [分支 chip → 面板]
- * [搜索（侧栏藏/窄屏）] [trailing] [面板钮] [win/linux 三键]
+ * 自绘顶栏（最新原型 40d30e8 的 #titlebar：两行结构）：
+ * - titlebar-main（40px）：[侧栏钮/抽屉钮] [上下文块（图标+名+cwd）]
+ *   … [分支钮 → Git 菜单] [搜索（侧栏藏/窄屏）] [trailing] [面板钮] [三键]
+ * - tb-tabs（36px）：SessionTabs（thread 路由）/ ContextTab（其它路由）
+ *   ——由调用方以 `tabs` 插槽注入（路由态归 AgentPlane 装配）。
  *
- * 无独立标题栏——mac 红绿灯让位由侧栏头承担；本条在 mac 整行可拖、
- * linux 拖中段空白、win 整行 windowControlArea drag。
+ * 拖拽：mac 整条可拖（两行都挂）；linux 拖中段空白 + tab 行空白；
+ * win 整条 windowControlArea drag。
  */
 export function TitleBar({
   platform,
@@ -327,9 +390,8 @@ export function TitleBar({
   onToggleDrawer,
   sidebarHidden,
   onToggleSidebar,
-  chipIcon,
-  chipLabel,
-  onChipClick,
+  contextIcon,
+  contextLabel,
   cwd,
   branch,
   onBranchClick,
@@ -337,6 +399,7 @@ export function TitleBar({
   panelOpen,
   onTogglePanel,
   trailing,
+  tabs,
 }: {
   platform: AppPlatform
   windowControls?: WindowControls
@@ -348,10 +411,9 @@ export function TitleBar({
   sidebarHidden?: boolean
   /** 侧栏开关（宽窗口收起/展开；与 ⌘B 同效）——常驻按钮，侧栏隐藏后仍可鼠标恢复 */
   onToggleSidebar?: () => void
-  /** 会话 chip（D3/D4）：当前上下文名 + caret；点击 → 新建会话弹窗（原型语义） */
-  chipIcon?: 'terminal' | 'chat' | 'acp' | 'agent' | 'folder' | 'gear'
-  chipLabel?: string
-  onChipClick?: () => void
+  /** 上下文块（原型 .tb-context）：settings → gear，其余 → folder */
+  contextIcon?: 'folder' | 'gear'
+  contextLabel?: string
   /** 当前 cwd（窄屏隐藏；原型 .cwd 11.5px text-4） */
   cwd?: string | null
   /** 当前分支（null → 不渲染；窄屏隐藏。点击 → Git 菜单，回调带点击坐标） */
@@ -362,8 +424,10 @@ export function TitleBar({
   /** 工作面板开关（panelRight；on 态抬亮） */
   panelOpen?: boolean
   onTogglePanel?: () => void
-  /** 右侧尾部插槽（Git 图 / ErrorIndicator / 性能 HUD 等；元素零依赖，数据源由调用方装配）。win 下落在窗口控制三键左侧 */
+  /** 右侧尾部插槽（ErrorIndicator / 性能 HUD 等；元素零依赖，数据源由调用方装配）。win 下落在窗口控制三键左侧 */
   trailing?: ReactNode
+  /** 标签行内容（原型 #tb-tabs；调用方按路由装配 SessionTabs/ContextTab） */
+  tabs?: ReactNode
 }) {
   const drag = useTitleBarDrag(windowControls)
   const dragOnBar = platform === 'mac'
@@ -379,105 +443,136 @@ export function TitleBar({
         flexShrink: 0,
         minWidth: 0,
         display: 'flex',
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        height: SIZES.toolbarHeight,
-        paddingLeft: padLeft,
-        // win/linux 三键贴窗口右缘（真实标题栏语义），mac 留 12px 内距
-        paddingRight: platform === 'mac' ? 12 : 0,
-        backgroundColor: COLORS.app,
+        flexDirection: 'column',
+        backgroundColor: COLORS.titlebar,
+        borderBottomWidth: 1,
+        borderColor: COLORS.border,
         userSelect: 'none',
         ...(platform === 'win' ? { windowControlArea: 'drag' as const } : {}),
       }}
       {...(dragOnBar ? drag : {})}
     >
-      {/* 侧栏开关（原型：侧栏可见时无 panelLeft 钮——收起入口在
-          侧栏头；仅窄窗口汉堡钮 / 宽窗口收起态的恢复钮） */}
-      {narrow ? (
-        <ToolButton icon="menu" testId="drawer-toggle" on={drawerOpen} onClick={onToggleDrawer} />
-      ) : sidebarHidden ? (
-        <ToolButton icon="panelLeft" testId="toggle-sidebar" onClick={onToggleSidebar} />
-      ) : null}
-
-      {/* 会话 chip（原型 #chip-session：当前上下文 + caret → 新建会话弹窗） */}
-      <Chip
-        icon={chipIcon ?? 'agent'}
-        label={chipLabel ?? 'j-agent'}
-        caret
-        maxWidth={320}
-        testId="chip-session"
-        onClick={onChipClick}
-      />
-
-      {/* cwd（原型 .cwd：11.5px text-4；窄屏隐藏） */}
-      {!narrow && cwd ? (
-        <text
-          testId="toolbar-cwd"
-          style={{
-            minWidth: 0,
-            fontSize: 11.5,
-            fontFamily: FONT.ui,
-            color: COLORS.faint,
-            whiteSpace: 'nowrap',
-            textOverflow: 'ellipsis',
-            overflow: 'hidden',
-            pointerEvents: 'none',
-          }}
-        >
-          {cwd}
-        </text>
-      ) : null}
-
-      {/* 中段弹性空白（linux 拖拽挂这里——不盖住右侧按钮；窄屏下
-          chip 不 grow 由本段吃剩余宽） */}
+      {/* 主行（原型 #titlebar-main，--toolbarH 40px） */}
       <div
-        testId="titlebar-drag"
-        style={{ flexGrow: 1, minWidth: 0, height: '100%' }}
-        {...(dragOnMid ? drag : {})}
-      />
+        testId="titlebar-main"
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 2,
+          height: SIZES.toolbarHeight,
+          minWidth: 0,
+          paddingLeft: padLeft,
+          // win/linux 三键贴窗口右缘（真实标题栏语义），mac 留 12px 内距
+          paddingRight: platform === 'mac' ? 12 : 0,
+          borderBottomWidth: 1,
+          borderColor: COLORS.border,
+        }}
+      >
+        {/* 侧栏开关（原型：侧栏可见时无 panelLeft 钮——收起入口在
+            侧栏头；仅窄窗口汉堡钮 / 宽窗口收起态的恢复钮） */}
+        {narrow ? (
+          <ToolButton icon="menu" testId="drawer-toggle" on={drawerOpen} onClick={onToggleDrawer} />
+        ) : sidebarHidden ? (
+          <ToolButton icon="panelLeft" testId="toggle-sidebar" onClick={onToggleSidebar} />
+        ) : null}
 
-      {/* 分支 chip（原型 #chip-branch：mono + caret；点击 → Git 菜单
-          （打开图 / 查看变更）；窄屏隐藏） */}
-      {!narrow && branch ? (
-        <Chip
-          icon="gitBranch"
-          label={branch}
-          caret
-          mono
-          maxWidth={180}
-          testId="chip-branch"
-          onClick={onBranchClick}
+        {/* 上下文块（原型 .tb-context：folder/gear + 名 + cwd） */}
+        <ContextBlock
+          icon={contextIcon ?? 'folder'}
+          label={contextLabel ?? 'j-agent'}
+          cwd={cwd}
+          narrow={narrow}
         />
-      ) : null}
 
-      {/* 搜索入口（原型 #btn-search：仅侧栏隐藏/窄屏显——其余在侧栏头） */}
-      {showSearch ? <ToolButton icon="search" testId="toolbar-search" onClick={onSearch} /> : null}
-
-      {/* 尾部插槽（Git 图 / HUD）：win 下在三键左侧。整条标 drag 时必须
-          pointerEvents auto，否则 HTCAPTION 抢在按钮前（窗口控制三键同款）。 */}
-      {trailing ? (
+        {/* 中段弹性空白（linux 拖拽挂这里——不盖住右侧按钮） */}
         <div
-          testId="titlebar-trailing"
-          style={{
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 2,
-            flexShrink: 0,
-            pointerEvents: 'auto',
-          }}
-        >
-          {trailing}
-        </div>
-      ) : null}
+          testId="titlebar-drag"
+          style={{ flexGrow: 1, minWidth: 0, height: '100%' }}
+          {...(dragOnMid ? drag : {})}
+        />
 
-      {/* 工作面板开关（原型 #btn-panel） */}
-      <ToolButton icon="panelRight" testId="panel-toggle" on={panelOpen} onClick={onTogglePanel} />
+        {/* 分支钮（原型 .tb-branch-btn：border 方角 + mono + caret；
+            点击 → Git 菜单（打开图 / 查看变更）；窄屏隐藏） */}
+        {!narrow && branch ? <BranchButton branch={branch} onClick={onBranchClick} /> : null}
 
-      {/* win：三键靠右；linux CSD 同布局 */}
-      {platform === 'win' && <WindowsWindowControls />}
-      {platform === 'linux' && <LinuxWindowControls windowControls={windowControls} />}
+        {/* 搜索入口（原型 #btn-search：仅侧栏隐藏/窄屏显——其余在侧栏头） */}
+        {showSearch ? (
+          <ToolButton icon="search" testId="toolbar-search" onClick={onSearch} />
+        ) : null}
+
+        {/* 尾部插槽（ErrorIndicator / HUD）：win 下在三键左侧。整条标 drag
+            时必须 pointerEvents auto，否则 HTCAPTION 抢在按钮前。 */}
+        {trailing ? (
+          <div
+            testId="titlebar-trailing"
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 2,
+              flexShrink: 0,
+              pointerEvents: 'auto',
+            }}
+          >
+            {trailing}
+          </div>
+        ) : null}
+
+        {/* 工作面板开关（原型 #btn-panel） */}
+        <ToolButton
+          icon="panelRight"
+          testId="panel-toggle"
+          on={panelOpen}
+          onClick={onTogglePanel}
+        />
+
+        {/* 窗口控制（原型 .win-ctl：左边框分隔 + 内距；win 三键由系统
+            NC 处理，linux CSD 走 JS seam） */}
+        {platform === 'win' || platform === 'linux' ? (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              alignSelf: 'stretch',
+              flexShrink: 0,
+              borderLeftWidth: 1,
+              borderColor: COLORS.border,
+              paddingLeft: 6,
+              marginLeft: 4,
+            }}
+          >
+            {platform === 'win' ? (
+              <WindowsWindowControls />
+            ) : (
+              <LinuxWindowControls windowControls={windowControls} />
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      {/* 标签行（原型 #tb-tabs，--tabbarH 36px；app 底色 + 4/6 内距） */}
+      <div
+        testId="tb-tabs"
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'stretch',
+          gap: 3,
+          height: SIZES.tabBarHeight,
+          minWidth: 0,
+          paddingTop: 4,
+          paddingBottom: 4,
+          paddingLeft: 6,
+          paddingRight: 6,
+          backgroundColor: COLORS.app,
+          overflow: 'hidden',
+        }}
+        {...(dragOnMid ? drag : {})}
+      >
+        {tabs}
+      </div>
     </div>
   )
 }

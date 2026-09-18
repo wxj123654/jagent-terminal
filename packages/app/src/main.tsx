@@ -45,6 +45,7 @@ import type { WindowControls } from './plane/TitleBar'
 import {
   router,
   activeTargetFromLocation,
+  currentActiveThreadId,
   currentActiveWorkspaceId,
   lastNonSettings,
 } from './router'
@@ -181,6 +182,13 @@ async function mountApp(): Promise<void> {
     gitGraphKey: createGitGraphKey({
       activeWorkspaceId: currentActiveWorkspaceId,
       workspaces: () => threadStore.getState().workspaces,
+      // 会话内 git 视图（SessionTabs 'git' tab）也算 Git 图激活态
+      activeSessionGitView: () => {
+        const id = currentActiveThreadId()
+        if (!id) return false
+        const t = threadStore.getState().threads.find((x) => x.id === id)
+        return t?.views?.find((v) => v.id === t.activeViewId)?.kind === 'git'
+      },
       store: gitStore,
     }),
     inputFocused: () => inputFocus.any,

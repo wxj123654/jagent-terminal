@@ -332,6 +332,19 @@ export type AcpThread   = { kind:'acp';  id:string; title:string; createdAt:numb
                          //  自动改写 title 的哨兵（rename 置 false）
 export type Thread = TerminalThread | ChatThread | AcpThread
 
+// 会话内视图（原型 SessionView；Phase R）：三类 thread 均携带
+//   views?: SessionView[]        // git/file/shell 副页签（创建序）
+//   activeViewId?: string        // 'main' 虚拟 id = 主面
+export type SessionView =
+  | { id:string; kind:'git';  label:string }
+  | { id:string; kind:'file'; label:string; path:string }
+  | { id:string; kind:'shell'; label:string; sessionId:number; cwd:string;
+      oscTitle?:string; hasBell?:boolean;
+      status:'running'|'exited'; exitCode?:number|null }
+// shell 视图 = 独立真 PTY（spawnSession；sessionId ≠ thread.sessionId）：
+// closeSessionView/close 连带销毁；其 SessionEvent 按 view.sessionId 归属到
+// 所属视图（oscTitle/hasBell/status——语义与主会话对称，§3.3 表）
+
 export type ActiveTarget =             // 派生视图类型：从路由状态算出（§3.5）
   | { type: 'thread'; id: string }    // 路由 /thread/$id
   | { type: 'settings' }              // 路由 /settings（S1：特殊表面，非 thread）
@@ -349,11 +362,12 @@ export type ThreadState = {
 export type SessionNotice = {
   id: string                        // `n${seq}`
   tone: 'ok' | 'warn' | 'err'       // 图标色（原型三档）
-  text: string                      // 主文案（「X 等待注意」/「X 已退出」）
+  text: string                      // 主文案（「X 等待注意」/「X 已退出」；视图 = oscTitle ?? label）
   sub: string                       // 副文案（工作区名 · 原因，UI 层补相对时间）
   at: number
   threadId: string                  // 来源会话（已关闭则 openNotice 仅标已读）
   read: boolean                     // activate 来源会话时自动标读
+  viewId?: string                   // 来源会话内视图（shell PTY 事件）→ openNotice 直达
 }
 
 // threads/workspaces.ts（Phase W；交互契约 design/workspace-plane.md）
@@ -385,9 +399,10 @@ type ThreadDeps = {
   spawnSession: (o: SpawnOptions) => Promise<number>
   destroySession: (id: number) => Promise<void>
   navigate: (t: ActiveTarget) => void          // 路由跳转薄包装（装配层 = router.navigate）
-  notify: (t: TerminalThread) => void          // 桌面通知（读 settings.desktop 的逻辑在装配层；
-                                               //  实现 Phase 2 定：JS 侧 node-notifier vs
-                                               //  Rust 侧 win32 toast——后者要扩 napi 面）
+  notify: (t: Thread) => void                  // 桌面通知（读 settings.desktop 的逻辑在装配层；
+                                               //  Phase 2 定 = Rust win32 toast；入参放宽到
+                                               //  Thread——shell 视图 PTY 的 bell 也可能属于
+                                               //  chat/acp 会话）
   closeOnExit: () => boolean                   // 读 settings 终端区（装配层桥接）
   presetOf: (id: string) => TerminalPreset | undefined
   chatAgent: ChatAgent                          // chat 后端 seam（T3.2；默认 EchoAgent，
@@ -434,6 +449,23 @@ interface ThreadStore {
   activateWorkspace(id: string): void              // 恢复 lastSession（死 id/无 → 回起始页）；
                                                    //  不改 expanded（点箭头仅展开/收起，分离）
   toggleWorkspaceExpanded(id: string): void        // 展开/收起（持久化，不导航）
+  // ── 会话内视图（Phase R；原型 SessionTabs）────────────────────────
+  openGitGraph(): void                           // 活跃会话已归属工作区 → 会话内
+                                                 //  'git' 视图（不切路由）；否则工作区
+                                                 //  paneTab=git + activate(workspace)
+  activateSessionView(threadId: string, viewId: string): void
+                                                 // 'main' = 回主面；不存在 id 忽略；
+                                                 //  会话 active 且该视图被展示 →
+                                                 //  清其 hasBell（后台调用不算「已看到」）
+  closeSessionView(threadId: string, viewId: string): void
+                                                 // 'main' 不可关；shell 视图连带销毁 PTY；
+                                                 //  关当前视图 → 回退左邻/'main'
+  openSessionFile(threadId: string, path: string): void
+                                                 // `file:${path}` 去重 + 激活；label=basename
+  addSessionShell(threadId: string): Promise<void> // 真 PTY（spawnSession）；
+                                                 // `shell:${n}` 递增；cwd=会话 cwd →
+                                                 //  工作区 path → 进程 CWD；
+                                                 //  spawn 期间会话被关 → 孤儿 PTY 回收
   onSessionEvent(e: SessionEvent): void        // 装配层专用：native → store
 }
 ```
@@ -453,6 +485,10 @@ interface ThreadStore {
 | `onSessionEvent(title)` | `customTitle` 存在则忽略（冻结）；否则写 `oscTitle` |
 | `onSessionEvent(bell)` | 该 thread 非 active 时 `hasBell = true` + `deps.notify(t)` |
 | `onSessionEvent(exit)` | `status='exited'` + exitCode；若 `deps.closeOnExit()` → 同 `close` |
+| `onSessionEvent` 视图 PTY 归属（Phase R） | 主会话 `t${sessionId}` 定位落空 → 按 `view.sessionId` 路由到所属 shell 视图（sessionId 与主会话 disjoint）。title → `view.oscTitle`（空串忽略）；bell → 视图正显示（会话 active 且为活动视图）则丢弃，否则 `view.hasBell`，且会话在后台时走会话级提醒（terminal=`hasBell` / chat·acp=`unread`）+ notice(viewId) + `deps.notify`；exit → notice + `view.status='exited'`+exitCode，closeOnExit → 移除视图（共享 removeSessionView 单点：splice + 回退左邻/'main'） |
+| `activateSessionView` | 设 `activeViewId`（'main'/存在校验）；会话 active 时被展示的视图清 `hasBell`（后台调用不清——不算「已看到」；`activate(thread)` 落在该视图同清，共用 `clearViewBell` 单点） |
+| `openSessionFile` / `addSessionShell` | `file:${path}` 去重激活；`shell:${n}` 递增 + 真 PTY（cwd=会话 cwd → 工作区 path → 进程 CWD；spawn 期间会话被关 → 孤儿 PTY 回收不落视图） |
+| `openNotice`（R1 增补） | 标已读 + activate 来源会话；notice 带 `viewId` 时一并 `activateSessionView` 直达视图 |
 | `createChat` | push 空 ChatThread（title='Chat'）+ activate（T3.2；入口：+ 菜单固定项） |
 | `createAcpThread` | push AcpThread（title=label，autoTitle=true）+ activate（T3+.1；入口：+ 菜单 agent 项；label 由调用方从 settings 快照传入——store 不读 settings） |
 | `sendChatMessage` / `sendAcpMessage` | 同构状态机单点（sendConversationMessage）：空串/pendingReply 忽略；user 落列 + pendingReply=true → agent.send → 回复 assistant 落列（reject → error 行）+ 复位；thread 已 close → 弃回复。首条 user 消息截断改写 title（chat：title===默认值哨兵；acp：autoTitle 哨兵；手改后冻结）。acp 连接情建（每 thread 一次；createAcpAgent 同步 throw → error 行） |
