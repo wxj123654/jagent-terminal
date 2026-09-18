@@ -49,6 +49,8 @@ export function Pane({
   const thread = useThreadStore(store, (s) =>
     active?.type === 'thread' ? s.threads.find((t) => t.id === active.id) : undefined,
   )
+  // workspaces 走订阅而非 getState() 直读——rename/path 变化需重渲染
+  const workspaces = useThreadStore(store, (s) => s.workspaces)
 
   if (active?.type === 'settings')
     return (
@@ -59,7 +61,7 @@ export function Pane({
   // 工作区起始页（Phase W；原型「空工作区/会话移除后回退目的地」）。
   // 死 id（工作区已删，removeWorkspace 兑底前的一瞬）→ 落全局空态兜底
   if (active?.type === 'workspace') {
-    const ws = store.getState().workspaces.find((w) => w.id === active.id)
+    const ws = workspaces.find((w) => w.id === active.id)
     if (ws)
       return (
         <ErrorBoundary area="pane">
@@ -77,7 +79,7 @@ export function Pane({
   if (!thread) {
     // 空态预设卡：spawn 进第一个工作区（无工作区则不归属——防御；正常装配
     // 首启即有默认工作区，Phase W2 起新建入口全带归属）；ctx 行显示其 path
-    const firstWs = store.getState().workspaces[0]
+    const firstWs = workspaces[0]
     return (
       <EmptyPresets
         onPick={(id) => void store.spawnFromPreset(id, firstWs?.id)}
@@ -90,7 +92,7 @@ export function Pane({
   const view = thread.views?.find((v) => v.id === thread.activeViewId)
   if (view) {
     if (view.kind === 'git') {
-      const ws = store.getState().workspaces.find((w) => w.id === thread.workspaceId)
+      const ws = workspaces.find((w) => w.id === thread.workspaceId)
       if (ws)
         return (
           <ErrorBoundary area="pane">
@@ -106,7 +108,7 @@ export function Pane({
     } else if (view.kind === 'file') {
       const base =
         (thread.kind === 'terminal' ? thread.cwd : undefined) ??
-        store.getState().workspaces.find((w) => w.id === thread.workspaceId)?.path ??
+        workspaces.find((w) => w.id === thread.workspaceId)?.path ??
         null
       return (
         <ErrorBoundary area="pane">
