@@ -1,0 +1,970 @@
+diff --git a/TODOLIST.md b/TODOLIST.md
+index 0109c3d..2c908c4 100644
+--- a/TODOLIST.md
++++ b/TODOLIST.md
+@@ -20,6 +20,7 @@
+ | `docs/gpuix-zed-terminal-fusion.md` | 调研与硬约束（§4 硬约束 6：字节流不过 napi；GPUIX pin GPUI fork） |
+ | `docs/nested-scroll-research.md` | 嵌套滚动机制调研 + 当前实现：浏览器 scroll latching（序列锁定目标）与 Chromium/Firefox 源码依据；0003 补丁的 `ScrollSequence` 规则与差距 |
+ | `design/*.html` | HTML 原型（布局/设置/交互方案），样式对齐用 |
++| `design/prototype-react/` | **React 版原型（当前唯一视觉/交互基准）**：React19+Vite+Tailwind+Radix/shadcn；`src/components/*` ↔ app 各模块一一对应；`src/index.css` 是样式真值（`:root` 全 token 表）；`bun run dev` + `bun run smoke.mjs` 截全状态 |
+ 
+ **待评审工作区方案（不是实现契约）**：`design/workspace-plane.html`，操作说明 `design/workspace-plane.md`。用户已选择独立 HTML、Codex 式工作区分组；正式应用尚未迁移。落地拆解见下方 **Phase W（工作区平面迁移）**。
+ 
+@@ -41,9 +42,10 @@
+ | W 工作区平面迁移 | ✅ W0–W5 完成（含 ctrl-tab PTY 真 bug 修复）|
+ | G Git 树（commit graph） | ✅ G1–G3 完成（docs/git-graph.md；只读 graph + workspace tab）|
+ | E 统一错误管理（A/B/C/D） | ✅ 完成（docs/error-management.md；总线+边界+panic 收编+minidump sidecar+watchdog）|
+-| D 桌面工作台 v2（Codex 灰阶） | 🚧 D0 tokens+基座 → D1 双区侧栏 → D2 工具栏 → D3 工作面板 |
++| D 桌面工作台 v2（Codex 灰阶） | 🚧 D0–D5 完成（方案 C 侧栏 + 工作面板）；配色已回 One Dark |
++| R React 原型还原（全模块对齐） | 🚧 R0 工具链基线 → R1–R11 分模块 → R12 收官；当前 WIP 未提交 |
+ 
+-**当前指针**：→ Phase E 收官 ✅（错误总线 / ErrorBoundary / thiserror+catch_unwind / crash_handler+minidumper sidecar / launcher watchdog）· 待办：G4 另立设计（status/commit 面板）；真窗口手验清单（W3/W4/W5 + G 的 Ctrl+Shift+G + 错误面板/崩溃提示）
++**当前指针**：→ **Phase R（React 原型还原）开工**——基准 `design/prototype-react`（HTML 原型已退役为其移植源）；R0 工具链先行，R1–R11 按模块逐块跑 agent。**工作区有未提交 WIP**（SessionTabs/会话视图 store/FileSurface/SessionTerminal/Pane 调度/TitleBar 两行），用户实测还原度差 → 各模块以原型逐项核对修正，不是续写。· 旧待办不变：G4 另立设计；真窗口手验清单（W3/W4/W5 + G + 错误面板/崩溃提示）
+ **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
+ 
+ ---
+@@ -332,7 +334,182 @@
+   simulateKeystrokes('enter') 可靠）；② useEffect 注册的模块态回调（planeKeyboard）后 setState 需 macrotask
+   提交（时序三律之二，toggle 断言要 await）。
+ 
+-## 验收锚点速查（settings-ui.md §15）
++## Phase R —— React 原型还原（design/prototype-react → packages/app 全模块对齐）
++
++> **基准：`design/prototype-react`**（React 19 + shadcn/Radix 版原型，唯一视觉/交互
++> spec）。`design/j-agent-prototype.html` 已被取代——其窗口级 tabs/navBack/navGo
++> 在 React 版 store 里是**移植残留死代码（无组件渲染），不落地**（2026-09-17 用户
++> 拍板：以 React 原型渲染为准，标签条 = 会话内视图页签）。
++> **范围：全模块重对齐**（用户拍板）——不止补标签栏，侧栏/顶栏/面板/弹窗/设置/
++> 空态全部逐项复核。09-15 对 HTML 原型的走查成果（差异率 1–4%）是起点不是终点。
++> **当前 WIP 基线**：工作区未提交改动已落 SessionTabs/会话视图 store/FileSurface/
++> SessionTerminal/Pane 调度/TitleBar 两行——是 R1–R3 的**起点而非成品**，用户实测
++> 还原度差，各模块按原型逐项核对修正（几何/样式/交互/状态全查）。
++> 硬约束不变：不动 `.refs/`；`<terminal>` 唯一写点；字节流不过 napi；新依赖先过
++> architecture.md §11。
++> **GPUIX 能力差速查**（每个模块都会踩，详 `docs/gpuix-usage` skill 与既往结论区）：
++> 无 transition/:focus-visible（用 hover 态 + focusRing() 手动）；`<text>` 多子节点
++> 按 column 堆叠（插值改单模板串）；virtual-list 只认显式 height；anchored occlude
++> 无外点关闭（用 Popover onMouseDownOutside）；事件不冒泡（装饰子元素 pe:none）；
++> font_family 单名精确查找（FONT.ui/mono 已是平台单名，勿回退 CSS 逗号列表）。
++> **每个模块的通用验收**：`bun run proto-shot.mjs --geom` 对应状态截图 + geom
++> 逐字段对比 + 相关测试全绿 + tsc/fmt/lint；逐像素不可达（文本整形管线差异），
++> 目标 = 布局坐标 + 颜色 + 文案 + 交互一致。
++
++- [x] **R0 工具链 + 基线报告（先做，所有模块依赖）** ✅ 2026-09-17
++  - 原型侧截图：`design/prototype-react` `bun install`（如缺）→ `bun run dev`
++    （vite）→ `bun run smoke.mjs`；或适配 `.shots/cmp/shot-proto.mjs` 打 React 版：
++    规范化 1280×800、隐藏 `#demo` 演示条与水印、`*:focus{outline:none}`（.term
++    是 tabIndex div，focus-ring 污染整图）、去 `#winwrap` 边框圆角（窗口<视口时）。
++  - 原型侧几何：probe/geom 脚本对 React DOM 重校选择器集（index.css 类名基本沿用，
++    注意 Radix  Portal 挂 body 下不在 #app 内——浮层几何以 body 原点换算）。
++  - 实现侧：proto-shot.mjs 种子补 `t-ime` 三 views（git / file:Sidebar.tsx /
++    shell:1，activeViewId:'git'，对齐原型 seed.ts）+ 新状态 `sess-git` /
++    `sess-file` / `sess-shell` / `sess-add`（+ 浮层）/ `addws`；React 原型缺对应
++    `?view=` 深链的，补交互步骤（点 + → 选文件）或给原型加深链（原型可加，
++    不改语义）。
++  - 产出：逐状态 pngdiff/region 基线差异表 + 差异清单 → **`docs/prototype-react-diff.md`**
++    （新文件；旧 `prototype-walkthrough-report.md` 属 HTML 基线，不覆盖不删）。
++  - **顺手修 dev 崩溃**：用户 `bun run dev` 起来后 GPUI UI thread 停（日志：
++    `window not found` + `无效的窗口句柄` → `getDebugFrameOverlayStats` 报
++    「UI thread stopped」→ exit 9）。PerfHud 只是首个发现者，根因未定——先二分
++    WIP（SessionTabs/tabs 插槽/新视图渲染路径），再查 native。不修通真机验收不可做。
++    → **未结（2026-09-17）**：调查进展见 docs/prototype-react-diff.md 末节——
++    死亡序列已理清（窗口 removed→trail 清理→DestroyWindow→LastWindowClosed quit），
++    但复现是竞态（默认日志 ~2min 崩一次；RUST_LOG=debug 连跑 43min 未崩）。
++    下一步：二分 WIP 确认是否新渲染路径触发窗口移除。
++- [x] **R1 会话视图数据层（threads/store.ts）** ✅ 2026-09-17
++  - 锚点：prototype-react `src/types.ts` SessionView（git/file/shell 三 kind）+
++    `src/store.ts`：`activateSessionView` / `closeSessionView`（'main' 不可关，
++    关当前视图回退左邻→主面）/ `openSessionFile`（`file:<path>` 去重）/
++    `addSessionShell`（`shell:n` 递增编号，cwd=会话 cwd→工作区 path）/
++    `openGitGraph`（**活跃会话已归属工作区 → 会话内 git 视图不切路由**；否则
++    工作区 paneTab 路径）。
++  - app 侧 WIP 已落同型 API——逐语义核对：shell 视图绑独立真 PTY
++    （spawnSession）、close 视图销毁其 PTY、close thread 连带销毁全部 shell 视图
++    PTY、**onSessionEvent 归属**：视图 PTY 的 title/bell/exit 事件按 sessionId
++    路由——视图终端也要能收（查事件定位是否只认 `t${sessionId}` 主会话）。
++  - 验收：store 测试覆盖视图全规则（激活/关闭回退/去重/编号/PTY 生命周期/
++    事件归属）；存量用例零回归。
++  - 结论：WIP 的 API 面与原型逐语义核对一致（file 去重/shell 编号/左邻回退/
++    openGitGraph 双路径）；**事件归属确为缺口**——原 `onSessionEvent` 只认
++    `t$sid` 主会话，视图 PTY 事件全被静默丢弃。已补归属路由，详见
++    Phase R 结论区（R1）。
++- [ ] **R2 顶栏两行 + SessionTabs**
++  - 锚点：prototype-react `src/components/TitleBar.tsx` + index.css `#titlebar`
++    `#titlebar-main` `#tb-tabs` `.tab` `.tb-context` `.tb-cell` `.tb-branch-btn`
++    `.session-add-pop` `.win-ctl`。几何真值：toolbarH 40 / tabbarH 36 / tab
++    h28 r6 pad 0 8 max-w 210 / `.tx` 20px 仅 hover|active|focus-within 显 /
++    add 浮层 280px（sa-act h28 + sa-sub + sa-files max-h 220）。
++  - app：`plane/TitleBar.tsx`（WIP 已重排为两行+`tabs` 插槽）、
++    `plane/SessionTabs.tsx`（WIP 新）、`AgentPlane.tsx` 装配。
++  - 逐项核对：context 块（settings→gear 其余→folder；名 12px/550 + cwd 11.5px
++    faint max-w 420，纯展示 pe:none）；分支钮（1px borderSubtle 方角 +
++    rgba(255,255,255,.025) 底 + mono 名 + caret → DropMenu「打开 Git 图/查看
++    变更」）；搜索钮仅 narrow/hidden 渲染；错误钮 icon+mono 11 计数；
++    panelRight on 态；win 三键 Segoe 图形 + close hover 红；mac/linux 拖拽面不
++    被两行结构破坏；ContextTab（workspace→folder/gitBranch、settings→gear、
++    home→home）；tab 中键关 + Enter/Space 激活；「+」浮层三项+文件列表。
++  - 验收：geom 逐字段对齐（tab 条 x/y/h/间距/active 底色边框阴影）+ 截图 diff +
++    TitleBar.test / SessionTabs.test 更新。
++- [ ] **R3 Pane 调度 + FileSurface + SessionShell**
++  - 锚点：panes.tsx `Pane()` 调度序（thread.views 命中 → git→归属 ws 的
++    GitGraphView / file→FileSurface / shell→SessionShell；失效 id/无视图 → 主面；
++    ws 已删 → 回主面）。
++  - app：`plane/Pane.tsx`（WIP 已落调度）、`surfaces/FileSurface.tsx`（WIP 已落：
++    路径条 32px + mono 11 lh1.55 行号 34px 列；真读盘 512KB/400 行截断保留——
++    原型 PREVIEWS 假数据不搬）、`surfaces/TerminalSurface.tsx` SessionTerminal
++    （独立 PTY；外观四设置同主面）。
++  - 验收：三视图截图对齐 + 视图切换 PTY retain（切走不销毁进程）+ close 视图
++    后 PTY 真销毁。
++- [ ] **R4 侧栏全件**
++  - 锚点：`src/components/Sidebar.tsx`（threadMenuItems/wsMenuItems/WorkspaceGroup/
++    Unassigned/ThreadRow）+ index.css `.sb-*`/`.nav-row`/`.sec-head`/`.ghost`/
++    `.ws-*`/`.t-row`/notif popover。几何：sb-head 52 / nav-row 30 / sec-head
++    min-h 28 / ws-row 32 / ghost 24px opacity 显隐规则 / .foot 顶分隔线。
++  - app：`plane/Sidebar.tsx`、`WorkspaceList.tsx`、`ThreadRow.tsx`、`ContextMenu.tsx`。
++  - 逐项：nav 行组（新建会话/搜索）、sec-head「工作区」+＋显隐、ws-head 展开
++    箭头/名字/ghost 组、ws-body 缩进+1px 引导线（06% 白）、sortThreads 排序+
++    截断+Show more/less、unassigned 虚拟组、通知条目点击已读+跳转、sb-foot
++    版本号、两级上下文菜单项与原型一致（含 disabled 态）。
++- [ ] **R5 工作面板 WorkPanel**
++  - 锚点：`src/components/WorkPanel.tsx`（ChangeRow/FileRow/Diff/Preview）+
++    index.css `.wp-*`。契约：默认收起、拖宽 244–720、<1100 覆盖式不压终端、
++    changes/files 两 tab、选中文件 diff/预览。
++  - app：`plane/WorkPanel.tsx` + `git/worktree.ts` 数据面。
++- [ ] **R6 Git 图**
++  - 锚点：`src/components/GitGraphView.tsx`——工具条（分支菜单/find/refresh）/
++    lane 几何（LANE_W/PAD_X）/RefChip/选中详情列/find 步进（gitFindOpen/Draft/
++    findIdx）。
++  - app：`git/components/GitGraphView.tsx` + `graphSvg.ts`/`rowColumns.ts`/
++    `graphKeys.ts`。
++- [ ] **R7 弹窗与浮层**
++  - 锚点：`src/components/Dialogs.tsx`（Tool/Search/Workspace/Rename/Error/Crash
++    六弹窗）+ `ui/dialog·menu·popover`（Radix 封装形态：居中模态/外点关闭/Esc）。
++  - app：`plane/DialogHost.tsx` + ToolDialog/SearchDialog/WorkspaceDialog/
++    RenameDialog/ErrorDialog/CrashDialog + ui `Modal`/`Popover`/`Toast`。
++  - 逐项：ToolDialog 440 宽/分组标签/筛选/「默认」徽标/cmd 右列；SearchDialog
++    空 query 列全部+↑↓+归属标签；ErrorDialog .err-item 行结构；CrashDialog；
++    NotifPopover；ContextMenu；Toast 右下。
++- [ ] **R8 设置面**
++  - 锚点：`src/components/SettingsView.tsx`（745 行：7 分区 nav/SearchAll 全局
++    命中列表/SettingRow+Control/FontControl 弹层/KbSection 捕获格/PresetsSection
++    /AcpSection 列表编辑）。
++  - app：`surfaces/SettingsView.tsx` + `SettingsSections.tsx` + `PresetsSection.tsx`
++    + `AcpAgentsSection.tsx` + `SettingRow.tsx`（声明式 defs 渲染面不动语义）。
++- [ ] **R9 空态与会话面**
++  - 锚点：panes.tsx `HomePane`/`WorkspaceEmpty`（.home 卡片/kicker/ctx/.pills
++    胶囊行/featured 主胶囊）+ `ConversationView`（.conv-head/.conv-msgs/.msg
++    .bubble/.composer/.thinking）+ `TerminalSurface`（.term-surface/.term/.ln/
++    .cursor/.exited-bar）。
++  - app：`surfaces/EmptyPresets.tsx` + `plane/WorkspaceEmpty.tsx` +
++    `surfaces/ConversationView.tsx`/`ChatSurface.tsx`/`AcpSurface.tsx` +
++    `surfaces/TerminalSurface.tsx`（真终端像素面不改，只核对周边 chrome）。
++- [ ] **R10 tokens/图标/全局样式**
++  - 锚点：index.css `:root` 全表——`--toolbarH 40 --tabbarH 36 --sbHeadH 52
++    --rowH 28 --rowR 6 --sidebarW 264` + 全色板（One Dark）；`src/icons.tsx`
++    lucide 名集。
++  - app：`src/tokens.ts` + `packages/ui/src/theme/tokens.ts` + `Icon.tsx` 名集差
++    （原型新用名补 svg path）；SIZES 尺寸表对账。
++  - 滚动条：原型 ::-webkit-scrollbar 10px 双 padding 框——终端已有 Zed 三态
++    滚动条，面板/列表侧滚动条形态统一核对（GPUIX 滚动区 scrollbar 现状盘点）。
++- [ ] **R11 键位/窄屏/抽屉/深链**
++  - 锚点：App.tsx `useGlobalKeys` 优先级表：kbCapturing > dialog(Radix 自管) >
++    notif/fontPicker Esc > 设置面 Esc/`/` > searchThreads/**newSession(⌘N/Ctrl-N)**
++    /toggleSidebar > 窄屏抽屉 Esc > git 面 r/Esc/↑↓/Enter > ctrl 层 cycle/
++    toggleSettings/ctrl-shift-g；`?view=` 深链表（home/settings/git/workspace/
++    chat/acp/panel/search/tool/addws/errors/crash/notif/narrow/hidden/font）。
++  - app：`keybindings.ts`（**newSession 动作缺失——新增**，schema/键位表/KeyCap
++    同步）、planeKeyboard/dialogKeyboard、AgentPlane 抽屉（760 断点）、router.tsx。
++- [ ] **R12 收官**：全量回归（app+ui 单测 + e2e + tsc + fmt:check + lint +
++  export-patches --check）+ 全状态截图复测差异率表回写
++  `docs/prototype-react-diff.md` + 真窗口手验清单 + commit。
++
++### Phase R 结论区（各模块完成后填写）
++
++- **R1（会话视图数据层，2026-09-17）**：WIP API 面核对 = 与原型一致
++  （openGitGraph 归属双路径 / `file:<path>` 去重 / `shell:n` 递增 / 关闭
++  回退左邻→'main' / 孤儿 PTY 回收）。**真正缺口 = `onSessionEvent` 归属**：
++  只按 `t${sessionId}` 定位主会话，shell 视图的独立 PTY 事件全被静默
++  丢弃。补齐：主会话落空 → `findShellView` 按 `view.sessionId` 归属
++  （sessionId 与主会话 disjoint）；语义与主会话对称——title →
++  `view.oscTitle`（空串忽略）；bell 三级：视图正显示（会话 active 且为
++  活动视图）→ 丢弃 / 同会话他视图 → `view.hasBell` / 会话后台 → 会话级
++  提醒（terminal=`hasBell`，chat·acp=`unread`）+ notice + notify；
++  exit → notice + `view.status='exited'`+exitCode（closeOnExit → 共享
++  removeSessionView 单点移除）。`hasBell` 清除 = 「已看到」同一判定
++  （activateSessionView / activate 落在该视图）。配套放宽：shell 视图
++  类型 +oscTitle/hasBell/status/exitCode；`SessionNotice.viewId`（openNotice
++  直达视图）；`pushNotice`/`deps.notify` 放宽到 `Thread`（nativeDeps
++  title = terminal→displayTitle / 其余→title）。**R2/R3 消费点备忘**：
++  tab label 展示 `oscTitle ?? label`、shell tab 画 hasBell 标记、
++  SessionTerminal 按 `view.status==='exited'` 画 exited bar。
++  测试：store.test 64（+6 视图事件用例）+ app 354 + e2e 23 + tsc/fmt/lint
++  全绿；architecture.md §3.1/§3.2/§3.3 已同步。
++
++---
++
++
+ 
+ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-advanced→6 · 第12条（无障碍）横切随切片验收。
+ ## 硬约束速查（违反 = 返工）
+@@ -443,3 +620,8 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
+ - 2026-09-16 · **输入框光标改 Zed bar 形态 + 配色修正**：回退上游 cap-height 后用户实测光标比 CJK 字形矮一截（0.75em=9px vs 中文字 ~12px），拍板「按 Zed 一样的来」· 落地 `0004-input-caret-zed-bar.patch`（input.rs + theme.rs）：① `caret_rect` 对齐 Zed `CursorShape::Bar`（element.rs `size(px(2.0), line_height)`）——光标高=整行 line-height 不再 inset，比 glyph-extent 版还简单（不用摸 shaped line）；IME `bounds_for_range` 同步；② `theme.rs` dark caret 从 indigo accent（oklch 276.9 ≈ #7c86ff）改为 `#61afef`（One Dark 蓝，与 j-agent accent/focusBorder 同色，Zed One Dark 实际用 #74ade8 同族）· 坑：上游 caret x=文本行起点=占位符首字起点，空输入聚焦时光标条压在首字左缘——上游原生行为非布局问题 · gate：`cargo check -p gpuix-native` 绿 + `export-patches --check` 绿（gpuix 3 patch + zed 3 patch）· 待办：release `.node` 重建因机器内存耗尽（页面文件 os error 1455，rustc alloc 4MB 即失败）未跑通——下次 `bun run dev` 自动重建生效
+ - 2026-09-16 · **侧栏会话区布局对齐原型（用户截图走查）**：WorkspaceList 与 codex-sidebar-v2 几何对齐——① 展开箭头移出 .ws-name 作兄弟节点（原型 .chev：16×26 独立钮 + 10px 图标；原 12×12 嵌在名字行内，点击区小且靠 skipRow 抑制冒泡——兄弟节点天然不触发行激活，skipRow 机制整体删除）；② .ws-head 补 height 28 + padding 0 2（名字行/ghost 钮内缩）；③ 会话区 .ws-body 改 margin-left 17 + padding-left 8 + 恢复 1px 竖引导线（6% 白 rgba(255,255,255,0.06)，对齐箭头中心——选中高亮块有归属锚点不悬空；此前走查轮误删，原型 .ws-body 本有 border-left）；④ 「工作区」区头定高 26（原 minHeight+上下 padding 撑到 ~32）+ .grow 弹簧把 ＋ 推到右缘；⑤ ghost 钮组 gap 2、图标统一 12px（原 13）；⑥ 空组引导去掉多余 marginLeft 4 与会话行同槽位；⑦ folder 图标 14→12 · 未归属虚拟组同步同一套几何 · gate：app tsc + WorkspaceList 20 例绿 + oxlint/oxfmt 绿 + sidebar-shot.mjs 截图复核
+ - 2026-09-16 · **单文件原型 → React 重构（design/prototype-react）**：用户要求「原型优化成 React 实现，单文件太大实现慢，组件库用 shadcn」· 落地独立 Vite 工程（不进根 bun workspace）：React 19.3 + Vite 8.3 + TS 5.9.3 + Tailwind v4.3 + Zustand/Immer + Radix 全家桶（dialog/dropdown/select/switch/slider/scroll-area/tooltip/popover/context-menu/tabs/separator）+ lucide 图标，版本全部 registry 联网核实正式 release · 2452 行 `j-agent-prototype.html` 拆分为 types/seed/model/store + Sidebar/TitleBar/panes/GitGraphView/WorkPanel/SettingsView/Dialogs + ui 封装层（shadcn 风格 Radix 封装）；全局 `S` 对象 → zustand+immer store，CSS 原样移植保 One Dark 视觉 · 覆盖面：侧栏分组/会话行/右键与…菜单、标题栏分段+tab strip、Home/工作区页/终端模拟/Chat/ACP 会话、Git 图、WorkPanel（变更/文件/diff/预览）、设置 7 分区（含搜索高亮/键位捕获/预设与 ACP 列表编辑/字体弹层）、工具选择/搜索/加工作区/重命名/错误历史/崩溃弹窗、通知 popover/Toast、全局键位/窄屏 drawer/侧栏与面板拖拽/`?view=` 深链/demo 控制条 · 修复点：`MdLite` 非法嵌套（`<ul>` 在 `<p>` 内）、Radix `Select.Item` 禁空串 value（''→哨兵映射，「跟随上次使用」/「未归属」选中态恢复显示）、index.html 空 favicon 消 404 · gate：`bun run typecheck` + `bun run build`（JS 481KB/gz 153KB）+ `smoke.mjs` 18 状态截图全量走查无 JS 错误（.shots/react/）· 用途：设计验证/快速迭代原型，不改正式 GPUIX 应用架构
++- 2026-09-17 · **gpuix 0.9.0 上游同步（pin d85a31e→7ac9880；GPUI/zed 81c99f81 不变）**：联网核实 remorses/gpuix main 为 `7ac9880`，包含 `onSelectionChange` 与文本选区拖拽嵌套更新 panic 修复；最新版 gpuix 的 zed gitlink及 remorses/zed `gpuix` 分支均仍为 `81c99f81`，因此 GPUI 已跟随到该上游可用最新 pin、无需独立迁移 · 本地 gpuix 补丁重放并重新导出，保留上游与项目 seam；两个 zed/GPUI 补丁套件继续校验 · 顺手修掉既有 flake：`errors/log.test.ts` 的 `flushWrites` 固定 5ms sleep 改落盘轮询（此前 Windows 上 mkdir+appendFile 常超时，基线 2/3 失败）· gate：`cargo check -p gpuix-native` + `build:debug` + app/ui 370 + e2e 23 + refs-state 11 + 双包 tsc + fmt:check + lint + `export-patches --check` + `setup-refs` 快速路径全绿 · 注：首次构建被 Windows commit charge 耗尽阻塞（50.3/50.8GB），用户释放内存后 21s 编完
++- 2026-09-18 · **最新原型会话视图 tab 条落地正式 app（两行顶栏 + SessionTabs）**：原型 store 的 ui.tabs/navBack/navFwd 实为死代码（无 UI 消费），真设计 = 标题栏第二行会话内视图 tab strip——据此实现而非应用级路由 tab · ① ThreadStore 增 SessionView 模型（git/file/shell + activeViewId；main 为虚拟 id）与四动作：openGitGraph 在归属会话上落会话内 'git' 视图（不切路由/不动 paneTab，未归属/工作区路由仍走 paneTab 整页路径）、openSessionFile（file:<path> 去重激活）、addSessionShell（spawnSession 独立 PTY + cwd 三级继承 + spawn 间会话已关→孤儿回收）、closeSessionView（shell 销毁 PTY + 当前视图回退左邻/主面）；close() 连带销毁 shell 视图 PTY · ② TitleBar 两行化（主行 40 + tb-tabs 36，tokens SIZES.toolbarHeight/tabBarHeight/topChrome=77；上下文块 tb-context + 新分支钮样式 + win-ctl 容器）· ③ 新组件 plane/SessionTabs.tsx（主面 tab + 视图 tab（中键/× 关）+「+」Popover：打开 Git 图/新建 Shell/打开文件=当前工作区变更文件列表；ContextTab 供非会话路由）· ④ Pane 视图调度：git→归属工作区 GitGraphView、file→新 FileSurface（真读盘 512KB/400 行截断 + 行号列）、shell→TerminalSurface 抽出的共享 TerminalView（SessionTerminal 绑 view.sessionId 独立 PTY）· ⑤ graphKeys 激活面扩展（工作区 paneTab=git ∨ 会话 git 视图激活），main.tsx 注入判定 · ⑥ Icon 增 home · **坑**：flex 子元素负 margin 让 Taffy 把父容器宽度塌成 padding（× 钮 marginRight:-4 → tab 16px、子元素溢出到容器外点不中）——已记入 .agents/skills/gpuix-usage；getElementBounds 报 content-box（定高 40+border 1 → h=39）· gate：app tsc + bun test 348 全绿（SessionTabs 4 例 + store 会话视图 6 例 + graphKeys 1 例 + TitleBar 两行断言更新）+ oxlint/oxfmt 绿
++- 2026-09-17 · **Phase R 立项（React 原型全模块重对齐）**：用户实测昨日 WIP（会话视图 tab 条轮）还原度差，拍板①基准=design/prototype-react 渲染面（HTML 原型窗口级 tabs/navGo 在 React 版是 store 死代码，不落地）②范围=全模块重对齐非只补标签栏 · 拆 13 块进看板：R0 截图/几何工具链适配 React 原型+基线报告+修 dev 崩溃（UI thread 停，根因未定）→ R1 store 会话视图语义核对 → R2 顶栏两行+SessionTabs → R3 Pane/FileSurface/SessionShell → R4 侧栏 → R5 WorkPanel → R6 Git 图 → R7 弹窗浮层 → R8 设置面 → R9 空态/会话面 → R10 tokens/图标 → R11 键位/窄屏/深链（含原型新增 newSession ⌘N）→ R12 收官 · 下一步：用户逐模块派 agent，从 R0 起
++- 2026-09-17 · **R0 完成（React 原型还原工具链 + 基线报告）**：新建 `scripts/cmp/` 九件套（chrome 共享层：playwright-core 复用原型 node_modules + 系统 Chrome + 1280×800 视口 + vite 自动拉起 + 规范化注入；shot-proto 23 态截图；geom-proto 几何导出 `#app` 原点含 Radix Portal 换算；pngdiff/region 逐像素+分区对比；report.mjs 批量报告 → report.json；probe-dom/crop/tree/show 辅助）· 原型 App.tsx 补 `?view=sess-main/git/file/shell` 深链 · proto-shot.mjs：getElementBounds 数组下标→对象 API（3 处）、t-ime 三视图种子、新状态 sess-main/git/file/shell/add + addws、ctxmenu 截图后 Esc 关 Popover（此前污染全部后续态）· **顺手修 FileSurface 真 bug**：代码区缺 column 布局 + `lineHeight:1.55` 被 GPUIX 当 px（非 CSS 倍数）→ 600 行叠成 2px 马赛克；修后 sess-file 差异 15.89%→7.20% · 基线：22 态全图差异 1.67–9.27%（文本整形底噪为主）+ 8 项人工复查文案差异入档 → **docs/prototype-react-diff.md** · dev 崩溃调查：理清死亡序列（窗口 removed→trail→DestroyWindow→LastWindowClosed quit），PerfHud 仅发现者；复现为竞态（RUST_LOG=debug 下 43min 未崩），panic.log 的 TerminalView 泄漏记录均为更早会话 · gate：proto typecheck/build/smoke ✓ + app tsc + bun test 348 + ui tsc + fmt/lint + export-patches --check 全绿 · 下一步：R1（会话视图语义核对）/ 崩溃二分 WIP
++- 2026-09-17 · **R1 完成（会话视图数据层）**：WIP API 面与原型逐语义核对一致（openGitGraph 双路径/file:<path> 去重/shell:n 递增/左邻回退/独立 PTY spawn+孤儿回收/close 连带销毁视图 PTY）· **真缺口补齐：`onSessionEvent` 归属**——原实现只按 `t${sessionId}` 定位主会话，shell 视图独立 PTY 的 title/bell/exit 全被静默丢弃；现主会话落空 → `findShellView` 按 `view.sessionId` 归属（sessionId disjoint）· 语义与主会话对称：title→view.oscTitle（空串忽略）；bell 三级（视图正显示→丢弃/他视图→view.hasBell/会话后台→会话级提醒 terminal=hasBell·chat·acp=unread + notice + notify）；exit→notice+view.status=exited+exitCode（closeOnExit→共享 removeSessionView 单点）· hasBell 清除=「已看到」同一判定（activateSessionView/activate 落在该视图）· 配套：SessionNotice.viewId（openNotice 直达视图）、pushNotice/notify 放宽到 Thread、shell 视图类型 +oscTitle/hasBell/status/exitCode · R2/R3 消费点已备忘结论区（tab 展示 oscTitle??label、hasBell 标记、exited bar）· gate：store.test 64（+6）+ app 354 + e2e 23 + 双包 tsc + fmt/lint 全绿（window-visibility 单跑 4.2s 属基线 PowerShell 冷启动耗时，全量偶超时非本次引入）· architecture.md §3.1/§3.2/§3.3 已同步 · 下一步：R2（顶栏两行 + SessionTabs）或 R3（Pane 调度 + FileSurface + SessionShell）
+diff --git a/docs/architecture.md b/docs/architecture.md
+index c05dd41..0917116 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -332,6 +332,19 @@ export type AcpThread   = { kind:'acp';  id:string; title:string; createdAt:numb
+                          //  自动改写 title 的哨兵（rename 置 false）
+ export type Thread = TerminalThread | ChatThread | AcpThread
+ 
++// 会话内视图（原型 SessionView；Phase R）：三类 thread 均携带
++//   views?: SessionView[]        // git/file/shell 副页签（创建序）
++//   activeViewId?: string        // 'main' 虚拟 id = 主面
++export type SessionView =
++  | { id:string; kind:'git';  label:string }
++  | { id:string; kind:'file'; label:string; path:string }
++  | { id:string; kind:'shell'; label:string; sessionId:number; cwd:string;
++      oscTitle?:string; hasBell?:boolean;
++      status:'running'|'exited'; exitCode?:number|null }
++// shell 视图 = 独立真 PTY（spawnSession；sessionId ≠ thread.sessionId）：
++// closeSessionView/close 连带销毁；其 SessionEvent 按 view.sessionId 归属到
++// 所属视图（oscTitle/hasBell/status——语义与主会话对称，§3.3 表）
++
+ export type ActiveTarget =             // 派生视图类型：从路由状态算出（§3.5）
+   | { type: 'thread'; id: string }    // 路由 /thread/$id
+   | { type: 'settings' }              // 路由 /settings（S1：特殊表面，非 thread）
+@@ -371,9 +384,10 @@ type ThreadDeps = {
+   spawnSession: (o: SpawnOptions) => Promise<number>
+   destroySession: (id: number) => Promise<void>
+   navigate: (t: ActiveTarget) => void          // 路由跳转薄包装（装配层 = router.navigate）
+-  notify: (t: TerminalThread) => void          // 桌面通知（读 settings.desktop 的逻辑在装配层；
+-                                               //  实现 Phase 2 定：JS 侧 node-notifier vs
+-                                               //  Rust 侧 win32 toast——后者要扩 napi 面）
++  notify: (t: Thread) => void                  // 桌面通知（读 settings.desktop 的逻辑在装配层；
++                                               //  Phase 2 定 = Rust win32 toast；入参放宽到
++                                               //  Thread——shell 视图 PTY 的 bell 也可能属于
++                                               //  chat/acp 会话）
+   closeOnExit: () => boolean                   // 读 settings 终端区（装配层桥接）
+   presetOf: (id: string) => TerminalPreset | undefined
+   chatAgent: ChatAgent                          // chat 后端 seam（T3.2；默认 EchoAgent，
+@@ -420,6 +434,22 @@ interface ThreadStore {
+   activateWorkspace(id: string): void              // 恢复 lastSession（死 id/无 → 回起始页）；
+                                                    //  不改 expanded（点箭头仅展开/收起，分离）
+   toggleWorkspaceExpanded(id: string): void        // 展开/收起（持久化，不导航）
++  // ── 会话内视图（Phase R；原型 SessionTabs）────────────────────────
++  openGitGraph(): void                           // 活跃会话已归属工作区 → 会话内
++                                                 //  'git' 视图（不切路由）；否则工作区
++                                                 //  paneTab=git + activate(workspace)
++  activateSessionView(threadId: string, viewId: string): void
++                                                 // 'main' = 回主面；不存在 id 忽略；
++                                                 //  该视图被展示 → 清其 hasBell
++  closeSessionView(threadId: string, viewId: string): void
++                                                 // 'main' 不可关；shell 视图连带销毁 PTY；
++                                                 //  关当前视图 → 回退左邻/'main'
++  openSessionFile(threadId: string, path: string): void
++                                                 // `file:${path}` 去重 + 激活；label=basename
++  addSessionShell(threadId: string): Promise<void> // 真 PTY（spawnSession）；
++                                                 // `shell:${n}` 递增；cwd=会话 cwd →
++                                                 //  工作区 path → 进程 CWD；
++                                                 //  spawn 期间会话被关 → 孤儿 PTY 回收
+   onSessionEvent(e: SessionEvent): void        // 装配层专用：native → store
+ }
+ ```
+@@ -439,6 +469,10 @@ interface ThreadStore {
+ | `onSessionEvent(title)` | `customTitle` 存在则忽略（冻结）；否则写 `oscTitle` |
+ | `onSessionEvent(bell)` | 该 thread 非 active 时 `hasBell = true` + `deps.notify(t)` |
+ | `onSessionEvent(exit)` | `status='exited'` + exitCode；若 `deps.closeOnExit()` → 同 `close` |
++| `onSessionEvent` 视图 PTY 归属（Phase R） | 主会话 `t${sessionId}` 定位落空 → 按 `view.sessionId` 路由到所属 shell 视图（sessionId 与主会话 disjoint）。title → `view.oscTitle`（空串忽略）；bell → 视图正显示（会话 active 且为活动视图）则丢弃，否则 `view.hasBell`，且会话在后台时走会话级提醒（terminal=`hasBell` / chat·acp=`unread`）+ notice(viewId) + `deps.notify`；exit → notice + `view.status='exited'`+exitCode，closeOnExit → 移除视图（共享 removeSessionView 单点：splice + 回退左邻/'main'） |
++| `activateSessionView` | 设 `activeViewId`（'main'/存在校验）；被展示的视图清 `hasBell`（`activate(thread)` 落在该视图同清——「已看到」唯一判定） |
++| `openSessionFile` / `addSessionShell` | `file:${path}` 去重激活；`shell:${n}` 递增 + 真 PTY（cwd=会话 cwd → 工作区 path → 进程 CWD；spawn 期间会话被关 → 孤儿 PTY 回收不落视图） |
++| `openNotice`（R1 增补） | 标已读 + activate 来源会话；notice 带 `viewId` 时一并 `activateSessionView` 直达视图 |
+ | `createChat` | push 空 ChatThread（title='Chat'）+ activate（T3.2；入口：+ 菜单固定项） |
+ | `createAcpThread` | push AcpThread（title=label，autoTitle=true）+ activate（T3+.1；入口：+ 菜单 agent 项；label 由调用方从 settings 快照传入——store 不读 settings） |
+ | `sendChatMessage` / `sendAcpMessage` | 同构状态机单点（sendConversationMessage）：空串/pendingReply 忽略；user 落列 + pendingReply=true → agent.send → 回复 assistant 落列（reject → error 行）+ 复位；thread 已 close → 弃回复。首条 user 消息截断改写 title（chat：title===默认值哨兵；acp：autoTitle 哨兵；手改后冻结）。acp 连接情建（每 thread 一次；createAcpAgent 同步 throw → error 行） |
+diff --git a/packages/app/src/threads/__tests__/store.test.ts b/packages/app/src/threads/__tests__/store.test.ts
+index acbdb84..51e29e5 100644
+--- a/packages/app/src/threads/__tests__/store.test.ts
++++ b/packages/app/src/threads/__tests__/store.test.ts
+@@ -795,10 +795,269 @@ describe('activateWorkspace / close / removeWorkspace', () => {
+     await store.spawnFromPreset('shell', wsId)
+     expect(currentActiveThreadId()).toBeTruthy()
+     store.setWorkspacePaneTab(wsId, 'home')
++    // 最新原型（40d30e8）：活跃会话已归属工作区 → 会话内 'git' 视图，
++    // 不切路由、不动 paneTab
+     store.openGitGraph()
++    const t = store.getState().threads[0]!
++    expect(t.views?.some((v) => v.id === 'git')).toBe(true)
++    expect(t.activeViewId).toBe('git')
++    expect(store.getState().workspaces[0]!.paneTab).toBe('home')
++    expect(currentActiveThreadId()).toBe(t.id)
++  })
++})
++
++describe('会话内视图（最新原型 SessionTabs：main/git/file/shell）', () => {
++  let store: ThreadStore
++  let deps: ReturnType<typeof makeDeps>
++  beforeEach(() => {
++    void router.navigate({ to: '/' })
++    deps = makeDeps()
++    store = createThreadStore(deps.deps, {
++      initialWorkspaces: [defaultWorkspace('/w/proj')],
++    })
++  })
++
++  test('openGitGraph 在归属会话上 → git 视图（去重 + 激活）', async () => {
++    const wsId = store.getState().workspaces[0]!.id
++    await store.spawnFromPreset('shell', wsId)
++    store.openGitGraph()
++    store.openGitGraph() // 幂等：同 id 不重复落
++    expect(store.getState().threads[0]!.views).toEqual([
++      { id: 'git', kind: 'git', label: 'Git 图' },
++    ])
++    expect(store.getState().threads[0]!.activeViewId).toBe('git')
++    // 未归属会话 → 回退工作区 paneTab 路径
++    await store.spawnFromPreset('shell')
++    store.openGitGraph()
++    expect(store.getState().threads[1]!.views).toBeUndefined()
+     expect(store.getState().workspaces[0]!.paneTab).toBe('git')
+     expect(currentActiveWorkspaceId()).toBe(wsId)
+   })
++
++  test('openSessionFile：file:<path> 去重 + 激活；activateSessionView 回主面', async () => {
++    const wsId = store.getState().workspaces[0]!.id
++    await store.spawnFromPreset('shell', wsId)
++    const tid = store.getState().threads[0]!.id
++    store.openSessionFile(tid, 'src/a.ts')
++    store.openSessionFile(tid, 'src/a.ts')
++    store.openSessionFile(tid, 'src/b.ts')
++    const t = store.getState().threads[0]!
++    expect(t.views?.map((v) => v.id)).toEqual(['file:src/a.ts', 'file:src/b.ts'])
++    expect(t.views?.[0]!.label).toBe('a.ts')
++    expect(t.activeViewId).toBe('file:src/b.ts')
++    // 激活既有视图与 'main'；未知 id no-op
++    store.activateSessionView(tid, 'file:src/a.ts')
++    expect(store.getState().threads[0]!.activeViewId).toBe('file:src/a.ts')
++    store.activateSessionView(tid, 'file:ghost')
++    expect(store.getState().threads[0]!.activeViewId).toBe('file:src/a.ts')
++    store.activateSessionView(tid, 'main')
++    expect(store.getState().threads[0]!.activeViewId).toBe('main')
++  })
++
++  test('addSessionShell：真 PTY spawn（cwd=会话 cwd）；shell:N 递增 + 激活', async () => {
++    const wsId = store.getState().workspaces[0]!.id
++    await store.spawnFromPreset('shell', wsId) // sessionId 1 → t1
++    const tid = store.getState().threads[0]!.id
++    await store.addSessionShell(tid)
++    await store.addSessionShell(tid)
++    const t = store.getState().threads[0]!
++    expect(t.views?.map((v) => v.id)).toEqual(['shell:1', 'shell:2'])
++    expect(t.activeViewId).toBe('shell:2')
++    // shell 视图绑的是独立 PTY（非 thread.sessionId）
++    const v = t.views![0]!
++    expect(v.kind).toBe('shell')
++    if (v.kind === 'shell') {
++      expect(v.sessionId).toBe(2)
++      expect(v.cwd).toBe('/w/proj')
++    }
++    expect(deps.spawned.map((o) => o.cwd)).toEqual(['/w/proj', '/w/proj', '/w/proj'])
++  })
++
++  test('closeSessionView：shell 视图销毁 PTY；当前视图被关 → 回退左邻/主面', async () => {
++    const wsId = store.getState().workspaces[0]!.id
++    await store.spawnFromPreset('shell', wsId)
++    const tid = store.getState().threads[0]!.id
++    await store.addSessionShell(tid) // shell:1 = sessionId 2
++    await store.addSessionShell(tid) // shell:2 = sessionId 3
++    store.activateSessionView(tid, 'shell:2')
++    store.closeSessionView(tid, 'shell:2')
++    let t = store.getState().threads[0]!
++    expect(t.views?.map((v) => v.id)).toEqual(['shell:1'])
++    expect(t.activeViewId).toBe('shell:1') // 左邻
++    expect(deps.destroyed).toEqual([3])
++    store.closeSessionView(tid, 'shell:1')
++    t = store.getState().threads[0]!
++    expect(t.views).toEqual([])
++    expect(t.activeViewId).toBe('main')
++    expect(deps.destroyed).toEqual([3, 2])
++    // 'main' 不可关；unknown no-op
++    store.closeSessionView(tid, 'main')
++    store.closeSessionView(tid, 'shell:9')
++    expect(deps.destroyed).toEqual([3, 2])
++  })
++
++  test('close 会话 → shell 视图 PTY 一并销毁', async () => {
++    const wsId = store.getState().workspaces[0]!.id
++    await store.spawnFromPreset('shell', wsId) // sessionId 1
++    const tid = store.getState().threads[0]!.id
++    await store.addSessionShell(tid) // sessionId 2
++    store.close(tid)
++    expect(deps.destroyed).toEqual([1, 2])
++    expect(store.getState().threads).toHaveLength(0)
++  })
++
++  test('spawn 期间会话被关 → 孤儿 PTY 回收不落视图', async () => {
++    const wsId = store.getState().workspaces[0]!.id
++    await store.spawnFromPreset('shell', wsId)
++    const tid = store.getState().threads[0]!.id
++    // spawn 挂起可控：先触发 addSessionShell（不 await），再 close，再放行
++    let release!: (id: number) => void
++    deps.deps.spawnSession = () => new Promise((r) => (release = r))
++    const pending = store.addSessionShell(tid)
++    store.close(tid)
++    release(9)
++    await pending
++    expect(deps.destroyed).toEqual([1, 9])
++    expect(store.getState().threads).toHaveLength(0)
++  })
++
++  const shellView = (store: ThreadStore, i = 0) => {
++    const v = store.getState().threads[0]!.views?.[i]
++    if (v?.kind !== 'shell') throw new Error('not a shell view')
++    return v
++  }
++
++  test('视图 PTY 事件归属：title → view.oscTitle（空串忽略；不误伤主会话）', async () => {
++    const wsId = store.getState().workspaces[0]!.id
++    await store.spawnFromPreset('shell', wsId) // sessionId 1 → t1
++    const tid = store.getState().threads[0]!.id
++    await store.addSessionShell(tid) // shell:1 = sessionId 2
++    store.onSessionEvent({ type: 'title', sessionId: 2, title: 'vim' })
++    expect(shellView(store).oscTitle).toBe('vim')
++    expect((store.getState().threads[0] as TerminalThread).oscTitle).toBeUndefined()
++    store.onSessionEvent({ type: 'title', sessionId: 2, title: '' })
++    expect(shellView(store).oscTitle).toBe('vim')
++    // 不存在的 sessionId：静默丢弃不炸
++    store.onSessionEvent({ type: 'title', sessionId: 99, title: 'x' })
++    store.onSessionEvent({ type: 'bell', sessionId: 99 })
++    store.onSessionEvent({ type: 'exit', sessionId: 99 })
++  })
++
++  test('视图 bell 三级：正显示→丢弃；同会话他视图→view.hasBell；会话后台→会话级+通知', async () => {
++    const wsId = store.getState().workspaces[0]!.id
++    await store.spawnFromPreset('shell', wsId) // t1
++    const tid = store.getState().threads[0]!.id
++    await store.addSessionShell(tid) // shell:1 = sid 2，激活该视图
++    await store.spawnFromPreset('shell', wsId) // t2（t1 转后台）
++
++    // ① t1 在后台：bell → view.hasBell + t1.hasBell + notice + notify
++    store.activate({ type: 'thread', id: tid })
++    store.activateSessionView(tid, 'shell:1')
++    await store.activate({ type: 'thread', id: 't2' })
++    store.onSessionEvent({ type: 'bell', sessionId: 2 })
++    expect(shellView(store).hasBell).toBe(true)
++    const t1 = store.getState().threads[0] as TerminalThread
++    expect(t1.hasBell).toBe(true)
++    expect(deps.notified).toEqual(['t1'])
++    const n = store.getState().notices.at(-1)!
++    expect(n.threadId).toBe('t1')
++    expect(n.viewId).toBe('shell:1')
++
++    // ② 会话 active 但显示主面：view.hasBell，无会话级标记/新通知
++    store.activate({ type: 'thread', id: tid }) // t1 active：展示 shell:1 → 视图标记清除
++    expect(shellView(store).hasBell).toBe(false)
++    store.activateSessionView(tid, 'main')
++    const noticeCount = store.getState().notices.length
++    store.onSessionEvent({ type: 'bell', sessionId: 2 })
++    expect(shellView(store).hasBell).toBe(true)
++    expect((store.getState().threads[0] as TerminalThread).hasBell).toBe(false)
++    expect(store.getState().notices).toHaveLength(noticeCount)
++    expect(deps.notified).toEqual(['t1'])
++
++    // ③ 视图正显示（t1 active + activeViewId=shell:1）→ 全部不落
++    store.activateSessionView(tid, 'shell:1') // 展示即清除
++    expect(shellView(store).hasBell).toBe(false)
++    store.onSessionEvent({ type: 'bell', sessionId: 2 })
++    expect(shellView(store).hasBell).toBe(false)
++  })
++
++  test('view.hasBell 清除：activateSessionView 与 activate（落在该视图）同语义', async () => {
++    const wsId = store.getState().workspaces[0]!.id
++    await store.spawnFromPreset('shell', wsId)
++    const tid = store.getState().threads[0]!.id
++    await store.addSessionShell(tid) // shell:1 = sid 2
++    store.activateSessionView(tid, 'main')
++    store.onSessionEvent({ type: 'bell', sessionId: 2 })
++    expect(shellView(store).hasBell).toBe(true)
++    // activateSessionView 直达该视图 → 清
++    store.activateSessionView(tid, 'shell:1')
++    expect(shellView(store).hasBell).toBe(false)
++    // 离开会话后再 bell（activeViewId 停在 shell:1）→ activate 回来展示该视图 → 清
++    store.activate(null)
++    store.onSessionEvent({ type: 'bell', sessionId: 2 })
++    expect(shellView(store).hasBell).toBe(true)
++    store.activate({ type: 'thread', id: tid })
++    expect(shellView(store).hasBell).toBe(false)
++  })
++
++  test('视图 PTY exit：status=exited + exitCode + notice（closeOnExit=false）', async () => {
++    const wsId = store.getState().workspaces[0]!.id
++    await store.spawnFromPreset('shell', wsId)
++    const tid = store.getState().threads[0]!.id
++    await store.addSessionShell(tid) // sid 2
++    store.onSessionEvent({ type: 'exit', sessionId: 2, code: 3 })
++    const v = shellView(store)
++    expect(v.status).toBe('exited')
++    expect(v.exitCode).toBe(3)
++    // notice 带 viewId；主会话不受影响
++    const n = store.getState().notices.at(-1)!
++    expect(n.tone).toBe('err')
++    expect(n.viewId).toBe('shell:1')
++    expect(n.text).toContain('Shell 1')
++    expect((store.getState().threads[0] as TerminalThread).status).toBe('running')
++    // 视图保留（同主会话 exited 灰行语义）；仍可手动关 → 销毁
++    store.closeSessionView(tid, 'shell:1')
++    expect(deps.destroyed).toEqual([2])
++    expect(store.getState().threads[0]!.views).toEqual([])
++  })
++
++  test('视图 PTY exit + closeOnExit=true → 视图移除 + 当前视图回退', async () => {
++    const wsId = store.getState().workspaces[0]!.id
++    const ctx = makeDeps({ closeOnExit: () => true })
++    const store2 = createThreadStore(ctx.deps, {
++      initialWorkspaces: store.getState().workspaces,
++    })
++    await store2.spawnFromPreset('shell', wsId)
++    const tid = store2.getState().threads[0]!.id
++    await store2.addSessionShell(tid) // shell:1 = sid 2（activeViewId=shell:1）
++    store2.onSessionEvent({ type: 'exit', sessionId: 2, code: 0 })
++    expect(store2.getState().threads[0]!.views).toEqual([])
++    expect(store2.getState().threads[0]!.activeViewId).toBe('main')
++    expect(store2.getState().notices.at(-1)!.tone).toBe('ok')
++    expect(ctx.destroyed).toEqual([2])
++  })
++
++  test('chat 会话的 shell 视图 bell → unread + notice + notify（非 terminal 父级）', async () => {
++    const wsId = store.getState().workspaces[0]!.id
++    store.createChat(wsId)
++    const cid = store.getState().threads[0]!.id
++    await store.addSessionShell(cid) // sid 1（chat 主面无 PTY）
++    // 切走 → 会话在后台
++    store.activate(null)
++    store.onSessionEvent({ type: 'bell', sessionId: 1 })
++    const t = store.getState().threads[0]!
++    expect(t.kind).toBe('chat')
++    expect(t.unread).toBe(true)
++    expect(t.views![0]!.kind === 'shell' && t.views![0]!.hasBell).toBe(true)
++    expect(deps.notified).toEqual([cid])
++    // openNotice → 直达该视图 + 标记清除（重读快照——t 是旧引用）
++    store.openNotice(store.getState().notices.at(-1)!.id)
++    expect(currentActiveThreadId()).toBe(cid)
++    const t2 = store.getState().threads[0]!
++    expect(t2.activeViewId).toBe('shell:1')
++    expect(t2.views![0]!.kind === 'shell' && t2.views![0]!.hasBell).toBe(false)
++    expect(t2.unread).toBe(false)
++  })
+ })
+ 
+ describe('方案 C：pin / unread（codex-sidebar-v2）', () => {
+diff --git a/packages/app/src/threads/nativeDeps.ts b/packages/app/src/threads/nativeDeps.ts
+index 8a4b36b..65ceaee 100644
+--- a/packages/app/src/threads/nativeDeps.ts
++++ b/packages/app/src/threads/nativeDeps.ts
+@@ -61,10 +61,12 @@ export function createNativeThreadDeps(
+     presetOf: (id) => settings.get().presets.items.find((p) => p.id === id),
+     // bell → 非激活 thread → 桌面 toast（WinRT；Rust 侧 AUMID 注册幂等）。
+     // sound 依赖 desktop（settings-ui.md §6）；失败在 Rust 侧静默 warn。
++    // 入参放宽到 Thread（R1）：shell 视图 PTY 的 bell 可能属于 chat/acp 会话
+     notify: (t) => {
+       const n = settings.get().notifications
+       if (!n.desktop) return
+-      notifyDesktop(`j-agent · ${displayTitle(t)}`, '终端铃（BEL）', n.sound)
++      const title = t.kind === 'terminal' ? displayTitle(t) : t.title
++      notifyDesktop(`j-agent · ${title}`, '终端铃（BEL）', n.sound)
+     },
+     closeOnExit: () => settings.get().terminal.closeOnExit,
+     // chat 后端 seam（T3.2）：默认 EchoAgent 本地模拟——ACP/LLM 接入时换 adapter
+diff --git a/packages/app/src/threads/store.ts b/packages/app/src/threads/store.ts
+index fd2b2ce..d946e9a 100644
+--- a/packages/app/src/threads/store.ts
++++ b/packages/app/src/threads/store.ts
+@@ -30,6 +30,39 @@ export type { Workspace } from './workspaces'
+ 
+ // ── 类型（§3.1）──────────────────────────────────────────────────────
+ 
++/**
++ * 会话内视图（最新原型 40d30e8 的 SessionView：标题栏第二行 tab strip
++ * 的非「主面」页）。'main' 是虚拟 id（主面本身不落 views 数组）。
++ * 运行时态不持久化：shell 视图绑真 PTY（重启即死），file 视图按 path 重读。
++ */
++export type SessionView =
++  | { id: string; kind: 'git'; label: string }
++  | { id: string; kind: 'file'; label: string; path: string }
++  | {
++      /** `shell:${n}`（会话内递增） */
++      id: string
++      kind: 'shell'
++      /** `Shell n` 兜底标题（tab 展示 oscTitle ?? label） */
++      label: string
++      /** 独立 PTY（≠ thread.sessionId）；closeSessionView/close 连带销毁 */
++      sessionId: number
++      cwd: string
++      /** SessionEvent.title —— 视图 PTY 事件按 sessionId 归属到本视图 */
++      oscTitle?: string
++      /** 视图非前台时 BEL 落此；该视图被展示时清除（activate/activateSessionView） */
++      hasBell?: boolean
++      status: 'running' | 'exited'
++      exitCode?: number | null
++    }
++
++/** 三类 thread 共用的会话视图字段（原型 Thread.views/activeViewId） */
++type SessionViews = {
++  /** 副页签列表（git/file/shell；创建序） */
++  views?: SessionView[]
++  /** 当前视图 id；缺省/'main' = 主面 */
++  activeViewId?: string
++}
++
+ export type TerminalThread = {
+   kind: 'terminal'
+   /** `t${sessionId}` —— 事件里的 sessionId 可直接定位行（R4） */
+@@ -56,7 +89,7 @@ export type TerminalThread = {
+   /** 置顶（组内排序首位；不持久化） */
+   pin?: boolean
+   createdAt: number
+-}
++} & SessionViews
+ 
+ /** chat thread（T3.2 实装：消息 + pendingReply 状态机在 store 一处） */
+ export type ChatThread = {
+@@ -75,7 +108,7 @@ export type ChatThread = {
+   pin?: boolean
+   /** 归属工作区（Phase W） */
+   workspaceId?: string
+-}
++} & SessionViews
+ /** Phase 3+ 实装：外部 agent JSON-RPC 会话；消息面与 chat 同构（ConversationView 复用） */
+ export type AcpThread = {
+   kind: 'acp'
+@@ -96,7 +129,7 @@ export type AcpThread = {
+   pin?: boolean
+   /** 归属工作区（Phase W） */
+   workspaceId?: string
+-}
++} & SessionViews
+ 
+ export type Thread = TerminalThread | ChatThread | AcpThread
+ 
+@@ -115,6 +148,8 @@ export type SessionNotice = {
+   threadId: string
+   /** 已读标记（未读 = notices.filter(!read)；activate 该会话时自动标读） */
+   read: boolean
++  /** 来源会话内视图（shell PTY 事件）：openNotice 一并激活该视图 */
++  viewId?: string
+ }
+ 
+ export type ThreadState = {
+@@ -135,8 +170,9 @@ export type ThreadDeps = {
+   destroySession: (id: number) => Promise<void>
+   /** 路由跳转薄包装（装配层 = router.navigate） */
+   navigate: (t: ActiveTarget) => void
+-  /** 桌面通知（Phase 2 定实现；读 settings.desktop 在装配层） */
+-  notify: (t: TerminalThread) => void
++  /** 桌面通知（Phase 2 定实现；读 settings.desktop 在装配层）。入参放宽
++   *  到 Thread：shell 视图 PTY 的 bell 也可能属于 chat/acp 会话 */
++  notify: (t: Thread) => void
+   /** 读 settings 终端区（装配层桥接） */
+   closeOnExit: () => boolean
+   presetOf: (id: string) => TerminalPreset | undefined
+@@ -212,8 +248,19 @@ export interface ThreadStore {
+   openNotice(noticeId: string): void
+   /** 工作区内 tab（git-graph.md §4.1）：'home'/'git'；持久化，不导航 */
+   setWorkspacePaneTab(id: string, tab: 'home' | 'git'): void
+-  /** 打开 Git 图：当前工作区（会话归属 / 已激活 / 第一个）切 paneTab=git 并激活。无工作区 no-op。 */
++  /** 打开 Git 图：活跃会话已归属工作区 → 会话内 'git' 视图（不切路由，
++   *  原型 SessionTabs 语义）；否则当前/首个工作区切 paneTab=git 并激活 */
+   openGitGraph(): void
++  // ── 会话内视图（最新原型 SessionTabs：main/git/file/shell tab）─────
++  /** 激活会话内视图（'main' = 回主面；不存在 id 忽略） */
++  activateSessionView(threadId: string, viewId: string): void
++  /** 关闭会话内视图（'main' 不可关；shell 视图连带销毁 PTY；
++   *  关的是当前视图 → 回退左邻或主面） */
++  closeSessionView(threadId: string, viewId: string): void
++  /** 打开文件视图（file:<path> 去重复用；原型「打开文件」列表项） */
++  openSessionFile(threadId: string, path: string): void
++  /** 新建会话内 shell 视图（真 PTY：spawnSession；cwd = 会话 cwd / 归属工作区 path） */
++  addSessionShell(threadId: string): Promise<void>
+   /** 装配层专用：native → store（经 events.ts 窄化后的判别联合） */
+   onSessionEvent(e: TerminalSessionEvent): void
+ }
+@@ -252,6 +299,9 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
+         const t = s.threads.find((x) => x.id === target.id)
+         if (t && t.kind === 'terminal' && t.hasBell) t.hasBell = false
+         if (t && t.unread) t.unread = false
++        // 正在展示的视图其 hasBell 一并清（「已看到」判定同 activateSessionView）
++        const shown = t?.views?.find((v) => v.id === t.activeViewId)
++        if (shown?.kind === 'shell' && shown.hasBell) shown.hasBell = false
+         // 进入会话即已读其通知（D8：activate 是「已看到」的唯一判定）
+         for (const n of s.notices) if (n.threadId === target.id) n.read = true
+         // Phase W：会话聚焦 → 归属工作区 lastSession 记录（activateWorkspace 恢复源）
+@@ -361,6 +411,10 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
+       // destroySession 的 reject 已在 nativeDeps 的 trackNative 里进错误总线
+       // （emit 后 rethrow）；这里只防空 rejection（错误不再二次处理）。
+       if (thread.kind === 'terminal') deps.destroySession(thread.sessionId).catch(() => {})
++      // 会话内 shell 视图绑的是独立 PTY（非 thread.sessionId）——随会话行一起销毁
++      for (const v of thread.views ?? []) {
++        if (v.kind === 'shell') deps.destroySession(v.sessionId).catch(() => {})
++      }
+       if (thread.kind === 'acp') {
+         // 连接随行销毁（子进程 kill；释放失败不阻塞移除）
+         const agent = acpAgents.get(id)
+@@ -524,6 +578,8 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
+       // 来源会话仍在才导航（已关闭的会话只标已读——activate 会再标一次，幂等）
+       if (state().threads.some((t) => t.id === n.threadId)) {
+         activate({ type: 'thread', id: n.threadId })
++        // 通知来自会话内视图（shell PTY）→ 一并激活该视图直达现场
++        if (n.viewId) this.activateSessionView(n.threadId, n.viewId)
+       }
+     },
+ 
+@@ -538,10 +594,22 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
+     openGitGraph() {
+       const s = state()
+       const threadId = deps.activeThreadId?.() ?? null
+-      const fromThread = threadId
+-        ? s.threads.find((t) => t.id === threadId)?.workspaceId
+-        : undefined
+-      const id = fromThread ?? deps.activeWorkspaceId?.() ?? s.workspaces[0]?.id
++      const t = threadId ? s.threads.find((x) => x.id === threadId) : undefined
++      // 最新原型（40d30e8）：活跃会话已归属工作区 → 会话内 git 视图，
++      // 不切路由（tab strip 里多一页，回主面用 'main' tab）
++      if (t?.workspaceId) {
++        set((st) => {
++          const tt = st.threads.find((x) => x.id === t.id)
++          if (!tt) return
++          tt.views ??= []
++          if (!tt.views.some((v) => v.id === 'git'))
++            tt.views.push({ id: 'git', kind: 'git', label: 'Git 图' })
++          tt.activeViewId = 'git'
++        })
++        return
++      }
++      // 非会话上下文（工作区页/未归属会话/起始页）→ 工作区 paneTab 路径
++      const id = deps.activeWorkspaceId?.() ?? s.workspaces[0]?.id
+       if (!id) return
+       set((st) => {
+         const ws = st.workspaces.find((w) => w.id === id)
+@@ -551,8 +619,82 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
+       activate({ type: 'workspace', id })
+     },
+ 
++    activateSessionView(threadId, viewId) {
++      set((s) => {
++        const t = s.threads.find((x) => x.id === threadId)
++        if (!t) return
++        if (viewId !== 'main' && !t.views?.some((v) => v.id === viewId)) return
++        t.activeViewId = viewId
++        // 该视图被展示 → 其 hasBell 标记清除（同 activate 的「已看到」语义）
++        const v = t.views?.find((x) => x.id === viewId)
++        if (v?.kind === 'shell' && v.hasBell) v.hasBell = false
++      })
++    },
++
++    closeSessionView(threadId, viewId) {
++      if (viewId === 'main') return // 主面不可关（原型契约）
++      removeSessionView(threadId, viewId)
++    },
++
++    openSessionFile(threadId, path) {
++      set((s) => {
++        const t = s.threads.find((x) => x.id === threadId)
++        if (!t) return
++        t.views ??= []
++        const id = `file:${path}`
++        if (!t.views.some((v) => v.id === id))
++          t.views.push({
++            id,
++            kind: 'file',
++            label: path.split(/[\\/]/).pop() ?? path,
++            path,
++          })
++        t.activeViewId = id
++      })
++    },
++
++    async addSessionShell(threadId) {
++      const t = state().threads.find((x) => x.id === threadId)
++      if (!t) return
++      // cwd 继承：会话 cwd（terminal）→ 归属工作区 path → 进程 CWD
++      const cwd =
++        (t.kind === 'terminal' ? t.cwd : undefined) ??
++        state().workspaces.find((w) => w.id === t.workspaceId)?.path ??
++        defaultCwd()
++      const sessionId = await deps.spawnSession({ cwd })
++      // spawn 期间会话被关 → 孤儿 PTY 立即回收（不落视图）
++      if (!state().threads.some((x) => x.id === threadId)) {
++        deps.destroySession(sessionId).catch(() => {})
++        return
++      }
++      set((s) => {
++        const tt = s.threads.find((x) => x.id === threadId)
++        if (!tt) return
++        tt.views ??= []
++        let n = 1
++        while (tt.views.some((v) => v.id === `shell:${n}`)) n++
++        tt.views.push({
++          id: `shell:${n}`,
++          kind: 'shell',
++          label: `Shell ${n}`,
++          sessionId,
++          cwd,
++          status: 'running',
++        })
++        tt.activeViewId = `shell:${n}`
++      })
++    },
++
+     onSessionEvent(e) {
+       const id = `t${e.sessionId}`
++      // 视图 PTY 归属（R1）：shell 视图绑独立会话——主会话定位落空时按
++      // view.sessionId 路由到所属视图（sessionId 与主会话 disjoint，无歧义；
++      // 视图终端也要能收事件——此前只认 t$sid，视图 PTY 事件被静默丢弃）
++      if (!state().threads.some((t) => t.id === id)) {
++        const owner = findShellView(state(), e.sessionId)
++        if (owner) handleShellViewEvent(owner.thread, owner.view, e)
++        return
++      }
+       switch (e.type) {
+         case 'title': {
+           set((s) => {
+@@ -614,12 +756,13 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
+ 
+   /** 通知落列（D8）：sub = 归属工作区名 / 未归属 + 可选原因（原型
+    *  「dotfiles · BEL」格式）；容量 50（溢出丢最旧——read 随条目走，
+-   *  无计数器不变量要维护） */
++   *  无计数器不变量要维护）。viewId = 来源会话内视图（openNotice 直达） */
+   function pushNotice(
+-    t: TerminalThread,
++    t: Thread,
+     tone: SessionNotice['tone'],
+     text: string,
+     reason?: string,
++    viewId?: string,
+   ) {
+     set((s) => {
+       const ws = t.workspaceId ? s.workspaces.find((w) => w.id === t.workspaceId) : undefined
+@@ -631,11 +774,118 @@ export function createThreadStore(deps: ThreadDeps, opts: ThreadStoreOptions = {
+         at: now(),
+         threadId: t.id,
+         read: false,
++        viewId,
+       })
+       if (s.notices.length > 50) s.notices.splice(0, s.notices.length - 50)
+     })
+   }
+ 
++  /** 会话标题（通知文案）：terminal → displayTitle 兜底链；chat/acp → title */
++  function titleOf(t: Thread): string {
++    return t.kind === 'terminal' ? displayTitle(t) : t.title
++  }
++
++  /** 视图 PTY 归属查找：按 view.sessionId 定位（所属会话, shell 视图） */
++  function findShellView(
++    s: ThreadState,
++    sessionId: number,
++  ): { thread: Thread; view: Extract<SessionView, { kind: 'shell' }> } | undefined {
++    for (const t of s.threads)
++      for (const v of t.views ?? [])
++        if (v.kind === 'shell' && v.sessionId === sessionId) return { thread: t, view: v }
++  }
++
++  /** 视图移除单点（closeSessionView / 视图 PTY exit+closeOnExit 共用）：
++   *  shell 视图连带销毁 PTY（防空 rejection 同 close 纪律）；关的是当前
++   *  视图 → 回退左邻或主面（原型契约） */
++  function removeSessionView(threadId: string, viewId: string) {
++    const t = state().threads.find((x) => x.id === threadId)
++    const i = t?.views?.findIndex((v) => v.id === viewId) ?? -1
++    if (!t || i < 0) return
++    const view = t.views![i]!
++    if (view.kind === 'shell') deps.destroySession(view.sessionId).catch(() => {})
++    set((s) => {
++      const tt = s.threads.find((x) => x.id === threadId)
++      const j = tt?.views?.findIndex((v) => v.id === viewId) ?? -1
++      if (!tt || j < 0) return
++      tt.views!.splice(j, 1)
++      if (tt.activeViewId === viewId) tt.activeViewId = tt.views![j - 1]?.id ?? 'main'
++    })
++  }
++
++  /** 视图 PTY 事件（R1）：title/bell/exit 归属到所属 shell 视图——
++   *  title → view.oscTitle（空串忽略，同主会话）；
++   *  bell → 视图正显示则丢弃；否则 view.hasBell，且会话本身在后台时
++   *         走会话级提醒面（terminal=hasBell / chat·acp=unread）+ notice + notify；
++   *  exit → notice + status='exited'（closeOnExit → 移除视图） */
++  function handleShellViewEvent(
++    thread: Thread,
++    view: Extract<SessionView, { kind: 'shell' }>,
++    e: TerminalSessionEvent,
++  ) {
++    switch (e.type) {
++      case 'title': {
++        if (!e.title) return // 空串忽略（同主会话规则）
++        set((s) => {
++          const v = s.threads.find((x) => x.id === thread.id)?.views?.find((x) => x.id === view.id)
++          if (v?.kind === 'shell') v.oscTitle = e.title
++        })
++        break
++      }
++      case 'bell': {
++        // 视图正在显示（会话 active 且它是活动视图）→ 同主面规则：不落标记
++        const shown = activeThreadId() === thread.id && (thread.activeViewId ?? 'main') === view.id
++        if (shown) return
++        const threadActive = activeThreadId() === thread.id
++        set((s) => {
++          const tt = s.threads.find((x) => x.id === thread.id)
++          const v = tt?.views?.find((x) => x.id === view.id)
++          if (v?.kind === 'shell') v.hasBell = true
++          // 会话本身在后台 → 会话级提醒（activate 清除面与主会话对称）
++          if (tt && !threadActive) {
++            if (tt.kind === 'terminal') tt.hasBell = true
++            else tt.unread = true
++          }
++        })
++        if (!threadActive) {
++          pushNotice(
++            thread,
++            'warn',
++            `「${titleOf(thread)} · ${view.label}」等待注意`,
++            'BEL',
++            view.id,
++          )
++          deps.notify(thread)
++        }
++        break
++      }
++      case 'exit': {
++        pushNotice(
++          thread,
++          e.code === 0 || e.code == null ? 'ok' : 'err',
++          `「${titleOf(thread)} · ${view.label}」已退出`,
++          undefined,
++          view.id,
++        )
++        if (deps.closeOnExit()) {
++          // PTY 已死；destroySession 走同一移除单点（幂等 catch）
++          removeSessionView(thread.id, view.id)
++        } else {
++          set((s) => {
++            const v = s.threads
++              .find((x) => x.id === thread.id)
++              ?.views?.find((x) => x.id === view.id)
++            if (v?.kind === 'shell') {
++              v.status = 'exited'
++              v.exitCode = e.code ?? null
++            }
++          })
++        }
++        break
++      }
++    }
++  }
++
+   /** 显式传入的 workspaceId 必须存在（调用方 bug 早暴露；spawn 侧已内联同判） */
+   function assertWorkspace(s: ThreadState, id: string | undefined): void {
+     if (id != null && !s.workspaces.some((w) => w.id === id)) {
