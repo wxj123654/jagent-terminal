@@ -285,8 +285,9 @@ export function App({
           contextLabel={context.label}
           cwd={contextCwd}
           branch={branch}
-          // 原型 chip-branch：点击点下方开菜单（打开 Git 图 / 查看变更）
-          onBranchClick={(pos) => setBranchMenu({ x: pos.x, y: pos.y + 16 })}
+          // 原型 chip-branch → DropMenu（side=bottom align=start）：
+          // TitleBar 回调给的是「按钮左下 +4」锚点，直接用
+          onBranchClick={(pos) => setBranchMenu(pos)}
           onSearch={() => dialogOpener.openSearch()}
           panelOpen={panelOpen}
           onTogglePanel={() => (panelOpen ? setPanelOpen(false) : openPanel())}

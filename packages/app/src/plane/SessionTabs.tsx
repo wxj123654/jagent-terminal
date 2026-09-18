@@ -13,12 +13,16 @@
 
 import { useRef, useState } from 'react'
 
+import { useGpuix } from '@gpuix/react'
+import type { PublicInstance } from '@gpuix/react'
+
 import { Icon, Popover, COLORS, FONT } from '@jagent/ui'
 import type { IconName } from '@jagent/ui'
 import { useWorktree } from '../git/useWorktree'
 import type { WorktreeStore } from '../git/worktree'
 import { Dot, statusDot, type DotState } from '../sidebar/ThreadRow'
 import type { SessionView, Thread, ThreadStore } from '../threads/store'
+import { sessionViewTitle } from '../threads/store'
 import { displayTitle } from '../threads/terminal'
 
 const KIND_ICON: Record<Thread['kind'], IconName> = {
@@ -33,7 +37,8 @@ const VIEW_ICON: Record<SessionView['kind'], IconName> = {
   shell: 'terminal',
 }
 
-/** 单个 tab（原型 .tab：h28 / max-w 210 / radius 6 / active = surface+边框） */
+/** 单个 tab（原型 .tab：h28 / max-w 210 / r8 pad 0 10 /
+ *  active = surfaceActive + borderSubtle 边 + 1px 阴影） */
 function Tab({
   testId,
   icon,
@@ -48,15 +53,16 @@ function Tab({
   icon: IconName
   label: string
   active: boolean
-  /** terminal exited：标题压灰（原型 .tab.exited .ttl） */
+  /** terminal/shell exited：标题压灰（原型 .tab.exited .ttl） */
   exited?: boolean
-  /** 状态点（主面 tab；idle/exited 不画） */
+  /** 状态点（主面 tab / shell 视图 bell；idle/exited 不画） */
   dot?: DotState
   onActivate?: () => void
   onClose?: () => void
 }) {
   const [hovered, setHovered] = useState(false)
   const [focused, setFocused] = useState(false)
+  const [txHovered, setTxHovered] = useState(false)
   return (
     <div
       testId={testId}
@@ -82,22 +88,25 @@ function Tab({
         minWidth: 0,
         maxWidth: 210,
         flexShrink: 1,
-        paddingLeft: 8,
-        // 右内距收窄留给 × 钮（负 margin 会让 Taffy 把容器宽度塌成 0——实测坑）
-        paddingRight: onClose ? 4 : 8,
+        paddingLeft: 10,
+        // 右内距收窄留给 × 钮（负 margin 会让 Taffy 把容器宽度塌成 0——实测坑；
+        // 原型是 pad 10 + .tx margin-right:-4，净效 = pad 6 + 20px 钮）
+        paddingRight: onClose ? 6 : 10,
         borderWidth: 1,
         borderColor: active ? COLORS.borderSubtle : 'transparent',
-        borderRadius: 6,
-        backgroundColor: active ? COLORS.surface : 'transparent',
+        borderRadius: 8,
+        backgroundColor: active ? COLORS.surfaceActive : 'transparent',
         color: active ? COLORS.textBright : COLORS.muted,
         cursor: onActivate ? 'pointer' : 'default',
         userSelect: 'none',
         // win 整条顶栏是 HTCAPTION drag 区：tab 必须 occlude 才可点
         pointerEvents: 'auto',
         boxShadow: active
-          ? { offsetX: 0, offsetY: 1, blurRadius: 2, spreadRadius: 0, color: 'rgba(0,0,0,0.2)' }
+          ? { offsetX: 0, offsetY: 1, blurRadius: 2, spreadRadius: 0, color: 'rgba(0,0,0,0.3)' }
           : undefined,
-        hover: { backgroundColor: active ? COLORS.surface : 'rgba(255,255,255,0.035)' },
+        hover: {
+          backgroundColor: active ? COLORS.surfaceActive : 'rgba(255,255,255,0.035)',
+        },
       }}
     >
       <Icon name={icon} size={13} color={active ? COLORS.text : COLORS.muted} />
@@ -107,7 +116,14 @@ function Tab({
           minWidth: 0,
           fontSize: 12,
           fontFamily: FONT.ui,
-          color: exited ? COLORS.exited : active ? COLORS.textBright : COLORS.muted,
+          // 原型 .tab:hover{color:var(--text)}——hover 提亮到 text（非 textBright）
+          color: exited
+            ? COLORS.exited
+            : active
+              ? COLORS.textBright
+              : hovered
+                ? COLORS.text
+                : COLORS.muted,
           whiteSpace: 'nowrap',
           textOverflow: 'ellipsis',
           overflow: 'hidden',
@@ -120,6 +136,8 @@ function Tab({
         <div
           testId={`${testId}-close`}
           onClick={onClose}
+          onMouseEnter={() => setTxHovered(true)}
+          onMouseLeave={() => setTxHovered(false)}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -131,10 +149,11 @@ function Tab({
             // 原型 .tx：hover/active/focus-within 才显
             opacity: hovered || active || focused ? 1 : 0,
             color: COLORS.muted,
-            hover: { backgroundColor: COLORS.closeHover, color: COLORS.textBright },
+            hover: { backgroundColor: COLORS.closeHover },
           }}
         >
-          <Icon name="close" size={11} />
+          {/* GPUIX svg 只读自身 style.color（不继承父级）——tx 悬停态显式给色 */}
+          <Icon name="close" size={11} color={txHovered ? COLORS.textBright : COLORS.muted} />
         </div>
       ) : null}
     </div>
@@ -157,7 +176,16 @@ export function SessionTabs({
   const exited = thread.kind === 'terminal' && thread.status === 'exited'
   const title = thread.kind === 'terminal' ? displayTitle(thread) : thread.title
   const [addAt, setAddAt] = useState<{ x: number; y: number } | null>(null)
+  const [addHovered, setAddHovered] = useState(false)
+  const addBtnRef = useRef<PublicInstance | null>(null)
+  const { renderer } = useGpuix()
   const lastPointer = useRef({ x: 0, y: 0 })
+  // 原型 Pop（Radix side=bottom align=start sideOffset=4）：
+  // 浮层左上角 = 按钮左下 +4；bounds 读不到时兜底点击点
+  const addAnchor = (fallback: { x: number; y: number }) => {
+    const b = addBtnRef.current ? renderer?.getElementBounds?.(addBtnRef.current.id) : null
+    return b ? { x: b.x, y: b.y + b.height + 4 } : fallback
+  }
 
   return (
     <>
@@ -176,40 +204,48 @@ export function SessionTabs({
           key={v.id}
           testId={`tab-${v.id}`}
           icon={VIEW_ICON[v.kind]}
-          label={v.label}
+          // R1 语义：shell tab = oscTitle ?? label（OSC 标题改写）；
+          // 非前台 BEL → hasBell 紫点；exit → 灰题
+          label={sessionViewTitle(v)}
           active={activeId === v.id}
+          exited={v.kind === 'shell' && v.status === 'exited'}
+          dot={v.kind === 'shell' && v.hasBell ? 'need' : undefined}
           onActivate={() => store.activateSessionView(thread.id, v.id)}
           onClose={() => store.closeSessionView(thread.id, v.id)}
         />
       ))}
-      {/* 「+」添加到当前 Session（原型 .tb-add-btn → session-add-pop） */}
+      {/* 「+」添加到当前 Session（原型 .tb-cell.tb-add-btn → session-add-pop） */}
       <div
+        ref={addBtnRef}
         testId="session-add"
         tabIndex={0}
-        onClick={(e) => setAddAt({ x: e.x ?? 0, y: (e.y ?? 0) + 10 })}
+        onClick={(e) => setAddAt(addAnchor({ x: e.x ?? 0, y: (e.y ?? 0) + 10 }))}
         onMouseMove={(e) => {
           lastPointer.current = { x: e.x ?? 0, y: e.y ?? 0 }
         }}
         onKeyDown={(e) => {
           if (e.key === 'enter' || e.key === 'space')
-            setAddAt({ x: lastPointer.current.x, y: lastPointer.current.y + 10 })
+            setAddAt(addAnchor({ x: lastPointer.current.x, y: lastPointer.current.y + 10 }))
         }}
+        onMouseEnter={() => setAddHovered(true)}
+        onMouseLeave={() => setAddHovered(false)}
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           width: 28,
           height: 28,
-          borderRadius: 6,
+          borderRadius: 8,
           flexShrink: 0,
           alignSelf: 'center',
           cursor: 'pointer',
           pointerEvents: 'auto',
           color: COLORS.muted,
-          hover: { backgroundColor: COLORS.surface, color: COLORS.textBright },
+          hover: { backgroundColor: COLORS.surface },
         }}
       >
-        <Icon name="plus" size={15} />
+        {/* svg 不继承父级 color——悬停提亮显式给 */}
+        <Icon name="plus" size={15} color={addHovered ? COLORS.textBright : COLORS.muted} />
       </div>
       {addAt ? (
         <AddPopover
@@ -224,7 +260,8 @@ export function SessionTabs({
   )
 }
 
-/** 「+」浮层（原型 .session-add-pop：280px 卡；动作行 + 打开文件列表） */
+/** 「+」浮层（原型 .session-add-pop：280px 卡 / r12 /
+ *  shadow 0 14px 38px rgba(0,0,0,.5)；动作行 + 打开文件列表） */
 function AddPopover({
   store,
   thread,
@@ -250,7 +287,17 @@ function AddPopover({
       onClose={onClose}
       minWidth={280}
       autoFocus
-      style={{ borderRadius: 8 }}
+      // 原型 .session-add-pop：r12（--radius-lg）+ 0 14px 38px rgba(0,0,0,.5)
+      style={{
+        borderRadius: 12,
+        boxShadow: {
+          offsetX: 0,
+          offsetY: 14,
+          blurRadius: 38,
+          spreadRadius: 0,
+          color: 'rgba(0,0,0,0.5)',
+        },
+      }}
     >
       <AddAction
         testId="sa-git"

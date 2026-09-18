@@ -395,23 +395,27 @@
     openGitGraph 双路径）；**事件归属确为缺口**——原 `onSessionEvent` 只认
     `t$sid` 主会话，视图 PTY 事件全被静默丢弃。已补归属路由，详见
     Phase R 结论区（R1）。
-- [ ] **R2 顶栏两行 + SessionTabs**
+- [x] **R2 顶栏两行 + SessionTabs** ✅ 2026-09-18
   - 锚点：prototype-react `src/components/TitleBar.tsx` + index.css `#titlebar`
     `#titlebar-main` `#tb-tabs` `.tab` `.tb-context` `.tb-cell` `.tb-branch-btn`
-    `.session-add-pop` `.win-ctl`。几何真值：toolbarH 40 / tabbarH 36 / tab
-    h28 r6 pad 0 8 max-w 210 / `.tx` 20px 仅 hover|active|focus-within 显 /
+    `.session-add-pop` `.win-ctl`。~~几何真值：toolbarH 40 / tabbarH 36 / tab
+    h28 r6 pad 0 8~~ **更正（geom-proto 实测）**：index.css 存在两段平级
+    `:root`——第二段（694 行起）覆盖第一段，浏览器计算值才是真值：
+    main 44 / tabs 38（总高 83 含三线分隔）/ tab h28 r8 pad 0 10 max-w 210 /
+    active 底 surfaceActive #303743 / 分支钮 tile 底无阴影 / 浮层 r12 +
+    shadow 0 14 38 rgba(0,0,0,.5)。`.tx` 20px 仅 hover|active|focus-within 显 /
     add 浮层 280px（sa-act h28 + sa-sub + sa-files max-h 220）。
   - app：`plane/TitleBar.tsx`（WIP 已重排为两行+`tabs` 插槽）、
     `plane/SessionTabs.tsx`（WIP 新）、`AgentPlane.tsx` 装配。
   - 逐项核对：context 块（settings→gear 其余→folder；名 12px/550 + cwd 11.5px
-    faint max-w 420，纯展示 pe:none）；分支钮（1px borderSubtle 方角 +
-    rgba(255,255,255,.025) 底 + mono 名 + caret → DropMenu「打开 Git 图/查看
-    变更」）；搜索钮仅 narrow/hidden 渲染；错误钮 icon+mono 11 计数；
-    panelRight on 态；win 三键 Segoe 图形 + close hover 红；mac/linux 拖拽面不
-    被两行结构破坏；ContextTab（workspace→folder/gitBranch、settings→gear、
+    faint max-w 420，纯展示 pe:none）；分支钮（1px borderSubtle + tile 底 +
+    mono 名 + caret → DropMenu「打开 Git 图/查看变更」）；搜索钮仅
+    narrow/hidden 渲染；错误钮 alert icon+mono 11 计数 bell 色；panelRight
+    on 态；win 三键 Segoe 图形 + close hover 红；mac/linux 拖拽面不被两行
+    结构破坏；ContextTab（workspace→folder/gitBranch、settings→gear、
     home→home）；tab 中键关 + Enter/Space 激活；「+」浮层三项+文件列表。
-  - 验收：geom 逐字段对齐（tab 条 x/y/h/间距/active 底色边框阴影）+ 截图 diff +
-    TitleBar.test / SessionTabs.test 更新。
+  - 验收：geom 逐字段对齐 ✓ + TitleBar.test / SessionTabs.test 更新 ✓。
+    结论详见 Phase R 结论区（R2）。
 - [ ] **R3 Pane 调度 + FileSurface + SessionShell**
   - 锚点：panes.tsx `Pane()` 调度序（thread.views 命中 → git→归属 ws 的
     GitGraphView / file→FileSurface / shell→SessionShell；失效 id/无视图 → 主面；
@@ -506,6 +510,35 @@
   SessionTerminal 按 `view.status==='exited'` 画 exited bar。
   测试：store.test 64（+6 视图事件用例）+ app 354 + e2e 23 + tsc/fmt/lint
   全绿；architecture.md §3.1/§3.2/§3.3 已同步。
+
+- **R2（顶栏两行 + SessionTabs，2026-09-18）**：**规格级发现——原型
+  index.css 有两段平级 `:root`**（694 行起第二段无注释）：覆盖色板/
+  圆角/顶栏高度并新增 ~160 行规则（home-card/pill-icon 等 React 化时
+  一并落地的「v2 设计层」，非死代码）。看板原「几何真值」抄自被覆盖的
+  第一段。geom-proto 实测裁决：**第二段生效**，用户拍板「以原型实测
+  为准」→ COLORS 全表换第二段色板（app #242830/pane #1c1f25/surface
+  #2a3039/surfaceActive #303743/muted #818b99·faint #626c79 正序恢复；
+  新增 tabStrip #1b1e24/ring/card 三键），SIZES 44/38/83。
+  **几何对齐**（geom-proto vs proto-shot --geom 逐字段）：titlebar
+  83=main 44+tabs 38+根边 1（main/tabs 各自 borderSubtle/border 底边，
+  叠出暗→亮双收边）；titlebar-main `align-items:stretch`+去 gap（cell
+  自居中 margin 0 2 / first-child 6）；context 块贴左缘 stretch 43（原
+  padLeft 12 双重内距已修）；tb-fill min-width 12；分支钮 tile 底去阴影
+  r8；错误钮重建为 .tb-cell.tb-error-btn（alert 图标新增 + mono 11 计数，
+  hover 只换底仍 bell）；tab r8 pad 0 10 active=surfaceActive+0.3 阴影；
+  tb-tabs 内凹面 #1b1e24 pad 5/8 + 自身底边。**锚点定位**：「+」浮层与
+  分支菜单从「点击坐标 +offset」改 `getElementBounds` → Radix
+  side=bottom/align=start/sideOffset=4 同位（按钮左下 +4），键盘触发
+  兜底末指针位——geom 复核 pop (723,80) ≈ 原型 (725,81)。**R1 消费落
+  地**：shell tab `sessionViewTitle`（oscTitle ?? label）、hasBell →
+  need 紫点、exited → 灰题。**平台保真偏离（有意）**：win/linux 三键
+  维持 36px 全高 NC/CSD 命中区（原型 28px 居中钮是 CSS mock，真标题栏
+  语义更重要）；focus 环维持全局 accentSoft 2px 约定（原型 4px 双环是
+  R10 全局议题）。**GPUIX 事实补录**：svg tint 只读自身 style.color 不
+  继承父级/hover——cell/tab 图标 hover 提亮改显式 hovered state。
+  测试：TitleBar.test 高度断言改 43/37/82 + padLeft 0 + first ml6；
+  app 354 + 双包 tsc + fmt/lint 全绿（window-visibility 单跑偶超时 =
+  PowerShell 冷启动基线，非本次引入）。
 
 ---
 
@@ -627,3 +660,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-18 · **R1 两轴评审 + 修复收口**：Standards 轴 0 硬违规/7 judgement call，Spec 轴 0 缺失/5 可疑——已修实锤项：① 测试引用 bug（activate 't2' 不存在→threads[1].id，原靠无条件导航碰巧成立）② 视图 notice 文案改 `sessionViewTitle`（oscTitle ?? label，与 tab 规则同点）③ `activateSessionView` 清 view.hasBell 补 active 校验（后台程序化调用不算「已看到」）④ 清视图 bell 落 `clearViewBell` 单点（activate/activateSessionView 共用）⑤ `titleOf` 提升为模块级 `threadTitle`（nativeDeps notify 复用，消跨文件重复）⑥ `pushNotice` 五参→opts 对象 + `exitTone` 共享 ⑦ `findShellView`→`findShellViewOwner`、`ShellView` 别名、`MAIN_VIEW_ID` 常量、`openSessionFile` `??`→`||`（split 空串死兜底）⑧ architecture.md §3.1 补 SessionNotice/notices + Thread 公共字段（unread/pin）、§3.2/§3.3 activateSessionView 补 active 限定、git-graph.md §4.3 openGitGraph 双路径 · **权衡不修**：关闭被 bell 视图后 thread 级标记残留——hasBell 主/视图源不可分，重算会误清主会话 bell，残留随 activate 自愈更安全 · 测试 +2 断言（后台调用不清标记、notice oscTitle）· gate：store.test 64 + app 353 + e2e 23 + tsc/fmt/lint 全绿
 - 2026-09-17 · **R1 完成（会话视图数据层）**：WIP API 面与原型逐语义核对一致（openGitGraph 双路径/file:<path> 去重/shell:n 递增/左邻回退/独立 PTY spawn+孤儿回收/close 连带销毁视图 PTY）· **真缺口补齐：`onSessionEvent` 归属**——原实现只按 `t${sessionId}` 定位主会话，shell 视图独立 PTY 的 title/bell/exit 全被静默丢弃；现主会话落空 → `findShellView` 按 `view.sessionId` 归属（sessionId disjoint）· 语义与主会话对称：title→view.oscTitle（空串忽略）；bell 三级（视图正显示→丢弃/他视图→view.hasBell/会话后台→会话级提醒 terminal=hasBell·chat·acp=unread + notice + notify）；exit→notice+view.status=exited+exitCode（closeOnExit→共享 removeSessionView 单点）· hasBell 清除=「已看到」同一判定（activateSessionView/activate 落在该视图）· 配套：SessionNotice.viewId（openNotice 直达视图）、pushNotice/notify 放宽到 Thread、shell 视图类型 +oscTitle/hasBell/status/exitCode · R2/R3 消费点已备忘结论区（tab 展示 oscTitle??label、hasBell 标记、exited bar）· gate：store.test 64（+6）+ app 354 + e2e 23 + 双包 tsc + fmt/lint 全绿（window-visibility 单跑 4.2s 属基线 PowerShell 冷启动耗时，全量偶超时非本次引入）· architecture.md §3.1/§3.2/§3.3 已同步 · 下一步：R2（顶栏两行 + SessionTabs）或 R3（Pane 调度 + FileSurface + SessionShell）
 - 2026-09-18 · **架构深化评审 + 六候选全部落地（目录归位 + internal seams）**：codebase-design 词汇评审（module/interface/depth/seam/adapter/leverage/locality）出 HTML 报告六候选，用户拍板全做 · ① **plane/ 四分**：plane/ 留壳（AgentPlane/Pane/TitleBar/SessionTabs/planeKeyboard），Sidebar 族六件 → `sidebar/`，DialogHost+六弹窗+dialogKeyboard → `dialogs/`（git mv 保历史 97–100% rename 检测）② **settings UI 归域**：surfaces/ 七件（SettingsView/SettingsSections/SettingRow/PresetsSection/AcpAgentsSection/listEditorParts/settingsKeyboard/PhaseBadge）→ `settings/ui/`——设置面是路由表面非 surface，surfaces/ 回归「按 thread.kind 注册」语义 ③ **git 域归位**：WorkPanel → `git/components/`、useWorktree → `git/useWorktree.ts`；FileSurface 与 git 共享的文件读取抽 `fs/readTextFile.ts`（第二个消费方坐实 seam）④ **Pane 真 bug 修复**：渲染期 `getState().workspaces` 非响应式直读（rename/path 变化不重渲染）→ useThreadStore selector 订阅 ⑤ **ThreadStore internal seams**：989→547 行；类型契约+interface+装配表+核心方法（spawn/activate/close/rename/cycle/onSessionEvent）留 store.ts，四簇实现进 `threads/internal/`（ctx/sessionViews/notices/workspaceOps/conversations）；**不拆 store**——removeWorkspace→close 等跨簇规则 locality 保留；跨簇调用单向 import + ctx 接线点防环；interface 即测试面不变（threads 87 例原样全过）⑥ **native 整理**：element.rs+git_graph.rs → `elements/`（element.rs 改 terminal.rs 对齐元素名）；jagent-terminal 六 pub mod 收私有，对外只留根部 re-export 单面（set_session_event_fn 补 re-export，两处深路径调用点改走根部）· **文档**：新建 `CONTEXT.md` 领域词汇表（此前仓库没有）；architecture.md §1.1 目录树/§1.2 依赖方向/§3.3 internal seam 注记/§5 目录映射/§8.1-8.2 native 清单全部回写 · gate：app tsc + oxlint/oxfmt + bun test 353 过 1 挂（`TestGpuixRenderer stays hidden on Windows`——PowerShell 窗口句柄查询超时，未改动基线同样失败，环境性预存问题非本次回归）+ cargo build + cargo test 41/41 · 六个独立 commit（21a2ce4/b7d44c2/d9e4571/d80f62c/5697a8c/fed2444）· 未动 .refs/.node
+- 2026-09-18 · **R2 完成（顶栏两行 + SessionTabs）**：规格级发现=原型 index.css 两段平级 `:root`，第二段（694 行起）覆盖生效（geom-proto 实测裁决）→ 用户拍板以原型实测为准，COLORS 全表换第二段色板（+tabStrip/ring/card 三键）· SIZES 44/38/83（非看板旧抄 40/36/77）· 几何逐项对齐：stretch 主行去 gap、cell margin 0 2/first 6、context 贴左缘、分支钮 tile 底去阴影、错误钮 tb-cell 化（新增 alert 图标）、tab r8 pad 0 10 active=surfaceActive、tb-tabs 内凹 #1b1e24+自身底边、win-ctl 去 marginLeft · 「+」浮层/分支菜单改 getElementBounds 锚定（Radix bottom+start+4 同位，geom 复核 (723,80)≈(725,81)）+ 浮层 r12+0 14 38 阴影 · R1 消费落地：shell tab oscTitle ?? label + hasBell 紫点 + exited 灰题 · 有意偏离：win/linux 三键维持 36px 全高 NC/CSD 命中区（原型 28px 钮是 mock）、focus 环维持 accentSoft 2px（4px 双环归 R10）· GPUIX 补录：svg tint 只读自身 style.color——图标 hover 提亮走显式 hovered state · gate：TitleBar/SessionTabs 测试更新 + app 354 + 双包 tsc + fmt/lint 全绿 · 下一步：R3（Pane 调度 + FileSurface + SessionShell）

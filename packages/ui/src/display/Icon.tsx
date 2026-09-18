@@ -102,6 +102,10 @@ const SOURCES = {
   home: strokeSvg(
     '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
   ),
+  /** alert：顶栏错误入口（原型 tb-error-btn；lucide triangle-alert） */
+  alert: strokeSvg(
+    '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  ),
 } as const
 
 export type IconName = keyof typeof SOURCES
