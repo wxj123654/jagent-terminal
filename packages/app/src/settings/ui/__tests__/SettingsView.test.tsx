@@ -1,8 +1,8 @@
 /**
- * surfaces/SettingsView.test.tsx — T2.4 设置表面测试（architecture.md §9：
+ * settings/ui/SettingsView.test.tsx — T2.4 设置表面测试（architecture.md §9：
  * TestGpuixRenderer；settings-ui.md §15 验收锚点 1/2/4 core + 3/5/10/11 controls）。
  *
- * 跑法：bun test packages/app/src/surfaces/（或整个 app）。
+ * 跑法：bun test packages/app/src/settings/ui/（或整个 app）。
  * 真值接线用真 createSettingsStore + memoryAdapter（接口级，含写链异步——
  * 断言落盘用轮询）。
  */
@@ -11,9 +11,9 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
-import { navigateSettingsSection } from '../../router'
-import { memoryAdapter, type MemoryAdapter } from '../../settings/file'
-import { createSettingsStore } from '../../settings/store'
+import { navigateSettingsSection } from '../../../router'
+import { memoryAdapter, type MemoryAdapter } from '../../file'
+import { createSettingsStore } from '../../store'
 import { SettingsView } from '../SettingsView'
 
 let t: TestRoot

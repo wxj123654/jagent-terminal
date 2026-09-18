@@ -1,5 +1,5 @@
 /**
- * surfaces/PresetsSection.tsx — 设置 Presets 分区（settings-ui.md §7 预设编辑器；T3.1）。
+ * settings/ui/PresetsSection.tsx — 设置 Presets 分区（settings-ui.md §7 预设编辑器；T3.1）。
  *
  * 顶部 `+` 按钮默认（presets.plusDefault，null=跟随 lastUsedPreset）+ 预设列表 +
  * 底部「新增预设」。行收起态：图标 + label + mono 命令摘要 + 徽章（内置/自定义、
@@ -24,15 +24,15 @@ import { useState } from 'react'
 import type { ReactElement } from 'react'
 
 import { Badge, IconButton, SelectField, TextInput, COLORS, FONT } from '@jagent/ui'
-import type { SettingsStore } from '../settings/store'
-import { useSettings } from '../settings/useSettings'
-import type { TerminalPreset } from '../threads/presets'
+import type { TerminalPreset } from '../../threads/presets'
 import {
   presetCommandSummary,
   presetFieldModified,
   presetMatches,
   presetModified,
-} from '../threads/presets'
+} from '../../threads/presets'
+import type { SettingsStore } from '../store'
+import { useSettings } from '../useSettings'
 import {
   FieldRow,
   LinesField,

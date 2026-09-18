@@ -1,5 +1,5 @@
 /**
- * surfaces/listEditorParts.tsx — 结构性列表分区（Presets / ACP Agents）共享
+ * settings/ui/listEditorParts.tsx — 结构性列表分区（Presets / ACP Agents）共享
  * 编辑器小件（T3+.1 从 PresetsSection 提取；卡片外壳/错误条/新增行同收此）。
  *
  * FieldRow：label 列（名称 + mono 字段名 + 字段级蓝点）+ 控件。

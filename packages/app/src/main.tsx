@@ -51,7 +51,7 @@ import {
 } from './router'
 import { fsAdapter } from './settings/file'
 import { createSettingsStore } from './settings/store'
-import { settingsKeyboard } from './surfaces/settingsKeyboard'
+import { settingsKeyboard } from './settings/ui/settingsKeyboard'
 import { narrowSessionEvent } from './threads/events'
 import { createNativeThreadDeps } from './threads/nativeDeps'
 import { createWorkspacePersister } from './threads/statePersistence'

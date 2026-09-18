@@ -1,5 +1,5 @@
 /**
- * surfaces/SettingsView.tsx — 设置表面（settings-ui.md §3 信息架构 / §9 搜索 /
+ * settings/ui/SettingsView.tsx — 设置表面（settings-ui.md §3 信息架构 / §9 搜索 /
  * S1 Pane 特殊表面）。
  *
  * 左列 SettingsNav 218px（搜索框 + 7 分区 + 命中计数徽章），右列
@@ -17,14 +17,14 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 
 import { Icon, inputFocus, COLORS, FONT } from '@jagent/ui'
-import type { Keybindings } from '../keybindings'
-import { useSettingsSection, navigateSettingsSection } from '../router'
-import { SECTIONS, SETTING_DEFS } from '../settings/schema'
-import type { AcpAgent, SettingSectionId } from '../settings/schema'
-import type { SettingsStore } from '../settings/store'
-import { useSettings } from '../settings/useSettings'
-import type { TerminalPreset } from '../threads/presets'
-import { presetMatches } from '../threads/presets'
+import type { Keybindings } from '../../keybindings'
+import { useSettingsSection, navigateSettingsSection } from '../../router'
+import type { TerminalPreset } from '../../threads/presets'
+import { presetMatches } from '../../threads/presets'
+import { SECTIONS, SETTING_DEFS } from '../schema'
+import type { AcpAgent, SettingSectionId } from '../schema'
+import type { SettingsStore } from '../store'
+import { useSettings } from '../useSettings'
 import { acpAgentMatches } from './AcpAgentsSection'
 import { settingsKeyboard } from './settingsKeyboard'
 import { matchDef, renderSectionContent, SectionHeading, keybindingHits } from './SettingsSections'

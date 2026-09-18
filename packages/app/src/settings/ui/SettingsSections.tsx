@@ -1,5 +1,5 @@
 /**
- * surfaces/SettingsSections.tsx — SettingsView 右列分区内容
+ * settings/ui/SettingsSections.tsx — SettingsView 右列分区内容
  * （settings-ui.md §6 分表 / §8 通知约定卡 / §9 键位表 / §10 Advanced）。
  *
  * Defs 分区（notifications/terminal/appearance）：SETTING_DEFS 过滤
@@ -16,13 +16,13 @@
 import { useState, type ReactElement } from 'react'
 
 import { COLORS, FONT } from '@jagent/ui'
-import { DEFAULT_KEYBINDINGS, type KeybindingAction, type Keybindings } from '../keybindings'
-import { openInSystemApp } from '../settings/file'
-import type { SettingDef, SettingSectionId, SettingsPath } from '../settings/schema'
-import { SETTING_DEFS } from '../settings/schema'
-import type { SettingsStore } from '../settings/store'
-import { getByPath, serializeSettings } from '../settings/store'
-import { APP_VERSION } from '../version'
+import { DEFAULT_KEYBINDINGS, type KeybindingAction, type Keybindings } from '../../keybindings'
+import { APP_VERSION } from '../../version'
+import { openInSystemApp } from '../file'
+import type { SettingDef, SettingSectionId, SettingsPath } from '../schema'
+import { SETTING_DEFS } from '../schema'
+import type { SettingsStore } from '../store'
+import { getByPath, serializeSettings } from '../store'
 import { AcpAgentsSection } from './AcpAgentsSection'
 import { ModDot } from './listEditorParts'
 import { PresetsSection } from './PresetsSection'

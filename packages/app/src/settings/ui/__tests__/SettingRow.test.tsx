@@ -11,7 +11,7 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
-import { SETTING_DEFS } from '../../settings/schema'
+import { SETTING_DEFS } from '../../schema'
 import { SettingRow } from '../SettingRow'
 
 let t: TestRoot

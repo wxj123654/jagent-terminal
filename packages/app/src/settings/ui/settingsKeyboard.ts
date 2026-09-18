@@ -1,5 +1,5 @@
 /**
- * surfaces/settingsKeyboard.ts — 设置面键盘生命周期（模块单例，T2.6；T3+.2
+ * settings/ui/settingsKeyboard.ts — 设置面键盘生命周期（模块单例，T2.6；T3+.2
  * 从 SettingsView.tsx 提取为独立模块：KeybindingsSection 捕获格也要消费
  * Esc，避免 SettingsView ↔ SettingsSections 循环 import）。
  *

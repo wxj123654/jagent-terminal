@@ -1,8 +1,8 @@
 /**
- * surfaces/PresetsSection.test.tsx — T3.1 预设分区 CRUD 测试
+ * settings/ui/PresetsSection.test.tsx — T3.1 预设分区 CRUD 测试
  * （settings-ui.md §7 / §15 第 7–8 条验收锚点）。
  *
- * 跑法：bun test packages/app/src/surfaces/PresetsSection.test.tsx
+ * 跑法：bun test packages/app/src/settings/ui/PresetsSection.test.tsx
  * 真值接线用真 createSettingsStore + memoryAdapter；textarea 文本在原生
  * 编辑器内不进 getAllText——args/env 断言走 store 快照；行式字段即时提交
  * （blur 不可依赖：TestGpuixRenderer 不派发 focus/blur，实测）。
@@ -12,8 +12,8 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
-import { memoryAdapter, type MemoryAdapter } from '../../settings/file'
-import { createSettingsStore } from '../../settings/store'
+import { memoryAdapter, type MemoryAdapter } from '../../file'
+import { createSettingsStore } from '../../store'
 import { PresetsSection } from '../PresetsSection'
 
 let t: TestRoot

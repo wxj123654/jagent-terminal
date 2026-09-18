@@ -29,8 +29,8 @@ import {
   COLORS,
   FONT,
 } from '@jagent/ui'
-import { loadSystemFonts } from '../fonts'
-import type { SettingDef } from '../settings/schema'
+import { loadSystemFonts } from '../../fonts'
+import type { SettingDef } from '../schema'
 import { PhaseBadge } from './PhaseBadge'
 
 export type SettingValue = boolean | string | number

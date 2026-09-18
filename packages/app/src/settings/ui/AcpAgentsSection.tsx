@@ -1,5 +1,5 @@
 /**
- * surfaces/AcpAgentsSection.tsx — 设置 ACP Agents 分区（settings-ui.md §6
+ * settings/ui/AcpAgentsSection.tsx — 设置 ACP Agents 分区（settings-ui.md §6
  * acpAgents；T3+.1 实装，占位卡下岗）。
  *
  * 结构同 Presets 分区（列表 CRUD），但无 builtin/modified 概念——默认 2 项
@@ -16,9 +16,9 @@ import { useState } from 'react'
 import type { ReactElement } from 'react'
 
 import { IconButton, TextInput, COLORS, FONT } from '@jagent/ui'
-import { acpAgentCommandSummary, type AcpAgent } from '../settings/schema'
-import type { SettingsStore } from '../settings/store'
-import { useSettings } from '../settings/useSettings'
+import { acpAgentCommandSummary, type AcpAgent } from '../schema'
+import type { SettingsStore } from '../store'
+import { useSettings } from '../useSettings'
 import {
   FieldRow,
   LinesField,
