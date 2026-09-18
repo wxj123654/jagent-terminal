@@ -20,6 +20,7 @@
 | `docs/gpuix-zed-terminal-fusion.md` | 调研与硬约束（§4 硬约束 6：字节流不过 napi；GPUIX pin GPUI fork） |
 | `docs/nested-scroll-research.md` | 嵌套滚动机制调研 + 当前实现：浏览器 scroll latching（序列锁定目标）与 Chromium/Firefox 源码依据；0003 补丁的 `ScrollSequence` 规则与差距 |
 | `design/*.html` | HTML 原型（布局/设置/交互方案），样式对齐用 |
+| `design/prototype-react/` | **React 版原型（当前唯一视觉/交互基准）**：React19+Vite+Tailwind+Radix/shadcn；`src/components/*` ↔ app 各模块一一对应；`src/index.css` 是样式真值（`:root` 全 token 表）；`bun run dev` + `bun run smoke.mjs` 截全状态 |
 
 **待评审工作区方案（不是实现契约）**：`design/workspace-plane.html`，操作说明 `design/workspace-plane.md`。用户已选择独立 HTML、Codex 式工作区分组；正式应用尚未迁移。落地拆解见下方 **Phase W（工作区平面迁移）**。
 
@@ -41,9 +42,10 @@
 | W 工作区平面迁移 | ✅ W0–W5 完成（含 ctrl-tab PTY 真 bug 修复）|
 | G Git 树（commit graph） | ✅ G1–G3 完成（docs/git-graph.md；只读 graph + workspace tab）|
 | E 统一错误管理（A/B/C/D） | ✅ 完成（docs/error-management.md；总线+边界+panic 收编+minidump sidecar+watchdog）|
-| D 桌面工作台 v2（Codex 灰阶） | 🚧 D0 tokens+基座 → D1 双区侧栏 → D2 工具栏 → D3 工作面板 |
+| D 桌面工作台 v2（Codex 灰阶） | 🚧 D0–D5 完成（方案 C 侧栏 + 工作面板）；配色已回 One Dark |
+| R React 原型还原（全模块对齐） | 🚧 R0 工具链基线 → R1–R11 分模块 → R12 收官；当前 WIP 未提交 |
 
-**当前指针**：→ Phase E 收官 ✅（错误总线 / ErrorBoundary / thiserror+catch_unwind / crash_handler+minidumper sidecar / launcher watchdog）· 待办：G4 另立设计（status/commit 面板）；真窗口手验清单（W3/W4/W5 + G 的 Ctrl+Shift+G + 错误面板/崩溃提示）
+**当前指针**：→ **Phase R（React 原型还原）开工**——基准 `design/prototype-react`（HTML 原型已退役为其移植源）；R0 工具链先行，R1–R11 按模块逐块跑 agent。**工作区有未提交 WIP**（SessionTabs/会话视图 store/FileSurface/SessionTerminal/Pane 调度/TitleBar 两行），用户实测还原度差 → 各模块以原型逐项核对修正，不是续写。· 旧待办不变：G4 另立设计；真窗口手验清单（W3/W4/W5 + G + 错误面板/崩溃提示）
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -332,7 +334,158 @@
   simulateKeystrokes('enter') 可靠）；② useEffect 注册的模块态回调（planeKeyboard）后 setState 需 macrotask
   提交（时序三律之二，toggle 断言要 await）。
 
-## 验收锚点速查（settings-ui.md §15）
+## Phase R —— React 原型还原（design/prototype-react → packages/app 全模块对齐）
+
+> **基准：`design/prototype-react`**（React 19 + shadcn/Radix 版原型，唯一视觉/交互
+> spec）。`design/j-agent-prototype.html` 已被取代——其窗口级 tabs/navBack/navGo
+> 在 React 版 store 里是**移植残留死代码（无组件渲染），不落地**（2026-09-17 用户
+> 拍板：以 React 原型渲染为准，标签条 = 会话内视图页签）。
+> **范围：全模块重对齐**（用户拍板）——不止补标签栏，侧栏/顶栏/面板/弹窗/设置/
+> 空态全部逐项复核。09-15 对 HTML 原型的走查成果（差异率 1–4%）是起点不是终点。
+> **当前 WIP 基线**：工作区未提交改动已落 SessionTabs/会话视图 store/FileSurface/
+> SessionTerminal/Pane 调度/TitleBar 两行——是 R1–R3 的**起点而非成品**，用户实测
+> 还原度差，各模块按原型逐项核对修正（几何/样式/交互/状态全查）。
+> 硬约束不变：不动 `.refs/`；`<terminal>` 唯一写点；字节流不过 napi；新依赖先过
+> architecture.md §11。
+> **GPUIX 能力差速查**（每个模块都会踩，详 `docs/gpuix-usage` skill 与既往结论区）：
+> 无 transition/:focus-visible（用 hover 态 + focusRing() 手动）；`<text>` 多子节点
+> 按 column 堆叠（插值改单模板串）；virtual-list 只认显式 height；anchored occlude
+> 无外点关闭（用 Popover onMouseDownOutside）；事件不冒泡（装饰子元素 pe:none）；
+> font_family 单名精确查找（FONT.ui/mono 已是平台单名，勿回退 CSS 逗号列表）。
+> **每个模块的通用验收**：`bun run proto-shot.mjs --geom` 对应状态截图 + geom
+> 逐字段对比 + 相关测试全绿 + tsc/fmt/lint；逐像素不可达（文本整形管线差异），
+> 目标 = 布局坐标 + 颜色 + 文案 + 交互一致。
+
+- [x] **R0 工具链 + 基线报告（先做，所有模块依赖）** ✅ 2026-09-17
+  - 原型侧截图：`design/prototype-react` `bun install`（如缺）→ `bun run dev`
+    （vite）→ `bun run smoke.mjs`；或适配 `.shots/cmp/shot-proto.mjs` 打 React 版：
+    规范化 1280×800、隐藏 `#demo` 演示条与水印、`*:focus{outline:none}`（.term
+    是 tabIndex div，focus-ring 污染整图）、去 `#winwrap` 边框圆角（窗口<视口时）。
+  - 原型侧几何：probe/geom 脚本对 React DOM 重校选择器集（index.css 类名基本沿用，
+    注意 Radix  Portal 挂 body 下不在 #app 内——浮层几何以 body 原点换算）。
+  - 实现侧：proto-shot.mjs 种子补 `t-ime` 三 views（git / file:Sidebar.tsx /
+    shell:1，activeViewId:'git'，对齐原型 seed.ts）+ 新状态 `sess-git` /
+    `sess-file` / `sess-shell` / `sess-add`（+ 浮层）/ `addws`；React 原型缺对应
+    `?view=` 深链的，补交互步骤（点 + → 选文件）或给原型加深链（原型可加，
+    不改语义）。
+  - 产出：逐状态 pngdiff/region 基线差异表 + 差异清单 → **`docs/prototype-react-diff.md`**
+    （新文件；旧 `prototype-walkthrough-report.md` 属 HTML 基线，不覆盖不删）。
+  - **顺手修 dev 崩溃**：用户 `bun run dev` 起来后 GPUI UI thread 停（日志：
+    `window not found` + `无效的窗口句柄` → `getDebugFrameOverlayStats` 报
+    「UI thread stopped」→ exit 9）。PerfHud 只是首个发现者，根因未定——先二分
+    WIP（SessionTabs/tabs 插槽/新视图渲染路径），再查 native。不修通真机验收不可做。
+    → **未结（2026-09-17）**：调查进展见 docs/prototype-react-diff.md 末节——
+    死亡序列已理清（窗口 removed→trail 清理→DestroyWindow→LastWindowClosed quit），
+    但复现是竞态（默认日志 ~2min 崩一次；RUST_LOG=debug 连跑 43min 未崩）。
+    下一步：二分 WIP 确认是否新渲染路径触发窗口移除。
+- [ ] **R1 会话视图数据层（threads/store.ts）**
+  - 锚点：prototype-react `src/types.ts` SessionView（git/file/shell 三 kind）+
+    `src/store.ts`：`activateSessionView` / `closeSessionView`（'main' 不可关，
+    关当前视图回退左邻→主面）/ `openSessionFile`（`file:<path>` 去重）/
+    `addSessionShell`（`shell:n` 递增编号，cwd=会话 cwd→工作区 path）/
+    `openGitGraph`（**活跃会话已归属工作区 → 会话内 git 视图不切路由**；否则
+    工作区 paneTab 路径）。
+  - app 侧 WIP 已落同型 API——逐语义核对：shell 视图绑独立真 PTY
+    （spawnSession）、close 视图销毁其 PTY、close thread 连带销毁全部 shell 视图
+    PTY、**onSessionEvent 归属**：视图 PTY 的 title/bell/exit 事件按 sessionId
+    路由——视图终端也要能收（查事件定位是否只认 `t${sessionId}` 主会话）。
+  - 验收：store 测试覆盖视图全规则（激活/关闭回退/去重/编号/PTY 生命周期/
+    事件归属）；存量用例零回归。
+- [ ] **R2 顶栏两行 + SessionTabs**
+  - 锚点：prototype-react `src/components/TitleBar.tsx` + index.css `#titlebar`
+    `#titlebar-main` `#tb-tabs` `.tab` `.tb-context` `.tb-cell` `.tb-branch-btn`
+    `.session-add-pop` `.win-ctl`。几何真值：toolbarH 40 / tabbarH 36 / tab
+    h28 r6 pad 0 8 max-w 210 / `.tx` 20px 仅 hover|active|focus-within 显 /
+    add 浮层 280px（sa-act h28 + sa-sub + sa-files max-h 220）。
+  - app：`plane/TitleBar.tsx`（WIP 已重排为两行+`tabs` 插槽）、
+    `plane/SessionTabs.tsx`（WIP 新）、`AgentPlane.tsx` 装配。
+  - 逐项核对：context 块（settings→gear 其余→folder；名 12px/550 + cwd 11.5px
+    faint max-w 420，纯展示 pe:none）；分支钮（1px borderSubtle 方角 +
+    rgba(255,255,255,.025) 底 + mono 名 + caret → DropMenu「打开 Git 图/查看
+    变更」）；搜索钮仅 narrow/hidden 渲染；错误钮 icon+mono 11 计数；
+    panelRight on 态；win 三键 Segoe 图形 + close hover 红；mac/linux 拖拽面不
+    被两行结构破坏；ContextTab（workspace→folder/gitBranch、settings→gear、
+    home→home）；tab 中键关 + Enter/Space 激活；「+」浮层三项+文件列表。
+  - 验收：geom 逐字段对齐（tab 条 x/y/h/间距/active 底色边框阴影）+ 截图 diff +
+    TitleBar.test / SessionTabs.test 更新。
+- [ ] **R3 Pane 调度 + FileSurface + SessionShell**
+  - 锚点：panes.tsx `Pane()` 调度序（thread.views 命中 → git→归属 ws 的
+    GitGraphView / file→FileSurface / shell→SessionShell；失效 id/无视图 → 主面；
+    ws 已删 → 回主面）。
+  - app：`plane/Pane.tsx`（WIP 已落调度）、`surfaces/FileSurface.tsx`（WIP 已落：
+    路径条 32px + mono 11 lh1.55 行号 34px 列；真读盘 512KB/400 行截断保留——
+    原型 PREVIEWS 假数据不搬）、`surfaces/TerminalSurface.tsx` SessionTerminal
+    （独立 PTY；外观四设置同主面）。
+  - 验收：三视图截图对齐 + 视图切换 PTY retain（切走不销毁进程）+ close 视图
+    后 PTY 真销毁。
+- [ ] **R4 侧栏全件**
+  - 锚点：`src/components/Sidebar.tsx`（threadMenuItems/wsMenuItems/WorkspaceGroup/
+    Unassigned/ThreadRow）+ index.css `.sb-*`/`.nav-row`/`.sec-head`/`.ghost`/
+    `.ws-*`/`.t-row`/notif popover。几何：sb-head 52 / nav-row 30 / sec-head
+    min-h 28 / ws-row 32 / ghost 24px opacity 显隐规则 / .foot 顶分隔线。
+  - app：`plane/Sidebar.tsx`、`WorkspaceList.tsx`、`ThreadRow.tsx`、`ContextMenu.tsx`。
+  - 逐项：nav 行组（新建会话/搜索）、sec-head「工作区」+＋显隐、ws-head 展开
+    箭头/名字/ghost 组、ws-body 缩进+1px 引导线（06% 白）、sortThreads 排序+
+    截断+Show more/less、unassigned 虚拟组、通知条目点击已读+跳转、sb-foot
+    版本号、两级上下文菜单项与原型一致（含 disabled 态）。
+- [ ] **R5 工作面板 WorkPanel**
+  - 锚点：`src/components/WorkPanel.tsx`（ChangeRow/FileRow/Diff/Preview）+
+    index.css `.wp-*`。契约：默认收起、拖宽 244–720、<1100 覆盖式不压终端、
+    changes/files 两 tab、选中文件 diff/预览。
+  - app：`plane/WorkPanel.tsx` + `git/worktree.ts` 数据面。
+- [ ] **R6 Git 图**
+  - 锚点：`src/components/GitGraphView.tsx`——工具条（分支菜单/find/refresh）/
+    lane 几何（LANE_W/PAD_X）/RefChip/选中详情列/find 步进（gitFindOpen/Draft/
+    findIdx）。
+  - app：`git/components/GitGraphView.tsx` + `graphSvg.ts`/`rowColumns.ts`/
+    `graphKeys.ts`。
+- [ ] **R7 弹窗与浮层**
+  - 锚点：`src/components/Dialogs.tsx`（Tool/Search/Workspace/Rename/Error/Crash
+    六弹窗）+ `ui/dialog·menu·popover`（Radix 封装形态：居中模态/外点关闭/Esc）。
+  - app：`plane/DialogHost.tsx` + ToolDialog/SearchDialog/WorkspaceDialog/
+    RenameDialog/ErrorDialog/CrashDialog + ui `Modal`/`Popover`/`Toast`。
+  - 逐项：ToolDialog 440 宽/分组标签/筛选/「默认」徽标/cmd 右列；SearchDialog
+    空 query 列全部+↑↓+归属标签；ErrorDialog .err-item 行结构；CrashDialog；
+    NotifPopover；ContextMenu；Toast 右下。
+- [ ] **R8 设置面**
+  - 锚点：`src/components/SettingsView.tsx`（745 行：7 分区 nav/SearchAll 全局
+    命中列表/SettingRow+Control/FontControl 弹层/KbSection 捕获格/PresetsSection
+    /AcpSection 列表编辑）。
+  - app：`surfaces/SettingsView.tsx` + `SettingsSections.tsx` + `PresetsSection.tsx`
+    + `AcpAgentsSection.tsx` + `SettingRow.tsx`（声明式 defs 渲染面不动语义）。
+- [ ] **R9 空态与会话面**
+  - 锚点：panes.tsx `HomePane`/`WorkspaceEmpty`（.home 卡片/kicker/ctx/.pills
+    胶囊行/featured 主胶囊）+ `ConversationView`（.conv-head/.conv-msgs/.msg
+    .bubble/.composer/.thinking）+ `TerminalSurface`（.term-surface/.term/.ln/
+    .cursor/.exited-bar）。
+  - app：`surfaces/EmptyPresets.tsx` + `plane/WorkspaceEmpty.tsx` +
+    `surfaces/ConversationView.tsx`/`ChatSurface.tsx`/`AcpSurface.tsx` +
+    `surfaces/TerminalSurface.tsx`（真终端像素面不改，只核对周边 chrome）。
+- [ ] **R10 tokens/图标/全局样式**
+  - 锚点：index.css `:root` 全表——`--toolbarH 40 --tabbarH 36 --sbHeadH 52
+    --rowH 28 --rowR 6 --sidebarW 264` + 全色板（One Dark）；`src/icons.tsx`
+    lucide 名集。
+  - app：`src/tokens.ts` + `packages/ui/src/theme/tokens.ts` + `Icon.tsx` 名集差
+    （原型新用名补 svg path）；SIZES 尺寸表对账。
+  - 滚动条：原型 ::-webkit-scrollbar 10px 双 padding 框——终端已有 Zed 三态
+    滚动条，面板/列表侧滚动条形态统一核对（GPUIX 滚动区 scrollbar 现状盘点）。
+- [ ] **R11 键位/窄屏/抽屉/深链**
+  - 锚点：App.tsx `useGlobalKeys` 优先级表：kbCapturing > dialog(Radix 自管) >
+    notif/fontPicker Esc > 设置面 Esc/`/` > searchThreads/**newSession(⌘N/Ctrl-N)**
+    /toggleSidebar > 窄屏抽屉 Esc > git 面 r/Esc/↑↓/Enter > ctrl 层 cycle/
+    toggleSettings/ctrl-shift-g；`?view=` 深链表（home/settings/git/workspace/
+    chat/acp/panel/search/tool/addws/errors/crash/notif/narrow/hidden/font）。
+  - app：`keybindings.ts`（**newSession 动作缺失——新增**，schema/键位表/KeyCap
+    同步）、planeKeyboard/dialogKeyboard、AgentPlane 抽屉（760 断点）、router.tsx。
+- [ ] **R12 收官**：全量回归（app+ui 单测 + e2e + tsc + fmt:check + lint +
+  export-patches --check）+ 全状态截图复测差异率表回写
+  `docs/prototype-react-diff.md` + 真窗口手验清单 + commit。
+
+### Phase R 结论区（各模块完成后填写）
+
+---
+
+
 
 core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-advanced→6 · 第12条（无障碍）横切随切片验收。
 ## 硬约束速查（违反 = 返工）
@@ -443,3 +596,6 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-16 · **输入框光标改 Zed bar 形态 + 配色修正**：回退上游 cap-height 后用户实测光标比 CJK 字形矮一截（0.75em=9px vs 中文字 ~12px），拍板「按 Zed 一样的来」· 落地 `0004-input-caret-zed-bar.patch`（input.rs + theme.rs）：① `caret_rect` 对齐 Zed `CursorShape::Bar`（element.rs `size(px(2.0), line_height)`）——光标高=整行 line-height 不再 inset，比 glyph-extent 版还简单（不用摸 shaped line）；IME `bounds_for_range` 同步；② `theme.rs` dark caret 从 indigo accent（oklch 276.9 ≈ #7c86ff）改为 `#61afef`（One Dark 蓝，与 j-agent accent/focusBorder 同色，Zed One Dark 实际用 #74ade8 同族）· 坑：上游 caret x=文本行起点=占位符首字起点，空输入聚焦时光标条压在首字左缘——上游原生行为非布局问题 · gate：`cargo check -p gpuix-native` 绿 + `export-patches --check` 绿（gpuix 3 patch + zed 3 patch）· 待办：release `.node` 重建因机器内存耗尽（页面文件 os error 1455，rustc alloc 4MB 即失败）未跑通——下次 `bun run dev` 自动重建生效
 - 2026-09-16 · **侧栏会话区布局对齐原型（用户截图走查）**：WorkspaceList 与 codex-sidebar-v2 几何对齐——① 展开箭头移出 .ws-name 作兄弟节点（原型 .chev：16×26 独立钮 + 10px 图标；原 12×12 嵌在名字行内，点击区小且靠 skipRow 抑制冒泡——兄弟节点天然不触发行激活，skipRow 机制整体删除）；② .ws-head 补 height 28 + padding 0 2（名字行/ghost 钮内缩）；③ 会话区 .ws-body 改 margin-left 17 + padding-left 8 + 恢复 1px 竖引导线（6% 白 rgba(255,255,255,0.06)，对齐箭头中心——选中高亮块有归属锚点不悬空；此前走查轮误删，原型 .ws-body 本有 border-left）；④ 「工作区」区头定高 26（原 minHeight+上下 padding 撑到 ~32）+ .grow 弹簧把 ＋ 推到右缘；⑤ ghost 钮组 gap 2、图标统一 12px（原 13）；⑥ 空组引导去掉多余 marginLeft 4 与会话行同槽位；⑦ folder 图标 14→12 · 未归属虚拟组同步同一套几何 · gate：app tsc + WorkspaceList 20 例绿 + oxlint/oxfmt 绿 + sidebar-shot.mjs 截图复核
 - 2026-09-16 · **单文件原型 → React 重构（design/prototype-react）**：用户要求「原型优化成 React 实现，单文件太大实现慢，组件库用 shadcn」· 落地独立 Vite 工程（不进根 bun workspace）：React 19.3 + Vite 8.3 + TS 5.9.3 + Tailwind v4.3 + Zustand/Immer + Radix 全家桶（dialog/dropdown/select/switch/slider/scroll-area/tooltip/popover/context-menu/tabs/separator）+ lucide 图标，版本全部 registry 联网核实正式 release · 2452 行 `j-agent-prototype.html` 拆分为 types/seed/model/store + Sidebar/TitleBar/panes/GitGraphView/WorkPanel/SettingsView/Dialogs + ui 封装层（shadcn 风格 Radix 封装）；全局 `S` 对象 → zustand+immer store，CSS 原样移植保 One Dark 视觉 · 覆盖面：侧栏分组/会话行/右键与…菜单、标题栏分段+tab strip、Home/工作区页/终端模拟/Chat/ACP 会话、Git 图、WorkPanel（变更/文件/diff/预览）、设置 7 分区（含搜索高亮/键位捕获/预设与 ACP 列表编辑/字体弹层）、工具选择/搜索/加工作区/重命名/错误历史/崩溃弹窗、通知 popover/Toast、全局键位/窄屏 drawer/侧栏与面板拖拽/`?view=` 深链/demo 控制条 · 修复点：`MdLite` 非法嵌套（`<ul>` 在 `<p>` 内）、Radix `Select.Item` 禁空串 value（''→哨兵映射，「跟随上次使用」/「未归属」选中态恢复显示）、index.html 空 favicon 消 404 · gate：`bun run typecheck` + `bun run build`（JS 481KB/gz 153KB）+ `smoke.mjs` 18 状态截图全量走查无 JS 错误（.shots/react/）· 用途：设计验证/快速迭代原型，不改正式 GPUIX 应用架构
+- 2026-09-17 · **gpuix 0.9.0 上游同步（pin d85a31e→7ac9880；GPUI/zed 81c99f81 不变）**：联网核实 remorses/gpuix main 为 `7ac9880`，包含 `onSelectionChange` 与文本选区拖拽嵌套更新 panic 修复；最新版 gpuix 的 zed gitlink及 remorses/zed `gpuix` 分支均仍为 `81c99f81`，因此 GPUI 已跟随到该上游可用最新 pin、无需独立迁移 · 本地 gpuix 补丁重放并重新导出，保留上游与项目 seam；两个 zed/GPUI 补丁套件继续校验 · 顺手修掉既有 flake：`errors/log.test.ts` 的 `flushWrites` 固定 5ms sleep 改落盘轮询（此前 Windows 上 mkdir+appendFile 常超时，基线 2/3 失败）· gate：`cargo check -p gpuix-native` + `build:debug` + app/ui 370 + e2e 23 + refs-state 11 + 双包 tsc + fmt:check + lint + `export-patches --check` + `setup-refs` 快速路径全绿 · 注：首次构建被 Windows commit charge 耗尽阻塞（50.3/50.8GB），用户释放内存后 21s 编完
+- 2026-09-17 · **Phase R 立项（React 原型全模块重对齐）**：用户实测昨日 WIP（会话视图 tab 条轮）还原度差，拍板①基准=design/prototype-react 渲染面（HTML 原型窗口级 tabs/navGo 在 React 版是 store 死代码，不落地）②范围=全模块重对齐非只补标签栏 · 拆 13 块进看板：R0 截图/几何工具链适配 React 原型+基线报告+修 dev 崩溃（UI thread 停，根因未定）→ R1 store 会话视图语义核对 → R2 顶栏两行+SessionTabs → R3 Pane/FileSurface/SessionShell → R4 侧栏 → R5 WorkPanel → R6 Git 图 → R7 弹窗浮层 → R8 设置面 → R9 空态/会话面 → R10 tokens/图标 → R11 键位/窄屏/深链（含原型新增 newSession ⌘N）→ R12 收官 · 下一步：用户逐模块派 agent，从 R0 起
+- 2026-09-17 · **R0 完成（React 原型还原工具链 + 基线报告）**：新建 `scripts/cmp/` 九件套（chrome 共享层：playwright-core 复用原型 node_modules + 系统 Chrome + 1280×800 视口 + vite 自动拉起 + 规范化注入；shot-proto 23 态截图；geom-proto 几何导出 `#app` 原点含 Radix Portal 换算；pngdiff/region 逐像素+分区对比；report.mjs 批量报告 → report.json；probe-dom/crop/tree/show 辅助）· 原型 App.tsx 补 `?view=sess-main/git/file/shell` 深链 · proto-shot.mjs：getElementBounds 数组下标→对象 API（3 处）、t-ime 三视图种子、新状态 sess-main/git/file/shell/add + addws、ctxmenu 截图后 Esc 关 Popover（此前污染全部后续态）· **顺手修 FileSurface 真 bug**：代码区缺 column 布局 + `lineHeight:1.55` 被 GPUIX 当 px（非 CSS 倍数）→ 600 行叠成 2px 马赛克；修后 sess-file 差异 15.89%→7.20% · 基线：22 态全图差异 1.67–9.27%（文本整形底噪为主）+ 8 项人工复查文案差异入档 → **docs/prototype-react-diff.md** · dev 崩溃调查：理清死亡序列（窗口 removed→trail→DestroyWindow→LastWindowClosed quit），PerfHud 仅发现者；复现为竞态（RUST_LOG=debug 下 43min 未崩），panic.log 的 TerminalView 泄漏记录均为更早会话 · gate：proto typecheck/build/smoke ✓ + app tsc + bun test 348 + ui tsc + fmt/lint + export-patches --check 全绿 · 下一步：R1（会话视图语义核对）/ 崩溃二分 WIP

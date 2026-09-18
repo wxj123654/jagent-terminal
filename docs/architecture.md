@@ -342,7 +342,19 @@ export type ThreadState = {
   workspaces: Workspace[]           // 工作区列表（Phase W；持久化经 deps.persistWorkspaces
                                     //  → 装配层写 ~/.j-agent/state.json）
   lastUsedPreset: string | null     // 运行时态，不写 settings.json
+  notices: SessionNotice[]          // 通知中心事件流（D8；容量 50 丢最旧；不持久化）
 }                                   // active 不在此——导航唯一事实源是 router（§3.5）
+
+// 通知中心条目（D8）：bell/exit 等真实会话事件落列；点条目 → openNotice 跳转
+export type SessionNotice = {
+  id: string                        // `n${seq}`
+  tone: 'ok' | 'warn' | 'err'       // 图标色（原型三档）
+  text: string                      // 主文案（「X 等待注意」/「X 已退出」）
+  sub: string                       // 副文案（工作区名 · 原因，UI 层补相对时间）
+  at: number
+  threadId: string                  // 来源会话（已关闭则 openNotice 仅标已读）
+  read: boolean                     // activate 来源会话时自动标读
+}
 
 // threads/workspaces.ts（Phase W；交互契约 design/workspace-plane.md）
 export type Workspace = {
@@ -354,7 +366,9 @@ export type Workspace = {
   createdAt: number
 }
 // Thread 三类均含可选 workspaceId?: string（归属；平铺不嵌套——cycle 环形语义
-//  与事件定位 R4 不变，分组是派生视图 workspaceSessions(threads, wsId)）
+//  与事件定位 R4 不变，分组是派生视图 workspaceSessions(threads, wsId)）、
+//  unread?: boolean（待办标记，activate 清除/行菜单可标回）与 pin?: boolean
+//  （置顶，组内排序首位）——后两者均不持久化
 // 持久化：独立 state.json（含运行时态 expanded/lastSession——语义是「应用状态」
 //  非「用户设置」，与 settings.json 分文件）；threads 不持久化（PTY 重启即死）；
 //  parse 逐行容错（坏行剔除不炸全局）；首启空 → 装配层建默认工作区(process.cwd())

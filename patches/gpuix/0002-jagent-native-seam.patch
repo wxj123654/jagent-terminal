@@ -1,5 +1,5 @@
 diff --git a/packages/native/index.d.ts b/packages/native/index.d.ts
-index 282cce9..a0e80be 100644
+index 0880b07..561e8fc 100644
 --- a/packages/native/index.d.ts
 +++ b/packages/native/index.d.ts
 @@ -83,6 +83,19 @@ export declare class GpuixRenderer {
@@ -22,44 +22,6 @@ index 282cce9..a0e80be 100644
    focusElement(elementId: number): void
    /** Move focus to the next GPUI tab stop. */
    focusNext(): void
-@@ -572,18 +585,6 @@ export interface HighlightRect {
-   height: number
- }
- 
--/** One extra HTTP header on the feed or download request. */
--export interface UpdaterHeader {
--  name: string
--  value: string
--}
--
--export interface WindowInsets {
--  safeArea: EdgeInsets
--  ime: EdgeInsets
--  effective: EdgeInsets
--}
--
- /**
-  * Wayland `wlr-layer-shell` surface options. Linux/Wayland only; ignored on
-  * every other platform. When present on `WindowOptions`, the window is opened
-@@ -630,6 +631,18 @@ export interface LayerShellOptions {
-   keyboardInteractivity?: string
- }
- 
-+/** One extra HTTP header on the feed or download request. */
-+export interface UpdaterHeader {
-+  name: string
-+  value: string
-+}
-+
-+export interface WindowInsets {
-+  safeArea: EdgeInsets
-+  ime: EdgeInsets
-+  effective: EdgeInsets
-+}
-+
- export interface WindowOptions {
-   title?: string
-   /**
 diff --git a/packages/native/src/custom_elements/mod.rs b/packages/native/src/custom_elements/mod.rs
 index 6a31751..5afa199 100644
 --- a/packages/native/src/custom_elements/mod.rs
@@ -148,10 +110,10 @@ index d000cd1..09ef6e1 100644
      test,
      not(all(
 diff --git a/packages/native/src/renderer.rs b/packages/native/src/renderer.rs
-index 32e614a..c5403c4 100644
+index 02fab27..ed61f15 100644
 --- a/packages/native/src/renderer.rs
 +++ b/packages/native/src/renderer.rs
-@@ -363,6 +363,78 @@ enum KeyInput {
+@@ -366,6 +366,78 @@ enum KeyInput {
      Up(String),
  }
  
@@ -230,7 +192,7 @@ index 32e614a..c5403c4 100644
  #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
  enum ClockControl {
      Pause,
-@@ -445,6 +517,25 @@ enum UiCommand {
+@@ -452,6 +524,25 @@ enum UiCommand {
          path: String,
          response: SyncSender<std::result::Result<(), String>>,
      },
@@ -256,7 +218,7 @@ index 32e614a..c5403c4 100644
      Blur,
  }
  
-@@ -472,6 +563,17 @@ async fn run_ui_commands(
+@@ -479,6 +570,17 @@ async fn run_ui_commands(
                  cx.activate(true);
                  window.activate_window();
              }),
@@ -274,11 +236,10 @@ index 32e614a..c5403c4 100644
              UiCommand::SetWindowTitle(title) => window.update(cx, move |view, window, cx| {
                  view.window_title = title;
                  cx.notify();
-@@ -780,7 +882,17 @@ async fn run_ui_commands(
+@@ -794,6 +896,17 @@ async fn run_ui_commands(
                  result
              }
              UiCommand::Blur => window.update(cx, |_view, window, _cx| window.blur()),
--        };
 +            // j-agent patch: run host callback on the GPUI thread and hand
 +            // the result back through the sync channel (JS side blocks on it).
 +            UiCommand::RunHost { f, response } => {
@@ -289,11 +250,11 @@ index 32e614a..c5403c4 100644
 +                        });
 +                response.send(result).ok();
 +                Ok(())
-+            }        };
++            }
+         };
          if let Err(error) = result {
              if cx.update(|cx| cx.windows().is_empty()) {
-                 break;
-@@ -1013,6 +1125,9 @@ impl GpuixRenderer {
+@@ -1027,6 +1140,9 @@ impl GpuixRenderer {
              // After the other bindings: `set_menus` reads key equivalents out of
              // the keymap, so every binding must exist before it runs.
              crate::app_menu::init(&app_name, cx);
@@ -303,7 +264,7 @@ index 32e614a..c5403c4 100644
              let bounds = gpui::Bounds::centered(
                  None,
                  gpui::size(gpui::px(width as f32), gpui::px(height as f32)),
-@@ -1124,6 +1239,13 @@ impl GpuixRenderer {
+@@ -1138,6 +1254,13 @@ impl GpuixRenderer {
          let selection = self.selection.clone();
          let callback = self.event_callback_for_view();
          let (command_sender, command_receiver) = mpsc::unbounded();
@@ -317,7 +278,7 @@ index 32e614a..c5403c4 100644
          let (startup_sender, startup_receiver) = sync_channel(1);
          let exit_startup_sender = startup_sender.clone();
          let ui_running = self.ui_running.clone();
-@@ -1520,6 +1642,51 @@ impl GpuixRenderer {
+@@ -1534,6 +1657,51 @@ impl GpuixRenderer {
          ))
      }
  
@@ -369,7 +330,7 @@ index 32e614a..c5403c4 100644
      #[napi]
      pub fn focus_element(&self, element_id: f64) -> Result<()> {
          let id = to_element_id(element_id)?;
-@@ -2956,7 +3123,9 @@ impl Drop for GpuixRenderer {
+@@ -3017,7 +3185,9 @@ impl Drop for GpuixRenderer {
  
  // ── GPUI View ────────────────────────────────────────────────────────
  
@@ -380,7 +341,7 @@ index 32e614a..c5403c4 100644
      pub(crate) tree: Arc<Mutex<RetainedTree>>,
      pub(crate) event_callback: Option<EventCallback>,
      pub(crate) window_title: String,
-@@ -4491,6 +4660,19 @@ fn joined_text_content(
+@@ -4606,6 +4776,19 @@ fn joined_text_content(
  /// Both get the same stable GPUI id, so gpui keeps their interactive element
  /// state (hover, active, pointer capture, scroll, accessibility node) across
  /// frames, and both wire the whole shared `Props` surface.
@@ -400,7 +361,7 @@ index 32e614a..c5403c4 100644
  pub(crate) fn build_host_container(
      element: &crate::retained_tree::RetainedElement,
      style: Option<&StyleDesc>,
-@@ -4509,6 +4691,20 @@ pub(crate) fn build_host_container(
+@@ -4624,6 +4807,20 @@ pub(crate) fn build_host_container(
      if let Some(style) = style {
          el = apply_interactive_styles(el, style);
  
@@ -421,7 +382,7 @@ index 32e614a..c5403c4 100644
          if crate::style::should_occlude(style) {
              // BlockMouse (occlude) stops the hit test, so the parent scroller
              // never sees the wheel. HTML does not work that way: a wheel over
-@@ -4562,7 +4758,7 @@ pub(crate) fn build_host_container(
+@@ -4677,7 +4874,7 @@ pub(crate) fn build_host_container(
                  .overflow_x_scroll()
                  .restrict_scroll_to_axis();
          } else if needs_scroll_y {
@@ -450,10 +411,10 @@ index 732d455..52bdcca 100644
      // selection registry, so buttons and toolbars never start a drag.
      // Inherited down the tree like the CSS property of the same name.
 diff --git a/packages/native/src/test_renderer.rs b/packages/native/src/test_renderer.rs
-index 9a4cc1e..d0a44c4 100644
+index 18a8264..5af57e3 100644
 --- a/packages/native/src/test_renderer.rs
 +++ b/packages/native/src/test_renderer.rs
-@@ -1120,3 +1120,23 @@ impl TestGpuixRenderer {
+@@ -1174,3 +1174,23 @@ impl TestGpuixRenderer {
          }
      }
  }

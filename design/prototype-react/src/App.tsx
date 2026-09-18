@@ -278,6 +278,21 @@ function applyDeepLink() {
     else if (v === 'notif') d.ui.notifOpen = true
     else if (v === 'narrow') d.ui.winW = 700
     else if (v === 'hidden') d.ui.sidebarHidden = true
+    // 会话内视图深链（截图工具用；sess-add 浮层走 .tb-add-btn 点击不进深链）
+    else if (v === 'sess-main' || v === 'sess-git' || v === 'sess-file' || v === 'sess-shell') {
+      const t = d.threads.find(x => x.id === 't-ime')
+      if (t) {
+        d.route = { type: 'thread', id: 't-ime' }
+        t.activeViewId =
+          v === 'sess-main'
+            ? 'main'
+            : v === 'sess-git'
+              ? 'git'
+              : v === 'sess-file'
+                ? 'file:packages/app/src/plane/Sidebar.tsx'
+                : 'shell:1'
+      }
+    }
     else if (v === 'font') {
       d.route = { type: 'settings' }
       d.ui.settingsSection = 'terminal'

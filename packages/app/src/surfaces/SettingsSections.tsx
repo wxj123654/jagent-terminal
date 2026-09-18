@@ -383,7 +383,7 @@ export function KeybindingsSection({
 // ── Advanced 分区（§10；T3+.2：gpuBackend + 诊断卡 + JSON 实时视图）────
 
 /** scripts/refs-config.ts 的 gpuix pin 前缀 */
-const GPUIX_PIN = 'd85a31e'
+const GPUIX_PIN = '7ac9880'
 
 function DiagnosticsCard(): ReactElement {
   const rows: [string, string][] = [

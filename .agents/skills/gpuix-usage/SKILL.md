@@ -34,3 +34,30 @@ j-agent 的 UI 跑在 gpuix（`.refs/gpuix`，React → Rust/gpui 渲染）。�
 子级样式由调用方覆盖时（如 `Popover` 的 `style` prop），把
 `backgroundColor`/`background`/`borderRadius` 提取出来同步给 `<anchored>`，
 见 `packages/ui/src/overlays/Popover.tsx` 的 `surface` 写法。
+
+## flex 子元素负 margin 会把父容器宽度塌成 0
+
+**现象**：flex row 容器内给某个子元素写 `marginRight: -4`（等负外边距），
+Taffy 布局会把**父容器自身宽度**算成只剩 padding——所有兄弟元素按自然
+位置排版但溢出到容器外（视觉重叠、命中盒错位：点在"子元素 bounds 中心"
+实际落在容器外，click 既不命中它也不命中父级）。
+
+**写法**：别用负 margin 做"贴边收回"（如 tab 内 × 钮想少占 4px）。改用
+收窄父级 padding（`paddingRight: 4`）或正常正 margin。实例：
+`SessionTabs` 的 `.tab` 曾用 `marginRight:-4` 让 × 钮视觉回收 padding，
+实测父 tab 宽塌成 16px（=左右 padding）。
+
+## 事件命中：deepest 有 handler 的元素
+
+GPUIX/gpui 的鼠标事件**不冒泡**——命中链上 deepest **带 handler** 的元素
+接收事件，祖先 handler 不会同次触发。推论：
+
+- 行内交互钮（×/「…」）自身挂 onClick 即独立命中，无需
+  stopPropagation/抑制位。
+- 装饰子元素（text/svg/icon）一律 `pointerEvents: 'none'` 穿透到父级
+  命中盒（ThreadRow 注释 §20-21 同款纪律）；不带 handler 的叶子本身
+  会被跳过、不影响父级命中。
+
+`getElementBounds` 返回的是 **content-box**（不含元素自身 border）：
+定高 40 + borderBottomWidth 1 的元素 bounds.h = 39。换算窗口 chrome
+总高时用 border-box（定高值 + 根元素自身 border）。

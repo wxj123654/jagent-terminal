@@ -18,9 +18,15 @@ afterEach(() => {
   resetErrorBusForTest()
 })
 
-async function flushWrites() {
-  // appendErrorLog 是 fire-and-forget promise；bun 测试里让一个宏任务轮次过去
-  await new Promise((r) => setTimeout(r, 5))
+async function flushWrites(dir: string, minFiles = 0) {
+  // appendErrorLog 是 fire-and-forget promise：mkdir+appendFile 在 Windows 上
+  // 可能超过几毫秒，轮询落盘结果而不是固定 sleep（项目约定：until 轮询）。
+  const deadline = Date.now() + 2000
+  for (;;) {
+    if ((await readdir(dir)).length >= minFiles) return
+    if (Date.now() > deadline) return
+    await new Promise((r) => setTimeout(r, 5))
+  }
 }
 
 describe('error log', () => {
@@ -29,7 +35,7 @@ describe('error log', () => {
     installErrorLog(dir)
     emitError({ level: 'error', kind: 'native', message: 'first', context: 'spawn' })
     emitError({ level: 'warn', kind: 'io', message: 'second', detail: 'line1\nline2' })
-    await flushWrites()
+    await flushWrites(dir, 1)
     const names = await readdir(dir)
     expect(names).toHaveLength(1)
     expect(names[0]).toMatch(/^errors-\d{8}\.log$/)
@@ -45,7 +51,8 @@ describe('error log', () => {
     installErrorLog(dir)
     installErrorLog(null)
     emitError({ level: 'error', kind: 'io', message: 'nope' })
-    await flushWrites()
+    // 断言“未写盘”需要给不存在的写入留出让位的窗口，无法用存在性轮询
+    await new Promise((r) => setTimeout(r, 50))
     expect(await readdir(dir)).toEqual([])
   })
 

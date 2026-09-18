@@ -9,9 +9,14 @@
  *
  * 用法：
  *   cd packages/app && bun run proto-shot.mjs [--width 1280] [--height 800] [--states main,home,...]
- *   默认全量：main home chat ws git settings panel search tool notif ctxmenu
+ *   默认全量：main home chat acp ws git settings panel search tool addws notif
+ *   ctxmenu sess-main sess-git sess-file sess-shell sess-add
  *   窄窗（700）单独跑：--width 700 --states narrow
  * 产物：../../.shots/impl-<state>[-<width>].png
+ *
+ * 种子含 t-ime 会话内三视图（git/file:Sidebar.tsx/shell:1，activeViewId='git'，
+ * 对齐原型 seed.ts）——shell 视图绑真 PTY（fixture）。状态名与原型侧
+ * scripts/cmp/shot-proto.mjs 一一对应（ws ↔ workspace）。
  *
  * 已知边界：terminal 表面只有 active 会话挂真 PTY（fixture 脚本打印原型
  * 同款提示行）；其余 terminal 行用假 sessionId（不渲染，无影响）。
@@ -55,7 +60,11 @@ const WIDTH = Number(arg('width', 1280))
 const HEIGHT = Number(arg('height', 800))
 const GEOM = args.includes('--geom')
 const STATES = String(
-  arg('states', 'main,home,chat,ws,git,settings,panel,search,tool,notif,ctxmenu'),
+  arg(
+    'states',
+    'main,home,chat,acp,ws,git,settings,panel,search,tool,addws,notif,ctxmenu,' +
+      'sess-main,sess-git,sess-file,sess-shell,sess-add',
+  ),
 ).split(',')
 const OUT_DIR = join('..', '..', '.shots')
 try {
@@ -109,8 +118,11 @@ const REAL_PRESET = {
 const store = createThreadStore(
   {
     spawnSession: async (o) => {
-      // 只有 active 会话（shot-term 预设）起真 PTY；其余假 id
+      // shot-term 预设起真 PTY；「会话内 shell 视图」（无 program 的 spawn，
+      // 真实路径 = 默认 shell）也起真 PTY（fixture 提示行）；其余假 id
       if (o.program === process.execPath) return createTerminalSession(o)
+      if (!o.program)
+        return createTerminalSession({ ...o, program: process.execPath, args: [TERM_FIXTURE] })
       return ++fakeSession
     },
     destroySession: async (id) => {
@@ -278,6 +290,15 @@ emitError({
 
 // bell：红点直接置位（真 bell 事件会顺带 pushNotice，与注入的三条重复）
 store.activate({ type: 'thread', id: imeId })
+// t-ime 会话内视图（对齐原型 seed.ts：views=[git, file:Sidebar.tsx,
+// shell:1]，activeViewId='git'）——走真实 store 动作生成同形数据：
+// openGitGraph 需活跃会话路由（activeThreadId 经 router），activate 后
+// 小等一站再调
+await new Promise((r) => setTimeout(r, 30))
+store.openGitGraph()
+store.openSessionFile(imeId, 'packages/app/src/plane/Sidebar.tsx')
+await store.addSessionShell(imeId) // shell:1 —— spawnSession 无 program → fixture 真 PTY
+store.activateSessionView(imeId, 'git')
 {
   const s = store.getState()
   const nv = s.threads.find((t) => t.id === nvimId)
@@ -528,7 +549,8 @@ const clickTestId = (testId, button = 0) => {
   if (!el) throw new Error(`testId not found: ${testId}`)
   const b = t.renderer.getElementBounds(el.id)
   if (!b) throw new Error(`no bounds: ${testId}`)
-  t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2, button)
+  // getElementBounds 返回 {x,y,width,height}（gpuix eac7181 起，数组形态已废）
+  t.renderer.nativeSimulateClick(b.x + b.width / 2, b.y + b.height / 2, button)
 }
 /** 关弹窗：Esc 走焦点元素冒泡到 Modal；兜底点遮罩 */
 const closeDialog = async () => {
@@ -540,7 +562,7 @@ const closeDialog = async () => {
   const scrim = t.renderer.findByTestId('modal-scrim')
   if (scrim) {
     const b = t.renderer.getElementBounds(scrim.id)
-    if (b) t.renderer.nativeSimulateClick(b[0] + 10, b[1] + 10)
+    if (b) t.renderer.nativeSimulateClick(b.x + 10, b.y + 10)
     await flush(60)
   }
 }
@@ -550,6 +572,10 @@ await flush(600) // 真 PTY 输出 + worktree mount 落定
 for (const state of STATES) {
   switch (state) {
     case 'main':
+      // 原型默认路由 = t-ime + activeViewId='git'（会话内 Git 图页）
+      store.activate({ type: 'thread', id: imeId })
+      store.activateSessionView(imeId, 'git')
+      await flush(300)
       shot('main')
       break
     case 'home':
@@ -582,6 +608,7 @@ for (const state of STATES) {
       break
     case 'panel':
       navigateTarget({ type: 'thread', id: imeId })
+      store.activateSessionView(imeId, 'git') // 原型 ?view=panel：t-ime 默认停在 git 视图
       await flush()
       clickTestId('panel-toggle')
       await flush()
@@ -615,9 +642,62 @@ for (const state of STATES) {
       await closeDialog()
       const row = t.renderer.findByTestId(`row-${imeId}`)
       const b = t.renderer.getElementBounds(row.id)
-      t.renderer.nativeSimulateClick(b[0] + b[2] / 2, b[1] + b[3] / 2, 2) // 右键
+      t.renderer.nativeSimulateClick(b.x + b.width / 2, b.y + b.height / 2, 2) // 右键
       await flush()
       shot('ctxmenu')
+      // 关菜单：Esc 必须发到 Popover 内容盒（autoFocus 焦点在 context-menu
+      // 上，发 root 不会向上冒泡）——不关会一直挂着污染后续 sess-* 截图
+      {
+        const menu = t.renderer.findByTestId('context-menu')
+        if (menu) t.renderer.nativeSimulateKeyDown(menu.id, 'escape')
+        await flush(60)
+        if (t.renderer.findByTestId('context-menu')) {
+          // 兜底：onMouseDownOutside（点侧栏空白）
+          t.renderer.nativeSimulateClick(600, 500)
+          await flush(60)
+        }
+      }
+      break
+    }
+    case 'acp':
+      store.activate({ type: 'thread', id: acpId })
+      await flush()
+      shot('acp')
+      break
+    case 'addws':
+      clickTestId('add-workspace')
+      await flush()
+      shot('addws')
+      await closeDialog()
+      break
+    // ── 会话内视图（原型 t-ime 的 SessionTabs 页签；sess-add=「+」浮层）──
+    case 'sess-main':
+    case 'sess-git':
+    case 'sess-file':
+    case 'sess-shell': {
+      const viewId = {
+        'sess-main': 'main',
+        'sess-git': 'git',
+        'sess-file': 'file:packages/app/src/plane/Sidebar.tsx',
+        'sess-shell': 'shell:1',
+      }[state]
+      store.activate({ type: 'thread', id: imeId })
+      store.activateSessionView(imeId, viewId)
+      await flush(300) // git lane 计算 / FileSurface 真读盘 / shell PTY 输出
+      shot(state)
+      break
+    }
+    case 'sess-add': {
+      store.activate({ type: 'thread', id: imeId })
+      store.activateSessionView(imeId, 'git')
+      await flush()
+      clickTestId('session-add')
+      await flush()
+      shot('sess-add')
+      // 收浮层：Esc 到 pop 内容盒（autoFocus 挂载即聚焦）
+      const pop = t.renderer.findByTestId('session-add-pop')
+      if (pop) t.renderer.nativeSimulateKeyDown(pop.id, 'escape')
+      await flush(60)
       break
     }
     case 'narrow':
@@ -694,12 +774,19 @@ for (const state of STATES) {
   }
 }
 
-// 清理真 PTY
+// 清理真 PTY（会话本体 + 会话内 shell 视图各自绑一个）
 for (const th of store.getState().threads) {
   if (th.kind === 'terminal' && th.sessionId < 900) {
     try {
       destroyTerminalSession(th.sessionId)
     } catch {}
+  }
+  for (const v of th.views ?? []) {
+    if (v.kind === 'shell' && v.sessionId < 900) {
+      try {
+        destroyTerminalSession(v.sessionId)
+      } catch {}
+    }
   }
 }
 t.unmount()
