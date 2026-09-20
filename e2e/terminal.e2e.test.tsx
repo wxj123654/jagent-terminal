@@ -497,9 +497,12 @@ describe('T3.2 e2e: chat 全链（菜单入口 → ChatSurface → echo 回复 �
     async () => {
       const threadsBefore = store.getState().threads.length
 
-      // ① + 菜单展开：预设项 + 固定 New Chat（分隔线下）
+      // ① + 菜单展开：预设项 + 固定 New Chat（分隔线下）。
+      //    R4：ghost 钮未 hover 时 pointerEvents:none（原型 .acts 同款）——
+      //    真鼠标点击必然先移入，测试同样先 mouseMove 到行上再点。
       const menuBtn = t.renderer.findByTestId(`new-menu-${e2eWorkspace.id}`)!
       const mb = t.renderer.getElementBounds(menuBtn.id)!
+      t.renderer.nativeSimulateMouseMove(mb.x + mb.width / 2, mb.y + mb.height / 2)
       t.renderer.nativeSimulateClick(mb.x + mb.width / 2, mb.y + mb.height / 2)
       await until('preset menu open with New Chat item', () => {
         const item = t.renderer.findByTestId('new-chat')
@@ -583,9 +586,11 @@ describe('T3+.1 e2e: ACP 全链（菜单入口 → AcpSurface → 真子进程 J
       ])
       const threadsBefore = store.getState().threads.length
 
-      // ② 菜单展开 → agent 项（分隔线下，New Chat 之后）
+      // ② 菜单展开 → agent 项（分隔线下，New Chat 之后）。
+      //    ghost 钮先 mouseMove hover（pe:none 穿透规避，同上）
       const menuBtn = t.renderer.findByTestId(`new-menu-${e2eWorkspace.id}`)!
       const mb = t.renderer.getElementBounds(menuBtn.id)!
+      t.renderer.nativeSimulateMouseMove(mb.x + mb.width / 2, mb.y + mb.height / 2)
       t.renderer.nativeSimulateClick(mb.x + mb.width / 2, mb.y + mb.height / 2)
       const toolList = t.renderer.findByTestId('tool-list')!
       t.renderer.scrollTo(toolList.id, 0, -100000)

@@ -1,26 +1,27 @@
 /**
- * WorkspaceList — 侧栏列表（codex-sidebar-v2 方案 C；原型 codex-sidebar-v2）。
+ * WorkspaceList — 侧栏列表（React 原型 design/prototype-react Sidebar.tsx；
+ * R4 严格对齐——替代 codex-sidebar-v2 方案 C 的激活模型）。
  *
- * 结构（原型 .scroll）：
- * - nav 行组：全宽文字行「新建会话 / 搜索」（图标 + label；替代 v2 头部
- *   图标条——头部只剩收起钮）。
- * - 「工作区」区：pin 排序的工作区分组（箭头 toggle / 点名激活恢复
- *   lastSession / ＋ 新建会话 / 「…」+ 右键项目菜单）。当前工作区
- *   （含活跃会话或起始页激活）= 名字提亮 + 名后 5px 状态点（原型
- *   .ws-row.cur：无整行底色）。
- * - 「未归属」虚拟组：无工作区会话归入（替代 v2 独立「会话」区）；有
- *   内容才渲染，无 … 菜单（虚拟组不可 pin/rename/remove）。
+ * 结构（原型 #sidebar 中段）：
+ * - .sb-nav（固定不滚 + 底部分隔线）：全宽文字行「新建会话 / 搜索」。
+ * - .sec-head「工作区」（固定不滚）：10px/600 标签 + ＋ ghost（.75→hover 1）。
+ * - .sb-scroll：pin 排序的工作区分组（.ws-row 整行点击 = 折叠/展开——
+ *   原型无独立箭头钮、不激活工作区；ws-mark 文件夹标 + 名字 +
+ *   .acts ghost 组 hover/focus-within 显隐 + 右键/「…」同一面项目菜单）
+ *   + 「未归属会话」虚拟组（inbox 标，纯展示恒展开，无 ghost/菜单）。
  * - 组内会话：priority 排序（pin > run > queue > unread > recency，
- *   workspaces.sortThreads）+ 默认前 4 条 + Show more/less；
- *   active/focus 行不被截断（lim 自动扩展包含它）。
+ *   workspaces.sortThreads）+ 默认前 4 条 + 「显示另外 N 个/收起会话」；
+ *   active/focus 行不被截断（lim 自动扩展包含它）。.ws-body 缩进 +
+ *   1px 引导线（6% 白，看板 R4 项——React 原型 margin 1 0 5 12 无线，
+ *   保留线作归属锚点）。
  *
- * 上下文菜单（方案 C）：行内 hover 「…」与右键同一面菜单——
- * 会话：Pin / Rename… / Mark as unread / Remove；项目：Pin project /
- * Rename… / Remove project。Rename… → RenameDialog（DialogHost）。
+ * 上下文菜单：行内 hover 「…」与右键同一面菜单（原型 CtxMenu/DropMenu
+ * 同项）——会话：置顶 / 重命名… / 标记为未读 / 移除；工作区：置顶工作区 /
+ * 重命名… / 移除工作区。Rename… → RenameDialog（DialogHost）。
  *
- * 事件命中模型（T3.1）：GPUIX 子元素自带 listener 时冒泡到父 listener
- * （deepest-first）——箭头/＋/「…」钮是 .ws-name 的兄弟节点（非子级），
- * 点击天然不触发行激活，无需抑制 ref。
+ * 事件命中模型：GPUIX/gpui 鼠标事件不冒泡——命中 deepest 有 handler 的
+ * 元素；ghost 组未 hover 时 pointerEvents:none，右缘保留带点击穿透给
+ * ws-row 折叠（原型 .acts opacity 0 + pointer-events:none 同款）。
  */
 
 import { useRef, useState } from 'react'
@@ -114,36 +115,61 @@ export function WorkspaceList({
   }
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        flexGrow: 1,
-        overflowY: 'scroll',
-        // 原型 .scroll：padding 2px 8px 8px——行不再自携水平外距
-        paddingLeft: SIZES.rowMarginX,
-        paddingRight: SIZES.rowMarginX,
-        paddingTop: 2,
-        paddingBottom: 8,
-      }}
-    >
-      {/* ── nav 行组（方案 C：全宽文字行替代头部图标条）── */}
-      <NavRow testId="nav-new-chat" icon="plus" label="新建会话" onClick={() => onNewSession?.()} />
-      <NavRow testId="nav-search" icon="search" label="搜索" onClick={() => dialog.openSearch()} />
+    <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0 }}>
+      {/* ── nav 行组（原型 .sb-nav：固定不滚 + 底部分隔线）── */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          padding: 8,
+          borderBottomWidth: 1,
+          borderColor: COLORS.borderSubtle,
+          flexShrink: 0,
+        }}
+      >
+        <NavRow
+          testId="nav-new-chat"
+          icon="plus"
+          label="新建会话"
+          onClick={() => onNewSession?.()}
+        />
+        <NavRow
+          testId="nav-search"
+          icon="search"
+          label="搜索"
+          onClick={() => dialog.openSearch()}
+        />
+      </div>
 
-      {/* ── 工作区区（pin 排序；未归属虚拟组排最后）── */}
-      <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
-        <SectionHeader label="工作区">
-          {(hovered) => (
-            <GhostButton
-              testId="add-workspace"
-              label="添加工作区"
-              icon="plus"
-              visible={hovered}
-              onClick={() => dialog.openAddWorkspace()}
-            />
-          )}
-        </SectionHeader>
+      {/* ── 区头「工作区」（原型 .sec-head：固定不滚；＋ ghost .75→hover 1）── */}
+      <SectionHeader label="工作区">
+        {(hovered) => (
+          <GhostButton
+            testId="add-workspace"
+            label="添加工作区"
+            icon="plus"
+            restingOpacity={0.75}
+            visible={hovered}
+            onClick={() => dialog.openAddWorkspace()}
+          />
+        )}
+      </SectionHeader>
+
+      {/* ── 滚动区（原型 .sb-scroll：padding 2px 8px 8px；只装分组）── */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          flexGrow: 1,
+          minHeight: 0,
+          overflowY: 'scroll',
+          paddingLeft: SIZES.rowMarginX,
+          paddingRight: SIZES.rowMarginX,
+          paddingTop: 2,
+          paddingBottom: 8,
+        }}
+      >
         {sortWorkspaces(workspaces).map((ws) => (
           <WorkspaceGroup
             key={ws.id}
@@ -159,7 +185,6 @@ export function WorkspaceList({
         {unassignedIds.length > 0 ? (
           <UnassignedGroup
             store={store}
-            dialog={dialog}
             keepId={keepId}
             onFocusRow={setFocusTid}
             onThreadMenu={(tid, pos) => setMenu({ kind: 'thread', id: tid, ...pos })}
@@ -210,9 +235,10 @@ function NavRow({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        height: 30,
-        paddingLeft: 8,
-        paddingRight: 8,
+        // 原型 .nav-row（第二段）：h34 r8 pad 0 9；hover 底 surface
+        height: 34,
+        paddingLeft: 9,
+        paddingRight: 9,
         borderRadius: SIZES.rowRadius,
         cursor: 'pointer',
         hover: { backgroundColor: COLORS.surface },
@@ -251,7 +277,7 @@ function SectionHeader({
   children,
 }: {
   label: string
-  /** render-prop：原型 .sec:hover .gh——ghost 钮只在区头 hover 时显 */
+  /** render-prop：原型 .sec-head:hover .ghost——ghost 钮区头 hover 时全亮 */
   children?: (hovered: boolean) => React.ReactNode
 }) {
   const [hovered, setHovered] = useState(false)
@@ -259,55 +285,71 @@ function SectionHeader({
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onFocus={() => setHovered(true)}
+      onBlur={() => setHovered(false)}
       style={{
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
         gap: 2,
-        // 原型 .sec：定高 26 + padding 0 6/0 8（原 minHeight+上下 padding 撑到 ~32）
-        height: 26,
-        paddingLeft: 8,
-        paddingRight: 6,
+        flexShrink: 0,
+        // 原型 .sec-head（第二段）：margin-top 12 + padding 6 5 4 9 + min-h 28
+        minHeight: 28,
+        marginTop: 12,
+        paddingLeft: 9,
+        paddingRight: 5,
+        paddingTop: 6,
+        paddingBottom: 4,
       }}
     >
       <text
         style={{
-          fontSize: 12,
+          // 原型 .sec-head .t（第二段）：10px/600 大写追踪（CJK 无大小写，
+          // letter-spacing .1em 无 GPUIX 面——不映射）
+          fontSize: 10,
           fontFamily: FONT.ui,
-          fontWeight: '500',
+          fontWeight: '600',
           color: COLORS.muted,
           pointerEvents: 'none',
         }}
       >
         {label}
       </text>
-      {/* 原型 .sec .grow：ghost 钮推到行右缘 */}
+      {/* ghost 钮推到行右缘（原型 justify-content:space-between） */}
       <div style={{ flexGrow: 1 }} />
       {children?.(hovered)}
     </div>
   )
 }
 
-/** 区头/工作区行 ghost 钮（v2 .ghost：22px 圆；无 icons 时 opacity 0） */
+/** 区头/工作区行 ghost 钮（原型 .ghost：24×24 r8；sec-head 内常态 .75，
+ *  ws-head 内 0→hover 1；槽位常驻防位移） */
 function GhostButton({
   testId,
   label: _label,
   icon,
+  restingOpacity = 0,
   visible = true,
   onClick,
 }: {
   testId: string
   label: string
   icon: 'plus' | 'more'
-  /** 原型 .gh：默认 opacity 0，父行 hover/focus-visible 才显（槽位常驻防位移） */
+  /** 未 hover 时的基线透明度（sec-head .75 / ws-head 0） */
+  restingOpacity?: number
+  /** 父行 hover/focus 时 true → opacity 1 */
   visible?: boolean
   onClick: () => void
 }) {
+  // GPUIX SVG tint 只读元素自身 style.color——hover 提亮要本地态换色
+  const [hovered, setHovered] = useState(false)
   return (
     <div
       tabIndex={0}
       testId={testId}
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       onKeyDown={(e) => {
         if (e.key === 'enter' || e.key === 'space') onClick()
       }}
@@ -315,16 +357,15 @@ function GhostButton({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        width: 22,
-        height: 22,
-        borderRadius: 9999,
-        color: COLORS.muted,
+        width: 24,
+        height: 24,
+        borderRadius: 8,
         cursor: 'pointer',
-        opacity: visible ? 1 : 0,
-        hover: { backgroundColor: COLORS.surface, color: COLORS.textBright },
+        opacity: visible ? 1 : restingOpacity,
+        hover: { backgroundColor: COLORS.surface },
       }}
     >
-      <Icon name={icon} size={12} />
+      <Icon name={icon} size={12} color={hovered ? COLORS.textBright : COLORS.muted} />
     </div>
   )
 }
@@ -379,57 +420,66 @@ function SessionRows({
         />
       ))}
       {hidden > 0 ? (
-        <MoreLink testId={moreTestId} onClick={onToggleShowAll}>
-          展开其余 {hidden} 个
+        <MoreLink testId={moreTestId} icon="chevronDown" onClick={onToggleShowAll}>
+          显示另外 {hidden} 个
         </MoreLink>
       ) : showAll && sorted.length > GROUP_LIMIT ? (
-        <MoreLink testId={moreTestId} onClick={onToggleShowAll}>
-          只显示前 {GROUP_LIMIT} 个
+        <MoreLink testId={moreTestId} icon="chevronUp" onClick={onToggleShowAll}>
+          收起会话
         </MoreLink>
       ) : null}
     </>
   )
 }
 
-/** 「展开其余/只显示前 N 个」行内链接（原型 .more）。
+/** 「显示另外 N 个/收起会话」行内链接（原型 .more-link：h27 padl 7 gap 5 r5
+ *  11px muted + chevron 11；hover 2.5% 白底 + text）。
  *  children 走 JSX 插值分片（数字是独立 text 节点——测试按相邻节点断言） */
 function MoreLink({
   testId,
+  icon,
   children,
   onClick,
 }: {
   testId: string
+  icon: 'chevronDown' | 'chevronUp'
   children: React.ReactNode
   onClick: () => void
 }) {
+  const [hovered, setHovered] = useState(false)
   return (
     <div
       tabIndex={0}
       testId={testId}
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       onKeyDown={(e) => {
         if (e.key === 'enter' || e.key === 'space') onClick()
       }}
       style={{
         display: 'flex',
+        flexDirection: 'row',
         alignItems: 'center',
-        height: 26,
-        paddingLeft: 20,
-        paddingRight: 6,
-        borderRadius: SIZES.rowRadius,
+        gap: 5,
+        height: 27,
+        paddingLeft: 7,
+        paddingRight: 7,
+        borderRadius: 5,
         cursor: 'pointer',
-        hover: { backgroundColor: COLORS.surface },
+        hover: { backgroundColor: 'rgba(255,255,255,0.025)' },
       }}
     >
+      <Icon name={icon} size={11} color={hovered ? COLORS.text : COLORS.muted} />
       <text
         style={{
-          // 插值分片（「展开其余 {n} 个」= 3 个 text 子节点）默认 column
+          // 插值分片（「显示另外 {n} 个」= 3 个 text 子节点）默认 column
           // 堆叠会竖排折行——flex row 让它们横排成一行
           display: 'flex',
           flexDirection: 'row',
-          fontSize: 11.5,
+          fontSize: 11,
           fontFamily: FONT.ui,
-          color: COLORS.muted,
+          color: hovered ? COLORS.text : COLORS.muted,
           whiteSpace: 'nowrap',
           pointerEvents: 'none',
         }}
@@ -440,17 +490,16 @@ function MoreLink({
   )
 }
 
-// ── 未归属虚拟组（无工作区会话；有内容才渲染，无 … 菜单）─────────────
+// ── 未归属虚拟组（原型 .ws-row.unassigned：inbox 标 + 恒展开纯展示，
+//  无折叠/点击/ghost/菜单）────────────────────────────────────────────
 
 function UnassignedGroup({
   store,
-  dialog,
   keepId,
   onFocusRow,
   onThreadMenu,
 }: {
   store: ThreadStore
-  dialog: DialogOpener
   keepId: string | null
   onFocusRow: (threadId: string) => void
   onThreadMenu: (threadId: string, pos: { x: number; y: number }) => void
@@ -461,95 +510,56 @@ function UnassignedGroup({
       .map((t) => t.id)
       .join(','),
   )
-  // 虚拟组：expanded/showAll 是本地态（无工作区实体可持久化）
-  const [expanded, setExpanded] = useState(true)
+  // 虚拟组：showAll 是本地态（无工作区实体可持久化）
   const [showAll, setShowAll] = useState(false)
-  const [hovered, setHovered] = useState(false)
 
   const sessions = sessionIds === '' ? [] : sessionIds.split(',')
   if (sessions.length === 0) return null
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <div
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        onFocus={() => setHovered(true)}
-        onBlur={() => setHovered(false)}
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          height: 28,
-          paddingLeft: 2,
-          paddingRight: 2,
-          userSelect: 'none',
-        }}
-      >
-        {/* 展开箭头（同 WorkspaceGroup .chev：16×26 独立钮 + 10px 图标） */}
-        <div
-          testId="workspace-toggle-unassigned"
-          tabIndex={0}
-          onClick={() => setExpanded((v) => !v)}
-          onKeyDown={(e) => {
-            if (e.key === 'enter' || e.key === 'space') setExpanded((v) => !v)
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 16,
-            height: 26,
-            flexShrink: 0,
-            borderRadius: 5,
-            cursor: 'pointer',
-            hover: { backgroundColor: COLORS.surface },
-          }}
-        >
-          <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={10} color={COLORS.faint} />
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 3 }}>
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'row', flexShrink: 0 }}>
+        {/* 原型 .ws-row.unassigned：h34 pad 0 5，cursor default（纯分组标，
+            不折叠不激活） */}
         <div
           testId="workspace-unassigned"
-          tabIndex={0}
-          onClick={() => {
-            // 点组名 = 激活组内最高优先级会话（原型 ws-name 语义）
-            const first = sortThreads(
-              store.getState().threads.filter((t) => t.workspaceId == null),
-            )[0]
-            if (first) store.activate({ type: 'thread', id: first.id })
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'enter') {
-              const first = sortThreads(
-                store.getState().threads.filter((t) => t.workspaceId == null),
-              )[0]
-              if (first) store.activate({ type: 'thread', id: first.id })
-            }
-          }}
           style={{
             display: 'flex',
             flexDirection: 'row',
             flexGrow: 1,
             minWidth: 0,
             alignItems: 'center',
-            height: 26,
-            paddingLeft: 6,
-            paddingRight: 6,
-            gap: 5,
+            height: 34,
+            paddingLeft: 5,
+            paddingRight: 5,
+            gap: 7,
             borderRadius: SIZES.rowRadius,
-            cursor: 'pointer',
-            hover: { backgroundColor: COLORS.surface },
+            cursor: 'default',
+            userSelect: 'none',
           }}
         >
-          <Icon name="folder" size={12} color={COLORS.muted} />
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 22,
+              height: 22,
+              flexShrink: 0,
+              borderRadius: 5,
+              pointerEvents: 'none',
+            }}
+          >
+            <Icon name="inbox" size={13} color={COLORS.muted} />
+          </div>
           <text
             testId="workspace-name-unassigned"
             style={{
               flexGrow: 1,
               minWidth: 0,
-              fontSize: 13,
+              fontSize: 12.5,
               fontFamily: FONT.ui,
-              fontWeight: '500',
+              fontWeight: '550',
               color: COLORS.text,
               whiteSpace: 'nowrap',
               textOverflow: 'ellipsis',
@@ -557,58 +567,36 @@ function UnassignedGroup({
               pointerEvents: 'none',
             }}
           >
-            未归属
+            未归属会话
           </text>
-        </div>
-        {/* ＋：新建会话弹窗（未归属目标）。无 … 菜单——
-            虚拟组不可 pin/rename/remove */}
-        <div
-          tabIndex={0}
-          testId="new-menu-unassigned"
-          onClick={() => dialog.openToolMenu('')}
-          onKeyDown={(e) => {
-            if (e.key === 'enter' || e.key === 'space') dialog.openToolMenu('')
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 22,
-            height: 22,
-            flexShrink: 0,
-            borderRadius: 9999,
-            opacity: hovered ? 1 : 0,
-            hover: { backgroundColor: COLORS.surfaceHover },
-          }}
-        >
-          <Icon name="plus" size={12} color={COLORS.muted} />
         </div>
       </div>
 
-      {expanded ? (
-        // 原型 .ws-body：margin-left 17 + padding-left 8 + 1px 竖引导线
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            marginLeft: 17,
-            paddingLeft: 8,
-            borderLeftWidth: 1,
-            borderColor: 'rgba(255,255,255,0.06)',
-          }}
-        >
-          <SessionRows
-            store={store}
-            threadIds={sessions}
-            showAll={showAll}
-            onToggleShowAll={() => setShowAll((v) => !v)}
-            keepId={keepId}
-            onFocusRow={onFocusRow}
-            onThreadMenu={onThreadMenu}
-            moreTestId="load-more-unassigned"
-          />
-        </div>
-      ) : null}
+      {/* ws-body：margin 1 0 5 12（原型值）+ 1px 竖引导线（6% 白——看板
+          R4 项，React 原型无线，保留作归属锚点；线占原型行左缘那 1px，
+          行 x/w 与原型一致：x=21 w=235 vs 原型 x=20 w=235） */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          marginLeft: 12,
+          marginTop: 1,
+          marginBottom: 5,
+          borderLeftWidth: 1,
+          borderColor: 'rgba(255,255,255,0.06)',
+        }}
+      >
+        <SessionRows
+          store={store}
+          threadIds={sessions}
+          showAll={showAll}
+          onToggleShowAll={() => setShowAll((v) => !v)}
+          keepId={keepId}
+          onFocusRow={onFocusRow}
+          onThreadMenu={onThreadMenu}
+          moreTestId="load-more-unassigned"
+        />
+      </div>
     </div>
   )
 }
@@ -641,14 +629,6 @@ function WorkspaceGroup({
       .map((t) => t.id)
       .join(','),
   )
-  // 当前工作区（D10 4% 底 + 5px 点）：起始页激活 or 活跃会话归属
-  const active = useActiveTarget()
-  const isCurrent = useThreadStore(store, (s) => {
-    if (active?.type === 'workspace') return active.id === workspaceId
-    if (active?.type === 'thread')
-      return s.threads.find((t) => t.id === active.id)?.workspaceId === workspaceId
-    return false
-  })
   const [hovered, setHovered] = useState(false)
   /** 行上最后一次指针位置（键盘打开菜单的定位兜底） */
   const lastPointer = useRef({ x: 0, y: 0 })
@@ -657,9 +637,10 @@ function WorkspaceGroup({
   const sessions = sessionIds === '' ? [] : sessionIds.split(',')
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
-      {/* 原型 .ws-head：height 28 + padding 0 2（名字行/ghost 钮内缩 2px）；
-          hover 在 .ws-name 段。右键 = 「…」同一面项目菜单 */}
+    // 原型 .ws-group：组间距 margin-bottom 3
+    <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 3 }}>
+      {/* 原型 .ws-head：relative（.acts 绝对定位的锚）。右键 = 「…」同一面
+          项目菜单；hover/focus-within 亮 ghost（.ghost 0→1 + pe 恢复） */}
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
@@ -672,51 +653,28 @@ function WorkspaceGroup({
           if (e.isRightClick) onMenu({ x: e.x ?? 0, y: e.y ?? 0 })
         }}
         style={{
+          position: 'relative',
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
-          height: 28,
-          paddingLeft: 2,
-          paddingRight: 2,
+          flexShrink: 0,
           userSelect: 'none',
         }}
       >
-        {/* 展开箭头（原型 .chev：16×26 独立钮 + 10px 图标，仅 toggle 不激活）。
-            移出 .ws-name 作兄弟节点——点击天然不触发行激活，无需 skipRow */}
+        {/* 原型 .ws-row：h34 pad 0 50 0 5 gap 7 r8——整行点击 = 折叠/展开
+            （React 原型无独立箭头钮、不激活工作区；Enter/Space toggle，
+            ArrowRight 展开、ArrowLeft 收起。GPUI key 名 = left/right，
+            兼容 DOM 风格 arrowleft/arrowright） */}
         <div
-          testId={`workspace-toggle-${ws.id}`}
+          testId={`workspace-${ws.id}`}
           tabIndex={0}
           onClick={() => store.toggleWorkspaceExpanded(ws.id)}
           onKeyDown={(e) => {
             if (e.key === 'enter' || e.key === 'space') store.toggleWorkspaceExpanded(ws.id)
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 16,
-            height: 26,
-            flexShrink: 0,
-            borderRadius: 5,
-            cursor: 'pointer',
-            hover: { backgroundColor: COLORS.surface },
-          }}
-        >
-          <Icon
-            name={ws.expanded ? 'chevronDown' : 'chevronRight'}
-            size={10}
-            color={COLORS.faint}
-          />
-        </div>
-        {/* .ws-name（folder + 名 + dot5）：点行激活；重命名走菜单 Rename… */}
-        <div
-          testId={`workspace-${ws.id}`}
-          tabIndex={0}
-          onClick={() => {
-            store.activateWorkspace(ws.id)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'enter') store.activateWorkspace(ws.id)
+            else if ((e.key === 'right' || e.key === 'arrowright') && !ws.expanded)
+              store.toggleWorkspaceExpanded(ws.id)
+            else if ((e.key === 'left' || e.key === 'arrowleft') && ws.expanded)
+              store.toggleWorkspaceExpanded(ws.id)
           }}
           style={{
             display: 'flex',
@@ -724,27 +682,40 @@ function WorkspaceGroup({
             flexGrow: 1,
             minWidth: 0,
             alignItems: 'center',
-            height: 26,
-            paddingLeft: 6,
-            paddingRight: 6,
-            gap: 5,
+            height: 34,
+            paddingLeft: 5,
+            paddingRight: 50,
+            gap: 7,
             borderRadius: SIZES.rowRadius,
             cursor: 'pointer',
-            // 原型 .ws-row:hover（hover 在行上，非 ws-head 容器）
-            hover: { backgroundColor: COLORS.surface },
+            hover: { backgroundColor: 'rgba(255,255,255,0.035)' },
           }}
         >
-          <Icon name="folder" size={12} color={COLORS.muted} />
+          {/* .ws-mark：22×22 槽位 folder 13，行 hover muted→text */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 22,
+              height: 22,
+              flexShrink: 0,
+              borderRadius: 5,
+              pointerEvents: 'none',
+            }}
+          >
+            <Icon name="folder" size={13} color={hovered ? COLORS.text : COLORS.muted} />
+          </div>
           <text
             testId={`workspace-name-${ws.id}`}
             style={{
               flexGrow: 1,
               minWidth: 0,
-              fontSize: 13,
+              // 原型 .ws-row .name：12.5px/550
+              fontSize: 12.5,
               fontFamily: FONT.ui,
-              fontWeight: '500',
-              // 原型 .ws-row.cur .name：当前工作区名提亮
-              color: isCurrent ? COLORS.textBright : COLORS.text,
+              fontWeight: '550',
+              color: COLORS.text,
               whiteSpace: 'nowrap',
               textOverflow: 'ellipsis',
               overflow: 'hidden',
@@ -753,84 +724,55 @@ function WorkspaceGroup({
           >
             {ws.name}
           </text>
-          {/* 当前工作区 5px 状态点（原型 .cur-dot） */}
-          {isCurrent ? (
-            <div
-              style={{
-                width: 5,
-                height: 5,
-                borderRadius: 9999,
-                backgroundColor: COLORS.g300,
-                flexShrink: 0,
-              }}
-            />
-          ) : null}
         </div>
-        {/* 行尾 ghost 钮组（原型 .gh 槽位常驻 + gap 2）：「…」项目菜单 + ＋ 新建会话。
-            与 .ws-name 是兄弟节点——点击不触发行激活，无需 skipRow */}
-        <div style={{ display: 'flex', flexDirection: 'row', gap: 2, flexShrink: 0 }}>
-          <div
-            tabIndex={0}
+        {/* 原型 .ws-head .acts：absolute right 3 top 5——「…」项目菜单 + ＋
+            新建会话（ghost 24×24）；未 hover 时 opacity 0 + pe:none
+            （右缘 50px 保留带内点击穿透给 ws-row 折叠） */}
+        <div
+          style={{
+            position: 'absolute',
+            right: 3,
+            top: 5,
+            display: 'flex',
+            flexDirection: 'row',
+            flexShrink: 0,
+            opacity: hovered ? 1 : 0,
+            pointerEvents: hovered ? 'auto' : 'none',
+          }}
+        >
+          <GhostButton
             testId={`menu-workspace-${ws.id}`}
-            onClick={(e) => {
-              onMenu({ x: e.x ?? lastPointer.current.x, y: e.y ?? lastPointer.current.y })
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'enter' || e.key === 'space') onMenu(lastPointer.current)
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 22,
-              height: 22,
-              flexShrink: 0,
-              borderRadius: 9999,
-              opacity: hovered ? 1 : 0,
-              hover: { backgroundColor: COLORS.surfaceHover },
-            }}
-          >
-            <Icon name="more" size={12} color={COLORS.muted} />
-          </div>
-          <div
-            tabIndex={0}
+            label="工作区菜单"
+            icon="more"
+            onClick={() => onMenu(lastPointer.current)}
+          />
+          <GhostButton
             testId={`new-menu-${ws.id}`}
+            label="新建会话"
+            icon="plus"
             onClick={() => dialog.openToolMenu(ws.id)}
-            onKeyDown={(e) => {
-              if (e.key === 'enter' || e.key === 'space') dialog.openToolMenu(ws.id)
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 22,
-              height: 22,
-              flexShrink: 0,
-              borderRadius: 9999,
-              opacity: hovered ? 1 : 0,
-              hover: { backgroundColor: COLORS.surfaceHover },
-            }}
-          >
-            <Icon name="plus" size={12} color={COLORS.muted} />
-          </div>
+          />
         </div>
       </div>
 
       {ws.expanded ? (
-        // 原型 .ws-body：margin-left 17（对齐箭头中心）+ padding-left 8 +
-        // 1px 竖引导线（6% 白——会话行有归属锚点，选中高亮块不悬空）
+        // .ws-body：margin 1 0 5 12（原型值）+ 1px 竖引导线（6% 白——看板
+        // R4 项，React 原型无线，保留作归属锚点；线占原型行左缘那 1px，
+        // 行 x/w 与原型一致：x=21 w=235 vs 原型 x=20 w=235）
         <div
           style={{
             display: 'flex',
             flexDirection: 'column',
-            marginLeft: 17,
-            paddingLeft: 8,
+            marginLeft: 12,
+            marginTop: 1,
+            marginBottom: 5,
             borderLeftWidth: 1,
             borderColor: 'rgba(255,255,255,0.06)',
           }}
         >
           {sessions.length === 0 ? (
-            /* 空组引导（原型 .empty：h22 + padding 0 8，与会话行同槽位） */
+            /* 空组引导（原型 .ws-empty-hint：h28 pad 0 7 gap 6 r5 +
+               plus 11 + 11.5px muted「启动第一个会话」） */
             <div
               tabIndex={0}
               testId={`workspace-create-first-${ws.id}`}
@@ -840,24 +782,27 @@ function WorkspaceGroup({
               }}
               style={{
                 display: 'flex',
+                flexDirection: 'row',
                 alignItems: 'center',
-                height: 22,
-                paddingLeft: SIZES.rowPaddingX,
-                paddingRight: SIZES.rowPaddingX,
-                borderRadius: 4,
+                gap: 6,
+                height: 28,
+                paddingLeft: 7,
+                paddingRight: 7,
+                borderRadius: 5,
                 cursor: 'pointer',
-                hover: { backgroundColor: COLORS.surface },
+                hover: { backgroundColor: 'rgba(255,255,255,0.035)' },
               }}
             >
+              <Icon name="plus" size={11} color={COLORS.muted} />
               <text
                 style={{
-                  fontSize: 11,
+                  fontSize: 11.5,
                   fontFamily: FONT.ui,
                   color: COLORS.muted,
                   pointerEvents: 'none',
                 }}
               >
-                创建第一个会话
+                启动第一个会话
               </text>
             </div>
           ) : (

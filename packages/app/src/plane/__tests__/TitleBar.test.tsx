@@ -5,7 +5,7 @@
  * 平台行为参数化注入（TitleBar/SidebarHeader 接 platform prop），
  * 三分支在同一台机器上可测。
  *
- * V2 布局：侧栏整列（含 52px 头）+ 主列（46px 工具栏）。测试还原
+ * V2 布局：侧栏整列（含 46px 头）+ 主列（44+38 两行顶栏）。测试还原
  * 真实两列结构——SidebarHeader 代表左列，外层列容器代表 main。
  */
 
@@ -66,17 +66,18 @@ function plane(wc: WindowControls, platform: 'mac' | 'win' | 'linux', titleBarPr
 // ── mac：红绿灯让位在 SidebarHeader 段；工具栏 46px / 左 padding 12 ──
 
 describe('TitleBar · mac', () => {
-  test(`SidebarHeader 让位红绿灯（52px 头），两行顶栏 44+38`, () => {
+  test(`SidebarHeader 让位红绿灯（46px 头），两行顶栏 44+38`, () => {
     const { wc } = controlsSpy()
     t.render(plane(wc, 'mac', { contextLabel: 'j-agent', panelOpen: false }))
     t.renderer.flush()
 
     // padding 不放在横向 flex item 上，因此整个左段与内容列严格
-    // 对齐；v2：侧栏头 52px、无 AGENT 标签（红绿灯让位由左占位承担）。
+    // 对齐；R4：侧栏头 46px（原型 .sb-head）、无 AGENT 标签（红绿灯
+    // 让位由左占位承担）。46 定高含 1px 底部分隔线 → content-box 45
     const header = boundsOf('sidebar-header')
     expect(header[0]).toBe(0)
     expect(header[2]).toBe(248)
-    expect(header[3]).toBe(52)
+    expect(header[3]).toBe(45)
 
     // SidebarHeader marginRight:6 给拖拽把手让出命中带 → 右列从 254 起
     const bar = boundsOf('titlebar')

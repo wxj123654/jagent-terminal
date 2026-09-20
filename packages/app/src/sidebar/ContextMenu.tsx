@@ -1,9 +1,11 @@
 /**
- * sidebar/ContextMenu.tsx — 侧栏上下文菜单（codex-sidebar-v2 方案 C）。
+ * sidebar/ContextMenu.tsx — 侧栏上下文菜单（React 原型 .ctx-menu）。
  *
- * 行内 hover 「…」与右键同一面菜单（原型 ctx：Pin / Rename / Mark as
- * unread / Remove）。承载 = Popover（anchored + deferred + occlude +
- * onMouseDownOutside/Esc 关闭）；项 = 26px 行，danger 红字。
+ * 行内 hover 「…」与右键同一面菜单（原型 ctx：置顶 / 重命名… /
+ * 标记为未读 / 移除）。承载 = Popover（anchored + deferred + occlude +
+ * onMouseDownOutside/Esc 关闭）；项 = h30 r6 行，danger 红字（bell）。
+ * 浮层 chrome 按原型：minWidth 180、r12、1px borderSubtle、
+ * boxShadow 0 14px 38px rgba(0,0,0,.45)、padding 4。
  *
  * 定位：调用方给窗口坐标（onAuxClick/onClick 的 e.x/e.y；键盘打开时
  * 用行上最后一次 mouseMove 位置兜底）。菜单项点击后一律关单。
@@ -33,7 +35,17 @@ export function ContextMenu({
       onClose={onClose}
       minWidth={180}
       autoFocus
-      style={{ padding: 4 }}
+      style={{
+        padding: 4,
+        borderRadius: 12,
+        boxShadow: {
+          offsetX: 0,
+          offsetY: 14,
+          blurRadius: 38,
+          spreadRadius: 0,
+          color: 'rgba(0,0,0,0.45)',
+        },
+      }}
     >
       {items.map((it, i) =>
         it === 'sep' ? (
@@ -67,12 +79,13 @@ export function ContextMenu({
               display: 'flex',
               flexDirection: 'row',
               alignItems: 'center',
-              height: 26,
-              paddingLeft: 8,
-              paddingRight: 8,
-              borderRadius: 4,
+              // 原型 .ctx-item：h30 r6 pad 0 9，hover 底 surfaceHover
+              height: 30,
+              paddingLeft: 9,
+              paddingRight: 9,
+              borderRadius: 6,
               cursor: 'pointer',
-              hover: { backgroundColor: COLORS.surface },
+              hover: { backgroundColor: COLORS.surfaceHover },
             }}
           >
             <text

@@ -1,20 +1,22 @@
 /**
- * ThreadRow — 列表行（布局契约 §4；architecture.md §5；codex-sidebar-v2）。
+ * ThreadRow — 列表行（React 原型 .t-row；布局契约 §4；architecture.md §5）。
  *
  * zustand 按粒度订阅：只订自己那行（immer 结构共享 → 引用不变即跳过渲染）。
- * 局部态（hover）useState，不上 store。
+ * 局部态（hover/menuHover）useState，不上 store。
  *
- * 方案 C 契约要点：
- * - 13px 标题，单行 ellipsis；行高 28，圆角 6（--r-nav），选中 = 10% 白底
- * - unread 一等状态：标题加粗亮色 + 状态点（7px muted）；打开即已读
- *   （store.activate 清），菜单可手动标回（待办语义）
- * - pin：标题前 10px 图钉图标（faint）；排序在 WorkspaceList.sortThreads
- * - 状态点（D12，诚实语义）：chat/acp pendingReply = 进行中（橙呼吸光晕）；
- *   hasBell = 等待注意（紫光晕）；消息 error = 红；exited = 无点 + 灰字；
- *   idle = 无点，仅选中行显 9px 空心环（g300）。terminal「存活」不显示
- *   running——PTY 活着 ≠ agent 在工作（不伪造完成/等待态）。
- * - 「…」菜单槽固定 22px 宽（占位不位移）；图标 hover/focus/active 可见；
- *   「…」与右键（onAuxClick）开同一面上下文菜单（onMenu 回调，坐标定位）
+ * 原型行契约要点：
+ * - h32 / r8 / pad 0 3·0 5 / gap 6；active 底 surfaceActive，hover 3.5% 白
+ * - 行头 .thread-kind tile：20×20 r5（2.5% 白底，kind 色 12px 图标——
+ *   terminal 绿 / chat accent / acp 紫）；状态点缩成 tile 右下角角标
+ *   （6px 点 + 1.5px sidebar 描边半出外缘；idle-on = surfaceActive + g300）
+ * - 12.5px 标题单行 ellipsis；unread = 600 + textBright；exited = 压灰
+ *   （exited tile 转 transparent + 图标同色灰）；active 提亮
+ * - pin：标题后右缘 12px 图钉（faint）；排序在 workspaces.sortThreads
+ * - 「…」菜单槽固定 22px（不占位→位移；r8，hover 底 closeHover + 图标提
+ *   亮）；「…」与右键（onAuxClick）开同一面上下文菜单（onMenu 回调定位）
+ * - 状态点（D12，诚实语义）：chat/acp pendingReply = 橙（running）；hasBell
+ *   = 紫（need）；error = 红；done 绿预留；unread = muted 点；exited/idle
+ *   无点。terminal「存活」不显示 running——PTY 活着 ≠ agent 在工作。
  * - 重命名走上下文菜单 Rename… → RenameDialog；Delete/Backspace 关闭；Enter 激活
  *
  * 事件命中模型：GPUIX/gpui 事件不冒泡——命中 deepest 有 handler 的元素。
@@ -67,6 +69,45 @@ export function statusDot(thread: Thread): DotState {
   if (last && last.role === 'assistant' && last.error) return 'error'
   if (thread.unread) return 'unread'
   return 'idle'
+}
+
+/** 行头 kind 图标（原型 KIND_ICON：terminal/chat/acp） */
+const KIND_ICON = { terminal: 'terminal', chat: 'chat', acp: 'acp' } as const
+
+/** tile 右下角状态角标（原型 .t-row .thread-kind .dot：6px 点 + 1.5px
+ *  sidebar 色描边，半出 tile 右下外缘；idle-on = 7px surfaceActive +
+ *  g300 描边。exited/idle 无点）。GPUIX border 计盒内 → 盒 9/10px。 */
+function TileDot({ state }: { state: DotState }) {
+  if (state === 'exited' || state === 'idle') return null
+  const idleOn = state === 'idle-on'
+  const bg = idleOn
+    ? COLORS.surfaceActive
+    : state === 'running'
+      ? COLORS.statusRunning
+      : state === 'need'
+        ? COLORS.statusNeed
+        : state === 'done'
+          ? COLORS.statusDone
+          : state === 'error'
+            ? COLORS.statusError
+            : COLORS.muted // unread
+  return (
+    <div
+      testId={idleOn ? 'dot-idle-on' : `dot-${state}`}
+      style={{
+        position: 'absolute',
+        right: -2,
+        bottom: -2,
+        width: idleOn ? 10 : 9,
+        height: idleOn ? 10 : 9,
+        borderRadius: 9999,
+        backgroundColor: bg,
+        borderWidth: 1.5,
+        borderColor: idleOn ? COLORS.g300 : COLORS.sidebar,
+        flexShrink: 0,
+      }}
+    />
+  )
 }
 
 /** 状态点（SessionTabs 主面 tab 复用同一视觉——无点态返回 null） */
@@ -147,6 +188,7 @@ export function ThreadRow({
   const thread = useThreadStore(store, (s) => s.threads.find((t) => t.id === id))
   const active = useActiveTarget()
   const [hovered, setHovered] = useState(false)
+  const [menuHovered, setMenuHover] = useState(false)
   /** 行上最后一次指针位置（键盘打开菜单的定位兜底——GPUIX 无元素 bounds 读面） */
   const lastPointer = useRef({ x: 0, y: 0 })
 
@@ -156,9 +198,18 @@ export function ThreadRow({
   const unread = !exited && !!thread.unread
   const rawDot = statusDot(thread)
   const dot: DotState = rawDot === 'idle' && isActive ? 'idle-on' : rawDot
-  const showMenu = hovered || isActive
+  const showMenu = hovered || menuHovered || isActive
 
-  // unread：标题加粗提亮（原型 .row.unread .ttl：t1 + 560）；exited 压灰优先
+  // 原型 .thread-kind：tile 面色按 kind（terminal 绿 / chat accent / acp 紫）；
+  // exited 图标同色压灰 + tile 透明
+  const kindColor = exited
+    ? COLORS.exited
+    : thread.kind === 'terminal'
+      ? COLORS.terminalKind
+      : thread.kind === 'chat'
+        ? COLORS.accent
+        : COLORS.acpKind
+  // unread：标题加粗提亮（原型 .ttl.unread：600 + textBright）；exited 压灰优先
   const titleColor = exited ? COLORS.exited : isActive || unread ? COLORS.textBright : COLORS.text
 
   const openMenu = (pos?: { x?: number; y?: number }) =>
@@ -195,43 +246,47 @@ export function ThreadRow({
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
+        // 原型 .t-row（第二段）：h32 r8 pad 0 3/0 5 gap 6；active 底
+        // surfaceActive；hover 3.5% 白（active 行 hover 仍是 surfaceActive）
+        gap: 6,
         height: SIZES.rowHeight,
-        paddingLeft: 4,
-        paddingRight: 4,
+        paddingLeft: 5,
+        paddingRight: 3,
         borderRadius: SIZES.rowRadius,
         backgroundColor: isActive ? COLORS.surfaceActive : 'transparent',
-        hover: { backgroundColor: isActive ? COLORS.surfaceActive : COLORS.surface },
+        hover: {
+          backgroundColor: isActive ? COLORS.surfaceActive : 'rgba(255,255,255,0.035)',
+        },
         cursor: 'pointer',
         userSelect: 'none',
       }}
     >
-      {/* 状态点槽（原型 .stt 18px 盒）：dot 居中 */}
+      {/* .thread-kind tile（20×20 r5，2.5% 白底，kind 色图标 12）——状态点
+          缩成 tile 右下角角标（6px 点 + 1.5px sidebar 色描边半出外缘） */}
       <div
         style={{
+          position: 'relative',
           display: 'flex',
-          width: 18,
-          justifyContent: 'center',
           alignItems: 'center',
+          justifyContent: 'center',
+          width: 20,
+          height: 20,
+          borderRadius: 5,
           flexShrink: 0,
+          backgroundColor: exited ? 'transparent' : 'rgba(255,255,255,0.025)',
+          pointerEvents: 'none',
         }}
       >
-        <Dot state={dot} />
+        <Icon name={KIND_ICON[thread.kind]} size={12} color={kindColor} />
+        <TileDot state={dot} />
       </div>
-
-      {/* pin 图钉（原型 .pin-ic：标题前 12px，faint） */}
-      {thread.pin ? (
-        <div style={{ display: 'flex', marginRight: 2, flexShrink: 0, pointerEvents: 'none' }}>
-          <Icon name="pin" size={12} color={COLORS.faint} />
-        </div>
-      ) : null}
 
       <text
         style={{
           flexGrow: 1,
           minWidth: 0,
-          marginLeft: 4,
-          marginRight: 4,
-          fontSize: 13,
+          // 原型 .ttl：12.5px；unread 600 textBright；exited 压灰；active 提亮
+          fontSize: 12.5,
           fontFamily: FONT.ui,
           fontWeight: unread ? '600' : undefined,
           color: titleColor,
@@ -244,7 +299,15 @@ export function ThreadRow({
         {rowTitle(thread)}
       </text>
 
-      {/* 「…」菜单槽固定 22px（D11：不占位→位移；图标 hover/active/focus 显）。
+      {/* pin 图钉（原型 .pin-ic：标题后右缘，faint 12px） */}
+      {thread.pin ? (
+        <div style={{ display: 'flex', flexShrink: 0, pointerEvents: 'none' }}>
+          <Icon name="pin" size={12} color={COLORS.faint} />
+        </div>
+      ) : null}
+
+      {/* 「…」菜单槽固定 22px（不占位→位移；图标 hover/active/focus 显；
+          原型 .menu-btn r8，hover 底 closeHover + 图标提亮）。
           点击开上下文菜单（坐标 = 点击点）；键盘 enter/space 用 lastPointer 兜底 */}
       <div
         testId={`menu-thread-${id}`}
@@ -253,19 +316,21 @@ export function ThreadRow({
         onKeyDown={(e) => {
           if (e.key === 'enter' || e.key === 'space') openMenu()
         }}
+        onMouseEnter={() => setMenuHover(true)}
+        onMouseLeave={() => setMenuHover(false)}
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           width: 22,
           height: 22,
-          borderRadius: 9999,
+          borderRadius: 8,
           flexShrink: 0,
           opacity: showMenu ? 1 : 0,
           hover: { backgroundColor: COLORS.closeHover },
         }}
       >
-        <Icon name="more" size={12} color={COLORS.muted} />
+        <Icon name="more" size={12} color={menuHovered ? COLORS.textBright : COLORS.muted} />
       </div>
     </div>
   )

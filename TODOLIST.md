@@ -416,7 +416,7 @@
     home→home）；tab 中键关 + Enter/Space 激活；「+」浮层三项+文件列表。
   - 验收：geom 逐字段对齐 ✓ + TitleBar.test / SessionTabs.test 更新 ✓。
     结论详见 Phase R 结论区（R2）。
-- [ ] **R3 Pane 调度 + FileSurface + SessionShell**
+- [x] **R3 Pane 调度 + FileSurface + SessionShell** ✅ 2026-09-20
   - 锚点：panes.tsx `Pane()` 调度序（thread.views 命中 → git→归属 ws 的
     GitGraphView / file→FileSurface / shell→SessionShell；失效 id/无视图 → 主面；
     ws 已删 → 回主面）。
@@ -425,17 +425,23 @@
     原型 PREVIEWS 假数据不搬）、`surfaces/TerminalSurface.tsx` SessionTerminal
     （独立 PTY；外观四设置同主面）。
   - 验收：三视图截图对齐 + 视图切换 PTY retain（切走不销毁进程）+ close 视图
-    后 PTY 真销毁。
-- [ ] **R4 侧栏全件**
+    后 PTY 真销毁。结论详见 Phase R 结论区（R3）。
+- [x] **R4 侧栏全件** ✅ 2026-09-20
   - 锚点：`src/components/Sidebar.tsx`（threadMenuItems/wsMenuItems/WorkspaceGroup/
     Unassigned/ThreadRow）+ index.css `.sb-*`/`.nav-row`/`.sec-head`/`.ghost`/
-    `.ws-*`/`.t-row`/notif popover。几何：sb-head 52 / nav-row 30 / sec-head
-    min-h 28 / ws-row 32 / ghost 24px opacity 显隐规则 / .foot 顶分隔线。
+    `.ws-*`/`.t-row`/notif popover。~~几何：sb-head 52 / nav-row 30 / sec-head
+    min-h 28 / ws-row 32~~ **更正（geom-proto 实测，R2 同款第二段裁决）**：
+    sb-head 46+底边 / nav-row 34 r8 pad 0 9 / sec-head min-h 28+mt12 /
+    ws-row 34 r8 pad 0 50·5 / t-row 32 r8 / ghost 24 r8 opacity 显隐规则 /
+    .foot pad8+顶分隔线。
   - app：`plane/Sidebar.tsx`、`WorkspaceList.tsx`、`ThreadRow.tsx`、`ContextMenu.tsx`。
-  - 逐项：nav 行组（新建会话/搜索）、sec-head「工作区」+＋显隐、ws-head 展开
-    箭头/名字/ghost 组、ws-body 缩进+1px 引导线（06% 白）、sortThreads 排序+
-    截断+Show more/less、unassigned 虚拟组、通知条目点击已读+跳转、sb-foot
-    版本号、两级上下文菜单项与原型一致（含 disabled 态）。
+  - 逐项：nav 行组（新建会话/搜索）、sec-head「工作区」+＋显隐、ws-head
+    ~~展开箭头/名字/ghost 组~~ **拍板（严格按原型）**：ws-row 整行 = 折叠/
+    展开，无箭头钮、不激活工作区、无当前高亮（Enter/Space toggle +
+    ArrowRight 展开/ArrowLeft 收起）、ws-body 缩进+1px 引导线（06% 白）、
+    sortThreads 排序+截断+显示另外 N 个/收起会话、unassigned 虚拟组纯展示
+    恒展开、通知条目点击已读+跳转、sb-foot 版本号、两级上下文菜单项与
+    原型一致（含 disabled 态）。结论详见 Phase R 结论区（R4）。
 - [ ] **R5 工作面板 WorkPanel**
   - 锚点：`src/components/WorkPanel.tsx`（ChangeRow/FileRow/Diff/Preview）+
     index.css `.wp-*`。契约：默认收起、拖宽 244–720、<1100 覆盖式不压终端、
@@ -539,6 +545,67 @@
   测试：TitleBar.test 高度断言改 43/37/82 + padLeft 0 + first ml6；
   app 354 + 双包 tsc + fmt/lint 全绿（window-visibility 单跑偶超时 =
   PowerShell 冷启动基线，非本次引入）。
+
+- **R3（Pane 调度 + FileSurface + SessionShell，2026-09-20）**：
+  **调度序逐条核对 = 与原型一致**（settings→workspace→thread 视图
+  调度→主面；git 视图归属 ws 已删/失效 id 均回主面；死 id 穿透落
+  EmptyPresets）。**FileSurface**：几何 R0 已修齐（pathbar 32/gap7/
+  pad12/border；code-view mono11 lh17 行号 34+10 列；`whiteSpace:
+  'nowrap'` 等价原型 `pre`——GPUIX 只控换行不折叠空白）；本轮补一
+  处真 bug——路径条 Icon 缺 `color`（svg tint 不继承父级，R2 补录
+  事实），改 `COLORS.muted`。**SessionTerminal**：R1 备忘「exited
+  bar」落地——签名 `sessionId` → `view: ShellView`（拿
+  status/exitCode），`view.status==='exited'` 时底部画 26px 退出条
+  （pane 底 + borderTop + mono11 exited 色「[进程已退出 · exit
+  code N]」，exitCode null 时省略码）。**TerminalView 外层去
+  `width/height:'100%'`**：改 flexGrow+minWidth/minHeight——主面
+  （workbench 行内 stretch）与视图列内（+退出条兄弟）两父布局都
+  正确，100% 会把兄弟挤出界。**有意偏离**：主 TerminalSurface 保
+  持「残留网格」无退出条（Phase 1 不变量 3 先例；备忘只圈
+  SessionTerminal）。验收：截图 sess-main 2.53 / sess-git 6.40 /
+  sess-file 3.66（↓自 7.20，含 icon 修复+R2 色板）/ sess-shell
+  2.50（全在整形底噪带）；geom 逐字段 file-surface/pathbar/code-
+  view/term-surface 坐标一致（pathbar h31=32−1 边=content-box 语
+  义）；SessionTabs.test +2（视图切换 retain：切走 destroyed=[]
+  且切回同 sessionId 重挂；视图 exit → 退出条 + exit code 文案）。
+  gate：app tsc + 根 bun test 461 + fmt:check + lint 全绿。
+
+- **R4（侧栏全件，2026-09-20）**：**交互模型拍板（严格按原型）**——
+  ws-row 整行点击 = 折叠/展开（`toggleWorkspaceExpanded`，不激活工作区、
+  无独立箭头钮、无当前工作区高亮/cur-dot；Enter/Space toggle，GPUI key
+  名 right 展开 / left 收起，兼容 DOM 风格 arrow*）。`activateWorkspace`
+  能力保留（关闭回退/git 图/通知跳转仍在用，store.test 面不变）。
+  **结构重排**：sb-nav + sec-head 移出滚动区（原型固定不滚+分隔线），
+  sb-scroll pad 2 8 8 只装分组；ws-head relative + .acts 绝对定位
+  right3 top5（ghost 24×24 r8「…」+＋ 兄弟节点，未 hover pe:none 穿透
+  到 ws-row——真鼠标先 hover 自然可点，测试改 mouseMove 先移入）；
+  ws-body margin 1 0 5 12 + 1px 引导线（看板 R4 项，React 原型无线——
+  保留作归属锚点；线占原型行左缘那 1px：行 x=21 w=234 vs 原型 x=20
+  w=235，外廓一致）。**ThreadRow 重构**：行头 .thread-kind tile
+  20×20 r5（2.5% 白底 + kind 色 12px 图标：terminal 绿/chat accent/
+  acp 紫，exited 转 transparent+exited 灰）+ 状态点缩成 tile 右下
+  角标（6px 点 + 1.5px sidebar 描边半出外缘，TileDot；idle-on =
+  surfaceActive+g300 描边）；标题 12.5px（unread 600 textBright，
+  exited 压灰，active 提亮）；pin 右置 faint 12；「…」22px 槽 r8
+  hover 底 closeHover + 图标提亮。**几何逐项**：sb-head 46+底边（
+  SIZES 52→46）、nav-row 34 r8 pad 0 9、sec-head mt12 min-h28 10/600、
+  t-row 32 r8 pad 0 3·5 gap6、ws-row 34 pad 0 50·5 gap7 ws-mark 22+folder13、
+  more-link h27「显示另外 N 个/收起会话」+chevron11、ws-empty-hint h28
+  「启动第一个会话」+plus11（修旧「创建第一个会话」文案差异）、
+  unassigned「未归属会话」+inbox 图标恒展开（新增 inbox 图标映射）、
+  sb-foot pad8+顶边 borderSubtle、侧栏右边框 borderSubtle。
+  **浮层 chrome**：ctx-menu/notif-pop 统一 r12 + boxShadow 0 14 38
+  （StyleDesc BoxShadow 对象形需 spreadRadius）；ctx-item h30 r6 pad 0 9
+  hover surfaceHover，danger=bell。**验收**：sidebar 区差异 main
+  3.89% / ctxmenu 5.97% / notif 7.36%（基线 8.7–11.45%，剩余=文本整形
+  底噪+有意引导线）；geom 逐字段 sidebar 263+1 边=264 / head 45+1=46 /
+  nav 54·90 h34 / ws-head x8 w247 h34 / acts ghost x204·228 24² / t-row
+  x21 w234 h32 / menu-btn x230 22² 全部对齐。测试：WorkspaceList.test
+  改原型语义（整行 toggle 不导航 / 方向键 / 无 workspace-toggle /
+  未归属恒展开 / 文案）+ 键盘用例 +1；TitleBar.test 头高 52→45
+  content-box；e2e 两处 new-menu 点击前补 mouseMove（pe:none 规避）。
+  gate：app tsc + 双包 tsc + 根 bun test 462 + fmt/lint +
+  export-patches --check 全绿。
 
 ---
 
@@ -661,3 +728,5 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-17 · **R1 完成（会话视图数据层）**：WIP API 面与原型逐语义核对一致（openGitGraph 双路径/file:<path> 去重/shell:n 递增/左邻回退/独立 PTY spawn+孤儿回收/close 连带销毁视图 PTY）· **真缺口补齐：`onSessionEvent` 归属**——原实现只按 `t${sessionId}` 定位主会话，shell 视图独立 PTY 的 title/bell/exit 全被静默丢弃；现主会话落空 → `findShellView` 按 `view.sessionId` 归属（sessionId disjoint）· 语义与主会话对称：title→view.oscTitle（空串忽略）；bell 三级（视图正显示→丢弃/他视图→view.hasBell/会话后台→会话级提醒 terminal=hasBell·chat·acp=unread + notice + notify）；exit→notice+view.status=exited+exitCode（closeOnExit→共享 removeSessionView 单点）· hasBell 清除=「已看到」同一判定（activateSessionView/activate 落在该视图）· 配套：SessionNotice.viewId（openNotice 直达视图）、pushNotice/notify 放宽到 Thread、shell 视图类型 +oscTitle/hasBell/status/exitCode · R2/R3 消费点已备忘结论区（tab 展示 oscTitle??label、hasBell 标记、exited bar）· gate：store.test 64（+6）+ app 354 + e2e 23 + 双包 tsc + fmt/lint 全绿（window-visibility 单跑 4.2s 属基线 PowerShell 冷启动耗时，全量偶超时非本次引入）· architecture.md §3.1/§3.2/§3.3 已同步 · 下一步：R2（顶栏两行 + SessionTabs）或 R3（Pane 调度 + FileSurface + SessionShell）
 - 2026-09-18 · **架构深化评审 + 六候选全部落地（目录归位 + internal seams）**：codebase-design 词汇评审（module/interface/depth/seam/adapter/leverage/locality）出 HTML 报告六候选，用户拍板全做 · ① **plane/ 四分**：plane/ 留壳（AgentPlane/Pane/TitleBar/SessionTabs/planeKeyboard），Sidebar 族六件 → `sidebar/`，DialogHost+六弹窗+dialogKeyboard → `dialogs/`（git mv 保历史 97–100% rename 检测）② **settings UI 归域**：surfaces/ 七件（SettingsView/SettingsSections/SettingRow/PresetsSection/AcpAgentsSection/listEditorParts/settingsKeyboard/PhaseBadge）→ `settings/ui/`——设置面是路由表面非 surface，surfaces/ 回归「按 thread.kind 注册」语义 ③ **git 域归位**：WorkPanel → `git/components/`、useWorktree → `git/useWorktree.ts`；FileSurface 与 git 共享的文件读取抽 `fs/readTextFile.ts`（第二个消费方坐实 seam）④ **Pane 真 bug 修复**：渲染期 `getState().workspaces` 非响应式直读（rename/path 变化不重渲染）→ useThreadStore selector 订阅 ⑤ **ThreadStore internal seams**：989→547 行；类型契约+interface+装配表+核心方法（spawn/activate/close/rename/cycle/onSessionEvent）留 store.ts，四簇实现进 `threads/internal/`（ctx/sessionViews/notices/workspaceOps/conversations）；**不拆 store**——removeWorkspace→close 等跨簇规则 locality 保留；跨簇调用单向 import + ctx 接线点防环；interface 即测试面不变（threads 87 例原样全过）⑥ **native 整理**：element.rs+git_graph.rs → `elements/`（element.rs 改 terminal.rs 对齐元素名）；jagent-terminal 六 pub mod 收私有，对外只留根部 re-export 单面（set_session_event_fn 补 re-export，两处深路径调用点改走根部）· **文档**：新建 `CONTEXT.md` 领域词汇表（此前仓库没有）；architecture.md §1.1 目录树/§1.2 依赖方向/§3.3 internal seam 注记/§5 目录映射/§8.1-8.2 native 清单全部回写 · gate：app tsc + oxlint/oxfmt + bun test 353 过 1 挂（`TestGpuixRenderer stays hidden on Windows`——PowerShell 窗口句柄查询超时，未改动基线同样失败，环境性预存问题非本次回归）+ cargo build + cargo test 41/41 · 六个独立 commit（21a2ce4/b7d44c2/d9e4571/d80f62c/5697a8c/fed2444）· 未动 .refs/.node
 - 2026-09-18 · **R2 完成（顶栏两行 + SessionTabs）**：规格级发现=原型 index.css 两段平级 `:root`，第二段（694 行起）覆盖生效（geom-proto 实测裁决）→ 用户拍板以原型实测为准，COLORS 全表换第二段色板（+tabStrip/ring/card 三键）· SIZES 44/38/83（非看板旧抄 40/36/77）· 几何逐项对齐：stretch 主行去 gap、cell margin 0 2/first 6、context 贴左缘、分支钮 tile 底去阴影、错误钮 tb-cell 化（新增 alert 图标）、tab r8 pad 0 10 active=surfaceActive、tb-tabs 内凹 #1b1e24+自身底边、win-ctl 去 marginLeft · 「+」浮层/分支菜单改 getElementBounds 锚定（Radix bottom+start+4 同位，geom 复核 (723,80)≈(725,81)）+ 浮层 r12+0 14 38 阴影 · R1 消费落地：shell tab oscTitle ?? label + hasBell 紫点 + exited 灰题 · 有意偏离：win/linux 三键维持 36px 全高 NC/CSD 命中区（原型 28px 钮是 mock）、focus 环维持 accentSoft 2px（4px 双环归 R10）· GPUIX 补录：svg tint 只读自身 style.color——图标 hover 提亮走显式 hovered state · gate：TitleBar/SessionTabs 测试更新 + app 354 + 双包 tsc + fmt/lint 全绿 · 下一步：R3（Pane 调度 + FileSurface + SessionShell）
+- 2026-09-20 · **R3 完成（Pane 调度 + FileSurface + SessionShell）**：调度序逐条核对与原型一致（settings→workspace→thread 视图→主面；失效 view/ws 已删均回主面）· FileSurface 几何 R0 已齐，本轮补真 bug：路径条 Icon 缺 color（svg tint 不继承父级）→ COLORS.muted · **R1 备忘 exited bar 落地**：SessionTerminal 签名 sessionId→view:ShellView，status=exited 时底部 26px 退出条（mono11 exited 色「[进程已退出 · exit code N]」）；TerminalView 外层去 100% 宽高改 flexGrow（两父布局通用，100% 会挤出兄弟）· 有意偏离：主 TerminalSurface 保残留网格无退出条（不变量 3 先例）· 验收：sess-main/git/file/shell 差异 2.53/6.40/3.66(↓自7.20)/2.50 全在底噪带；geom 逐字段一致；SessionTabs +2（视图切换 retain 同 sessionId 重挂；exit→退出条+exit code）· gate：app tsc + 根 bun test 461 + fmt/lint 全绿 · 下一步：R4（侧栏视觉/交互对齐）
+- 2026-09-20 · **R4 完成（侧栏全件对齐 React 原型）**：交互拍板「严格按原型」——ws-row 整行=折叠/展开（toggleWorkspaceExpanded，去箭头钮/激活/当前高亮+cur-dot；Enter/Space toggle + right 展开/left 收起；activateWorkspace 能力保留给关闭回退/git 图/通知路径）· 结构：sb-nav+sec-head 移出滚动区（固定+分隔线）、ws-head relative+.acts 绝对定位组（ghost 24² r8 未 hover pe:none）、ws-body margin 1 0 5 12+1px 引导线（看板项，线占原型行左缘 1px）· ThreadRow 重构：thread-kind tile 20² r5 kind 色+角标 dot（TileDot 6px+1.5 描边半出外缘）/标题 12.5（unread 600/exited 灰）/pin 右置/menu-btn 22² r8· 几何：SIZES 52→46/rowHeight 32/rowRadius 8；nav-row 34、sec-head mt12、more-link「显示另外 N 个/收起会话」+chevron、empty-hint h28「启动第一个会话」（修文案差异）、unassigned「未归属会话」+inbox 恒展开纯展示、foot pad8、右框 borderSubtle· 浮层：ctx/notif 统一 r12+boxShadow 0 14 38（BoxShadow 需 spreadRadius 字段）、ctx-item h30 r6· 验收：sidebar 区差异 3.89/5.97/7.36%（基线 8.7–11.45%，余=整形底噪+引导线有意偏离）；geom 逐字段对齐（264/46/34/247/24²/234/22²）· 测试：WorkspaceList.test 改原型语义+键盘用例、TitleBar.test 头高 45、e2e 两处补 mouseMove（ghost pe:none 需先 hover）· gate：双包 tsc + 根 bun test 462 + fmt/lint + export-patches --check 全绿 · 下一步：R5（WorkPanel）

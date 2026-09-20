@@ -23,12 +23,14 @@ export const SIZES = {
   // 默认侧栏宽；运行时以 settings.appearance.sidebarWidth（200–400）为准——
   // 布局面（Sidebar/SidebarHeader/ToolMenu/AgentPlane drawer）经 useSettingsValue 消费
   sidebarWidth: 264,
-  rowHeight: 28,
+  /** 侧栏会话行高（原型 .t-row 32px——第二段 CSS 覆盖 30） */
+  rowHeight: 32,
   /** 侧栏行左右外距（原型 .sb-scroll padding 8px） */
   rowMarginX: 8,
   rowPaddingX: 8,
-  /** 侧栏行圆角（原型 --r-nav 6px；nav/会话/工作区/展开行共用） */
-  rowRadius: 6,
+  /** 侧栏行圆角（原型 --radius 8px——第二段统一 nav/ws/t-row/ibtn/ghost；
+      more-link/empty-hint 保持 5px 不用本键） */
+  rowRadius: 8,
   activeBarWidth: 2,
   /** 工作面板宽（原型 --panel-w 默认 280，可拖 244–720） */
   panelWidth: 280,
@@ -46,6 +48,7 @@ export const SIZES = {
       （Taffy 定高盒 border 在盒内：main/tabs 各自的 1px 分隔线已在定高内）；
       GitGraphView 列表高度 / 弹层坐标换算用 */
   topChrome: 83,
-  /** 侧栏头高（原型 .sb-head 52px，含红绿灯让位；Phase D0） */
-  sidebarHeadHeight: 52,
+  /** 侧栏头高（原型 .sb-head 46px——第二段 CSS 覆盖 var(--sbHeadH):52；
+      含 mac 红绿灯让位 + 1px 底部分隔线） */
+  sidebarHeadHeight: 46,
 } as const

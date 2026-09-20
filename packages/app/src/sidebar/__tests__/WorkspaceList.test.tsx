@@ -2,7 +2,7 @@
  * sidebar/WorkspaceList.test.tsx — Phase W2 侧栏工作区分组树测试。
  *
  * 真 createThreadStore（fake deps + 两个初始工作区）+ TestGpuixRenderer。
- * 覆盖：分组渲染与缩进 · 箭头 toggle（不激活）/ 点行激活 · ＋ 工具菜单
+ * 覆盖：分组渲染与缩进 · 整行 toggle（不激活——R4 原型模型）· ＋ 工具菜单
  * （目标工作区头 + spawn 归属）· 添加工作区内联表单。
  * 重命名走上下文菜单 Rename… → RenameDialog（行内双击编辑已移除）；
  * rename 规则在 store.test 已覆盖。跨工作区搜索在 W7 起归
@@ -102,6 +102,16 @@ function clickCenter(testId: string) {
   t.renderer.flush()
 }
 
+/** 行上先 hover（ghost 钮未 hover 时 pointerEvents:none——
+ *  原型 .acts 同款；不移入命中会穿透到 ws-row） */
+function hoverCenter(testId: string) {
+  const el = t.renderer.findByTestId(testId)
+  if (!el) throw new Error(`element not found: ${testId}`)
+  const b = t.renderer.getElementBounds(el.id)!
+  t.renderer.nativeSimulateMouseMove(b.x + b.width / 2, b.y + b.height / 2)
+  t.renderer.flush()
+}
+
 /** scrim 点击（带 blur 规避：GPUUIX input 聚焦中时 nativeSimulateClick
  *  到 scrim 的命中被吞——W7 实测；先 blur 再点）。弹窗真居中后 scrim
  *  几何中心被卡片盖住——点左上角（卡片外区域） */
@@ -151,7 +161,7 @@ beforeEach(() => {
 })
 
 describe('WorkspaceList：分组树', () => {
-  test('两工作区行渲染（name + 展开箭头）；默认展开', async () => {
+  test('两工作区行渲染（folder + name）；默认展开', async () => {
     renderHarness()
     t.renderer.flush()
     await until('workspace rows visible', () => {
@@ -165,7 +175,7 @@ describe('WorkspaceList：分组树', () => {
 
   // 方案 C：组内 priority 排序（pin > run > queue > unread > recency）+
   // 默认前 4 条 + Show more/less；active/focus 行不被截断。
-  test('超 4 条截断：默认前 4 + 「展开其余 N 个」合计正确；展开全显', async () => {
+  test('超 4 条截断：默认前 4 + 「显示另外 N 个」合计正确；展开全显', async () => {
     // 自清理前置：前面用例可能有遗留行（会占 limit 名额）；
     // showAll 持久化——先钉回默认收起态
     store.setWorkspaceShowAll(wsA, false)
@@ -188,8 +198,8 @@ describe('WorkspaceList：分组树', () => {
       await until('rows visible', () => t.renderer.findByTestId(`row-${made[5]}`) != null)
       const texts = t.renderer.getAllText()
 
-      // 默认 4 条可见；「展开其余 2 个」（JSX 插值分片 → 相邻文本节点断言）
-      const moreIdx = texts.findIndex((s) => s === '展开其余 ')
+      // 默认 4 条可见；「显示另外 2 个」（JSX 插值分片 → 相邻文本节点断言）
+      const moreIdx = texts.findIndex((s) => s === '显示另外 ')
       expect(moreIdx).toBeGreaterThanOrEqual(0)
       expect(texts[moreIdx + 1]).toBe('2')
       expect(texts[moreIdx + 2]).toBe(' 个')
@@ -206,7 +216,7 @@ describe('WorkspaceList：分组树', () => {
       await until('expanded', () =>
         made.every((id) => t.renderer.findByTestId(`row-${id}`) != null),
       )
-      expect(t.renderer.getAllText().some((s) => s.startsWith('只显示前'))).toBe(true)
+      expect(t.renderer.getAllText().some((s) => s === '收起会话')).toBe(true)
     } finally {
       for (const id of made) store.close(id)
       t.renderer.flush()
@@ -261,34 +271,71 @@ describe('WorkspaceList：分组树', () => {
     t.renderer.flush()
   })
 
-  test('箭头 toggle：会话行隐现 + 不激活（路由不动）；点行 = 激活工作区', async () => {
+  test('整行 toggle：会话行隐现 + 不导航（R4 原型模型——点行 = 折叠，无箭头钮）', async () => {
     await store.spawnFromPreset('shell', wsA)
     const tid = store.getState().threads[0]!.id
     renderHarness()
     t.renderer.flush()
     await until('session row visible', () => t.renderer.findByTestId(`row-${tid}`) != null)
 
-    // 收起：行消失 + active 不变（spawn 时 activate 了该 thread——保持）
-    clickCenter(`workspace-toggle-${wsA}`)
+    // 独立箭头钮已移除（原型 .ws-row 无 arrow 元素）
+    expect(t.renderer.findByTestId(`workspace-toggle-${wsA}`)).toBeUndefined()
+
+    // 点行收起：会话行消失 + active 不变（spawn 时 activate 了该 thread——保持）
+    clickCenter(`workspace-${wsA}`)
     await until('collapsed', () => t.renderer.findByTestId(`row-${tid}`) == null)
     expect(currentActiveThreadId()).toBe(tid) // toggle 不导航
 
-    // 展开回来；点行激活工作区（lastSession 恢复）
-    clickCenter(`workspace-toggle-${wsA}`)
-    await until('expanded again', () => t.renderer.findByTestId(`row-${tid}`) != null)
-    void router.navigate({ to: '/' }) // 模拟离开
+    // 再点行展开回来——路由始终不动（原型：行点击不激活工作区）
+    void router.navigate({ to: '/' })
     clickCenter(`workspace-${wsA}`)
-    await until('workspace activated → lastSession restored', () => currentActiveThreadId() === tid)
+    await until('expanded again', () => t.renderer.findByTestId(`row-${tid}`) != null)
+    expect(currentActiveThreadId()).toBeNull() // 点行 ≠ activateWorkspace
 
     store.close(tid)
     t.renderer.flush()
   })
 
-  test('空工作区引导行（可点开新建会话弹窗；对齐原型「创建第一个会话」）', async () => {
+  test('工作区行键盘：Enter/Space toggle；ArrowLeft/Right 收起/展开', async () => {
+    await store.spawnFromPreset('shell', wsA)
+    const tid = store.getState().threads[0]!.id
+    renderHarness()
+    t.renderer.flush()
+    await until('session row visible', () => t.renderer.findByTestId(`row-${tid}`) != null)
+
+    const row = () => t.renderer.findByTestId(`workspace-${wsA}`)!
+    // ArrowLeft：已展开 → 收起（GPUI key 名 = left）
+    t.renderer.nativeSimulateKeyDown(row().id, 'left')
+    t.renderer.flush()
+    await until('arrowleft collapsed', () => t.renderer.findByTestId(`row-${tid}`) == null)
+    // ArrowLeft 幂等：已收起再按不动
+    t.renderer.nativeSimulateKeyDown(row().id, 'left')
+    t.renderer.flush()
+    expect(t.renderer.findByTestId(`row-${tid}`)).toBeUndefined()
+    // ArrowRight：未展开 → 展开
+    t.renderer.nativeSimulateKeyDown(row().id, 'right')
+    t.renderer.flush()
+    await until('arrowright expanded', () => t.renderer.findByTestId(`row-${tid}`) != null)
+    // Enter toggle：收起
+    t.renderer.nativeSimulateKeyDown(row().id, 'enter')
+    t.renderer.flush()
+    await until('enter collapsed', () => t.renderer.findByTestId(`row-${tid}`) == null)
+    // Space toggle：展开
+    t.renderer.nativeSimulateKeyDown(row().id, 'space')
+    t.renderer.flush()
+    await until('space expanded', () => t.renderer.findByTestId(`row-${tid}`) != null)
+    // 键盘 toggle 同样不导航
+    expect(currentActiveThreadId()).toBe(tid) // spawn 时激活的还在（路由未动）
+
+    store.close(tid)
+    t.renderer.flush()
+  })
+
+  test('空工作区引导行（可点开新建会话弹窗；原型 .ws-empty-hint「启动第一个会话」）', async () => {
     renderHarness()
     t.renderer.flush()
     await until('beta empty hint', () =>
-      t.renderer.getAllText().some((s) => s.includes('创建第一个会话')),
+      t.renderer.getAllText().some((s) => s.includes('启动第一个会话')),
     )
     // 点击引导行 → 新建会话弹窗（目标 beta）；pick shell → spawn 归属 +
     // 弹窗关闭（onClose 单点）
@@ -307,9 +354,6 @@ describe('WorkspaceList：分组树', () => {
     const th = store.getState().threads.find((x) => x.kind === 'terminal' && x.workspaceId === wsB)
     store.close(th!.id)
     t.renderer.flush()
-    await new Promise((r) => setTimeout(r, 100))
-    t.renderer.flush()
-    console.log('POST-RENDER: texts=', JSON.stringify(t.renderer.getAllText().slice(0, 6)))
   })
 })
 
@@ -317,6 +361,7 @@ describe('WorkspaceList：＋ 新建会话弹窗（W7 ToolDialog）', () => {
   test('弹窗打开：目标工作区 cwd + 预设项 + New Chat + ACP agents', async () => {
     renderHarness()
     t.renderer.flush()
+    hoverCenter(`workspace-${wsA}`)
     clickCenter(`new-menu-${wsA}`)
     await until('dialog visible', () => t.renderer.findByTestId('modal-card') != null)
     // 目标头含 cwd（mono 路径）
@@ -333,6 +378,7 @@ describe('WorkspaceList：＋ 新建会话弹窗（W7 ToolDialog）', () => {
   test('点预设项：spawn 带归属 + 弹窗关闭', async () => {
     renderHarness()
     t.renderer.flush()
+    hoverCenter(`workspace-${wsA}`)
     clickCenter(`new-menu-${wsA}`)
     await until('dialog open', () => t.renderer.findByTestId('tool-preset-shell') != null)
     clickCenter('tool-preset-shell')
@@ -350,6 +396,7 @@ describe('WorkspaceList：＋ 新建会话弹窗（W7 ToolDialog）', () => {
   test('New Chat：createChat 带归属', async () => {
     renderHarness()
     t.renderer.flush()
+    hoverCenter(`workspace-${wsA}`)
     clickCenter(`new-menu-${wsA}`)
     await until('dialog open', () => t.renderer.findByTestId('new-chat') != null)
     // 原型 .tool-list max-height 320：「对话」组在视口下——先滚到底再点
@@ -462,6 +509,7 @@ describe('WorkspaceList：新建会话弹窗筛选（W7）', () => {
   test('筛选命中过滤列表；无匹配显示空态', async () => {
     renderHarness()
     t.renderer.flush()
+    hoverCenter(`workspace-${wsA}`)
     clickCenter(`new-menu-${wsA}`)
     await until('dialog open', () => t.renderer.findByTestId('tool-dialog-filter') != null)
 
@@ -505,9 +553,9 @@ describe('WorkspaceList：重复目录（W7 收尾用例）', () => {
   })
 })
 
-// ── 方案 C：nav 行组 + 未归属组 + 上下文菜单（codex-sidebar-v2）──────
+// ── R4 原型结构：nav 行组 + 未归属组 + 上下文菜单 ──────────────────
 
-describe('WorkspaceList：方案 C 结构', () => {
+describe('WorkspaceList：原型结构（R4）', () => {
   test('nav 行组：新建会话 / 搜索两行渲染；搜索行 → openSearch', async () => {
     renderHarness()
     t.renderer.flush()
@@ -537,7 +585,7 @@ describe('WorkspaceList：方案 C 结构', () => {
       () => t.renderer.findByTestId('workspace-unassigned') != null,
     )
     expect(t.renderer.findByTestId(`row-${tid}`) != null).toBe(true)
-    expect(t.renderer.getAllText().some((s) => s === '未归属')).toBe(true)
+    expect(t.renderer.getAllText().some((s) => s === '未归属会话')).toBe(true)
     // 虚拟组无 … 菜单（不可 pin/rename/remove）
     expect(t.renderer.findByTestId('menu-workspace-unassigned')).toBeUndefined()
     store.close(tid)
@@ -548,22 +596,22 @@ describe('WorkspaceList：方案 C 结构', () => {
     )
   })
 
-  test('未归属组：点组名激活最高优先级会话；箭头仅折叠', async () => {
+  test('未归属组：纯展示恒展开（原型 .ws-row.unassigned——无折叠/激活/ghost）', async () => {
     await store.spawnFromPreset('shell')
     const tid = store.getState().threads.at(-1)!.id
     renderHarness()
     t.renderer.flush()
     await until('unassigned row visible', () => t.renderer.findByTestId(`row-${tid}`) != null)
-    // 箭头折叠：行消失 + 不导航
+    // 无折叠钮 / 无 ghost / 无 ＋（纯分组标）
+    expect(t.renderer.findByTestId('workspace-toggle-unassigned')).toBeUndefined()
+    expect(t.renderer.findByTestId('menu-workspace-unassigned')).toBeUndefined()
+    expect(t.renderer.findByTestId('new-menu-unassigned')).toBeUndefined()
+    // 点组头：不折叠、不导航（行无 handler——纯展示）
     void router.navigate({ to: '/' })
-    clickCenter('workspace-toggle-unassigned')
-    await until('collapsed', () => t.renderer.findByTestId(`row-${tid}`) == null)
-    expect(currentActiveThreadId()).toBeNull()
-    // 展开 + 点组名 → 激活该会话
-    clickCenter('workspace-toggle-unassigned')
-    await until('expanded', () => t.renderer.findByTestId(`row-${tid}`) != null)
     clickCenter('workspace-unassigned')
-    await until('activated', () => currentActiveThreadId() === tid)
+    t.renderer.flush()
+    expect(t.renderer.findByTestId(`row-${tid}`) != null).toBe(true)
+    expect(currentActiveThreadId()).toBeNull()
     store.close(tid)
     t.renderer.flush()
   })
@@ -612,6 +660,7 @@ describe('WorkspaceList：方案 C 结构', () => {
     renderHarness()
     t.renderer.flush()
     await until('ws row visible', () => t.renderer.findByTestId(`workspace-${wsB}`) != null)
+    hoverCenter(`workspace-${wsB}`)
     clickCenter(`menu-workspace-${wsB}`)
     await until('context menu open', () => t.renderer.findByTestId('context-menu') != null)
     for (const id of ['ctx-pin', 'ctx-rename', 'ctx-remove']) {
