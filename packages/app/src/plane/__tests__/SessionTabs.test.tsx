@@ -204,6 +204,42 @@ describe('SessionTabs（原型 #tb-tabs：主面 + git/file/shell 视图）', ()
     expect(has('tab-shell:1')).toBe(false)
   })
 
+  test('视图切换 retain：切走不销毁 PTY，切回重挂载同一 sessionId', async () => {
+    const { store, destroyed } = setup()
+    await spawnChat(store)
+    click('session-add')
+    await until(() => has('sa-shell'))
+    click('sa-shell')
+    await until(() => has('tab-shell:1'))
+    const sid = t.renderer.findByType('terminal')[0]?.customProps?.sessionId
+    expect(sid).toBe(1)
+    // 切回主面 → 视图 PTY 不销毁（retain 在池，destroy() 只解绑元素）
+    click('tab-main')
+    t.renderer.flush()
+    expect(destroyed).toEqual([])
+    expect(t.renderer.findByType('terminal')).toHaveLength(0)
+    // 切回 shell → 同 sessionId 重挂
+    click('tab-shell:1')
+    t.renderer.flush()
+    expect(destroyed).toEqual([])
+    expect(store.getState().threads[0]!.activeViewId).toBe('shell:1')
+    expect(t.renderer.findByType('terminal')[0]?.customProps?.sessionId).toBe(1)
+  })
+
+  test('视图 PTY exit → 底部退出条（exitCode 文案）；closeOnExit=false', async () => {
+    const { store } = setup()
+    await spawnChat(store)
+    click('session-add')
+    await until(() => has('sa-shell'))
+    click('sa-shell')
+    await until(() => has('tab-shell:1'))
+    expect(has('session-exited-bar')).toBe(false)
+    store.onSessionEvent({ type: 'exit', sessionId: 1, code: 3 })
+    t.renderer.flush()
+    await until(() => has('session-exited-bar'))
+    expect([...t.renderer.getAllText()].join('\n')).toContain('exit code 3')
+  })
+
   test('空变更工作区：「打开文件」列表显示空态文案', async () => {
     const { deps } = makeDeps()
     const store = createThreadStore(deps, {
