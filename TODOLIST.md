@@ -453,14 +453,14 @@
     findIdx）。
   - app：`git/components/GitGraphView.tsx` + `graphSvg.ts`/`rowColumns.ts`/
     `graphKeys.ts`。
-- [ ] **R7 弹窗与浮层**
+- [x] **R7 弹窗与浮层** ✅ 2026-09-20
   - 锚点：`src/components/Dialogs.tsx`（Tool/Search/Workspace/Rename/Error/Crash
     六弹窗）+ `ui/dialog·menu·popover`（Radix 封装形态：居中模态/外点关闭/Esc）。
   - app：`plane/DialogHost.tsx` + ToolDialog/SearchDialog/WorkspaceDialog/
     RenameDialog/ErrorDialog/CrashDialog + ui `Modal`/`Popover`/`Toast`。
   - 逐项：ToolDialog 440 宽/分组标签/筛选/「默认」徽标/cmd 右列；SearchDialog
     空 query 列全部+↑↓+归属标签；ErrorDialog .err-item 行结构；CrashDialog；
-    NotifPopover；ContextMenu；Toast 右下。
+    NotifPopover；ContextMenu；Toast 右下。结论详见 Phase R 结论区（R7）。
 - [ ] **R8 设置面**
   - 锚点：`src/components/SettingsView.tsx`（745 行：7 分区 nav/SearchAll 全局
     命中列表/SettingRow+Control/FontControl 弹层/KbSection 捕获格/PresetsSection
@@ -607,6 +607,39 @@
   gate：app tsc + 双包 tsc + 根 bun test 462 + fmt/lint +
   export-patches --check 全绿。
 
+- **R7（弹窗与浮层，2026-09-20）**：**Modal 壳对齐第二段 `:root` 生效值**——
+  scrim rgba(8,10,13,.7)、card borderSubtle r12（原 r20 映射 14）、shadow
+  0 24 80 .58；ModalHeading pad 16 16 0/标题 15（去 trailing 与关闭钮间
+  gap 8）；ModalBody pad 16 14 18；ModalActions 钮 h34 w≈88 r8 透明底
+  textBright（primary 字色 #1e2127）。**SearchDialog**：pad 14 16 + r14 +
+  borderSubtle；**空 query 列全部会话**（searchThreads 去空串早退——
+  `includes('')` 天然全命中）；Esc 两段式（有 query 只清空不关——输入框
+  处理器置 escCleared 旗标，同次冒泡到卡片时吞掉一次 onClose）；cursor
+  随结果数钳制。**ToolDialog**：ctx/filter 34×r8、row min-h 44、filter
+  autoFocus、分组/「默认」徽标/cmd 右列保持。**TextInput**（`.txt-in`）：
+  28→30、r4→8、pad 对齐。**WorkspaceDialog**：label 间距 + 浏览钮对齐
+  `.mbtn`；**RenameDialog** 标题统一「重命名」（原按目标分文案，测试同步）。
+  **ErrorDialog**：body pad + mini-btn hover 字色→text。**CrashDialog 重构**：
+  去固定 260 高 → 自适应壳 + body 定高 200 + `.crash-path` 盒（mono 12 圆角
+  底）+ 共用 ModalActions；dismiss 删 crash.json 保留。**ContextMenu**：item
+  h30 pad 0 8 hover surface（R4 结论里的 surfaceHover/r12 本轮被第二段裁
+  决修正为 surface/r8）、阴影 0 14 38 .5、danger=bell。**NotifPopover**：
+  锚 bottomLeft 贴脚部上缘（≈{38, winH-47}）、条目 50h、无 hover/无已读淡
+  （nt 恒 text、点恒实色）。**Toast**：overlay 底 r8 borderSubtle +
+  shadow 0 6 20 .4，右下 {right16, bottom16}。**geom 验收**（border-box
+  换算后 ≤2px）：tool 438×524≈440×524.5 / addws 438×240≈440×243 /
+  error 518×384≈520×386 / crash 478×244≈480×246 / ctx 178×137≈180×139 /
+  notif 298×197 锚位一致；search 558×392（proto 132 为空态——实现空
+  query 列全表撑高为契约要求，非偏差）。**注意**：`.shots/proto-tool.png`
+  的 tool-ctx 是旧双行形态（cwd 第二行），当前 Dialogs.tsx 源码与
+  geom-proto 均为单行 h34——以源码+geom 为准。proto-shot.mjs：dumpGeom
+  重构收 renderer，crash 独立 root 补 geom 导出。**已知边界**：截图脚
+  本收尾 native panic（TerminalPool global 未注册）是清理假 PTY 噪音，
+  产物完整、不改 native 层。测试：Dialogs.test 改空 query/Esc/「重命名」
+  断言、workspaces.test 改空 query 断言。gate：双包 tsc + app 356
+  （window-visibility 单跑偶超时=PowerShell 冷启动基线，隔离重跑 4.4s
+  过，非本次引入）+ ui 33 + fmt/lint 全绿。
+
 ---
 
 
@@ -730,3 +763,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-18 · **R2 完成（顶栏两行 + SessionTabs）**：规格级发现=原型 index.css 两段平级 `:root`，第二段（694 行起）覆盖生效（geom-proto 实测裁决）→ 用户拍板以原型实测为准，COLORS 全表换第二段色板（+tabStrip/ring/card 三键）· SIZES 44/38/83（非看板旧抄 40/36/77）· 几何逐项对齐：stretch 主行去 gap、cell margin 0 2/first 6、context 贴左缘、分支钮 tile 底去阴影、错误钮 tb-cell 化（新增 alert 图标）、tab r8 pad 0 10 active=surfaceActive、tb-tabs 内凹 #1b1e24+自身底边、win-ctl 去 marginLeft · 「+」浮层/分支菜单改 getElementBounds 锚定（Radix bottom+start+4 同位，geom 复核 (723,80)≈(725,81)）+ 浮层 r12+0 14 38 阴影 · R1 消费落地：shell tab oscTitle ?? label + hasBell 紫点 + exited 灰题 · 有意偏离：win/linux 三键维持 36px 全高 NC/CSD 命中区（原型 28px 钮是 mock）、focus 环维持 accentSoft 2px（4px 双环归 R10）· GPUIX 补录：svg tint 只读自身 style.color——图标 hover 提亮走显式 hovered state · gate：TitleBar/SessionTabs 测试更新 + app 354 + 双包 tsc + fmt/lint 全绿 · 下一步：R3（Pane 调度 + FileSurface + SessionShell）
 - 2026-09-20 · **R3 完成（Pane 调度 + FileSurface + SessionShell）**：调度序逐条核对与原型一致（settings→workspace→thread 视图→主面；失效 view/ws 已删均回主面）· FileSurface 几何 R0 已齐，本轮补真 bug：路径条 Icon 缺 color（svg tint 不继承父级）→ COLORS.muted · **R1 备忘 exited bar 落地**：SessionTerminal 签名 sessionId→view:ShellView，status=exited 时底部 26px 退出条（mono11 exited 色「[进程已退出 · exit code N]」）；TerminalView 外层去 100% 宽高改 flexGrow（两父布局通用，100% 会挤出兄弟）· 有意偏离：主 TerminalSurface 保残留网格无退出条（不变量 3 先例）· 验收：sess-main/git/file/shell 差异 2.53/6.40/3.66(↓自7.20)/2.50 全在底噪带；geom 逐字段一致；SessionTabs +2（视图切换 retain 同 sessionId 重挂；exit→退出条+exit code）· gate：app tsc + 根 bun test 461 + fmt/lint 全绿 · 下一步：R4（侧栏视觉/交互对齐）
 - 2026-09-20 · **R4 完成（侧栏全件对齐 React 原型）**：交互拍板「严格按原型」——ws-row 整行=折叠/展开（toggleWorkspaceExpanded，去箭头钮/激活/当前高亮+cur-dot；Enter/Space toggle + right 展开/left 收起；activateWorkspace 能力保留给关闭回退/git 图/通知路径）· 结构：sb-nav+sec-head 移出滚动区（固定+分隔线）、ws-head relative+.acts 绝对定位组（ghost 24² r8 未 hover pe:none）、ws-body margin 1 0 5 12+1px 引导线（看板项，线占原型行左缘 1px）· ThreadRow 重构：thread-kind tile 20² r5 kind 色+角标 dot（TileDot 6px+1.5 描边半出外缘）/标题 12.5（unread 600/exited 灰）/pin 右置/menu-btn 22² r8· 几何：SIZES 52→46/rowHeight 32/rowRadius 8；nav-row 34、sec-head mt12、more-link「显示另外 N 个/收起会话」+chevron、empty-hint h28「启动第一个会话」（修文案差异）、unassigned「未归属会话」+inbox 恒展开纯展示、foot pad8、右框 borderSubtle· 浮层：ctx/notif 统一 r12+boxShadow 0 14 38（BoxShadow 需 spreadRadius 字段）、ctx-item h30 r6· 验收：sidebar 区差异 3.89/5.97/7.36%（基线 8.7–11.45%，余=整形底噪+引导线有意偏离）；geom 逐字段对齐（264/46/34/247/24²/234/22²）· 测试：WorkspaceList.test 改原型语义+键盘用例、TitleBar.test 头高 45、e2e 两处补 mouseMove（ghost pe:none 需先 hover）· gate：双包 tsc + 根 bun test 462 + fmt/lint + export-patches --check 全绿 · 下一步：R5（WorkPanel）
+- 2026-09-20 · **R7 完成（弹窗与浮层）**：Modal 壳对齐第二段 `:root`（scrim rgba(8,10,13,.7)/borderSubtle/r12·r20→14/shadow 0 24 80 .58/head 16·15/body 16·14·18/actions h34·w88·r8）· SearchDialog 空 query 列全部（searchThreads 去空串早退）+ Esc 两段式（escCleared 旗标吞同次冒泡）+ r14·pad 14 16 · ToolDialog ctx/filter 34×r8、row min-h 44、filter autoFocus · TextInput 30/r8 · Rename 统一标题「重命名」· CrashDialog 重构（自适应壳+body 200+crash-path 盒+ModalActions，dismiss 删 crash.json）· ContextMenu h30/pad 0 8/hover surface/danger=bell · NotifPopover 锚 bottomLeft 贴脚部、无 hover 无已读淡 · Toast overlay 底 r8 右下 · geom 验收 border-box 换算后 ≤2px（tool/addws/error/crash/ctx/notif 全对齐；search 高度差=空 query 列全表契约要求）· 注意 proto-tool.png 的 tool-ctx 是旧双行形态，以当前源码+geom 为准 · proto-shot.mjs dumpGeom 重构补 crash geom · 已知边界：截图脚本收尾 TerminalPool panic=清理假 PTY 噪音 · gate：双包 tsc + app 356（window-visibility 环境抖动超时，隔离重跑过）+ ui 33 + fmt/lint 全绿 · 分支 r7-dialogs 已 rebase 到 R4 提交 0024cab（worktree 内 R3/R4 内容与已提交链逐字节一致，只移分支指针不碰文件）· 下一步：R5（WorkPanel）或 R6（Git 图）

@@ -95,7 +95,7 @@ export function SidebarHeader({
   )
 }
 
-/** 通知中心浮层（D8；原型 .notif-pop 锚定铃铛上方 8px） */
+/** 通知中心浮层（D8；原型 .notif-pop side=top align=start sideOffset=10） */
 function NotifPopover({
   store,
   position,
@@ -191,9 +191,10 @@ function NotifPopover({
         {notices.length === 0 ? (
           <text
             style={{
+              // 原型 .notif-empty：11.5px muted
               fontSize: 11.5,
               fontFamily: FONT.ui,
-              color: COLORS.faint,
+              color: COLORS.muted,
               padding: 14,
               textAlign: 'center',
               pointerEvents: 'none',
@@ -213,6 +214,7 @@ function NotifPopover({
                 if (e.key === 'enter' || e.key === 'space') store.openNotice(n.id)
               }}
               style={{
+                // 原型 .notif-item：pad 7px 10px 7px 12px，无 hover 底/圆角
                 display: 'flex',
                 flexDirection: 'row',
                 alignItems: 'flex-start',
@@ -221,19 +223,16 @@ function NotifPopover({
                 paddingRight: 10,
                 paddingTop: 7,
                 paddingBottom: 7,
-                borderRadius: 4,
                 cursor: 'pointer',
-                hover: { backgroundColor: COLORS.surface },
               }}
             >
               <div
                 style={{
+                  // 原型 .nd：6px 点恒 tone 实色（无已读压淡）
                   width: 6,
                   height: 6,
                   borderRadius: 9999,
-                  // 未读 = tone 实色；已读压淡（条目保留，视觉退场）
                   backgroundColor: TONE[n.tone],
-                  opacity: n.read ? 0.35 : 1,
                   marginTop: 5,
                   flexShrink: 0,
                 }}
@@ -241,11 +240,10 @@ function NotifPopover({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                 <text
                   style={{
-                    // 原型 .nt：12px text / line-height 1.4；未读提亮加粗
+                    // 原型 .nt：12px text / line-height 1.4（无未读加粗）
                     fontSize: 12,
                     fontFamily: FONT.ui,
-                    fontWeight: n.read ? undefined : '600',
-                    color: n.read ? COLORS.faint : COLORS.textBright,
+                    color: COLORS.text,
                     lineHeight: 17,
                     whiteSpace: 'normal',
                     pointerEvents: 'none',
@@ -303,9 +301,10 @@ export function Sidebar({
   // 宽度单值订阅：设置页拖滑块时只重渲染侧栏（不碰会话树）
   const width = useSettingsValue(settings, (s) => s.appearance.sidebarWidth)
   const unread = useThreadStore(store, (s) => s.notices.reduce((n, x) => n + (x.read ? 0 : 1), 0))
-  // 浮层锚定铃铛上方（原型 .notif-pop bottom:100%+8）：bottomLeft 角贴
-  // 脚条上缘左端（GPUIX 无元素 bounds 读面，侧栏贴左底 → 窗口坐标可算）
-  const notifPos = { x: 8, y: winH - 40 }
+  // 浮层锚定铃铛上方（原型 Pop side=top align=start sideOffset=10：
+  // 左缘贴铃铛左缘 = 8 脚 padding + 28 齿轮 + 2 间距 = 38；底缘 =
+  // 铃铛顶（脚高 45 − padding 8 = winH−37）− 10 = winH−47）
+  const notifPos = { x: 38, y: winH - 47 }
 
   return (
     <div

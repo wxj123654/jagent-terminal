@@ -45,7 +45,8 @@ export function RenameDialog({
   // 目标在弹窗开着时被移除（他处 close/removeWorkspace）→ 直接关
   if (target.type === 'thread' ? !thread : !workspace) return null
 
-  const title = target.type === 'thread' ? '重命名会话' : '重命名工作区'
+  // 原型标题统一「重命名」（不区分会话/工作区目标）
+  const title = '重命名'
   const commit = () => {
     if (name.trim()) {
       if (target.type === 'thread') store.rename(target.id, name)
@@ -58,7 +59,17 @@ export function RenameDialog({
     <Modal width={320} onClose={onClose}>
       <ModalHeading title={title} onClose={onClose} />
       <ModalBody>
-        <text style={{ fontSize: 11, fontFamily: FONT.ui, color: COLORS.muted }}>名称</text>
+        {/* 原型 .mlabel：11px muted mb6（ModalBody 无 gap——自携 margin） */}
+        <text
+          style={{
+            fontSize: 11,
+            fontFamily: FONT.ui,
+            color: COLORS.muted,
+            marginBottom: 6,
+          }}
+        >
+          名称
+        </text>
         <TextInput
           testId="rename-dialog-input"
           value={name}

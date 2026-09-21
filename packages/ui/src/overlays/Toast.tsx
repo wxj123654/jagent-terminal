@@ -10,11 +10,12 @@ import { useEffect, useSyncExternalStore } from 'react'
 
 import { COLORS, FONT } from '../theme/tokens'
 
-/** 浮条投影（对象形态——GPUIX boxShadow 不收 CSS 字符串） */
+/** 浮条投影（原型 .toast：0 6px 20px rgba(0,0,0,.4)；对象形态——
+ *  GPUIX boxShadow 不收 CSS 字符串） */
 const FLOAT_SHADOW = {
   offsetX: 0,
-  offsetY: 4,
-  blurRadius: 16,
+  offsetY: 6,
+  blurRadius: 20,
   spreadRadius: 0,
   color: 'rgba(0,0,0,0.4)',
 } as const
@@ -69,8 +70,9 @@ export function ToastHost({ ttlMs = TOAST_TTL_MS }: { ttlMs?: number }) {
         paddingRight: 12,
         paddingTop: 8,
         paddingBottom: 8,
-        borderRadius: 6,
-        backgroundColor: COLORS.surfaceHover,
+        // 原型 .toast（第二段）：overlay 底 + r8 + borderSubtle 描边
+        borderRadius: 8,
+        backgroundColor: COLORS.overlay,
         borderWidth: 1,
         borderColor: COLORS.borderSubtle,
         boxShadow: FLOAT_SHADOW,

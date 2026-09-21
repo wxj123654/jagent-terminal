@@ -26,6 +26,8 @@ export function ErrorDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => subscribeErrors(() => bump((v) => v + 1)), [])
   const errors = listErrors()
   const [expanded, setExpanded] = useState<number | null>(null)
+  // .mini-btn:hover 同时变色（muted→text）：svg tint 不继承父级 hover
+  const [clearHover, setClearHover] = useState(false)
 
   return (
     <Modal width={520} onClose={onClose}>
@@ -34,11 +36,13 @@ export function ErrorDialog({ onClose }: { onClose: () => void }) {
         onClose={onClose}
         trailing={
           errors.length > 0 ? (
-            // 原型 .mini-btn：trash 12 + 「清空」，无底色（hover 抬底）
+            // 原型 .mini-btn：trash 12 + 「清空」，无底色（hover 抬底+字色 text）
             <div
               testId="error-dialog-clear"
               tabIndex={0}
               onClick={clearErrors}
+              onMouseEnter={() => setClearHover(true)}
+              onMouseLeave={() => setClearHover(false)}
               onKeyDown={(e) => {
                 if (e.key === 'enter') clearErrors()
               }}
@@ -55,12 +59,12 @@ export function ErrorDialog({ onClose }: { onClose: () => void }) {
                 hover: { backgroundColor: COLORS.surface },
               }}
             >
-              <Icon name="trash" size={12} color={COLORS.muted} />
+              <Icon name="trash" size={12} color={clearHover ? COLORS.text : COLORS.muted} />
               <text
                 style={{
                   fontSize: 11,
                   fontFamily: FONT.ui,
-                  color: COLORS.muted,
+                  color: clearHover ? COLORS.text : COLORS.muted,
                   pointerEvents: 'none',
                 }}
               >
@@ -78,10 +82,10 @@ export function ErrorDialog({ onClose }: { onClose: () => void }) {
           flexDirection: 'column',
           minHeight: 0,
           height: 340,
-          paddingLeft: 14,
-          paddingRight: 14,
-          paddingTop: 12,
-          paddingBottom: 16,
+          paddingLeft: 16,
+          paddingRight: 16,
+          paddingTop: 14,
+          paddingBottom: 18,
           overflowY: 'scroll',
           flexShrink: 0,
         }}

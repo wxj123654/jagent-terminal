@@ -501,12 +501,12 @@ const shot = (name) => {
  * .shots/cmp/geom-proto.mjs（chrome getBoundingClientRect），两边逐字段
  * 比对即可做像素级核对，不必靠肉眼看截图。
  */
-function dumpGeom(name) {
-  const root = t.renderer.getRoot()
+function dumpGeom(name, renderer = t.renderer) {
+  const root = renderer.getRoot()
   const nodes = []
   const walk = (el, depth, path) => {
     if (!el) return
-    const b = t.renderer.getElementBounds(el.id)
+    const b = renderer.getElementBounds(el.id)
     const s = el.style ?? {}
     nodes.push({
       path,
@@ -532,7 +532,7 @@ function dumpGeom(name) {
     })
     let i = 0
     for (const cid of el.children ?? []) {
-      walk(t.renderer.getElement(cid), depth + 1, `${path}/${i}`)
+      walk(renderer.getElement(cid), depth + 1, `${path}/${i}`)
       i++
     }
   }
@@ -757,6 +757,7 @@ for (const state of STATES) {
       const out = join(OUT_DIR, `impl-crash${WIDTH === 1280 ? '' : `-${WIDTH}`}.png`)
       t2.renderer.captureScreenshot(out)
       console.log('saved:', out)
+      if (GEOM) dumpGeom('crash', t2.renderer)
       t2.unmount()
       break
     }

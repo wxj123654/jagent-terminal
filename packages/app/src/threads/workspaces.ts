@@ -206,7 +206,7 @@ export function searchThreads(
   presetLabelOf: (presetId?: string) => string | undefined = () => undefined,
 ): Array<{ thread: Thread; workspace?: Workspace }> {
   const q = query.trim().toLowerCase()
-  if (q === '') return []
+  // 空 query 全命中（haystack.includes('')）——搜索弹窗空态列全部会话
   const wsById = new Map(workspaces.map((w) => [w.id, w]))
   const hits: Array<{ thread: Thread; workspace?: Workspace }> = []
   for (const t of threads) {

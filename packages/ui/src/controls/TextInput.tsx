@@ -1,6 +1,7 @@
 /**
  * ui/TextInput.tsx — 字符串输入（architecture.md §7；settings-ui.md §5.2
- * 「字符串 → text input，命令类 mono」）。220×28，受控即时 onChange（即时
+ * 「字符串 → text input，命令类 mono」）。220×30（原型 .txt-in 第二段
+ * h30 r8），受控即时 onChange（即时
  * 生效契约）。GPUIX input 无 disabled prop → readOnly + 压灰。
  *
  * 结构照 gpuix 官方 composer 模式（example-app/app.tsx）：input 本体只承担
@@ -50,10 +51,11 @@ export function TextInput({
         flexDirection: 'row',
         alignItems: 'center',
         width: width === 'fill' ? '100%' : width,
-        height: 28,
-        paddingLeft: 9,
-        paddingRight: 9,
-        borderRadius: 4,
+        // 原型 .txt-in（第二段 h30 r8；padding 0 8）
+        height: 30,
+        paddingLeft: 8,
+        paddingRight: 8,
+        borderRadius: 8,
         backgroundColor: COLORS.inputBg,
         borderWidth: 1,
         borderColor: focused ? COLORS.focusBorder : COLORS.borderSubtle,
