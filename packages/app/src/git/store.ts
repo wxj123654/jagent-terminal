@@ -13,7 +13,7 @@ import { createStore } from 'zustand/vanilla'
 
 import { realGitGraphDeps } from './deps'
 import { createGeneration } from './generation'
-import { firstParentChain, GitGraphData, type CommitLine, type GraphRow } from './graph'
+import { GitGraphData, type CommitLine, type GraphRow } from './graph'
 import type { ChangedFile, GitBranch, GitLogHandle, GraphCommit } from './types'
 
 export type GitGraphStatus = 'idle' | 'loading' | 'ready' | 'error' | 'not-a-repo'
@@ -31,10 +31,8 @@ export interface GitGraphState {
   body: string | null
   detailLoading: boolean
   detailError: string | null
-  /** 选中提交的变更文件（行内详情文件树） */
+  /** 选中提交的变更文件（行内详情文件列表） */
   files: readonly ChangedFile[]
-  /** HEAD 第一父链之外的 sha（mute 非线性提交） */
-  muteShas: ReadonlySet<string>
   branches: readonly GitBranch[]
   showRemote: boolean
   findQuery: string
@@ -65,7 +63,6 @@ const initialState: GitGraphState = {
   detailLoading: false,
   detailError: null,
   files: [],
-  muteShas: new Set(),
   branches: [],
   showRemote: true,
   findQuery: '',
@@ -130,7 +127,6 @@ export function createGitGraphStore(deps: GitGraphDeps = realGitGraphDeps): GitG
       detailLoading: false,
       detailError: null,
       files: [],
-      muteShas: new Set(),
       findQuery: '',
       findMatches: [],
       findIndex: -1,
@@ -148,15 +144,10 @@ export function createGitGraphStore(deps: GitGraphDeps = realGitGraphDeps): GitG
     handle = deps.spawnGitLog(root, (chunk) => {
       if (!seq.isCurrent(mySeq)) return
       data.addCommits(chunk)
-      const chain = firstParentChain(data.rows.map((r) => r.commit))
-      const mute = new Set(
-        data.rows.filter((r) => !chain.has(r.commit.sha)).map((r) => r.commit.sha),
-      )
       set({
         rows: data.rows.slice(),
         maxLanes: data.maxLanes,
         loadedCount: data.rows.length,
-        muteShas: mute,
       })
     })
     void deps.listBranches(root).then((branches) => {
@@ -170,12 +161,9 @@ export function createGitGraphStore(deps: GitGraphDeps = realGitGraphDeps): GitG
       set({ status: 'error', error: res.error ?? 'git log failed' })
       return
     }
-    const chain = firstParentChain(data.rows.map((r) => r.commit))
-    const mute = new Set(data.rows.filter((r) => !chain.has(r.commit.sha)).map((r) => r.commit.sha))
     set({
       status: data.rows.length > 0 ? 'ready' : 'error',
       error: data.rows.length > 0 ? null : '没有任何提交',
-      muteShas: mute,
     })
   }
 
@@ -226,8 +214,10 @@ export function createGitGraphStore(deps: GitGraphDeps = realGitGraphDeps): GitG
     const prev = store.getState().findIndex
     const idx = dir === 0 ? 0 : ((prev < 0 ? 0 : prev) + dir + matches.length) % matches.length
     set({ findQuery: query, findMatches: matches, findIndex: idx })
+    // 原型语义：输入只更新匹配集+淡化，步进才移动选中（gitFindStep）。
+    // dir===0（输入变化）不 select——否则每敲一个键 CDV 都跳。
     const sha = matches[idx]
-    if (sha) void select(sha)
+    if (sha && dir !== 0) void select(sha)
   }
 
   return {

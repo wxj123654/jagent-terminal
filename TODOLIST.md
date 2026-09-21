@@ -441,7 +441,7 @@
     index.css `.wp-*`。契约：默认收起、拖宽 244–720、<1100 覆盖式不压终端、
     changes/files 两 tab、选中文件 diff/预览。
   - app：`plane/WorkPanel.tsx` + `git/worktree.ts` 数据面。
-- [ ] **R6 Git 图**
+- [x] **R6 Git 图**——详见 Phase R 结论区（R6）。
   - 锚点：`src/components/GitGraphView.tsx`——工具条（分支菜单/find/refresh）/
     lane 几何（LANE_W/PAD_X）/RefChip/选中详情列/find 步进（gitFindOpen/Draft/
     findIdx）。
@@ -539,6 +539,43 @@
   测试：TitleBar.test 高度断言改 43/37/82 + padLeft 0 + first ml6；
   app 354 + 双包 tsc + fmt/lint 全绿（window-visibility 单跑偶超时 =
   PowerShell 冷启动基线，非本次引入）。
+
+- **R6（Git 图，2026-09-18，worktree j-agent-r6 @91ebdc6）**：geom-proto
+  git 选择器从退役 HTML `.gg-*` 换成 `.git-*` 系后取真值。**原型自身
+  bug 不复制**：svg 内容高 26 而 CSS 行高 30 → 原型 lane 竖线每行有
+  ~4px 断口（像素探针证实）；实现按 30px 连续画，走向一致断口不还原。
+  **几何逐项对齐**（geom 对照）：工具条 42（bg rgba(32,36,43,.42) +
+  borderSubtle 底边 + pad 0 12）、branch-btn h28 r8 inputBg 底 +
+  gitBranch/chev 12 muted + mono 名、「N 提交」spacer 右置、ibtn
+  26²/icon16 r8、hbtn 22²/12、find input w180 h24、表头 h30 bg
+  #1a1d22 + 9px 大写（GPUIX 无 textTransform/letterSpacing——字面写
+  大写，字距不还原记偏差）、行 h30 + 底部分隔 rgba(255,255,255,.025)
+  + sel=surfaceActive+inset 2px accent 条、gcell = marginLeft 8 +
+  lanes·13+22。lane：opacity .85 sw1.5；**圆点实心修正**——svg 根
+  fill=none 继承曾把所有节点描成空心，现普通=currentColor 实填、
+  HEAD=pane 底+2px 描边。RefChip h18 r5 inputBg 底 + 8px 色块 +
+  10px mono（head 框 accent/tag 字 amber/remote 块 muted）；
+  `HEAD -> x` 拆两个 chip（head「HEAD」+branch）。CDV 改卡片：
+  margin 8/10/10 → 槽 236 卡 218 r12 borderSubtle 全边 sidebar 底，
+  左半 Author/Date/SHA meta（k 82/mono 11.5）+ body，右半**扁平
+  frow**（file 图标 muted + dir muted + 名 text，无树无增删统计）；
+  CDV 不穿 lane 线（原型卡片盖住 lane 列）。**语义改原型口径**：
+  muteShas/第一父链淡化删除（vgg 遗留非原型）；find 输入只更新
+  匹配集+非命中行 .35 淡化，findNext ±1 循环才移动选中（原型
+  gitFindStep）；formatCommitDate 删除（CDV Date 显相对时间）；
+  relativeTime 增「昨天 HH:MM」日历日分支。**右键菜单**改原型
+  ctx-menu：overlay 底 r12 + 0 14 38 阴影、项 minH30 r6 hover=surface、
+  danger 字红不换底；标题行去除（原型无）。**分支浮层**改
+  getElementBounds 锚定（按钮左下 +6 = Pop sideOffset），brow h26
+  r4 + ck terminalKind + gitBranch 12。窄屏 rowWidth<900 隐
+  author/date 列+表头、工具条 overflow scroll。**原生行元素**：
+  `<git-graph-row>` 全列 12px、sha=faint、dim/weight 职责移出行级
+  opacity；行容器 pe:none 穿透修「custom element/svg 吃掉行点击」
+  的潜在死区。proto-shot git fixture 两个「昨天」钉死 21:40/18:02
+  与 seed 逐字一致；新增 gitsel 态（CDV 打开截图位，原型无对应态）。
+  测试：format/graph/graphSvg/store/GitGraphView 五套更新 + git 83 例
+  + app 353 + 双包 tsc + fmt/lint 全绿；geom 对照行/chip/表头/工具条
+  逐字段命中（行 y155/pitch30、chip x373≈372、工具条 42）。
 
 ---
 
@@ -661,3 +698,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-17 · **R1 完成（会话视图数据层）**：WIP API 面与原型逐语义核对一致（openGitGraph 双路径/file:<path> 去重/shell:n 递增/左邻回退/独立 PTY spawn+孤儿回收/close 连带销毁视图 PTY）· **真缺口补齐：`onSessionEvent` 归属**——原实现只按 `t${sessionId}` 定位主会话，shell 视图独立 PTY 的 title/bell/exit 全被静默丢弃；现主会话落空 → `findShellView` 按 `view.sessionId` 归属（sessionId disjoint）· 语义与主会话对称：title→view.oscTitle（空串忽略）；bell 三级（视图正显示→丢弃/他视图→view.hasBell/会话后台→会话级提醒 terminal=hasBell·chat·acp=unread + notice + notify）；exit→notice+view.status=exited+exitCode（closeOnExit→共享 removeSessionView 单点）· hasBell 清除=「已看到」同一判定（activateSessionView/activate 落在该视图）· 配套：SessionNotice.viewId（openNotice 直达视图）、pushNotice/notify 放宽到 Thread、shell 视图类型 +oscTitle/hasBell/status/exitCode · R2/R3 消费点已备忘结论区（tab 展示 oscTitle??label、hasBell 标记、exited bar）· gate：store.test 64（+6）+ app 354 + e2e 23 + 双包 tsc + fmt/lint 全绿（window-visibility 单跑 4.2s 属基线 PowerShell 冷启动耗时，全量偶超时非本次引入）· architecture.md §3.1/§3.2/§3.3 已同步 · 下一步：R2（顶栏两行 + SessionTabs）或 R3（Pane 调度 + FileSurface + SessionShell）
 - 2026-09-18 · **架构深化评审 + 六候选全部落地（目录归位 + internal seams）**：codebase-design 词汇评审（module/interface/depth/seam/adapter/leverage/locality）出 HTML 报告六候选，用户拍板全做 · ① **plane/ 四分**：plane/ 留壳（AgentPlane/Pane/TitleBar/SessionTabs/planeKeyboard），Sidebar 族六件 → `sidebar/`，DialogHost+六弹窗+dialogKeyboard → `dialogs/`（git mv 保历史 97–100% rename 检测）② **settings UI 归域**：surfaces/ 七件（SettingsView/SettingsSections/SettingRow/PresetsSection/AcpAgentsSection/listEditorParts/settingsKeyboard/PhaseBadge）→ `settings/ui/`——设置面是路由表面非 surface，surfaces/ 回归「按 thread.kind 注册」语义 ③ **git 域归位**：WorkPanel → `git/components/`、useWorktree → `git/useWorktree.ts`；FileSurface 与 git 共享的文件读取抽 `fs/readTextFile.ts`（第二个消费方坐实 seam）④ **Pane 真 bug 修复**：渲染期 `getState().workspaces` 非响应式直读（rename/path 变化不重渲染）→ useThreadStore selector 订阅 ⑤ **ThreadStore internal seams**：989→547 行；类型契约+interface+装配表+核心方法（spawn/activate/close/rename/cycle/onSessionEvent）留 store.ts，四簇实现进 `threads/internal/`（ctx/sessionViews/notices/workspaceOps/conversations）；**不拆 store**——removeWorkspace→close 等跨簇规则 locality 保留；跨簇调用单向 import + ctx 接线点防环；interface 即测试面不变（threads 87 例原样全过）⑥ **native 整理**：element.rs+git_graph.rs → `elements/`（element.rs 改 terminal.rs 对齐元素名）；jagent-terminal 六 pub mod 收私有，对外只留根部 re-export 单面（set_session_event_fn 补 re-export，两处深路径调用点改走根部）· **文档**：新建 `CONTEXT.md` 领域词汇表（此前仓库没有）；architecture.md §1.1 目录树/§1.2 依赖方向/§3.3 internal seam 注记/§5 目录映射/§8.1-8.2 native 清单全部回写 · gate：app tsc + oxlint/oxfmt + bun test 353 过 1 挂（`TestGpuixRenderer stays hidden on Windows`——PowerShell 窗口句柄查询超时，未改动基线同样失败，环境性预存问题非本次回归）+ cargo build + cargo test 41/41 · 六个独立 commit（21a2ce4/b7d44c2/d9e4571/d80f62c/5697a8c/fed2444）· 未动 .refs/.node
 - 2026-09-18 · **R2 完成（顶栏两行 + SessionTabs）**：规格级发现=原型 index.css 两段平级 `:root`，第二段（694 行起）覆盖生效（geom-proto 实测裁决）→ 用户拍板以原型实测为准，COLORS 全表换第二段色板（+tabStrip/ring/card 三键）· SIZES 44/38/83（非看板旧抄 40/36/77）· 几何逐项对齐：stretch 主行去 gap、cell margin 0 2/first 6、context 贴左缘、分支钮 tile 底去阴影、错误钮 tb-cell 化（新增 alert 图标）、tab r8 pad 0 10 active=surfaceActive、tb-tabs 内凹 #1b1e24+自身底边、win-ctl 去 marginLeft · 「+」浮层/分支菜单改 getElementBounds 锚定（Radix bottom+start+4 同位，geom 复核 (723,80)≈(725,81)）+ 浮层 r12+0 14 38 阴影 · R1 消费落地：shell tab oscTitle ?? label + hasBell 紫点 + exited 灰题 · 有意偏离：win/linux 三键维持 36px 全高 NC/CSD 命中区（原型 28px 钮是 mock）、focus 环维持 accentSoft 2px（4px 双环归 R10）· GPUIX 补录：svg tint 只读自身 style.color——图标 hover 提亮走显式 hovered state · gate：TitleBar/SessionTabs 测试更新 + app 354 + 双包 tsc + fmt/lint 全绿 · 下一步：R3（Pane 调度 + FileSurface + SessionShell）
+- 2026-09-18 · **R6 完成（Git 图，worktree j-agent-r6 @91ebdc6）**：geom-proto git 选择器换 `.git-*` 后逐项取真值并对齐（工具条 42/branch-btn 28/find w180h24/表头 30 大写/行 30+分隔线+选中 accent 条/gcell ml8/lane opacity .85/RefChip h18 拆 HEAD->x/CDV 卡片 218+margin/ctx-menu r12+阴影/分支浮层锚定/brow h26）· **原型自身 bug 不复制**：svg 26 高 vs CSS 30 行高的 lane 断口不还原（实现按 30 连续画）；圆点 fill=none 继承导致的空心 bug 修正为实填 · 语义按原型：muteShas/首父链淡化删除、find 输入不跳选中只淡化（步进才 select）、CDV 去 Commit/Parents/Committer 行与文件树统计改扁平 frow、formatCommitDate 删、relativeTime 加「昨天 HH:MM」· GPUIX 补录：custom element/svg 是绘制元素会吃行命中——行容器+gcell+git-graph-row 全链 pe:none · proto-shot fixture「昨天」钉 21:40/18:02 与 seed 逐字一致、新增 gitsel 态（CDV 打开截图位）· gate：git 83 例 + app 353 + 双包 tsc + fmt/lint 全绿；geom 逐字段命中（行 y155/pitch30、chip x373≈372、工具条 h42）· 全图差异主区 5.41%（文本整形底噪+侧栏基线，非 R6 面）

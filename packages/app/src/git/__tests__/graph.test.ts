@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { GitGraphData, firstParentChain } from '../graph'
+import { GitGraphData } from '../graph'
 import type { GraphCommit } from '../types'
 
 /** 快捷构造：sha 用短代号，parents 引用其它代号 */
@@ -205,19 +205,6 @@ describe('GitGraphData 边界', () => {
     expect(g.rows).toHaveLength(0)
     expect(g.lines).toHaveLength(0)
     expect(g.maxLanes).toBe(0)
-  })
-
-  test('firstParentChain：HEAD 第一父链含根；侧枝排除', () => {
-    const commits = [
-      c('f', ['e', 'd']),
-      c('e', ['c']),
-      c('d', ['b']),
-      c('c', ['b']),
-      c('b', ['a']),
-      c('a', []),
-    ]
-    expect([...firstParentChain(commits)]).toEqual(['f', 'e', 'c', 'b', 'a'])
-    expect(firstParentChain([])).toEqual(new Set())
   })
 
   test('根提交不延伸 lane（parents 空 → lane 空闲）', () => {

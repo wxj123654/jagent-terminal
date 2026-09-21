@@ -1,9 +1,12 @@
 /**
- * git/components/GitGraphView.tsx — Git 图表面（design/git-graph-v2.md）。
+ * git/components/GitGraphView.tsx — Git 图表面（R6：React 原型
+ * design/prototype-react GitGraphView 为唯一视觉/交互基准；git-graph-v2.md
+ * 的 vgg 形态已被取代——mute 淡化、CDV 穿线、文件树/统计、Commit/Parents/
+ * Committer 元数据行均不按原型，已移除）。
  *
- * 工具条（分支 / 远程开关 / find / fetch / refresh）+ 表头列 + 虚拟化提交
- * 列表。选中后在提交下方插入独立 CDV 行（virtual-list 定高模型不能把同一行撑开）；
- * Graph 列竖线由 buildGapGraphics 穿过详情槽。
+ * 工具条（仓库名 / 分支下拉 / 远程开关 / n 提交 / find / fetch / refresh）
+ * + 表头列 + 虚拟化提交列表。选中行下方插入独立 CDV 卡片行（virtual-list
+ * 定高模型不能把同一行撑开；卡片盖住 lane 列——原型不画穿线）。
  * 右键走 onAuxClick + <anchored> 菜单；git actions 经 store.runAction。
  */
 
@@ -18,6 +21,7 @@ import {
   ModalActions,
   ModalBody,
   ModalHeading,
+  Popover,
   TextInput,
   toast,
   Toggle,
@@ -27,11 +31,9 @@ import {
 import { GRAPH_LANE_COLORS, SIZES } from '../../tokens'
 import type { GitMenuEntry, GitMenuItem } from '../actions'
 import { commitMenu, createGitCommands, refMenu } from '../commands'
-import { compactDir, nestChangedFiles, type FileTreeNode } from '../fileTree'
-import { formatCommitDate, parseRefNames, relativeTime, type RefDecor } from '../format'
+import { parseRefNames, relativeTime, type RefDecor } from '../format'
 import type { GraphRow } from '../graph'
 import {
-  buildGapGraphics,
   buildRowGraphics,
   graphColumnWidth,
   ROW_HEIGHT,
@@ -48,6 +50,8 @@ import type { ChangedFile } from '../types'
 export interface GitGraphRowElementProps {
   /** 行文本列规格（useMemo 稳定引用：GPUIX 按引用 diff custom props） */
   row: RowSpec
+  /** 布局/命中透明（setStyle 对一切元素生效；pe:none 让行点击穿透到行容器） */
+  style?: import('@gpuix/react').StyleDesc
   key?: string | number
 }
 
@@ -61,13 +65,32 @@ declare module '@gpuix/react/jsx-runtime' {
 import type { GitGraphStore } from '../store'
 import { useGitGraphStore } from '../useGitGraphStore'
 
-const TOOLBAR_H = 34
-const HEADER_H = 26
-const TAB_H = 30
+// 原型第二段实测：工具条 42 / 表头 30 / 行 30 / 错误条 33 / CDV 卡 218+margin
+const TOOLBAR_H = 42
+const HEADER_H = 30
 const ERROR_H = 33
-const CDV_H = 224
-/** vscode-git-graph：Committer: 是最宽 label，12px 约 82px */
+const CDV_H = 218
+const CDV_SLOT_H = CDV_H + 8 + 10 // margin 8 上 + 10 下（原型 .git-cdv margin:8px 10px 10px）
+/** 原型 .cdv-meta .k = 82px */
 const CDV_LABEL_W = 82
+/** 会话内视图标签条高（pane 内容区在 topChrome 之下，列表高需扣除） */
+const TAB_H = 30
+/** 原型 .git-toolbar 底色（sidebar 42% 透明压 pane） */
+const TOOLBAR_BG = 'rgba(32, 36, 43, 0.42)'
+/** 原型 .git-header 底色（第二段字面量 #1a1d22，非 token 变量） */
+const HEADER_BG = '#1a1d22'
+/** 原型 .git-row 底部分隔线 */
+const ROW_SEPARATOR = 'rgba(255, 255, 255, 0.025)'
+/** 原型 .git-err 底色 */
+const ERROR_BG = 'rgba(224, 108, 117, 0.08)'
+/** 原型浮层 chrome（.ctx-menu/.branch-pop 第二段）：r12 + 0 14 38 阴影 */
+const POP_SHADOW = {
+  offsetX: 0,
+  offsetY: 14,
+  blurRadius: 38,
+  spreadRadius: 0,
+  color: 'rgba(0,0,0,0.5)',
+}
 
 type MenuState = {
   x: number
@@ -84,10 +107,12 @@ function RefBadges({
   decors,
   showRemote,
   onAux,
+  onSelect,
 }: {
   decors: RefDecor[]
   showRemote: boolean
   onAux: (d: RefDecor, e: { x?: number; y?: number }) => void
+  onSelect: () => void
 }) {
   const visible = showRemote ? decors : decors.filter((d) => d.kind !== 'remote')
   if (visible.length === 0) return null
@@ -96,14 +121,14 @@ function RefBadges({
       style={{
         display: 'flex',
         flexDirection: 'row',
-        gap: 4,
+        gap: 6,
         flexShrink: 0,
         marginRight: 6,
       }}
     >
       {visible.map((d, i) => {
-        // 原型 .ref-chip：h16 / 8px 色块 / 10px mono / 透明底；
-        // head 边框 accent，tag 文字 amber，remote 色块 muted
+        // 原型 .ref-chip（第二段）：h18 / r5 / inputBg 底 / 8px 色块 /
+        // 10px mono / textBright 字；head 边框 accent，tag 字 amber，remote 色块 muted
         const sq =
           d.kind === 'head'
             ? COLORS.accent
@@ -118,18 +143,20 @@ function RefBadges({
           <div
             key={`${d.kind}-${d.label}-${i}`}
             testId={`git-ref-${d.kind}`}
+            onClick={onSelect}
             onAuxClick={(e) => onAux(d, e)}
             style={{
               display: 'flex',
               flexDirection: 'row',
               alignItems: 'center',
               gap: 4,
-              height: 16,
+              height: 18,
               paddingLeft: 6,
               paddingRight: 6,
               borderWidth: 1,
               borderColor: border,
-              borderRadius: 3,
+              borderRadius: 5,
+              backgroundColor: COLORS.inputBg,
               flexShrink: 0,
             }}
           >
@@ -140,6 +167,7 @@ function RefBadges({
                 borderRadius: 2,
                 backgroundColor: sq,
                 flexShrink: 0,
+                pointerEvents: 'none',
               }}
             />
             <text
@@ -147,6 +175,7 @@ function RefBadges({
                 fontSize: 10,
                 fontFamily: FONT.mono,
                 color,
+                pointerEvents: 'none',
               }}
             >
               {d.label}
@@ -163,6 +192,7 @@ function person(name: string, email: string): string {
 }
 
 function MetaRow({ label, children }: { label: string; children: ReactNode }) {
+  // 原型 .cdv-meta：行 mb4 / .k w82 muted / .v mono 11.5 text
   return (
     <div
       style={{
@@ -170,7 +200,7 @@ function MetaRow({ label, children }: { label: string; children: ReactNode }) {
         flexDirection: 'row',
         alignItems: 'flex-start',
         minWidth: 0,
-        marginTop: 3,
+        marginBottom: 4,
       }}
     >
       <text
@@ -180,8 +210,7 @@ function MetaRow({ label, children }: { label: string; children: ReactNode }) {
           flexShrink: 0,
           fontSize: 12,
           fontFamily: FONT.ui,
-          fontWeight: '600',
-          color: COLORS.textBright,
+          color: COLORS.muted,
           whiteSpace: 'nowrap',
           overflow: 'hidden',
         }}
@@ -195,13 +224,13 @@ function MetaRow({ label, children }: { label: string; children: ReactNode }) {
 
 function ellipsisText(
   value: string,
-  extra?: { color?: string; fontFamily?: string; onClick?: () => void },
+  extra?: { color?: string; fontFamily?: string; size?: number; onClick?: () => void },
 ) {
   return (
     <text
       onClick={extra?.onClick}
       style={{
-        fontSize: 12,
+        fontSize: extra?.size ?? 12,
         fontFamily: extra?.fontFamily ?? FONT.ui,
         color: extra?.color ?? COLORS.text,
         minWidth: 0,
@@ -216,49 +245,18 @@ function ellipsisText(
   )
 }
 
-function FileTree({ files }: { files: readonly ChangedFile[] }) {
+/** 原型 .ftree/.frow：扁平文件列表（icon 12 + 目录前缀 muted + 文件名），
+ *  无目录树/无增删统计——原型不画。容器可横向滚动，路径不 ellipsis。 */
+function FileList({ files }: { files: readonly ChangedFile[] }) {
   if (files.length === 0) {
     return <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted }}>无变更</text>
   }
-  const render = (n: FileTreeNode, key: string) => (
-    <div key={key} style={{ paddingLeft: key ? 16 : 0, minWidth: 0 }}>
-      {Object.entries(n.dirs).map(([d, child]) => {
-        const compact = compactDir(d, child)
-        return (
-          <div key={compact.name} style={{ minWidth: 0 }}>
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                height: 18,
-                minWidth: 0,
-                overflow: 'hidden',
-              }}
-            >
-              <Icon name="folder" size={11} color={COLORS.muted} />
-              <text
-                style={{
-                  fontSize: 12,
-                  fontFamily: FONT.ui,
-                  color: COLORS.text,
-                  marginLeft: 4,
-                  minWidth: 0,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {compact.name}
-              </text>
-            </div>
-            {render(compact.node, `${key}/${compact.name}`)}
-          </div>
-        )
-      })}
-      {n.files.map((f) => {
-        const name = f.path.split('/').pop() ?? f.path
-        const bin = f.added == null || f.deleted == null
+  return (
+    <>
+      {files.map((f) => {
+        const sl = f.path.lastIndexOf('/')
+        const dir = sl >= 0 ? f.path.slice(0, sl + 1) : ''
+        const name = sl >= 0 ? f.path.slice(sl + 1) : f.path
         return (
           <div
             key={f.path}
@@ -266,121 +264,61 @@ function FileTree({ files }: { files: readonly ChangedFile[] }) {
               display: 'flex',
               flexDirection: 'row',
               alignItems: 'center',
-              height: 18,
-              minWidth: 0,
-              overflow: 'hidden',
+              gap: 6,
+              paddingTop: 1,
+              paddingBottom: 1,
+              flexShrink: 0,
             }}
           >
-            <Icon name="file" size={11} color={COLORS.cyan} />
+            {/* 原型 .ftree .frow>svg{color:var(--muted)} */}
+            <Icon name="file" size={12} color={COLORS.muted} />
+            {dir ? (
+              <text
+                style={{
+                  fontSize: 12,
+                  fontFamily: FONT.mono,
+                  color: COLORS.muted,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}
+              >
+                {dir}
+              </text>
+            ) : null}
             <text
               style={{
                 fontSize: 12,
                 fontFamily: FONT.mono,
-                color: COLORS.cyan,
-                marginLeft: 4,
-                flexGrow: 1,
-                flexShrink: 1,
-                minWidth: 0,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                color: COLORS.text,
                 whiteSpace: 'nowrap',
+                flexShrink: 0,
               }}
             >
               {name}
             </text>
-            {bin ? (
-              <text
-                style={{
-                  fontSize: 11,
-                  fontFamily: FONT.mono,
-                  color: COLORS.muted,
-                  marginLeft: 8,
-                  flexShrink: 0,
-                }}
-              >
-                BIN
-              </text>
-            ) : (
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'row',
-                  flexShrink: 0,
-                  marginLeft: 8,
-                }}
-              >
-                <text
-                  style={{
-                    fontSize: 11,
-                    fontFamily: FONT.mono,
-                    color: COLORS.muted,
-                  }}
-                >
-                  (
-                </text>
-                <text
-                  style={{
-                    fontSize: 11,
-                    fontFamily: FONT.mono,
-                    color: COLORS.terminalKind,
-                  }}
-                >
-                  {`+${f.added}`}
-                </text>
-                <text
-                  style={{
-                    fontSize: 11,
-                    fontFamily: FONT.mono,
-                    color: COLORS.muted,
-                  }}
-                >
-                  {' | '}
-                </text>
-                <text
-                  style={{
-                    fontSize: 11,
-                    fontFamily: FONT.mono,
-                    color: COLORS.bell,
-                  }}
-                >
-                  {`-${f.deleted}`}
-                </text>
-                <text
-                  style={{
-                    fontSize: 11,
-                    fontFamily: FONT.mono,
-                    color: COLORS.muted,
-                  }}
-                >
-                  )
-                </text>
-              </div>
-            )}
           </div>
         )
       })}
-    </div>
+    </>
   )
-  return render(nestChangedFiles(files), '')
 }
 
+/** 原型 .git-cdv 卡片：margin 8/10/10、r12、borderSubtle 全边、sidebar 底、
+ *  左右各半（sum 右缘 1px border 分隔）。 */
 function Cdv({
   row,
-  store,
   files,
   body,
   detailLoading,
   detailError,
 }: {
   row: GraphRow
-  store: GitGraphStore
   files: readonly ChangedFile[]
   body: string | null
   detailLoading: boolean
   detailError: string | null
 }) {
   const c = row.commit
-  const parents = c.parents
   return (
     <div
       testId="git-detail"
@@ -388,9 +326,10 @@ function Cdv({
         height: CDV_H,
         display: 'flex',
         flexDirection: 'row',
-        borderTopWidth: 1,
+        borderWidth: 1,
         borderColor: COLORS.borderSubtle,
-        backgroundColor: 'rgba(128,128,128,0.08)',
+        borderRadius: 12,
+        backgroundColor: COLORS.sidebar,
         minWidth: 0,
         overflow: 'hidden',
       }}
@@ -406,149 +345,75 @@ function Cdv({
           paddingLeft: 12,
           paddingRight: 12,
           borderRightWidth: 1,
-          borderColor: COLORS.borderSubtle,
+          borderColor: COLORS.border,
           display: 'flex',
           flexDirection: 'column',
         }}
       >
-        <div style={{ flexShrink: 0, minWidth: 0 }}>
-          <MetaRow label="Commit:">
-            {ellipsisText(c.sha, {
-              color: COLORS.textBright,
-              fontFamily: FONT.mono,
-            })}
-          </MetaRow>
-          {parents.length > 0 ? (
-            <MetaRow label="Parents:">
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'row',
-                  gap: 8,
-                  minWidth: 0,
-                }}
-              >
-                {parents.map((p) => (
-                  <text
-                    key={p}
-                    onClick={() => store.select(p)}
-                    style={{
-                      fontSize: 12,
-                      fontFamily: FONT.mono,
-                      color: COLORS.accent,
-                      cursor: 'pointer',
-                      minWidth: 0,
-                      flexShrink: 1,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {p}
-                  </text>
-                ))}
-              </div>
-            </MetaRow>
-          ) : null}
-          <MetaRow label="Author:">
-            {ellipsisText(person(c.authorName, c.authorEmail), {
-              color: COLORS.textBright,
-            })}
-          </MetaRow>
-          <MetaRow label="Committer:">
-            {ellipsisText(person(c.committerName, c.committerEmail), {
-              color: COLORS.textBright,
-            })}
-          </MetaRow>
-          <MetaRow label="Date:">
-            {ellipsisText(formatCommitDate(c.timestamp), {
-              color: COLORS.textBright,
-            })}
-          </MetaRow>
-        </div>
-        <div
+        {/* .cdv-title：13px textBright lh1.4 mb8 */}
+        <text
           style={{
-            marginTop: 10,
-            paddingTop: 8,
-            borderTopWidth: 1,
-            borderColor: COLORS.borderSubtle,
-            flexGrow: 1,
-            minHeight: 0,
+            fontSize: 13,
+            fontFamily: FONT.ui,
+            color: COLORS.textBright,
+            lineHeight: 18,
+            marginBottom: 8,
             minWidth: 0,
             overflow: 'hidden',
           }}
         >
-          <div style={{ height: '100%', minWidth: 0, overflow: 'scroll' }}>
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                minWidth: 0,
-                overflow: 'hidden',
-              }}
-            >
-              <Icon name="gitBranch" size={12} color={COLORS.terminalKind} />
-              <text
-                style={{
-                  fontSize: 13,
-                  fontFamily: FONT.ui,
-                  color: COLORS.textBright,
-                  fontWeight: '600',
-                  marginLeft: 6,
-                  minWidth: 0,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {c.subject}
-              </text>
-            </div>
-            {detailLoading ? (
-              <text
-                style={{
-                  fontSize: 12,
-                  fontFamily: FONT.ui,
-                  color: COLORS.muted,
-                  marginTop: 8,
-                }}
-              >
-                加载说明…
-              </text>
-            ) : detailError ? (
-              <text
-                style={{
-                  fontSize: 12,
-                  fontFamily: FONT.ui,
-                  color: COLORS.bell,
-                  marginTop: 8,
-                }}
-              >
-                {detailError}
-              </text>
-            ) : body ? (
-              <text
-                style={{
-                  marginTop: 8,
-                  fontSize: 12,
-                  fontFamily: FONT.ui,
-                  color: COLORS.text,
-                  whiteSpace: 'normal',
-                  lineHeight: 18,
-                }}
-              >
-                {body}
-              </text>
-            ) : null}
-          </div>
-        </div>
+          {c.subject}
+        </text>
+        <MetaRow label="Author:">
+          {ellipsisText(person(c.authorName, c.authorEmail), { fontFamily: FONT.mono, size: 11.5 })}
+        </MetaRow>
+        <MetaRow label="Date:">
+          {ellipsisText(relativeTime(c.timestamp), { fontFamily: FONT.mono, size: 11.5 })}
+        </MetaRow>
+        <MetaRow label="SHA:">{ellipsisText(c.sha, { fontFamily: FONT.mono, size: 11.5 })}</MetaRow>
+        {/* .cdv-body：12px muted mt8 lh1.5 pre-wrap */}
+        {detailLoading ? (
+          <text
+            style={{
+              fontSize: 12,
+              fontFamily: FONT.ui,
+              color: COLORS.muted,
+              marginTop: 8,
+            }}
+          >
+            加载说明…
+          </text>
+        ) : detailError ? (
+          <text
+            style={{
+              fontSize: 12,
+              fontFamily: FONT.ui,
+              color: COLORS.bell,
+              marginTop: 8,
+            }}
+          >
+            {detailError}
+          </text>
+        ) : body ? (
+          <text
+            style={{
+              marginTop: 8,
+              fontSize: 12,
+              fontFamily: FONT.ui,
+              color: COLORS.muted,
+              whiteSpace: 'normal',
+              lineHeight: 18,
+            }}
+          >
+            {body}
+          </text>
+        ) : null}
       </div>
       <div
         testId="git-cdv-files"
         style={{ flexGrow: 1, minWidth: 0, padding: 10, overflow: 'scroll' }}
       >
-        <FileTree files={files} />
+        <FileList files={files} />
       </div>
     </div>
   )
@@ -560,10 +425,11 @@ function GraphRowView({
   lines,
   maxLanes,
   selected,
-  muted,
+  dimmed,
   hollow,
   rowWidth,
   showRemote,
+  narrow,
   onSelect,
   onMenu,
 }: {
@@ -572,10 +438,13 @@ function GraphRowView({
   lines: readonly import('../graph').CommitLine[]
   maxLanes: number
   selected: boolean
-  muted: boolean
+  /** find 有查询且本行非命中 → opacity .35（原型 .git-row dim） */
+  dimmed: boolean
   hollow: boolean
   rowWidth: number
   showRemote: boolean
+  /** 原型 @media(≤900px)：author/date 列隐藏 */
+  narrow: boolean
   onSelect: () => void
   onMenu: (e: { x?: number; y?: number }, kind: 'commit' | RefDecor) => void
 }) {
@@ -591,24 +460,31 @@ function GraphRowView({
   })
   const decors = parseRefNames(row.commit.refNames.join(', '))
   const msgColor = selected ? COLORS.textBright : COLORS.text
-  const dim = muted ? 0.45 : 1
   const rowSpec = useMemo(
     () =>
       buildRowColumns({
         subject: row.commit.subject,
         subjectColor: msgColor,
-        subjectWeight: selected ? 600 : 400,
-        dim,
         author: row.commit.authorName,
         date: relativeTime(row.commit.timestamp),
         sha: row.commit.shortSha,
+        narrow,
       }),
-    [row.commit, msgColor, selected, dim],
+    [row.commit, msgColor, narrow],
   )
   return (
     <div
       testId={`git-row-${index}`}
+      onClick={onSelect}
+      onAuxClick={(e) => {
+        if (suppressRowMenu.current) {
+          suppressRowMenu.current = false
+          return
+        }
+        onMenu(e, 'commit')
+      }}
       style={{
+        position: 'relative',
         width: rowWidth,
         height: ROW_HEIGHT,
         flexShrink: 0,
@@ -616,11 +492,33 @@ function GraphRowView({
         flexDirection: 'row',
         alignItems: 'center',
         minWidth: 0,
-        backgroundColor: selected ? 'rgba(128,128,128,0.22)' : undefined,
-        hover: selected ? undefined : { backgroundColor: 'rgba(128,128,128,0.12)' },
+        // 原型 .git-row：sel=surfaceActive + inset 2px accent 左条；
+        // hover=surface（sel 行 hover 仍 surfaceActive——底相同）；
+        // 行底 1px 2.5% 白分隔线；find 非命中整行 .35
+        backgroundColor: selected ? COLORS.surfaceActive : undefined,
+        hover: { backgroundColor: selected ? COLORS.surfaceActive : COLORS.surface },
+        borderBottomWidth: 1,
+        borderColor: ROW_SEPARATOR,
+        opacity: dimmed ? 0.35 : 1,
         cursor: 'pointer',
+        userSelect: 'none',
       }}
     >
+      {selected ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 2,
+            backgroundColor: COLORS.accent,
+            pointerEvents: 'none',
+          }}
+        />
+      ) : null}
+      {/* gcell：原型 svg marginLeft 8、宽 gw+6；装饰层 pe:none——GPUIX 命中
+          deepest 绘制元素，不挡行点击 */}
       <div
         style={{
           width,
@@ -628,7 +526,7 @@ function GraphRowView({
           position: 'relative',
           flexShrink: 0,
           marginLeft: 8,
-          marginRight: 6,
+          pointerEvents: 'none',
         }}
       >
         {pieces.map((p, i) => (
@@ -647,14 +545,6 @@ function GraphRowView({
         ))}
       </div>
       <div
-        onClick={onSelect}
-        onAuxClick={(e) => {
-          if (suppressRowMenu.current) {
-            suppressRowMenu.current = false
-            return
-          }
-          onMenu(e, 'commit')
-        }}
         style={{
           height: ROW_HEIGHT,
           flexGrow: 1,
@@ -665,42 +555,29 @@ function GraphRowView({
           minWidth: 0,
         }}
       >
-        {hollow ? (
-          <div
-            style={{
-              width: 6,
-              height: 6,
-              borderWidth: 2,
-              borderColor: GRAPH_LANE_COLORS[row.colorIdx % GRAPH_LANE_COLORS.length],
-              borderRadius: 6,
-              marginRight: 6,
-              flexShrink: 0,
-            }}
-          />
-        ) : null}
         <RefBadges
           decors={decors}
           showRemote={showRemote}
+          onSelect={onSelect}
           onAux={(d, e) => {
             suppressRowMenu.current = true
             onMenu(e, d)
           }}
         />
-        {/* 行文本 4 列：canvas 自绘（见 rowColumns.ts 头注）。sha 点击的
-            半成品 toast（无剪贴板写入）随之移除，复制走行右键菜单 copy-sha */}
-        <git-graph-row row={rowSpec} />
+        {/* 行文本 4 列：canvas 自绘（见 rowColumns.ts 头注）。pe:none——
+            custom element 是绘制元素，不挡行点击/右键 */}
+        <git-graph-row row={rowSpec} style={{ flexGrow: 1, minWidth: 0, pointerEvents: 'none' }} />
       </div>
     </div>
   )
 }
 
+/** CDV 槽行：原型 .git-cdv 的 margin:8px 10px 10px 由槽位 padding 承担，
+ *  卡片盖住 lane 列（原型不画穿线）。 */
 function CdvRow({
   afterIndex,
   row,
-  lines,
-  maxLanes,
   rowWidth,
-  store,
   files,
   body,
   detailLoading,
@@ -708,74 +585,40 @@ function CdvRow({
 }: {
   afterIndex: number
   row: GraphRow
-  lines: readonly import('../graph').CommitLine[]
-  maxLanes: number
   rowWidth: number
-  store: GitGraphStore
   files: readonly ChangedFile[]
   body: string | null
   detailLoading: boolean
   detailError: string | null
 }) {
-  const width = graphColumnWidth(maxLanes)
-  const pieces = buildGapGraphics({
-    afterRow: afterIndex,
-    lines,
-    maxLanes,
-    height: CDV_H,
-  })
   return (
     <div
       testId={`git-cdv-${afterIndex}`}
       style={{
         width: rowWidth,
-        height: CDV_H,
+        height: CDV_SLOT_H,
         flexShrink: 0,
-        display: 'flex',
-        flexDirection: 'row',
+        paddingTop: 8,
+        paddingBottom: 10,
+        paddingLeft: 10,
+        paddingRight: 10,
         minWidth: 0,
-        backgroundColor: 'rgba(128,128,128,0.08)',
       }}
     >
-      <div
-        style={{
-          width,
-          height: CDV_H,
-          position: 'relative',
-          flexShrink: 0,
-          marginLeft: 8,
-          marginRight: 6,
-        }}
-      >
-        {pieces.map((p, i) => (
-          <svg
-            key={i}
-            source={p.source}
-            style={{
-              position: 'absolute',
-              left: 0,
-              top: 0,
-              width,
-              height: CDV_H,
-              color: GRAPH_LANE_COLORS[p.colorIdx % GRAPH_LANE_COLORS.length],
-            }}
-          />
-        ))}
-      </div>
-      <div style={{ flexGrow: 1, minWidth: 0 }}>
-        <Cdv
-          row={row}
-          store={store}
-          files={files}
-          body={body}
-          detailLoading={detailLoading}
-          detailError={detailError}
-        />
-      </div>
+      <Cdv
+        row={row}
+        files={files}
+        body={body}
+        detailLoading={detailLoading}
+        detailError={detailError}
+      />
     </div>
   )
 }
 
+/** 原型 .ctx-menu（第二段）：overlay 底 / borderSubtle / r12 / pad4 /
+ *  阴影 0 14 38 rgba(0,0,0,.5)；项 minH30 r6 pad 0 8，hover=surface，
+ *  danger 字红（hover 底仍 surface）；分隔线 margin 4 6。 */
 function MenuLayer({
   menu,
   onClose,
@@ -786,32 +629,20 @@ function MenuLayer({
   onPick: (item: GitMenuItem) => void
 }) {
   return (
-    <anchored
+    <Popover
       position={{ x: menu.x, y: menu.y }}
-      deferred
-      occlude
-      onMouseDownOutside={onClose}
+      onClose={onClose}
+      testId="git-menu"
+      minWidth={180}
       style={{
-        minWidth: 220,
-        backgroundColor: COLORS.inputBg,
+        backgroundColor: COLORS.overlay,
         borderWidth: 1,
         borderColor: COLORS.borderSubtle,
-        borderRadius: 6,
+        borderRadius: 12,
         padding: 4,
+        boxShadow: POP_SHADOW,
       }}
     >
-      <text
-        style={{
-          fontSize: 11,
-          fontFamily: FONT.ui,
-          color: COLORS.muted,
-          paddingLeft: 10,
-          paddingTop: 4,
-          paddingBottom: 2,
-        }}
-      >
-        {menu.title}
-      </text>
       {menu.items.map((it, i) => {
         if ('sep' in it) {
           return (
@@ -822,6 +653,8 @@ function MenuLayer({
                 backgroundColor: COLORS.borderSubtle,
                 marginTop: 4,
                 marginBottom: 4,
+                marginLeft: 6,
+                marginRight: 6,
               }}
             />
           )
@@ -837,15 +670,13 @@ function MenuLayer({
               display: 'flex',
               flexDirection: 'row',
               alignItems: 'center',
-              height: 26,
-              paddingLeft: 10,
-              paddingRight: 12,
-              borderRadius: 4,
+              minHeight: 30,
+              paddingLeft: 8,
+              paddingRight: 8,
+              borderRadius: 6,
               opacity: it.disabled ? 0.4 : 1,
               cursor: it.disabled ? 'default' : 'pointer',
-              hover: it.disabled
-                ? undefined
-                : { backgroundColor: it.danger ? COLORS.bell : COLORS.accent },
+              hover: it.disabled ? undefined : { backgroundColor: COLORS.surface },
             }}
           >
             <text
@@ -855,6 +686,7 @@ function MenuLayer({
                 color: it.danger ? COLORS.bell : COLORS.text,
                 width: 14,
                 flexShrink: 0,
+                pointerEvents: 'none',
               }}
             >
               {it.checked ? '✓' : ''}
@@ -864,6 +696,7 @@ function MenuLayer({
                 fontSize: 12,
                 fontFamily: FONT.ui,
                 color: it.danger ? COLORS.bell : COLORS.text,
+                pointerEvents: 'none',
               }}
             >
               {it.label}
@@ -871,7 +704,7 @@ function MenuLayer({
           </div>
         )
       })}
-    </anchored>
+    </Popover>
   )
 }
 
@@ -915,6 +748,9 @@ export function GitGraphView({
     return () => clearInterval(id)
   }, [renderer])
   const rowWidth = paneW ?? winW
+  /** 原型 @media(≤900px)：author/date 列隐藏、工具条横向滚动。
+      以行实占宽判定（侧栏挤压时同样进入窄态）。 */
+  const narrow = rowWidth < 900
   const [findOpen, setFindOpen] = useState(false)
   const [findDraft, setFindDraft] = useState('')
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -922,6 +758,11 @@ export function GitGraphView({
   const [prompt, setPrompt] = useState<PromptState | null>(null)
   const [promptVal, setPromptVal] = useState('')
   const [branchOpen, setBranchOpen] = useState(false)
+  const branchBtnRef = useRef<PublicInstance | null>(null)
+  /** 分支浮层左上角：开层时取按钮 bounds + sideOffset 6（原型 Pop sideOffset） */
+  const [branchPos, setBranchPos] = useState({ x: 0, y: 0 })
+  const findActive = s.findQuery.trim() !== ''
+  const matchSet = useMemo(() => new Set(s.findMatches), [s.findMatches])
 
   useEffect(() => {
     store.mount(cwd)
@@ -978,7 +819,10 @@ export function GitGraphView({
         position: 'relative',
       }}
     >
+      {/* 原型 .git-toolbar（第二段）：h42 / pad 0 12 / gap8 /
+          bg rgba(32,36,43,.42) / borderBottom borderSubtle */}
       <div
+        testId="git-toolbar"
         style={{
           display: 'flex',
           flexDirection: 'row',
@@ -986,49 +830,60 @@ export function GitGraphView({
           gap: 8,
           height: TOOLBAR_H,
           paddingLeft: 12,
-          paddingRight: 8,
+          paddingRight: 12,
           borderBottomWidth: 1,
-          borderColor: COLORS.border,
+          borderColor: COLORS.borderSubtle,
+          backgroundColor: TOOLBAR_BG,
           flexShrink: 0,
+          overflow: narrow ? 'scroll' : 'hidden',
         }}
       >
-        <text
-          style={{
-            fontSize: 12,
-            fontFamily: FONT.ui,
-            color: COLORS.textBright,
-            flexShrink: 0,
-          }}
-        >
+        <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted, flexShrink: 0 }}>
           {repoLabel}
         </text>
-        <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted }}>分支</text>
+        <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted, flexShrink: 0 }}>
+          分支
+        </text>
+        {/* .git-branch-btn（第二段）：h28 / border borderSubtle / r8 / inputBg 底 /
+            pad 0 8 / gap5 / 12px mono / gitBranch+chev 12 muted */}
         <div
           testId="git-branch"
-          onClick={() => setBranchOpen((v) => !v)}
+          ref={branchBtnRef}
+          onClick={() => {
+            const el = branchBtnRef.current
+            const b = el ? renderer?.getElementBounds?.(el.id) : null
+            if (b) setBranchPos({ x: b.x, y: b.y + b.height + 6 })
+            setBranchOpen((v) => !v)
+          }}
           style={{
             display: 'flex',
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 4,
-            height: 24,
+            gap: 5,
+            height: 28,
             paddingLeft: 8,
-            paddingRight: 6,
-            borderRadius: 4,
+            paddingRight: 8,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: COLORS.borderSubtle,
+            backgroundColor: COLORS.inputBg,
             cursor: 'pointer',
-            hover: { backgroundColor: COLORS.surface },
+            flexShrink: 0,
+            hover: { backgroundColor: COLORS.tileHover },
           }}
         >
+          <Icon name="gitBranch" size={12} color={COLORS.muted} />
           <text
             style={{
               fontSize: 12,
-              fontFamily: FONT.ui,
-              color: COLORS.textBright,
+              fontFamily: FONT.mono,
+              color: COLORS.text,
+              pointerEvents: 'none',
             }}
           >
             {currentBranch}
           </text>
-          <Icon name="chevronDown" size={11} color={COLORS.muted} />
+          <Icon name="chevronDown" size={12} color={COLORS.muted} />
         </div>
         <div
           style={{
@@ -1036,28 +891,29 @@ export function GitGraphView({
             flexDirection: 'row',
             alignItems: 'center',
             gap: 6,
+            flexShrink: 0,
           }}
         >
+          {/* 原型 transform:scale(.85) → Toggle scale prop（GPUIX 无 transform） */}
           <Toggle
             checked={s.showRemote}
             onChange={(on) => store.setShowRemote(on)}
             testId="git-show-remote"
+            scale={0.85}
           />
           <text style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted }}>
             显示远程分支
           </text>
         </div>
+        {/* .cnt：margin-left:auto —— spacer 推到右侧图标组前 */}
+        <div style={{ flexGrow: 1, minWidth: 0 }} />
         <text
           testId="git-count"
-          style={{
-            fontSize: 11,
-            fontFamily: FONT.ui,
-            color: COLORS.muted,
-            flexGrow: 1,
-          }}
+          style={{ fontSize: 11, fontFamily: FONT.ui, color: COLORS.muted, flexShrink: 0 }}
         >
           {s.status === 'loading' && s.loadedCount === 0 ? '读取提交…' : `${s.loadedCount} 提交`}
         </text>
+        {/* find 展开时 search 钮消失（原型同） */}
         {findOpen ? (
           <div
             testId="git-find"
@@ -1066,13 +922,16 @@ export function GitGraphView({
               flexDirection: 'row',
               alignItems: 'center',
               gap: 4,
+              flexShrink: 0,
             }}
           >
+            {/* .git-find input：w180 h24 */}
             <TextInput
               value={findDraft}
               placeholder="查找提交"
               testId="git-find-input"
               width={180}
+              height={24}
               onChange={(v) => {
                 setFindDraft(v)
                 store.find(v)
@@ -1085,6 +944,7 @@ export function GitGraphView({
                 fontFamily: FONT.ui,
                 color: COLORS.muted,
                 width: 40,
+                textAlign: 'center',
               }}
             >
               {s.findMatches.length ? `${s.findIndex + 1}/${s.findMatches.length}` : '0/0'}
@@ -1118,32 +978,43 @@ export function GitGraphView({
               }}
             />
           </div>
-        ) : null}
-        <IconButton
-          name="search"
-          label="查找提交"
-          testId="git-find-open"
-          onClick={() => setFindOpen(true)}
-        />
+        ) : (
+          <IconButton
+            name="search"
+            label="查找提交"
+            testId="git-find-open"
+            hitSize={26}
+            size={16}
+            onClick={() => setFindOpen(true)}
+          />
+        )}
         <IconButton
           name="gear"
           label="设置（后续版本）"
           testId="git-settings"
+          hitSize={26}
+          size={16}
           onClick={() => toast('设置面板：后续版本提供')}
         />
         <IconButton
           name="download"
           label="拉取远端更新"
           testId="git-fetch"
+          hitSize={26}
+          size={16}
           onClick={() => commands.runGit(['fetch', '--all', '--prune'])}
         />
         <IconButton
           name="reset"
           label="刷新（R）"
           testId="git-refresh"
+          hitSize={26}
+          size={16}
           onClick={() => store.refresh()}
         />
       </div>
+      {/* 原型 .git-err：h33 / pad 0 10 / gap8 / bell 8% 底 /
+          borderBottom border / statusError 字 */}
       {s.status === 'error' || s.actionError ? (
         <div
           testId="git-error"
@@ -1151,9 +1022,13 @@ export function GitGraphView({
             display: 'flex',
             flexDirection: 'row',
             alignItems: 'center',
-            padding: 8,
-            paddingLeft: 12,
-            backgroundColor: 'rgba(224, 108, 117, 0.10)',
+            gap: 8,
+            height: ERROR_H,
+            paddingLeft: 10,
+            paddingRight: 10,
+            backgroundColor: ERROR_BG,
+            borderBottomWidth: 1,
+            borderColor: COLORS.border,
             flexShrink: 0,
           }}
         >
@@ -1180,6 +1055,10 @@ export function GitGraphView({
         </div>
       ) : (
         <>
+          {/* 原型 .git-header（第二段）：h30 / bg #1a1d22 / 9px uppercase
+              （GPUIX 无 textTransform/letterSpacing——直接写大写文本，
+              letter-spacing .06em 不还原，记偏差）/ muted 字 /
+              borderBottom borderSubtle；列几何与行一致 */}
           <div
             testId="git-header"
             style={{
@@ -1187,66 +1066,76 @@ export function GitGraphView({
               flexDirection: 'row',
               alignItems: 'center',
               height: HEADER_H,
-              paddingLeft: 8,
               paddingRight: 12,
               borderBottomWidth: 1,
               borderColor: COLORS.borderSubtle,
+              backgroundColor: HEADER_BG,
               flexShrink: 0,
             }}
           >
             <text
               style={{
-                fontSize: 11,
+                fontSize: 9,
                 fontFamily: FONT.ui,
                 color: COLORS.muted,
-                width: graphW + 6,
+                width: graphW,
+                marginLeft: 8,
+                flexShrink: 0,
               }}
             >
-              Graph
+              GRAPH
             </text>
             <text
               style={{
-                fontSize: 11,
+                fontSize: 9,
                 fontFamily: FONT.ui,
                 color: COLORS.muted,
                 flexGrow: 1,
+                minWidth: 0,
               }}
             >
-              Description
+              DESCRIPTION
             </text>
+            {narrow ? null : (
+              <>
+                <text
+                  style={{
+                    fontSize: 9,
+                    fontFamily: FONT.ui,
+                    color: COLORS.muted,
+                    width: COL_AUTHOR,
+                    marginLeft: 8,
+                    flexShrink: 0,
+                  }}
+                >
+                  AUTHOR
+                </text>
+                <text
+                  style={{
+                    fontSize: 9,
+                    fontFamily: FONT.ui,
+                    color: COLORS.muted,
+                    width: COL_DATE,
+                    textAlign: 'right',
+                    marginLeft: 8,
+                    flexShrink: 0,
+                  }}
+                >
+                  DATE
+                </text>
+              </>
+            )}
             <text
               style={{
-                fontSize: 11,
-                fontFamily: FONT.ui,
-                color: COLORS.muted,
-                width: COL_AUTHOR,
-                marginLeft: 8,
-              }}
-            >
-              Author
-            </text>
-            <text
-              style={{
-                fontSize: 11,
-                fontFamily: FONT.ui,
-                color: COLORS.muted,
-                width: COL_DATE,
-                textAlign: 'right',
-                marginLeft: 8,
-              }}
-            >
-              Date
-            </text>
-            <text
-              style={{
-                fontSize: 11,
+                fontSize: 9,
                 fontFamily: FONT.ui,
                 color: COLORS.muted,
                 width: COL_SHA,
                 marginLeft: 8,
+                flexShrink: 0,
               }}
             >
-              Sha
+              SHA
             </text>
           </div>
           <virtual-list
@@ -1264,10 +1153,11 @@ export function GitGraphView({
                   lines={s.linesByRow.get(i) ?? []}
                   maxLanes={s.maxLanes}
                   selected={selected}
-                  muted={s.muteShas.has(row.commit.sha)}
+                  dimmed={findActive && !matchSet.has(row.commit.sha)}
                   hollow={i === 0}
                   rowWidth={rowWidth}
                   showRemote={s.showRemote}
+                  narrow={narrow}
                   onSelect={() => store.select(selected ? null : row.commit.sha)}
                   onMenu={(e, kind) => {
                     if (kind === 'commit') openCommitMenu(e, row, i)
@@ -1282,10 +1172,7 @@ export function GitGraphView({
                   key={`${row.commit.sha}-cdv`}
                   afterIndex={i}
                   row={row}
-                  lines={s.linesByRow.get(i) ?? []}
-                  maxLanes={s.maxLanes}
                   rowWidth={rowWidth}
-                  store={store}
                   files={s.files}
                   body={s.body}
                   detailLoading={s.detailLoading}
@@ -1297,19 +1184,22 @@ export function GitGraphView({
         </>
       )}
       {menu ? <MenuLayer menu={menu} onClose={() => setMenu(null)} onPick={pickMenu} /> : null}
+      {/* 原型 .branch-pop（Pop sideOffset=6，锚在 branch-btn 下缘）：
+          overlay 底 / borderSubtle / r12 / pad4 / 阴影；.brow h26 r4
+          pad 0 8 gap6 hover=surface，ck w14 terminalKind */}
       {branchOpen ? (
-        <anchored
-          position={{ x: 56, y: SIZES.topChrome + TAB_H + TOOLBAR_H }}
-          deferred
-          occlude
-          onMouseDownOutside={() => setBranchOpen(false)}
+        <Popover
+          position={branchPos}
+          onClose={() => setBranchOpen(false)}
+          testId="git-branch-pop"
+          minWidth={180}
           style={{
-            minWidth: 180,
-            backgroundColor: COLORS.inputBg,
+            backgroundColor: COLORS.overlay,
             borderWidth: 1,
             borderColor: COLORS.borderSubtle,
-            borderRadius: 6,
+            borderRadius: 12,
             padding: 4,
+            boxShadow: POP_SHADOW,
           }}
         >
           {s.branches.map((b) => (
@@ -1322,38 +1212,43 @@ export function GitGraphView({
               }}
               style={{
                 height: 26,
-                paddingLeft: 10,
-                paddingRight: 12,
+                paddingLeft: 8,
+                paddingRight: 8,
                 borderRadius: 4,
                 display: 'flex',
                 flexDirection: 'row',
                 alignItems: 'center',
+                gap: 6,
                 cursor: 'pointer',
-                hover: { backgroundColor: COLORS.accent },
+                hover: { backgroundColor: COLORS.surface },
               }}
             >
               <text
                 style={{
                   fontSize: 12,
                   fontFamily: FONT.ui,
-                  color: COLORS.text,
+                  color: COLORS.terminalKind,
                   width: 14,
+                  flexShrink: 0,
+                  pointerEvents: 'none',
                 }}
               >
                 {b.current ? '✓' : ''}
               </text>
+              <Icon name="gitBranch" size={12} color={COLORS.muted} />
               <text
                 style={{
                   fontSize: 12,
                   fontFamily: FONT.ui,
                   color: COLORS.text,
+                  pointerEvents: 'none',
                 }}
               >
                 {b.name}
               </text>
             </div>
           ))}
-        </anchored>
+        </Popover>
       ) : null}
       {confirm ? (
         <Modal width={380} onClose={() => setConfirm(null)}>

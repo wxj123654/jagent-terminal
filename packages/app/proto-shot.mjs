@@ -309,6 +309,14 @@ store.activateSessionView(imeId, 'git')
 
 // ── git 假数据（原型 gitCommits 同序；refNames 走 %D 格式）────────────
 const nowSec = Math.floor(Date.now() / 1000)
+// 原型 seed 用字面量「昨天 21:40 / 昨天 18:02」——钉到昨日同刻，
+// 截图对比时 date 列文案逐字一致（而非 now-26h 的浮动时刻）
+const yesterdayAt = (h, m) => {
+  const d = new Date(nowSec * 1000)
+  d.setDate(d.getDate() - 1)
+  d.setHours(h, m, 0, 0)
+  return Math.floor(d.getTime() / 1000)
+}
 const COMMITS = [
   {
     sha: 'a4f2c91aaaaaaa000000000000000000000001',
@@ -377,7 +385,7 @@ const COMMITS = [
     shortSha: 'f26d890',
     authorName: 'you',
     authorEmail: 'you@x',
-    timestamp: nowSec - 86400 - 2 * 3600,
+    timestamp: yesterdayAt(21, 40),
     committerName: 'you',
     committerEmail: 'you@x',
     subject: '终端外观走元素 props：字号/色板/光标闪烁实时生效',
@@ -389,7 +397,7 @@ const COMMITS = [
     shortSha: '05be3c1',
     authorName: 'you',
     authorEmail: 'you@x',
-    timestamp: nowSec - 86400 - 6 * 3600,
+    timestamp: yesterdayAt(18, 2),
     committerName: 'you',
     committerEmail: 'you@x',
     subject: '会话事件走全局通道：title / bell / exit',
@@ -601,6 +609,15 @@ for (const state of STATES) {
       await flush(300)
       shot('git')
       break
+    case 'gitsel': {
+      store.activate({ type: 'workspace', id: wsJt })
+      store.setWorkspacePaneTab(wsJt, 'git')
+      await flush(300)
+      gitStore.select('a4f2c91aaaaaaa000000000000000000000001')
+      await flush(300)
+      shot('gitsel')
+      break
+    }
     case 'settings':
       navigateTarget({ type: 'settings' })
       await flush()

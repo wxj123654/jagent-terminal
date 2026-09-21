@@ -26,6 +26,7 @@ export function TextInput({
   onSubmit,
   testId,
   width = 220,
+  height = 28,
   autoFocus = false,
 }: {
   value: string
@@ -38,6 +39,8 @@ export function TextInput({
   testId: string
   /** 宽度：数字 = 固定 px；'fill' = 撑满容器（弹窗表单） */
   width?: number | 'fill'
+  /** 壳高（原型 .git-find input = 24；设置表单默认 28） */
+  height?: number
   /** 挂载即聚焦（弹窗内主输入框；deferred 层点击聚焦不可靠，弹窗输入必须 autoFocus） */
   autoFocus?: boolean
 }): ReactElement {
@@ -50,7 +53,7 @@ export function TextInput({
         flexDirection: 'row',
         alignItems: 'center',
         width: width === 'fill' ? '100%' : width,
-        height: 28,
+        height,
         paddingLeft: 9,
         paddingRight: 9,
         borderRadius: 4,

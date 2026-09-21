@@ -5,16 +5,20 @@
  * `<svg source>`（gpuix svg 是单色叶子，stroke=currentColor 由外层
  * style.color 上色——Icon.tsx 同款模式）。
  *
- * 行内坐标（高 26，中线 13）：
- *  - child 行：圆点向下竖线 (childCol, 13→26)
+ * 行内坐标（高 30，中线 15；React 原型 .git-row 第二段 30px）：
+ *  - child 行：圆点向下竖线 (childCol, 15→30)
  *  - 中间行：全高竖线；有 curve(on_row=本行) 时上半弧 + 从中线续下半竖线
  *  - 收尾行（parent 行）：上半竖线/弧接到 parent 圆点中线（弧落后不再画竖线）
- *  - 弧：三次贝塞尔 M x0 0 C x0 6.5, x1 6.5, x1 13
+ *  - 弧：三次贝塞尔 M x0 0 C x0 7.5, x1 7.5, x1 15
+ *  原型 svg 内容高 26 而 CSS 行高 30 → 原型 lane 线每行尾部有 4px 断口
+ *  （原型自身不一致，非有意）；实现按 30 连续画——走向一致，断口不复制。
  */
+
+import { COLORS } from '@jagent/ui'
 
 import type { CommitLine } from './graph'
 
-export const ROW_HEIGHT = 26
+export const ROW_HEIGHT = 30
 /** 行内固定列宽（header 与 <git-graph-row> 规格/rowColumns.ts 共用） */
 export const COL_AUTHOR = 110
 export const COL_DATE = 80
@@ -22,12 +26,12 @@ export const COL_SHA = 72
 const MID = ROW_HEIGHT / 2
 const QUARTER = ROW_HEIGHT / 4
 export const LANE_WIDTH = 13
-const PAD_X = 3
+const PAD_X = 8
 export const MIN_LANES = 6
 
-/** graph 列宽（Zed：LANE_WIDTH * max(6, maxLanes) + 左右 padding） */
+/** graph 列宽（原型 gcell：LANE_WIDTH * max(6, maxLanes) + PAD_X*2 + 6 尾距） */
 export function graphColumnWidth(maxLanes: number): number {
-  return LANE_WIDTH * Math.max(MIN_LANES, maxLanes) + PAD_X * 2
+  return LANE_WIDTH * Math.max(MIN_LANES, maxLanes) + PAD_X * 2 + 6
 }
 
 /** lane 中心 x（Zed lane_center_x 同构） */
@@ -57,8 +61,14 @@ function arcPath(x0: number, x1: number): string {
   return `M ${x0} 0 C ${x0} ${QUARTER}, ${x1} ${QUARTER}, ${x1} ${MID}`
 }
 
-function svgSource(width: number, height: number, d: string, circle: string | null): string {
-  const shapes = `${d ? `<path d="${d}"/>` : ''}${circle ?? ''}`
+function svgSource(
+  width: number,
+  height: number,
+  d: string,
+  circle: string | null,
+  opacity?: number,
+): string {
+  const shapes = `${d ? `<path d="${d}"${opacity != null ? ` opacity="${opacity}"` : ''}/>` : ''}${circle ?? ''}`
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" ` +
     `width="${width}" height="${height}" fill="none" stroke="currentColor" ` +
@@ -76,13 +86,11 @@ export function buildRowGraphics(args: {
   commitLane: number
   commitColorIdx: number
   maxLanes: number
-  /** 行内详情高度：选中行把下半竖线延长穿过 CDV */
-  extraBelow?: number
-  /** HEAD 空心圆（fill=none，描边即 lane 色） */
+  /** HEAD 空心圆（原型 c.hollow：fill=pane + 2px lane 色描边） */
   hollow?: boolean
 }): RowSvgPiece[] {
-  const { row, lines, commitLane, commitColorIdx, maxLanes, extraBelow = 0, hollow = false } = args
-  const height = ROW_HEIGHT + extraBelow
+  const { row, lines, commitLane, commitColorIdx, maxLanes, hollow = false } = args
+  const height = ROW_HEIGHT
   const width = graphColumnWidth(maxLanes)
   const byColor = new Map<number, string[]>()
 
@@ -96,7 +104,7 @@ export function buildRowGraphics(args: {
     const isChildRow = row === line.rowSpan[0]
     const isEndRow = row === line.rowSpan[1]
     if (isChildRow) {
-      // 起点行：圆点下半竖线（merge 曲线最早也要下一行才弯）；选中时穿过 CDV
+      // 起点行：圆点下半竖线（merge 曲线最早也要下一行才弯）
       push(line.colorIdx, `M ${laneX(line.childColumn)} ${MID} V ${height}`)
       continue
     }
@@ -116,45 +124,15 @@ export function buildRowGraphics(args: {
 
   const pieces: RowSvgPiece[] = []
   for (const [colorIdx, ds] of byColor) {
-    pieces.push({ colorIdx, source: svgSource(width, height, ds.join(' '), null) })
+    // 原型 lane 线 opacity .85（圆点不随，保持实色）
+    pieces.push({ colorIdx, source: svgSource(width, height, ds.join(' '), null, 0.85) })
   }
   const cx = laneX(commitLane)
-  const fill = hollow ? ' fill="none"' : ''
-  pieces.push({
-    colorIdx: commitColorIdx,
-    source: svgSource(
-      width,
-      height,
-      '',
-      `<circle cx="${cx}" cy="${MID}" r="${CIRCLE_RADIUS}"${fill}/>`,
-    ),
-  })
-  return pieces
-}
-
-/** 选中行下方的详情槽：只画穿过该槽的竖线（无圆点），高度 = CDV。 */
-export function buildGapGraphics(args: {
-  afterRow: number
-  lines: readonly CommitLine[]
-  maxLanes: number
-  height: number
-}): RowSvgPiece[] {
-  const { afterRow, lines, maxLanes, height } = args
-  const width = graphColumnWidth(maxLanes)
-  const byColor = new Map<number, string[]>()
-  const push = (colorIdx: number, d: string) => {
-    const arr = byColor.get(colorIdx)
-    if (arr) arr.push(d)
-    else byColor.set(colorIdx, [d])
-  }
-  for (const line of lines) {
-    if (afterRow < line.rowSpan[0] || afterRow >= line.rowSpan[1]) continue
-    const col = laneX(enterColumn(line, afterRow + 1))
-    push(line.colorIdx, `M ${col} 0 V ${height}`)
-  }
-  const pieces: RowSvgPiece[] = []
-  for (const [colorIdx, ds] of byColor) {
-    pieces.push({ colorIdx, source: svgSource(width, height, ds.join(' '), null) })
-  }
+  // 原型节点 r3.5：普通 = 实填 lane 色无描边（根 fill="none" 会继承——
+  // 必须显式 fill，否则所有圆点被描成空心）；hollow = pane 底 + 2px 描边
+  const circle = hollow
+    ? `<circle cx="${cx}" cy="${MID}" r="${CIRCLE_RADIUS}" fill="${COLORS.pane}" stroke-width="2"/>`
+    : `<circle cx="${cx}" cy="${MID}" r="${CIRCLE_RADIUS}" fill="currentColor" stroke="none"/>`
+  pieces.push({ colorIdx: commitColorIdx, source: svgSource(width, height, '', circle) })
   return pieces
 }

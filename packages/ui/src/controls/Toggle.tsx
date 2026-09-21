@@ -19,13 +19,21 @@ export function Toggle({
   disabled = false,
   onChange,
   testId,
+  scale = 1,
 }: {
   checked: boolean
   disabled?: boolean
   onChange: (next: boolean) => void
   testId: string
+  /** 原型 transform:scale 的等价物（GPUIX 无 transform——直接缩放几何，
+      如 git 工具条 scale(.85)：34×20 → ~29×17） */
+  scale?: number
 }): ReactElement {
   const [focused, setFocused] = useState(false)
+  const w = Math.round(34 * scale * 2) / 2
+  const h = Math.round(20 * scale * 2) / 2
+  const knob = Math.round(14 * scale * 2) / 2
+  const inset = Math.round(3 * scale * 2) / 2
 
   const toggle = () => {
     if (!disabled) onChange(!checked)
@@ -43,8 +51,8 @@ export function Toggle({
       onBlur={() => setFocused(false)}
       style={{
         position: 'relative',
-        width: 34,
-        height: 20,
+        width: w,
+        height: h,
         borderRadius: 999,
         flexShrink: 0,
         cursor: disabled ? 'default' : 'pointer',
@@ -69,14 +77,14 @@ export function Toggle({
           pointerEvents: 'none',
         }}
       />
-      {/* knob：14px 圆，左 3 ↔ 左 17（34-14-3） */}
+      {/* knob：14px 圆，左 3 ↔ 左 17（34-14-3）；scale 同步缩放 */}
       <div
         style={{
           position: 'absolute',
-          left: checked ? 17 : 3,
-          top: 3,
-          width: 14,
-          height: 14,
+          left: checked ? w - knob - inset : inset,
+          top: inset,
+          width: knob,
+          height: knob,
           borderRadius: 999,
           backgroundColor: checked ? COLORS.accent : COLORS.muted,
           pointerEvents: 'none',
