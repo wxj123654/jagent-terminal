@@ -476,7 +476,7 @@
   - app：`surfaces/EmptyPresets.tsx` + `plane/WorkspaceEmpty.tsx` +
     `surfaces/ConversationView.tsx`/`ChatSurface.tsx`/`AcpSurface.tsx` +
     `surfaces/TerminalSurface.tsx`（真终端像素面不改，只核对周边 chrome）。
-- [ ] **R10 tokens/图标/全局样式**
+- [x] **R10 tokens/图标/全局样式** ✅ 2026-09-21
   - 锚点：index.css `:root` 全表——`--toolbarH 40 --tabbarH 36 --sbHeadH 52
     --rowH 28 --rowR 6 --sidebarW 264` + 全色板（One Dark）；`src/icons.tsx`
     lucide 名集。
@@ -800,6 +800,51 @@
   featured 边色；e2e 两链路断言同步。gate：双包 tsc + 根 bun test 523 +
   e2e 34 + fmt:check + lint + export-patches --check 全绿。
 
+- **R10（tokens/图标/全局样式，2026-09-21）**：**token 全表对账**——
+  第二段 `:root`（694 行起）为生效段，逐变量核对：全色板 20+ 键
+  （app/pane/sidebar/surface 系/tile/overlay/inputBg/text/muted/faint/
+  border/borderSubtle/ring/card 等）与几何键（radius 8/radius-lg 12/
+  toolbarH·tabbarH·sbHeadH·rowH·rowR/sidebarW 264/panel-w/breakpoint
+  760）已在 COLORS/FONT/SIZES 全数命中；第一段未被覆盖的存活键
+  （terminal/accent 系/kind 色/status 色/字体变量）同样有消费者。
+  **未新增任何无消费者 token**（契约：不为「将来可能用」预建）。
+  **SIZES 清理**：删死键 rowPaddingX/activeBarWidth（无引用）；
+  sidebarWidth 注释更正为 schema 默认值唯一来源，schema.ts catch
+  从字面量 264 改 `SIZES.sidebarWidth`；AgentPlane 删局部
+  NARROW_BREAKPOINT 常量改消费 `SIZES.narrowBreakpoint`；残留第一
+  段旧值的注释全改第二段口径。**图标对账**：名集 = 原型 icons.tsx
+  MAP 键；**字形全部重写为原型实际安装的 lucide-react@1.46.0
+  节点逐字 path**（此前是早期手写近似——chat 圆环点→circle-dot、
+  terminal 竖条▌→真 `>_`、acp 折线→trending-up、gear→1.46 新齿
+  轮 path、maximize→square 等 30 项）。原型 MAP 的 arrowLeft 无任
+  何消费点（死映射）不收；minimize/maximize 原型同死映射但实现侧
+  Linux CSD 在用，保留。**全局样式**：原型 `button{font-weight:500}`
+  三处补齐——Select .sel-trig 文本、SettingsView st-nav-item、
+  st-clear（st-* 其余按钮此前各轮已带 500）；`focusRing()` 注释更
+  正为真值——原型 :focus-visible 是双环 `0 0 0 2px pane, 0 0 0 4px
+  ring`，GPUIX boxShadow 单阴影无法表达「间隙+外环」，维持 2px
+  flush 近似（spread 4 成全宽实带更重，否）；无 CSS transitions 照旧
+  不落地。**滚动条盘点（不可达差异记录）**：原型
+  `::-webkit-scrollbar` = 10px 宽高 + thumb #3e4451（hover #4b5262）
+  + r5 + 2px 透明内收边（background-clip:content-box）+ track/corner
+  透明。GPUIX `overflow:'scroll'` 翻译为 GPUI 滚动容器 + 持久
+  ScrollHandle——GPUI 侧有 `scrollbar_width` 样式与 scrollbar state
+  API，但**用户级样式面无 thumb/track/corner 绘制控制**，普通 div
+  滚动区与 virtual-list 均无等价挂点；终端自有 Zed 风格自绘滚动条
+  （crates/jagent-terminal/src/view.rs 三态+渐隐+min thumb）是独立
+  机制，本项不动。结论：记为**不可达差异**——如需对齐需单独立项
+  在 GPUIX 暴露 scrollbar 样式 API（native 侧 GPUI 能力已具备）。
+  **验收**：stash A/B 对照——R10 前后逐态 pngdiff 全图差异一致
+  （main 4.27→4.26、search 14.66→14.64、tool 1.99→1.98、addws
+  1.69→1.67、errors 0.98→0.96、crash 2.02→1.99），本轮改动像素面
+  中性微正；report.mjs 全态表与 R9 口径持平（dialog 态相对 R5 基线
+  表的表观差 = R7 重构 + 原型截图当日重采所致，非本轮回归）。
+  **工具链坑**：proto-shot 的 `crash` 态用独立 root（t2）——与同进
+  程后续状态的 t root testId 查找冲突（open-notifications 失踪），
+  **crash/hidden 等独立/破坏态必须单独跑或放序列末尾**。gate：
+  双包 tsc + fmt:check + lint + 根 bun test 523 + e2e 34 +
+  export-patches --check 全绿。
+
 ---
 
 
@@ -958,3 +1003,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-21 · **C7 drawImage/gradient/pattern/toDataURL**：交接文档（/tmp/jagent-canvas-handoff-3.md）下一步执行——`PaintSpec::Gradient`（peniko 0.6.1 原生：`new_linear`/`new_two_point_radial`/`new_sweep`，`interpolation_alpha_space=Unpremultiplied`、`Extend::Pad`；退化/零 stop 渐变按规范拦成 transparent 而非 vello 默认黑）+ `PaintSpec::Pattern`（`ImageBrush`+`ImageSource::Pixmap(Arc<Pixmap>)` 直接携带像素，无需图像注册表；repeat-x/y/no-repeat 用 pattern_band 用户空间 clip 表达「越界透明」——peniko Extend 只有 Pad/Repeat/Reflect）+ `resolve_draw_image` 几何归一化（源矩形裁剪+dst 等比收缩+负 dw/dh 负缩放镜像）+ `Ctx2d::draw_image`/`encode_png` + backend `draw_pixels`（`set_paint_transform` 映射图像素→用户空间，绘制后 `reset_paint_transform` 防泄漏）· **vello_cpu 0.2.0 坑**：`sampler.alpha != 1.0` 在 encode 时 `unimplemented!()` panic——globalAlpha 一律 `Pixmap::multiply_alpha` 烘进像素，不传 sampler.alpha · napi：`serde_json::Value` 入参（serde-json feature 已开）让 fillStyle/strokeStyle 同时吃字符串与渐变对象 · JS：`gradient.ts` 双类 + `context.ts` applyPaint 三分支（string/gradient/pattern）+ drawImage 参形归一化 + `gpuixCanvas.toDataURL` · gate：cargo lib 38 绿（canvas:: 35）、fake 单测 39、app tsc 0、e2e 11 绿、fmt(oxfmt)/lint(oxlint)/cargo fmt 干净 · 下一步：C8 uPlot/Chart.js 验收 + benchmark + conformance 参数化用例
 - 2026-09-21 · **R8 完成（设置面对齐 React 原型）**：外壳重建（st-nav 217+1 边/COLORS.settingsNav 半透明、brand 58+gear+双行文案、搜索框 34+/ kbd+显式 focus 边色[GPUIX 无 :focus-within]、nav 行图标+命中徽章+0 命中置灰、page-head+即时生效 pill、st-card r12 COLORS.card）· 控件层对齐（controlBox r6/controlText 12·16/focusRing→ring/Toggle 34×20/NumberInput 76+步进 18/Select·SearchSelect 弹层 r8+overlay+阴影/RangeInput 轨道~180/Textarea fill）· 搜索语义补差：presets/acp 恒在结果列（原型 sectionHasContent），卡内「无匹配」；ACP agent 参与命中；settings-ui §9 同步 · SettingRow h58 pad 0 16+moddot 右移 12 语义化；listEditorParts 重写（le-card/le-add 实线近似虚线[无 dashed]/le-empty）；AcpAgentsSection 共享件化 · GPUIX 不支持项跳过：letterSpacing/textTransform/dashed · 验收：proto-shot settings/font 目检+geom 逐字段对齐（218/482+34/728/58）· 测试三文件按新语义更新 · gate：双包 tsc + 根 bun test 462 + fmt/lint 全绿 · 下一步：R5/R6/R7 剩余模块
 - 2026-09-21 · **R9 完成（空态与会话面对齐 React 原型）**：空态重建为 .home/.home-card 件组（680 渐变卡+kicker+ctx 行+section-head+.pills 双列网格卡 h42 + featured pi 胶囊），WorkspaceEmpty 复用同壳 · ConversationView 重建（conv-head 44 avatar+title+status、ConvIn 760 居中列、user 气泡不对称圆角、thinking-dot「正在思考…」、composer-shell 704+send-btn arrowRight+hint）；CHAT/ACP pill 退役 · TerminalSurface 只动周边 chrome（term 底色+exited-bar 去分隔线）· Icon 增 arrowRight · 平台发现：virtual-list 行根 margin 不测量→改 paddingBottom（行距塌陷真 bug，修后 chat 4.60→3.92）；geom 报 content-box；原生 markdown fenced code 恒带语言头行+ink 洗底（与 MdLite 裸 pre 的不可消除差异）· 六态差异全降：home 2.46/chat 3.92/acp 1.70/workspace 2.78/sess-main 1.58/sess-shell 1.54（基线 4.02/7.85/3.48/4.90/2.72/2.67）· 工具链：geom-proto 选择器扩展 + pngdiff/report Retina 归一 · gate：双包 tsc + bun test 523 + e2e 34 + fmt/lint + export-patches --check 全绿 · 下一步：R10（tokens/图标/全局样式）或 R11（键位/窄屏/深链）
+- 2026-09-21 · **R10 完成（tokens/图标/全局样式对账原型）**：第二段 `:root` 全表核对全数命中（无新增无消费者 token）；SIZES 删死键 rowPaddingX/activeBarWidth + sidebarWidth 接 schema catch + AgentPlane 窄断点改消费 token · Icon.tsx 30 项字形重写为 lucide-react@1.46.0 节点逐字 path（chat→circle-dot/terminal→`>_`/acp→trending-up 等），arrowLeft 原型死映射不收 · button fw500 补三处（Select trigger/st-nav-item/st-clear），focusRing 注释更正双环原型 vs 单阴影近似 · 滚动条盘点结论=不可达差异（GPUIX 无 thumb/track 用户级 API；终端 Zed 滚动条独立机制不动）· stash A/B 验证本轮像素面中性（各态 ±0.03% 内）；proto-shot 坑：crash 独立 root 会与同进程后续态抢 testId，须单独跑 · gate：双包 tsc + bun test 523 + e2e 34 + fmt/lint + export-patches --check 全绿 · 下一步：R11（键位/窄屏/深链）或 R12 收官

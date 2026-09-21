@@ -12,6 +12,7 @@
 import { z } from 'zod'
 
 import { BUILTIN_PRESETS } from '../threads/presets'
+import { SIZES } from '../tokens'
 
 /** 终端必须默认到平台自带的等宽字体；不可用字体会让 GPUI 回退到比例 UI 字体。 */
 export const DEFAULT_TERMINAL_FONT =
@@ -108,7 +109,7 @@ export const RawSettingsSchema = z.looseObject({
   appearance: section(
     z.object({
       theme: z.string().catch('one-dark'),
-      sidebarWidth: z.number().int().min(200).max(400).catch(264),
+      sidebarWidth: z.number().int().min(200).max(400).catch(SIZES.sidebarWidth),
     }),
   ),
   acpAgents: z

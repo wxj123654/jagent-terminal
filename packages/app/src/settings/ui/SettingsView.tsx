@@ -325,6 +325,8 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
                   style={{
                     fontSize: 12,
                     fontFamily: FONT.ui,
+                    // 原型 .st-nav-item 是 <button> → 吃全局 button{font-weight:500}
+                    fontWeight: '500',
                     color: active ? COLORS.textBright : COLORS.text,
                     whiteSpace: 'nowrap',
                     textOverflow: 'ellipsis',
@@ -594,6 +596,8 @@ function EmptySearchCard({ query, onClear }: { query: string; onClear: () => voi
           style={{
             fontSize: 12,
             fontFamily: FONT.ui,
+            // 原型 .st-clear 是 <button> → 吃全局 button{font-weight:500}
+            fontWeight: '500',
             color: COLORS.textBright,
             pointerEvents: 'none',
           }}

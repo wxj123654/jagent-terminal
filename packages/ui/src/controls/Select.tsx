@@ -87,6 +87,8 @@ export function SelectField({
           <text
             style={{
               ...controlText(),
+              // 原型 .sel-trig 是 <button> → 吃全局 button{font-weight:500}
+              fontWeight: '500',
               color: disabled ? COLORS.muted : COLORS.textBright,
               whiteSpace: 'nowrap',
               textOverflow: 'ellipsis',

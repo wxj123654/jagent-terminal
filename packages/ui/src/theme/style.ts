@@ -3,16 +3,18 @@
  *
  * GPUIX 平台事实：StyleDesc 只有 hover/active 伪类，没有 :focus-visible；
  * focus 环由各控件的 onFocus/onBlur state 驱动，统一走这里的 focusRing()
- * （原型 --accent-soft 的 2px 环；GPUI BoxShadow 无 inset，用 spread 外扩近似）。
+ * （GPUI BoxShadow 无 inset，用 spread 外扩近似）。
  */
 
 import type { StyleDesc } from '@gpuix/react'
 
 import { COLORS, FONT } from './tokens'
 
-/** focus 环：0 blur + spread 2 = 原型 focus-visible 双环
- * （`0 0 0 2px pane, 0 0 0 4px --ring`）的硬边近似——GPUI BoxShadow 单阴影，
- * 取外圈 --ring 色。 */
+/** focus 环：原型 `:focus-visible` 是双环 `0 0 0 2px pane, 0 0 0 4px --ring`
+ * （视觉 = 2px pane 间隙 + 外侧 2px --ring 色带）。GPUIX StyleDesc.boxShadow
+ * 只收单个 BoxShadow 对象（无多阴影/inset），无法表达「间隙+外环」——
+ * 取等宽硬边近似：贴元素边缘的 2px --ring 色带（spread 4 会成全宽实带，
+ * 比原型更重，否）。R10 对账结论：维持 2px flush，不换 4px。 */
 export function focusRing(color: string = COLORS.ring): {
   offsetX: number
   offsetY: number

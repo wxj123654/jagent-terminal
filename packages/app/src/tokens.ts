@@ -20,18 +20,16 @@ export const GRAPH_LANE_COLORS = [
 ] as const
 
 export const SIZES = {
-  // 默认侧栏宽；运行时以 settings.appearance.sidebarWidth（200–400）为准——
-  // 布局面（Sidebar/SidebarHeader/ToolMenu/AgentPlane drawer）经 useSettingsValue 消费
+  // 默认侧栏宽（原型 --sidebarW 264）；settings schema 默认值唯一来源
+  // （schema.ts appearance.sidebarWidth catch）——运行时值经 useSettingsValue 消费
   sidebarWidth: 264,
   /** 侧栏会话行高（原型 .t-row 32px——第二段 CSS 覆盖 30） */
   rowHeight: 32,
   /** 侧栏行左右外距（原型 .sb-scroll padding 8px） */
   rowMarginX: 8,
-  rowPaddingX: 8,
   /** 侧栏行圆角（原型 --radius 8px——第二段统一 nav/ws/t-row/ibtn/ghost；
       more-link/empty-hint 保持 5px 不用本键） */
   rowRadius: 8,
-  activeBarWidth: 2,
   /** 工作面板宽（原型 --panel-w 默认 280，可拖 244–720） */
   panelWidth: 280,
   panelWidthMin: 244,
@@ -52,6 +50,6 @@ export const SIZES = {
       含 mac 红绿灯让位 + 1px 底部分隔线） */
   sidebarHeadHeight: 46,
   /** 窄窗口断点（原型 @media(max-width:760px)——home/pills/conv 内距与
-      抽屉化的同一阈值；AgentPlane 有同名局部常量） */
+      AgentPlane 抽屉化的同一阈值） */
   narrowBreakpoint: 760,
 } as const

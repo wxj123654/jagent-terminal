@@ -39,9 +39,6 @@ import { planeKeyboard } from './planeKeyboard'
 import { ContextTab, SessionTabs } from './SessionTabs'
 import { TitleBar, type WindowControls } from './TitleBar'
 
-/** 窄窗口抽屉断点（原型 W0 契约）：低于此宽 sidebar 变 overlay 抽屉 */
-const NARROW_BREAKPOINT = 760
-
 export function App({
   store,
   settings,
@@ -111,7 +108,7 @@ export function App({
   // 窄窗口抽屉（W4）：useWindowSize poll 100ms（TestRenderer 无窗口面时
   // fallback 800×600 → 宽窗口态，测试零影响）
   const { width } = useWindowSize()
-  const narrow = width < NARROW_BREAKPOINT
+  const narrow = width < SIZES.narrowBreakpoint
   const sidebarWidth = useSettingsValue(settings, (s) => s.appearance.sidebarWidth)
   // 性能 HUD（advanced.perfHud）：单值订阅——开关切换才重渲染顶栏行
   const perfHud = useSettingsValue(settings, (s) => s.advanced.perfHud)
