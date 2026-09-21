@@ -92,6 +92,8 @@ export function WorkspaceDialog({
     <Modal width={440} onClose={onClose}>
       <ModalHeading title="添加工作区" onClose={onClose} />
       <ModalBody>
+        {/* 列 gap 6 = 原型 .mlabel 的 margin-bottom 6；第二 label 原型
+            marginTop 12 → gap 6 + mt 6 等效 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <text style={{ fontSize: 11, fontFamily: FONT.ui, color: COLORS.muted }}>
             工作区名称（空 = 目录名）
@@ -115,7 +117,7 @@ export function WorkspaceDialog({
             </text>
           ) : null}
 
-          <text style={{ fontSize: 11, fontFamily: FONT.ui, color: COLORS.muted, marginTop: 4 }}>
+          <text style={{ fontSize: 11, fontFamily: FONT.ui, color: COLORS.muted, marginTop: 6 }}>
             项目目录（绝对路径）
           </text>
           <div style={{ display: 'flex', flexDirection: 'row', gap: 8 }}>
@@ -134,6 +136,8 @@ export function WorkspaceDialog({
               />
             </div>
             {pickDirectory ? (
+              // 原型 .mbtn（行内形态）：h34 r8 透明底 + borderSubtle 描边，
+              // 字色/图标色 textBright（svg tint 不继承 → 显式给色）
               <div
                 tabIndex={0}
                 testId="workspace-dialog-browse"
@@ -145,26 +149,26 @@ export function WorkspaceDialog({
                   display: 'flex',
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 6,
-                  height: 28,
-                  paddingLeft: 10,
-                  paddingRight: 10,
-                  borderRadius: 4,
+                  gap: 4,
+                  height: 34,
+                  paddingLeft: 12,
+                  paddingRight: 12,
+                  borderRadius: 8,
                   borderWidth: 1,
                   borderColor: COLORS.borderSubtle,
-                  backgroundColor: COLORS.surface,
                   cursor: picking ? 'default' : 'pointer',
                   opacity: picking ? 0.5 : 1,
-                  hover: { backgroundColor: COLORS.surfaceHover },
+                  hover: { backgroundColor: COLORS.surface },
                   flexShrink: 0,
                 }}
               >
-                <Icon name="folder" size={12} color={COLORS.accent} />
+                <Icon name="folder" size={12} color={COLORS.textBright} />
                 <text
                   style={{
-                    fontSize: 11,
+                    fontSize: 12,
                     fontFamily: FONT.ui,
-                    color: COLORS.text,
+                    fontWeight: '500',
+                    color: COLORS.textBright,
                     pointerEvents: 'none',
                   }}
                 >

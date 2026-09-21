@@ -67,21 +67,22 @@ export function ToolDialog({
     // 钳制 + 列表区滚动）
     <Modal width={440} onClose={onClose}>
       <ModalHeading title="新建会话" onClose={onClose} />
-      {/* 原型 .modal-body：padding 12 14 16（无 gap——子项自携 margin） */}
+      {/* 原型 .modal-body（第二段）：padding 14 16 18（无 gap——子项自携 margin） */}
       <div
         testId="modal-body"
         style={{
           display: 'flex',
           flexDirection: 'column',
           minHeight: 0,
-          paddingLeft: 14,
-          paddingRight: 14,
-          paddingTop: 12,
-          paddingBottom: 16,
+          paddingLeft: 16,
+          paddingRight: 16,
+          paddingTop: 14,
+          paddingBottom: 18,
+          overflowY: 'scroll',
           flexGrow: 1,
         }}
       >
-        {/* 工作区上下文条（原型 .tool-ctx：30px 高 inputBg 壳，
+        {/* 工作区上下文条（原型 .tool-ctx 第二段：34px 高 r8 inputBg 壳，
             「工作区」label + 行内 select + 右侧 mono cwd 同行） */}
         <div
           style={{
@@ -89,13 +90,13 @@ export function ToolDialog({
             flexDirection: 'row',
             alignItems: 'center',
             gap: 8,
-            height: 30,
+            height: 34,
             paddingLeft: 10,
             paddingRight: 10,
             backgroundColor: COLORS.inputBg,
             borderWidth: 1,
             borderColor: COLORS.borderSubtle,
-            borderRadius: 6,
+            borderRadius: 8,
             marginBottom: 8,
             flexShrink: 0,
           }}
@@ -141,7 +142,7 @@ export function ToolDialog({
           </text>
         </div>
 
-        {/* 筛选（原型 .tool-filter：30px 高 inputBg 壳 + search 图标 + input） */}
+        {/* 筛选（原型 .tool-filter 第二段：34px 高 r8 inputBg 壳 + search 图标 + input） */}
         <ToolFilter value={filter} onChange={setFilter} />
 
         {/* 工具列表（原型 .tool-list：margin 0 -6 / padding 0 6，
@@ -253,7 +254,8 @@ export function ToolDialog({
   )
 }
 
-/** 筛选行（原型 .tool-filter：inputBg 壳 + search 图标 + 无边框 input） */
+/** 筛选行（原型 .tool-filter 第二段：34px r8 inputBg 壳 + search 图标 +
+ *  无边框 input；原型 input autoFocus——开窗即可键入过滤） */
 function ToolFilter({ value, onChange }: { value: string; onChange: (next: string) => void }) {
   const [focused, setFocused] = useState(false)
   return (
@@ -263,13 +265,13 @@ function ToolFilter({ value, onChange }: { value: string; onChange: (next: strin
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        height: 30,
+        height: 34,
         paddingLeft: 10,
         paddingRight: 10,
         backgroundColor: COLORS.inputBg,
         borderWidth: 1,
         borderColor: focused ? COLORS.focusBorder : COLORS.borderSubtle,
-        borderRadius: 6,
+        borderRadius: 8,
         marginBottom: 8,
         flexShrink: 0,
         color: COLORS.muted,
@@ -277,6 +279,7 @@ function ToolFilter({ value, onChange }: { value: string; onChange: (next: strin
     >
       <Icon name="search" size={14} color={COLORS.muted} />
       <input
+        autoFocus
         testId="tool-dialog-filter"
         value={value}
         placeholder="搜索工具…"
@@ -323,7 +326,7 @@ function GroupLabel({ label, first = false }: { label: string; first?: boolean }
   )
 }
 
-/** 工具行（原型 .tool-row：padding 6 8 / radius 8 / gap 10；
+/** 工具行（原型 .tool-row：padding 6 8 / radius 8 / gap 10 / min-h 44；
  *  28px tile 底图标块（按类着色）+ 双行（名+「默认」徽章 / 描述）+
  *  右侧 cmd 徽章（tile 底 mono 10px，max-width 110）） */
 function ToolRow({
@@ -370,6 +373,7 @@ function ToolRow({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 10,
+        minHeight: 44,
         paddingTop: 6,
         paddingBottom: 6,
         paddingLeft: 8,

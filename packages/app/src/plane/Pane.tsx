@@ -118,7 +118,7 @@ export function Pane({
     } else {
       return (
         <ErrorBoundary area="pane">
-          <SessionTerminal sessionId={view.sessionId} settings={settings} />
+          <SessionTerminal view={view} settings={settings} />
         </ErrorBoundary>
       )
     }

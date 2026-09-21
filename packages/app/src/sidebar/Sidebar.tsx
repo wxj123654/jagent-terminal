@@ -1,12 +1,16 @@
 /**
- * Sidebar — 左栏整列（codex-sidebar-v2 方案 C：头 + 列表 + 脚，52/…/34px）。
+ * Sidebar — 左栏整列（React 原型 #sidebar：头 46 + nav/sec-head 固定 +
+ * 列表滚动 + 脚 pad8）。
  *
- * 结构（方案 C 原型 .sb）：
- * - 头（52px，.head）：mac 红绿灯让位 78px + 单个收起钮（⌘B 同效）。
- *   新建/搜索下移为 WorkspaceList 顶部 nav 行组。窗口拖拽同顶栏。
- * - WorkspaceList（滚动区）：nav 行组 + 工作区分组（含「未归属」虚拟组）。
- * - 脚（34px，.foot）：设置齿轮 + 通知铃（未读红点 + 锚定上方浮层）
- *   + 右侧版本号。
+ * 结构（原型 #sidebar）：
+ * - 头（46px，.sb-head）：mac 红绿灯让位 78px + 单个收起钮（⌘B 同效）+
+ *   底部 1px 分隔线。新建/搜索下移为 WorkspaceList 顶部 nav 行组。
+ *   窗口拖拽同顶栏。
+ * - WorkspaceList：.sb-nav + .sec-head 固定不滚 + .sb-scroll 工作区分组
+ *   （含「未归属会话」虚拟组）。
+ * - 脚（.sb-foot：padding 8 + 顶部分隔线）：设置齿轮 + 通知铃（未读红点
+ *   + 锚定上方浮层）+ 右侧版本号。
+ * - 右缘：1px borderSubtle 边框 + 6px 拖拽把手 + 2px accent 指示线。
  *
  * 宽度 = appearance.sidebarWidth（200–400，设置拖拽实时写回）。
  */
@@ -27,9 +31,9 @@ import { SIZES } from '../tokens'
 import { WorkspaceList } from './WorkspaceList'
 
 /**
- * 侧栏头（52px；方案 C 原型 .head）。mac 红绿灯让位 78px；单个收起钮
- * （panelLeft 图标，⌘B 同效——新建/搜索已下移为 nav 行组）。
- * mac/linux 可拖窗口；win 标 drag 区。
+ * 侧栏头（46px；原型 .sb-head：底部 1px 3.5% 白分隔线）。mac 红绿灯
+ * 让位 78px；单个收起钮（panelLeft 图标，⌘B 同效——新建/搜索已下移为
+ * nav 行组）。mac/linux 可拖窗口；win 标 drag 区。
  */
 export function SidebarHeader({
   platform,
@@ -63,6 +67,9 @@ export function SidebarHeader({
         // 不把 padding 放在横向 flex item 上：gpuix 的 padding 不计入
         // flex 占位——用子项 margin 保留视觉内缩。
         backgroundColor: COLORS.sidebar,
+        // 原型 .sb-head（第二段）：46px + 底部 1px 3.5% 白分隔线
+        borderBottomWidth: 1,
+        borderColor: 'rgba(255,255,255,0.035)',
         userSelect: 'none',
         ...(platform === 'win' ? { windowControlArea: 'drag' as const } : {}),
       }}
@@ -77,9 +84,9 @@ export function SidebarHeader({
           name="panelLeft"
           label="收起侧栏"
           testId="sidebar-collapse"
-          size={15}
+          size={16}
           hitSize={28}
-          radius={9999}
+          radius={8}
           tooltip={false}
           onClick={() => onCollapse?.()}
         />
@@ -88,7 +95,7 @@ export function SidebarHeader({
   )
 }
 
-/** 通知中心浮层（D8；原型 .notif-pop 锚定铃铛上方 8px） */
+/** 通知中心浮层（D8；原型 .notif-pop side=top align=start sideOffset=10） */
 function NotifPopover({
   store,
   position,
@@ -107,7 +114,19 @@ function NotifPopover({
       anchor="bottomLeft"
       onClose={onClose}
       minWidth={300}
-      style={{ maxWidth: 320, padding: 0 }}
+      // 第二段浮层 chrome：r12 + 0 14 38 阴影（.notif-pop 同 ctx-menu 系）
+      style={{
+        maxWidth: 320,
+        padding: 0,
+        borderRadius: 12,
+        boxShadow: {
+          offsetX: 0,
+          offsetY: 14,
+          blurRadius: 38,
+          spreadRadius: 0,
+          color: 'rgba(0,0,0,0.5)',
+        },
+      }}
     >
       <div
         style={{
@@ -172,9 +191,10 @@ function NotifPopover({
         {notices.length === 0 ? (
           <text
             style={{
+              // 原型 .notif-empty：11.5px muted
               fontSize: 11.5,
               fontFamily: FONT.ui,
-              color: COLORS.faint,
+              color: COLORS.muted,
               padding: 14,
               textAlign: 'center',
               pointerEvents: 'none',
@@ -194,6 +214,7 @@ function NotifPopover({
                 if (e.key === 'enter' || e.key === 'space') store.openNotice(n.id)
               }}
               style={{
+                // 原型 .notif-item：pad 7px 10px 7px 12px，无 hover 底/圆角
                 display: 'flex',
                 flexDirection: 'row',
                 alignItems: 'flex-start',
@@ -202,19 +223,16 @@ function NotifPopover({
                 paddingRight: 10,
                 paddingTop: 7,
                 paddingBottom: 7,
-                borderRadius: 4,
                 cursor: 'pointer',
-                hover: { backgroundColor: COLORS.surface },
               }}
             >
               <div
                 style={{
+                  // 原型 .nd：6px 点恒 tone 实色（无已读压淡）
                   width: 6,
                   height: 6,
                   borderRadius: 9999,
-                  // 未读 = tone 实色；已读压淡（条目保留，视觉退场）
                   backgroundColor: TONE[n.tone],
-                  opacity: n.read ? 0.35 : 1,
                   marginTop: 5,
                   flexShrink: 0,
                 }}
@@ -222,11 +240,10 @@ function NotifPopover({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                 <text
                   style={{
-                    // 原型 .nt：12px text / line-height 1.4；未读提亮加粗
+                    // 原型 .nt：12px text / line-height 1.4（无未读加粗）
                     fontSize: 12,
                     fontFamily: FONT.ui,
-                    fontWeight: n.read ? undefined : '600',
-                    color: n.read ? COLORS.faint : COLORS.textBright,
+                    color: COLORS.text,
                     lineHeight: 17,
                     whiteSpace: 'normal',
                     pointerEvents: 'none',
@@ -284,9 +301,10 @@ export function Sidebar({
   // 宽度单值订阅：设置页拖滑块时只重渲染侧栏（不碰会话树）
   const width = useSettingsValue(settings, (s) => s.appearance.sidebarWidth)
   const unread = useThreadStore(store, (s) => s.notices.reduce((n, x) => n + (x.read ? 0 : 1), 0))
-  // 浮层锚定铃铛上方（原型 .notif-pop bottom:100%+8）：bottomLeft 角贴
-  // 脚条上缘左端（GPUIX 无元素 bounds 读面，侧栏贴左底 → 窗口坐标可算）
-  const notifPos = { x: 8, y: winH - 40 }
+  // 浮层锚定铃铛上方（原型 Pop side=top align=start sideOffset=10：
+  // 左缘贴铃铛左缘 = 8 脚 padding + 28 齿轮 + 2 间距 = 38；底缘 =
+  // 铃铛顶（脚高 45 − padding 8 = winH−37）− 10 = winH−47）
+  const notifPos = { x: 38, y: winH - 47 }
 
   return (
     <div
@@ -298,8 +316,9 @@ export function Sidebar({
         flexDirection: 'column',
         backgroundColor: COLORS.sidebar,
         borderWidth: 0,
+        // 原型 #sidebar（第二段）：右缘 1px borderSubtle
         borderRightWidth: 1,
-        borderColor: COLORS.border,
+        borderColor: COLORS.borderSubtle,
         height: '100%',
       }}
     >
@@ -345,19 +364,16 @@ export function Sidebar({
       <SidebarHeader platform={platform} windowControls={windowControls} onCollapse={onCollapse} />
       <WorkspaceList store={store} dialog={dialog} onNewSession={onNewSession} />
 
-      {/* 脚（原型 .foot：padding 8 10 12 + 1px 顶部分隔线）：设置 + 通知铃（未读红点）+ 版本号 */}
+      {/* 脚（原型 .sb-foot：padding 8 + 1px borderSubtle 顶部分隔线）：设置 + 通知铃（未读红点）+ 版本号 */}
       <div
         style={{
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
           gap: 2,
-          paddingLeft: 10,
-          paddingRight: 10,
-          paddingTop: 8,
-          paddingBottom: 12,
+          padding: 8,
           borderTopWidth: 1,
-          borderColor: COLORS.border,
+          borderColor: COLORS.borderSubtle,
           flexShrink: 0,
         }}
       >
@@ -365,9 +381,9 @@ export function Sidebar({
           name="gear"
           label="设置"
           testId="open-settings"
-          size={15}
+          size={16}
           hitSize={28}
-          radius={9999}
+          radius={8}
           tooltip={false}
           onClick={() => store.activate({ type: 'settings' })}
         />
@@ -376,9 +392,9 @@ export function Sidebar({
             name="bell"
             label="通知"
             testId="open-notifications"
-            size={15}
+            size={16}
             hitSize={28}
-            radius={9999}
+            radius={8}
             tooltip={false}
             onClick={() => setNotifOpen((v) => !v)}
           />

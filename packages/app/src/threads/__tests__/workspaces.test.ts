@@ -156,8 +156,12 @@ describe('workspaces: searchThreads（跨工作区搜索）', () => {
     expect(searchThreads(threads, ws, 'beta')[0]!.workspace?.name).toBe('beta')
     // 大小写不敏感
     expect(searchThreads(threads, ws, 'CHAT').map((r) => r.thread.id)).toHaveLength(3)
-    // 空 query → 空
-    expect(searchThreads(threads, ws, '  ')).toEqual([])
+    // 空 query → 全命中（搜索弹窗空态列全部）
+    expect(searchThreads(threads, ws, '  ').map((r) => r.thread.id)).toEqual([
+      'c-pi-工作',
+      'c-plain',
+      'c-orphan',
+    ])
   })
 
   test('terminal 行：preset label 与 cwd 参与命中（presetLabelOf 注入）', () => {

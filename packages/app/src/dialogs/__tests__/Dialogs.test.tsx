@@ -172,7 +172,7 @@ describe('RenameDialog（重命名弹窗；方案 C 上下文菜单 Rename…）
     mountWith({ kind: 'rename', target: { type: 'thread', id: tid } })
     t.renderer.flush()
     await until('dialog visible', () => t.renderer.findByTestId('modal-card') != null)
-    expect(t.renderer.getAllText().some((s) => s.includes('重命名会话'))).toBe(true)
+    expect(t.renderer.getAllText().some((s) => s.includes('重命名'))).toBe(true)
     // keystroke 追加——input 初值非空；断言 rename 最终态
     const nameInput = t.renderer.findByTestId('rename-dialog-input')!
     const before = String(t.renderer.getElement(nameInput.id)?.customProps?.value ?? '')
@@ -184,12 +184,12 @@ describe('RenameDialog（重命名弹窗；方案 C 上下文菜单 Rename…）
     await until('dialog closed', () => t.renderer.findByTestId('modal-card') == null)
   })
 
-  test('工作区重命名：标题为「重命名工作区」；提交 → renameWorkspace', async () => {
+  test('工作区重命名：标题为「重命名」；提交 → renameWorkspace', async () => {
     const wsB = store.getState().workspaces[1]!.id
     mountWith({ kind: 'rename', target: { type: 'workspace', id: wsB } })
     t.renderer.flush()
     await until('dialog visible', () => t.renderer.findByTestId('modal-card') != null)
-    expect(t.renderer.getAllText().some((s) => s.includes('重命名工作区'))).toBe(true)
+    expect(t.renderer.getAllText().some((s) => s.includes('重命名'))).toBe(true)
     const nameInput = t.renderer.findByTestId('rename-dialog-input')!
     const before = String(t.renderer.getElement(nameInput.id)?.customProps?.value ?? '')
     t.renderer.nativeSimulateKeystrokes(nameInput.id, '2')

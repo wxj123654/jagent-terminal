@@ -17,7 +17,7 @@
  */
 
 import { useWindowSize } from '@gpuix/react'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import { Icon } from '../display/Icon'
 import { COLORS, FONT } from '../theme/tokens'
@@ -34,7 +34,7 @@ export function Modal({
   width: number
   /** 卡片目标高（px；缺省内容自适应，anchored 高随内容） */
   height?: number
-  /** 卡片圆角（原型 dialog r-lg=16；search-dialog r-xl=20） */
+  /** 卡片圆角（原型第二段 .modal r-lg=12；.modal.r20=14） */
   radius?: number
   children: ReactNode
   /** Esc / 点击遮罩 → 关闭（调用方通常 setShow(false)） */
@@ -80,7 +80,9 @@ export function Modal({
           top: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.48)',
+          // 原型 .modal-scrim（第二段）：rgba(8,10,13,.7) + backdrop blur
+          // ——GPUIX 无 backdrop-filter 面，只取颜色
+          backgroundColor: 'rgba(8,10,13,0.7)',
           pointerEvents: 'auto',
         }}
       />
@@ -97,14 +99,15 @@ export function Modal({
           maxHeight: vh - 48,
           backgroundColor: COLORS.overlay,
           borderWidth: 1,
-          borderColor: COLORS.border,
-          borderRadius: radius ?? 16,
+          borderColor: COLORS.borderSubtle,
+          borderRadius: radius ?? 12,
+          // 原型 .modal（第二段）：0 24px 80px rgba(0,0,0,.58)
           boxShadow: {
             offsetX: 0,
-            offsetY: 16,
-            blurRadius: 48,
+            offsetY: 24,
+            blurRadius: 80,
             spreadRadius: 0,
-            color: 'rgba(0,0,0,0.55)',
+            color: 'rgba(0,0,0,0.58)',
           },
           color: COLORS.text,
           fontFamily: FONT.ui,
@@ -135,6 +138,9 @@ export function ModalHeading({
   /** 标题与关闭钮之间的插槽（ErrorDialog 清空钮等） */
   trailing?: ReactNode
 }) {
+  // .modal-x:hover 变色（muted→textBright）：GPUIX svg tint 不继承父级
+  // hover 态，图标色需显式切换（gpuix-usage §svg tint）
+  const [xHover, setXHover] = useState(false)
   return (
     <div
       style={{
@@ -142,29 +148,33 @@ export function ModalHeading({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: 8,
-        paddingLeft: 14,
-        paddingRight: 14,
-        paddingTop: 14,
+        // 原型 .modal-head（第二段）：padding 16px 16px 0（无 gap——
+        // trailing 与 .modal-x 相邻）
+        paddingLeft: 16,
+        paddingRight: 16,
+        paddingTop: 16,
       }}
     >
       <text
         style={{
-          // 原型 .modal-head .t：14px/600
-          fontSize: 14,
+          // 原型 .modal-head .t：flex:1 + 15px/600（第二段）
+          fontSize: 15,
           fontFamily: FONT.ui,
           fontWeight: '600',
           color: COLORS.textBright,
+          flexGrow: 1,
         }}
       >
         {title}
       </text>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-        {trailing != null ? <div style={{ marginRight: 8 }}>{trailing}</div> : null}
+        {trailing}
         <div
           tabIndex={0}
           testId="modal-close"
           onClick={onClose}
+          onMouseEnter={() => setXHover(true)}
+          onMouseLeave={() => setXHover(false)}
           onKeyDown={(e) => {
             if (e.key === 'enter' || e.key === 'space') onClose()
           }}
@@ -179,14 +189,14 @@ export function ModalHeading({
             hover: { backgroundColor: COLORS.closeHover },
           }}
         >
-          <Icon name="close" size={15} color={COLORS.muted} />
+          <Icon name="close" size={16} color={xHover ? COLORS.textBright : COLORS.muted} />
         </div>
       </div>
     </div>
   )
 }
 
-/** 弹窗主体（padding 统一） */
+/** 弹窗主体（原型 .modal-body 第二段：padding 14 16 18；无 gap——子项自携 margin） */
 export function ModalBody({ children }: { children: ReactNode }) {
   return (
     <div
@@ -195,11 +205,11 @@ export function ModalBody({ children }: { children: ReactNode }) {
         display: 'flex',
         flexDirection: 'column',
         minHeight: 0,
-        paddingLeft: 14,
-        paddingRight: 14,
-        paddingTop: 12,
-        paddingBottom: 16,
-        gap: 12,
+        paddingLeft: 16,
+        paddingRight: 16,
+        paddingTop: 14,
+        paddingBottom: 18,
+        overflowY: 'scroll',
         flexGrow: 1,
       }}
     >
@@ -245,31 +255,33 @@ export function ModalActions({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            height: 30,
-            paddingLeft: 14,
-            paddingRight: 14,
-            borderRadius: 6,
+            // 原型 .mbtn（第二段 h34 r8）+ .modal-actions .mbtn 定宽 88
+            height: 34,
+            width: 88,
+            borderRadius: 8,
             cursor: a.disabled ? 'default' : 'pointer',
             opacity: a.disabled ? 0.5 : 1,
-            backgroundColor: a.primary ? COLORS.accent : a.danger ? COLORS.bell : COLORS.surface,
-            borderWidth: a.primary || a.danger ? 0 : 1,
-            borderColor: COLORS.borderSubtle,
+            // 原型：默认透明底 + borderSubtle 描边；primary accent/accent
+            // （字色 #1e2127）；danger bell/bell（字色 #fff，hover 不变色）
+            backgroundColor: a.primary ? COLORS.accent : a.danger ? COLORS.bell : 'transparent',
+            borderWidth: 1,
+            borderColor: a.primary ? COLORS.accent : a.danger ? COLORS.bell : COLORS.borderSubtle,
             hover: a.disabled
               ? {}
-              : {
-                  backgroundColor: a.primary
-                    ? COLORS.accentHover
-                    : a.danger
-                      ? '#e78c85'
-                      : COLORS.surfaceHover,
-                },
+              : a.primary
+                ? { backgroundColor: COLORS.accentHover, borderColor: COLORS.accentHover }
+                : a.danger
+                  ? {}
+                  : { backgroundColor: COLORS.surface },
           }}
         >
           <text
             style={{
               fontSize: 12,
               fontFamily: FONT.ui,
-              color: a.primary || a.danger ? '#ffffff' : COLORS.text,
+              // 原型 button{font-weight:500}；primary 字色 #1e2127
+              fontWeight: '500',
+              color: a.primary ? '#1e2127' : a.danger ? '#ffffff' : COLORS.textBright,
               pointerEvents: 'none',
             }}
           >

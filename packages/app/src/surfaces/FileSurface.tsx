@@ -71,7 +71,7 @@ export function FileSurface({
           color: COLORS.muted,
         }}
       >
-        <Icon name="file" size={12} />
+        <Icon name="file" size={12} color={COLORS.muted} />
         <text
           style={{
             minWidth: 0,

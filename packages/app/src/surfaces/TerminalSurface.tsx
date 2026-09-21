@@ -11,8 +11,9 @@
  * （nativeDeps 兑底），不在这里。focused prop：挂载即请求焦点（T1.6）。
  */
 
+import { COLORS, FONT } from '@jagent/ui'
 import { useSettings } from '../settings/useSettings'
-import type { TerminalThread } from '../threads/store'
+import type { ShellView, TerminalThread } from '../threads/store'
 import type { SurfaceProps } from './registry'
 
 // ── `<terminal>` JSX 类型声明（GPUIX jsx-runtime 的 augmentation）──────
@@ -49,15 +50,57 @@ export function TerminalSurface({ thread, settings }: SurfaceProps) {
  * 会话内 shell 视图（SessionView kind='shell'；原型 SessionShell）——
  * 绑独立 PTY（view.sessionId，非 thread.sessionId）。与 TerminalSurface
  * 共享 TerminalView：`<terminal>` 仍只有本文件一个写点（硬约束 2）。
+ * 视图 PTY 退出（view.status==='exited'）→ 底部退出条（原型 .exited-bar：
+ * 「[进程已退出 · exit code N]」弱化文字；残留输出由池内会话网格保留）。
  */
 export function SessionTerminal({
-  sessionId,
+  view,
   settings,
 }: {
-  sessionId: number
+  view: ShellView
   settings: SurfaceProps['settings']
 }) {
-  return <TerminalView sessionId={sessionId} settings={settings} />
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        flexGrow: 1,
+        minWidth: 0,
+        minHeight: 0,
+      }}
+    >
+      <TerminalView sessionId={view.sessionId} settings={settings} />
+      {view.status === 'exited' ? (
+        <div
+          testId="session-exited-bar"
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            height: 26,
+            flexShrink: 0,
+            paddingLeft: 10,
+            paddingRight: 10,
+            borderTopWidth: 1,
+            borderColor: COLORS.border,
+            backgroundColor: COLORS.pane,
+          }}
+        >
+          <text
+            style={{
+              fontFamily: FONT.mono,
+              fontSize: 11,
+              color: COLORS.exited,
+              pointerEvents: 'none',
+            }}
+          >
+            {`[进程已退出${view.exitCode != null ? ` · exit code ${view.exitCode}` : ''}]`}
+          </text>
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 /** sessionId + 外观 → `<terminal>` 元素（唯一写点） */
@@ -69,9 +112,18 @@ function TerminalView({
   settings: SurfaceProps['settings']
 }) {
   const term = useSettings(settings).terminal
+  // flexGrow + minWidth/minHeight：主轴吃满剩余、交叉轴 stretch——
+  // 主面（workbench 行内）与会话内视图（SessionTerminal 列内 + 退出条
+  // 兄弟节点）两种父布局下尺寸都正确；不写死 100% 防兄弟节点溢出。
   return (
     <div
-      style={{ display: 'flex', flexDirection: 'row', flexGrow: 1, width: '100%', height: '100%' }}
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        flexGrow: 1,
+        minWidth: 0,
+        minHeight: 0,
+      }}
     >
       <terminal
         sessionId={sessionId}
