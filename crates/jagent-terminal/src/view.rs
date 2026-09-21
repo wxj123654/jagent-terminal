@@ -979,10 +979,7 @@ impl Render for TerminalView {
                                 window.paint_quad(quad(
                                     thumb,
                                     px(2.0),
-                                    measured
-                                        .palette
-                                        .foreground()
-                                        .alpha(state_alpha * opacity),
+                                    measured.palette.foreground().alpha(state_alpha * opacity),
                                     Edges::<Pixels>::default(),
                                     transparent_black(),
                                     Default::default(),

@@ -19,7 +19,7 @@ use std::sync::Arc;
 use gpui::prelude::*;
 use gpui::{App, AppContext};
 use jagent_terminal::{
-    set_session_event_fn, SessionEvent, SpawnOptions, TerminalPool, TerminalView,
+    SessionEvent, SpawnOptions, TerminalPool, TerminalView, set_session_event_fn,
 };
 
 fn main() {
