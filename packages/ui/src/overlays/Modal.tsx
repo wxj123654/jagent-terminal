@@ -20,6 +20,7 @@ import { useWindowSize } from '@gpuix/react'
 import { useState, type ReactNode } from 'react'
 
 import { Icon } from '../display/Icon'
+import { keyConsumed } from '../keyboard'
 import { COLORS, FONT } from '../theme/tokens'
 
 /** 卡片目标高（可缺省 = 内容自适应；设了则列表区独立滚动——原型 tool-dialog 固定高形态） */
@@ -116,7 +117,12 @@ export function Modal({
         <div
           testId="modal-card"
           onKeyDown={(e) => {
-            if (e.key === 'escape') onClose()
+            if (e.key === 'escape') {
+              // 消费标记（R11）：root 键位层是同一按键的后一跳——不置位
+              // 会连坐触发抽屉/设置面 Esc（原型 dialog 层「return」语义）
+              keyConsumed.mark()
+              onClose()
+            }
           }}
           style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
         >

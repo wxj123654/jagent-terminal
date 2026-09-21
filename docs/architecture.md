@@ -617,28 +617,40 @@ function TerminalSurface({ thread, settings }: SurfaceProps) {
 
 外层 div：padding 0、无 overflow 包裹、背景不设色（terminal 自己的 palette）。焦点、选区、滚轮全归 TerminalView。T2.5 起四项外观真值随设置实时调和（setCustomProp 幂等，不重建会话）；scrollbackLines 属 spawn 参数（nativeDeps 兑底，不在此处）。
 
-### 全局键位层（T2.6 提取：src/keybindings.ts；T3+.2 键位参数化）
+### 全局键位层（T2.6 提取：src/keybindings.ts；T3+.2 键位参数化；R11 分层链对齐原型）
 
 ```ts
 // createGlobalKeydown(opts)：main.tsx 与 e2e 挂点共用的依赖注入形态
-// （布线差异注入，nativeDeps 同款纪律）。分层：
-// - 修饰键组合：cycleNext/cyclePrev（默认 ctrl-tab/-shift-tab）→ cycle；
-//   toggleSettings（默认 ctrl-,）→ 设置路由开关；其余透传
-// - 设置面生命周期键（无修饰键，仅 inSettings() 时吃）：Esc（消费标记双跳
-//   时序，见 keybindings.ts 注释；搜索框与键位捕获格两个消费源，标记在
-//   settings/ui/settingsKeyboard.ts 模块单例）/ focusSearch（默认 '/'，
-//   inputFocus 守卫 + renderer.focusElement(searchInputId)）
-// T3+.2：四动作键位从 settings.keybindings 读（opts.keys getter 注入，
+// （布线差异注入，nativeDeps 同款纪律）。R11 起分层链逐层对齐原型
+// useGlobalKeys（GPUIX 无 stopPropagation，元素→root 逐跳派发）：
+// L0 keyConsumed 元素级消费标记（原型 kbCapturing；捕获格全键/Modal·
+//   浮层 Esc/设置搜索框 Esc 置位，ui/keyboard.ts 一次性标记）
+// L1 弹窗层（原型 dialog.kind!=='none' → return）：dialogKeyboard.isOpen
+//   判活 → 全局动作全让位 + Esc 兜底 close（焦点不在卡内时；卡内 Esc
+//   已被 L0 挡）
+// L2 浮层 Esc 栈（原型 notifOpen/fontPicker 层）：overlayEsc——Popover
+//   挂载登记，未聚焦浮层也能关
+// L3 设置面生命周期键（无修饰键，仅 inSettings() 时吃）：Esc（query
+//   非空 → settingsKeyboard.clearQuery 清空不退出；空 → 关设置）/
+//   focusSearch（默认 '/'，inputFocus 守卫 + renderer.focusElement）
+// L4 searchThreads/newSession/toggleSidebar（仅设置面外；皆修饰键组合）
+// L5 窄窗抽屉 Esc（planeKeyboard.escape）
+// L6 git 面 r/Esc/↑↓/Enter（git/graphKeys.ts，激活判定随域）
+// L7 修饰键组合：cycleNext/cyclePrev（默认 ctrl-tab/-shift-tab）→ cycle；
+//   toggleSettings（默认 ctrl-,）→ 设置路由开关；ctrl-shift-g → git 图；
+//   其余透传（硬约束 2：不吃 vim/claude 按键）
+// T3+.2：键位从 settings.keybindings 读（opts.keys getter 注入，
 // 每次 keyDown 查快照——修改即时生效）；keystrokeMatches(ks, key, ctrl,
-// shift) 匹配器导出。语义约束在编辑面（KeybindingsSection）：cycle*/
-// toggleSettings 必含 ctrl（硬约束 2 不吃裸键）、focusSearch 必无修饰。
+// shift) 匹配器导出。语义约束在编辑面（KeybindingsSection）：cycle 系/
+// toggleSettings/searchThreads/toggleSidebar/newSession 必含主修饰
+// （硬约束 2 不吃裸键）、focusSearch 必无修饰。
 // Esc 与 +/Shift+ 菜单是平台语义，不参与配置。
 // 关闭设置 = activate(lastNonSettings())（router 桥订阅回调维护）
 ```
 
 ### SettingsView（settings-ui.md §12 的对齐）
 
-结构照契约：`SettingsNav`（7 分区 + 搜索）+ `SettingsContent`。分区组件消费 `SETTING_DEFS`（见 §6）渲染 `SettingRow`；Presets 已实装（T3.1，PresetsSection 列表 CRUD）；ACP 分区已实装（T3+.1，AcpAgentsSection 列表 CRUD——无 builtin/modified 概念，默认 2 项也是可删改示例）；Keybindings 已解锁可编辑（T3+.2，捕获格：点击/enter 进入 → 按组合即时写入 → 无效拒绝提示；Esc 取消走消费标记；冲突双方警示行；modified 蓝点 + reset；四动作外的 Esc/+ 菜单为平台语义只读行）；Advanced 已实装（T3+.2，gpuBackend defs + 诊断卡只读[版本/GPUIX pin/平台] + settings.json 实时视图[markdown code block，订阅快照即时反映] + 「在编辑器中打开」[仅真盘 adapter 有 path——file.ts openInSystemApp；memory 测试面不渲染]）。当前分区 = `/settings` 的类型化 search param `section`（分区深链免费；Esc / Ctrl-, 退出即返回）。生命周期（Ctrl-, / Esc / 切 thread 关闭）由路由与 `cycle` 天然实现，SettingsView 自身只管表单。设置面键盘态（query/searchInputId/escConsumed）在 surfaces/settingsKeyboard.ts 模块单例（T3+.2 从 SettingsView 提取——KeybindingsSection 捕获格同面消费）。
+结构照契约：`SettingsNav`（7 分区 + 搜索）+ `SettingsContent`。分区组件消费 `SETTING_DEFS`（见 §6）渲染 `SettingRow`；Presets 已实装（T3.1，PresetsSection 列表 CRUD）；ACP 分区已实装（T3+.1，AcpAgentsSection 列表 CRUD——无 builtin/modified 概念，默认 2 项也是可删改示例）；Keybindings 已解锁可编辑（T3+.2，捕获格：点击/enter 进入 → 按组合即时写入 → 无效拒绝提示；Esc 取消走消费标记；冲突双方警示行；modified 蓝点 + reset；七动作外的 Esc/+ 菜单为平台语义只读行）；Advanced 已实装（T3+.2，gpuBackend defs + 诊断卡只读[版本/GPUIX pin/平台] + settings.json 实时视图[markdown code block，订阅快照即时反映] + 「在编辑器中打开」[仅真盘 adapter 有 path——file.ts openInSystemApp；memory 测试面不渲染]）。当前分区 = `/settings` 的类型化 search param `section`（分区深链免费；Esc / Ctrl-, 退出即返回）。生命周期（Ctrl-, / Esc / 切 thread 关闭）由路由与 `cycle` 天然实现，SettingsView 自身只管表单。设置面键盘态（query/searchInputId/clearQuery 回调）在 surfaces/settingsKeyboard.ts 模块单例（T3+.2 从 SettingsView 提取——KeybindingsSection 捕获格同面消费）；「按键已被元素消费」标记 R11 起泛化为 ui/keyboard 的 keyConsumed（escConsumed 退役——任意键消费同面：捕获格全键 / Modal·浮层 Esc / 搜索框 Esc 清空）。
 
 ---
 
@@ -670,7 +682,7 @@ App（useSyncExternalStore(threadStore) + useSettings()）
 - ThreadRow 的局部态：hover、rename 编辑框——useState，不上 store
 - 图标/颜色 tokens 全部从 agent-plane-layout.md §3 引（CSS 变量或 TS 常量，Phase 1 定）
 
-**全局键位层（src/keybindings.ts，T2.6 从 main.tsx 提取；T3+.2 键位参数化；main/e2e 同一 createGlobalKeydown）**：四动作键位真值 = settings.keybindings（getter 注入，修改即时生效）；默认 `ctrl-tab` / `ctrl-shift-tab` → `cycle`、`ctrl-,` → 设置路由开/关。修饰键组合外只吃设置面生命周期键（Esc/`focusSearch` 默认 `/`，仅 inSettings() 时；terminal 表面时透传给 PTY——硬约束 2）。焦点模型已验（T1.6）：TerminalView 聚焦时窗口级 keyDown 仍到达，无需降级。`Keybindings`/`KeybindingAction`/`DEFAULT_KEYBINDINGS` 自 schema `DEFAULTS.keybindings` 派生（叶子 catch 是真值单点，平台分支只写一次）；`createKeyboardSlot` 是 planeKeyboard/dialogKeyboard 的模块单例脚手架；git 域键位（↑↓/enter/esc/r）在 git/graphKeys.ts——激活判定（工作区路由 + paneTab）随域代码走，装配层只注读侧。
+**全局键位层（src/keybindings.ts，T2.6 从 main.tsx 提取；T3+.2 键位参数化；R11 分层链对齐原型 useGlobalKeys；main/e2e 同一 createGlobalKeydown）**：键位真值 = settings.keybindings（getter 注入，修改即时生效）；默认 `ctrl-tab` / `ctrl-shift-tab` → `cycle`、`ctrl-,` → 设置路由开/关、`⌘K/Ctrl-K` → 搜索弹窗、`⌘N/Ctrl-Shift-N` → 新建会话弹窗、`⌘B/Ctrl-B` → 侧栏/抽屉。修饰键组合外只吃设置面生命周期键（Esc/`focusSearch` 默认 `/`，仅 inSettings() 时；terminal 表面时透传给 PTY——硬约束 2）。焦点模型已验（T1.6）：TerminalView 聚焦时窗口级 keyDown 仍到达，无需降级。`Keybindings`/`KeybindingAction`/`DEFAULT_KEYBINDINGS` 自 schema `DEFAULTS.keybindings` 派生（叶子 catch 是真值单点，平台分支只写一次）；`createKeyboardSlot` 是 planeKeyboard/dialogKeyboard 的模块单例脚手架；git 域键位（↑↓/enter/esc/r）在 git/graphKeys.ts——激活判定（工作区路由 + paneTab）随域代码走，装配层只注读侧。
 
 ---
 
@@ -761,7 +773,7 @@ interface SettingsStore {
 
 ### 6.3 测试面
 
-内存 adapter：patch/isModified/reset · 坏 JSON / 越界值字段级回默认（zod catch）· 未知 key 往返保真 · 写失败回滚 + writeError · 合并写 · SETTING_DEFS 的 path 全部真实存在于 Settings（schema 一致性测试）。预设 CRUD（T3.1）：add 唯一 id+builtin:false · update 空字段归一+args 空行过滤 · delete plusDefault 回退 · duplicate 副本语义 · reset 出厂值 · CRUD 写失败同一回滚面。ACP agent CRUD（T3+.1）：add 缺省/唯一 id · update args 空行过滤 · delete 落盘 + 写失败回滚（path=acpAgents）。keybindings section（T3+.2）：四动作叶子 string catch 默认（'ctrl-tab'/'ctrl-shift-tab'/'ctrl-,','/'）；filePath() 暴露真盘路径（fsAdapter.path；memory 无）+ serializeSettings 导出（写盘与 Advanced JSON 视图同源）。threads/__tests__/acp.test.ts：真子进程 JSON-RPC 链（__tests__/__fixtures__/fake-acp-agent.ts，FAKE_ACP_MODE 选行为：echo/tools/permission/refusal/crash/badline/version2）。
+内存 adapter：patch/isModified/reset · 坏 JSON / 越界值字段级回默认（zod catch）· 未知 key 往返保真 · 写失败回滚 + writeError · 合并写 · SETTING_DEFS 的 path 全部真实存在于 Settings（schema 一致性测试）。预设 CRUD（T3.1）：add 唯一 id+builtin:false · update 空字段归一+args 空行过滤 · delete plusDefault 回退 · duplicate 副本语义 · reset 出厂值 · CRUD 写失败同一回滚面。ACP agent CRUD（T3+.1）：add 缺省/唯一 id · update args 空行过滤 · delete 落盘 + 写失败回滚（path=acpAgents）。keybindings section（T3+.2；R11 补齐 newSession）：七动作叶子 string catch 默认（'ctrl-tab'/'ctrl-shift-tab'/'ctrl-,'/'/'/'cmd-k'/'cmd-b'/'cmd-n'——mac 值；win·linux 见 schema 平台分支）；filePath() 暴露真盘路径（fsAdapter.path；memory 无）+ serializeSettings 导出（写盘与 Advanced JSON 视图同源）。threads/__tests__/acp.test.ts：真子进程 JSON-RPC 链（__tests__/__fixtures__/fake-acp-agent.ts，FAKE_ACP_MODE 选行为：echo/tools/permission/refusal/crash/badline/version2）。
 
 ---
 

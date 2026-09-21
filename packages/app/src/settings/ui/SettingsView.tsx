@@ -19,7 +19,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 
-import { Icon, inputFocus, COLORS, FONT } from '@jagent/ui'
+import { Icon, inputFocus, keyConsumed, COLORS, FONT } from '@jagent/ui'
 import type { IconName } from '@jagent/ui'
 import type { Keybindings } from '../../keybindings'
 import { useSettingsSection, navigateSettingsSection } from '../../router'
@@ -64,7 +64,14 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
   }, [query])
   // 卸载：设置面不在时 settingsKeyboard 的值无意义
   useEffect(() => {
+    // root 层 Esc 的「清空 query」实现（原型 settingsQuery 层：非空 Esc =
+    // 清空不退出——搜索框未聚焦时 root 层经此回调清，聚焦时输入框自理）
+    settingsKeyboard.registerClearQuery(() => {
+      setQuery('')
+      settingsKeyboard.setQuery('')
+    })
     return () => {
+      settingsKeyboard.registerClearQuery(null)
       settingsKeyboard.setQuery('')
       settingsKeyboard.setSearchInput(null)
     }
@@ -208,7 +215,7 @@ export function SettingsView({ settings }: { settings: SettingsStore }): ReactEl
               if (e.key === 'escape' && query) {
                 setQuery('')
                 settingsKeyboard.setQuery('')
-                settingsKeyboard.markEscConsumed()
+                keyConsumed.mark()
               }
             }}
             style={{

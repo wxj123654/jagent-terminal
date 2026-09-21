@@ -19,7 +19,7 @@ import { useState } from 'react'
 import type { ReactElement } from 'react'
 
 import { Icon } from '../display/Icon'
-import { inputFocus } from '../keyboard'
+import { inputFocus, keyConsumed } from '../keyboard'
 import { controlText, focusRing } from '../theme/style'
 import { COLORS } from '../theme/tokens'
 
@@ -105,6 +105,8 @@ export function SelectField({
         sideOffset={4}
         align="start"
         testId={`${testId}-menu`}
+        // Esc 关弹层已消费（内建随后跑）——置标记防 root 键位层连坐（R11）
+        onEscapeKeyDown={() => keyConsumed.mark()}
         style={{
           minWidth: 140,
           paddingTop: 4,

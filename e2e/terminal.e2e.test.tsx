@@ -27,7 +27,7 @@ import { join } from 'node:path'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { installTerminalElement, destroyTerminalSession, onSessionEvent } from '@jagent/native'
 
-import { inputFocus } from '@jagent/ui'
+import { inputFocus, keyConsumed, overlayEsc } from '@jagent/ui'
 import { createElement } from 'react'
 import { dialogKeyboard } from '../packages/app/src/dialogs/dialogKeyboard'
 import { createGitGraphStore } from '../packages/app/src/git/store'
@@ -158,8 +158,12 @@ beforeAll(() => {
     drawerEsc: () => planeKeyboard.escape(),
     inputFocused: () => inputFocus.any,
     settingsQuery: settingsKeyboard.query,
-    escConsumed: settingsKeyboard.escConsumed,
-    clearEscConsumed: settingsKeyboard.clearEscConsumed,
+    // R11 分层链（与 main.tsx 同）：设置 Esc 清 query / 消费标记 / 弹窗层 / 浮层栈
+    clearSettingsQuery: () => settingsKeyboard.clearQuery(),
+    keyConsumed: () => keyConsumed.take(),
+    dialogOpen: () => dialogKeyboard.isOpen(),
+    closeDialog: () => dialogKeyboard.close(),
+    overlayEsc: () => overlayEsc.escape(),
     // 键位真值 = settings 快照（与 main.tsx 同——修改即时生效，T3+.2）
     keys: () => settings.get().keybindings,
   })
@@ -843,6 +847,30 @@ describe('Phase W e2e: 工作区全链', () => {
       // 无 PTY 泄漏：两工作区 shell 会话仍在（未被误关/误写崩溃）
       const terms = store.getState().threads.filter((x) => x.kind === 'terminal')
       expect(terms.length).toBeGreaterThanOrEqual(2)
+    },
+    TEST_TIMEOUT,
+  )
+
+  test(
+    '⌘N/Ctrl-Shift-N 端到端：newSession 打开新建会话弹窗（目标 = 当前工作区）',
+    async () => {
+      // R11：newSession → dialogKeyboard.newSession() → AgentPlane
+      // DialogHost tool 弹窗（工作区 = 活跃会话归属）。键事件走真管线。
+      store.activate({ type: 'thread', id: w1ShellId })
+      await until('w1 shell active', () => currentActiveThreadId() === w1ShellId)
+      t.renderer.simulateKeystrokes(process.platform === 'darwin' ? 'cmd-n' : 'ctrl-shift-n')
+      await until('tool dialog visible', () => t.renderer.findByTestId('modal-card') != null)
+      expect(t.renderer.findByTestId('tool-dialog-workspace') != null).toBe(true)
+      expect(t.renderer.findByTestId('tool-list') != null).toBe(true)
+      // 弹窗层（原型 dialog.kind!=='none' → return）：全局动作让位——
+      // ctrl-tab 不 cycle；Esc 关弹窗（焦点链经 modal-card 置消费标记，
+      // root 层不连坐）
+      const before = currentActiveThreadId()
+      t.renderer.simulateKeystrokes('ctrl-tab')
+      await new Promise((r) => setTimeout(r, 80))
+      expect(currentActiveThreadId()).toBe(before)
+      t.renderer.simulateKeystrokes('escape')
+      await until('tool dialog closed by Esc', () => t.renderer.findByTestId('modal-card') == null)
     },
     TEST_TIMEOUT,
   )

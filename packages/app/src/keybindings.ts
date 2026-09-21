@@ -1,27 +1,38 @@
 /**
  * keybindings.ts — 全局键位层（settings-ui §4/§9；architecture D8）。
  *
- * 键盘事件「焦点元素 + 窗口 root」两跳（T1.6 实测）：终端聚焦时也会到
- * root。分层规则：
- * - 修饰键组合全局吃：Ctrl-Tab / Ctrl-Shift-Tab → cycle；Ctrl-, → toggle
- *   设置；⌘K/Ctrl-K → searchThreads（打开搜索会话弹窗；W7 改道——
- *   原 W4「聚焦侧栏搜索框」废弃）。其余
- *   修饰键组合与全部裸键透传（硬约束 2：不吃 vim/claude 按键）。⌘ 是
- *   platform 修饰不写 PTY（memory#5③）——mac ⌘K 劫持零终端冲突；win
- *   ctrl-k 与 ctrl-, 同层（修饰组合层），键位可改。
- * - 设置面生命周期键（Esc / `/`，无修饰键）：仅设置面打开时吃——
- *   terminal 表面时 Esc/`/` 必须透传给 PTY。
- *   - Esc：双跳时序（焦点元素先、root 后，同一按键）——搜索框/键位捕获格
- *     消费 Esc 时同步置「已消费」标记，root 层后到看到标记则不连坐关闭
- *     （React 状态同步提交，useEffect 先于 root handler 跑完，「读旧
- *     query」防御不成立——实测）；query 空且无标记 → 关闭设置。
- *   - `/`：不在输入态时聚焦搜索框（inputFocus 守卫）。
+ * 键盘事件「焦点元素 → 祖先链 → 窗口 root」逐跳派发（T1.6 实测）：终端
+ * 聚焦时也会到 root，且 JS 无 stopPropagation 面——元素消费靠
+ * ui/keyboard 的 keyConsumed 标记协调。
  *
- * T3+.2 键位参数化：四动作键位从 settings.keybindings 读（createGlobalKeydown
- * 的 keys getter 注入；每次 keyDown 查快照——修改即时生效）。语义约束由
- * 编辑面校验保证（cycleNext/cyclePrev/toggleSettings 必含 ctrl、focusSearch 必无修饰），
- * 运行时只按层归属匹配：ctrl 层匹配 cycle/toggle，无修饰层（设置面内）匹配
- * focusSearch。Esc 是平台语义（清空/返回），不参与配置。
+ * R11：分层链对齐原型 App.tsx useGlobalKeys（逐层一一对应）：
+ * 0. keyConsumed 标记（原型 kbCapturing/组件编辑态层）——键位捕获格
+ *    全键、Modal/浮层 Esc、设置搜索框 Esc 清空等元素级消费先置位，
+ *    root 层见标记跳过整链。
+ * 1. 弹窗层（原型 `dialog.kind!=='none' → return`，Radix 自管）：弹窗
+ *    开着时全部全局动作让位；Esc 兜底关闭（Radix document 级 Esc 等价
+ *    ——焦点不在卡内时 Modal 吃不到；卡内 Esc 已被 keyConsumed 挡在
+ *    上一层，不会双重关闭）。
+ * 2. 浮层 Esc（原型 `notifOpen || fontPicker` 层）：Popover 栈顶关闭——
+ *    焦点不在浮层内时仍生效（overlayEsc 栈）。
+ * 3. 设置面生命周期键（Esc / `/`，无修饰键）：仅设置面打开时吃——
+ *    terminal 表面时 Esc/`/` 必须透传给 PTY（硬约束 2）。
+ *    - Esc：query 非空 → 清空不退出；query 空 → 关闭设置回上一表面。
+ *      搜索框聚焦的清空由输入框自理（keyConsumed 在 L0 已挡）。
+ *    - `/`：不在输入态时聚焦搜索框（inputFocus 守卫）。
+ * 4. searchThreads（⌘K/Ctrl-K → 搜索会话弹窗，W7 改道——原 W4「聚焦
+ *    侧栏搜索框」废弃）/ newSession（⌘N/Ctrl-Shift-N → 新建会话弹窗，
+ *    D7）/ toggleSidebar（⌘B/Ctrl-B，D2）：仅设置面外命中；三者都是
+ *    修饰键组合，不吃裸键（cycle 系/toggleSettings/newSession 的
+ *    必含修饰约束在编辑面校验）。
+ * 5. 窄窗抽屉 Esc：抽屉开着且无更高层消费 → 关闭（planeKeyboard）。
+ * 6. Git 图表面键（无修饰；输入框聚焦时透传）：r/Esc/↑↓/Enter。
+ * 7. ctrl 层：cycleNext/cyclePrev/toggleSettings/ctrl-shift-g；其余
+ *    修饰键组合与全部裸键透传（⌘ 是 platform 修饰不写 PTY——mac ⌘K
+ *    劫持零终端冲突；win ctrl-k 与 ctrl-, 同层）。
+ *
+ * T3+.2 键位参数化：键位从 settings.keybindings 读（createGlobalKeydown
+ * 的 keys getter 注入；每次 keyDown 查快照——修改即时生效）。
  *
  * 从 main.tsx 提取为纯依赖注入形态：e2e 的 createTestRoot 挂点与真窗口
  * 装配共用同一份语义（布线差异注入，nativeDeps 同款纪律）。
@@ -93,12 +104,20 @@ export function createGlobalKeydown(opts: {
   inputFocused: () => boolean
   /** 设置搜索框当前 query（SettingsView 模块态） */
   settingsQuery: () => string
+  /** root 层 Esc 清空设置搜索 query（原型 settingsQuery='' 层；未接线 no-op） */
+  clearSettingsQuery?: () => void
   /** 关闭设置：回到上一个非设置目标（settings-ui §4；无则 null → '/'） */
   closeSettings: () => void
-  /** 搜索框/键位捕获格已消费本次 Esc（模块态，一次性） */
-  escConsumed: () => boolean
-  /** 重置 Esc 消费标记（root 层读取后调） */
-  clearEscConsumed: () => void
+  /** 元素级已消费本次按键（ui/keyboard keyConsumed.take——一次性，读取即复位）。
+   *  键位捕获格全键 / Modal·浮层 Esc / 设置搜索框 Esc 清空等先置位，root 跳过 */
+  keyConsumed?: () => boolean
+  /** 弹窗开着（原型 `dialog.kind!=='none'` 层）：开着时全部全局动作让位 */
+  dialogOpen?: () => boolean
+  /** Esc 兜底关闭弹窗（焦点不在卡内时；Radix document 级 Esc 等价物） */
+  closeDialog?: () => void
+  /** 浮层 Esc 栈（原型 notifOpen/fontPicker 层；ui/keyboard overlayEsc）：
+   *  返回 true = 栈顶浮层已关（消费） */
+  overlayEsc?: () => boolean
   /** 打开搜索会话弹窗（W7 searchThreads；装配层 → dialogKeyboard.openSearch） */
   openSearch: () => void
   /** ⌘B/Ctrl-B 收起/展开侧栏（Phase D2；窄窗口抽屉态同效） */
@@ -128,23 +147,35 @@ export function createGlobalKeydown(opts: {
     drawerEsc,
     inputFocused,
     settingsQuery,
-    escConsumed,
-    clearEscConsumed,
+    clearSettingsQuery,
     closeSettings,
+    keyConsumed,
+    dialogOpen,
+    closeDialog,
+    overlayEsc,
     gitGraphKey,
     openGitGraph,
     keys,
   } = opts
   const kb = (): Keybindings => keys?.() ?? DEFAULT_KEYBINDINGS
   return (key, ctrl, shift, cmd = false) => {
-    // 设置面生命周期键（无修饰键；仅设置面打开时吃）
+    // L0 元素级消费标记（原型 kbCapturing/组件编辑态层）：键位捕获格全键、
+    // Modal/浮层 Esc、设置搜索框 Esc 清空等已在焦点跳消费——root 跳过
+    if (keyConsumed?.()) return
+    // L1 弹窗层（原型 `dialog.kind!=='none' → return`）：全局动作全部
+    // 让位；Esc 兜底关闭（焦点不在卡内时——卡内 Esc 已被 L0 挡）
+    if (dialogOpen?.()) {
+      if (key === 'escape' && !ctrl && !cmd) closeDialog?.()
+      return
+    }
+    // L2 浮层 Esc（原型 notifOpen/fontPicker 层）：栈顶浮层关闭
+    if (key === 'escape' && !ctrl && !cmd && overlayEsc?.()) return
+    // L3 设置面生命周期键（无修饰键；仅设置面打开时吃）
     if (!ctrl && inSettings()) {
       if (key === 'escape') {
-        if (escConsumed()) {
-          clearEscConsumed()
-          return
-        }
+        // 原型：query 非空 → 清空不退出；空 → 关闭设置
         if (settingsQuery() === '') closeSettings()
+        else clearSettingsQuery?.()
         return
       }
       if (keystrokeMatches(kb().focusSearch, key, ctrl, shift) && !inputFocused()) {

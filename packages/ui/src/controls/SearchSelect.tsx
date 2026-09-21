@@ -36,7 +36,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 
 import { Icon } from '../display/Icon'
-import { inputFocus } from '../keyboard'
+import { inputFocus, keyConsumed } from '../keyboard'
 import { controlText, focusRing } from '../theme/style'
 import { COLORS, FONT } from '../theme/tokens'
 
@@ -220,6 +220,11 @@ export function SearchSelect({
     <ComboboxInput
       testId={searchable ? `${testId}-search` : undefined}
       placeholder={searchable ? searchPlaceholder : undefined}
+      onKeyDown={(e) => {
+        // Esc 关弹层是内建行为（本回调先于内建跑）——置消费标记防 root
+        // 键位层连坐（原型 fontPicker Esc 层语义；R11）
+        if (e.key === 'escape' && open) keyConsumed.mark()
+      }}
       onFocus={() => {
         focusHeld.current = true
         inputFocus.acquire()
@@ -301,6 +306,9 @@ export function SearchSelect({
     >
       <ComboboxTrigger
         testId={testId}
+        onKeyDown={(e) => {
+          if (e.key === 'escape' && open) keyConsumed.mark()
+        }}
         onFocus={() => {
           setFocused(true)
           inputFocus.acquire()

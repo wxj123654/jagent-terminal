@@ -484,7 +484,7 @@
     （原型新用名补 svg path）；SIZES 尺寸表对账。
   - 滚动条：原型 ::-webkit-scrollbar 10px 双 padding 框——终端已有 Zed 三态
     滚动条，面板/列表侧滚动条形态统一核对（GPUIX 滚动区 scrollbar 现状盘点）。
-- [ ] **R11 键位/窄屏/抽屉/深链**
+- [x] **R11 键位/窄屏/抽屉/深链** ✅ 2026-09-21
   - 锚点：App.tsx `useGlobalKeys` 优先级表：kbCapturing > dialog(Radix 自管) >
     notif/fontPicker Esc > 设置面 Esc/`/` > searchThreads/**newSession(⌘N/Ctrl-N)**
     /toggleSidebar > 窄屏抽屉 Esc > git 面 r/Esc/↑↓/Enter > ctrl 层 cycle/
@@ -492,6 +492,7 @@
     chat/acp/panel/search/tool/addws/errors/crash/notif/narrow/hidden/font）。
   - app：`keybindings.ts`（**newSession 动作缺失——新增**，schema/键位表/KeyCap
     同步）、planeKeyboard/dialogKeyboard、AgentPlane 抽屉（760 断点）、router.tsx。
+  - 结论详见 Phase R 结论区（R11）。
 - [ ] **R12 收官**：全量回归（app+ui 单测 + e2e + tsc + fmt:check + lint +
   export-patches --check）+ 全状态截图复测差异率表回写
   `docs/prototype-react-diff.md` + 真窗口手验清单 + commit。
@@ -845,6 +846,43 @@
   双包 tsc + fmt:check + lint + 根 bun test 523 + e2e 34 +
   export-patches --check 全绿。
 
+- **R11（键位/窄屏/抽屉/深链，2026-09-21）**：**优先级链逐层对账
+  并补齐**——原型 App.tsx useGlobalKeys 八层链移植到 keybindings.ts
+  （GPUIX 无 stopPropagation，元素→root 逐跳派发，协调靠
+  ui/keyboard 新增的两件模块态）：L0 `keyConsumed`（原型
+  kbCapturing/组件编辑态层——escConsumed 泛化为任意键一次性标记；
+  键位捕获格从「Esc 单键消费」升为**编辑态吞全键**，修掉「捕获
+  ctrl-tab 同时写入+cycle」双重生效；另补 onBlur 失焦退出编辑态，
+  原型全局捕获僵尸态不移植）→ L1 弹窗层（`dialogOpen`：弹窗开着
+  全部全局动作让位 + Esc 兜底关闭——Radix document 级 Esc 等价物；
+  Modal/Popover/Combobox/Select 的元素级 Esc 一律置标记，修掉
+  「Esc 关弹窗连坐关设置/抽屉」）→ L2 浮层 Esc 栈（`overlayEsc`：
+  Popover 挂载登记 LIFO——未聚焦浮层也能被 Esc 关，原型
+  notifOpen/fontPicker 层；notif/ctx/session-add/git 菜单全覆盖）
+  → L3 设置面 Esc/`/`（**修掉「query 非空 + 焦点不在搜索框 →
+  Esc 静默无操作」缺口**：root 层经 settingsKeyboard.clearQuery
+  清空不退出，原型 `settingsQuery=''` 同语义）→ L4 searchThreads/
+  newSession/toggleSidebar（仅设置面外命中）→ L5 窄屏抽屉 Esc →
+  L6 git 面 r/Esc/↑↓/Enter → L7 ctrl 层（cycle/toggleSettings/
+  ctrl-shift-g）。**newSession 补全**：schema/键位层/dialogKeyboard/
+  AgentPlane/装配层早已接通，本轮补**设置面键位表行**
+  （KEY_ACTIONS 漏项——⌘N 此前不可见不可改）+ requireCtrl 校验；
+  平台默认 mac `cmd-n` / win·linux `ctrl-shift-n`（原型种子值——
+  裸 ctrl-n 是 readline next-history，吃掉会破坏 shell；⌘ 不写
+  PTY）。**窄屏**：760 断点 + 原型 fit() 语义补全——越过断口变宽
+  时抽屉态复位（再收窄不自动重开）；Esc 序 = 组件编辑态 → 清
+  query → 关抽屉 → 宽窗 no-op（AgentPlane.test 真链路锁定）。
+  **深链结论**：`?view=` 是原型截图/演示设施——桌面 app 是
+  memory history 无地址栏，不落地 URL 深链；home/settings/
+  workspace/chat/acp 已由正式路由覆盖（`/`、`/settings?section=`、
+  `/workspace/$id`、`/thread/$id`），git=路由+paneTab 复合态，
+  panel/search/tool/addws/errors/crash/notif/narrow/hidden/font/
+  sess-* = 组件内 UI 态——proto-shot.mjs 种子态逐态对应
+  （.shots/impl-*.png 全套在跑），不进路由。**gate**：双包 tsc +
+  fmt:check + lint + 根 bun test 532（+9：L0-L3/newSession 分层
+  用例 + ⌘N/抽屉 Esc 全链）+ e2e 35（+1：⌘N 真管线开 ToolDialog +
+  弹窗层吞 ctrl-tab + Esc 关）+ export-patches --check 全绿。
+
 ---
 
 
@@ -1004,3 +1042,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-21 · **R8 完成（设置面对齐 React 原型）**：外壳重建（st-nav 217+1 边/COLORS.settingsNav 半透明、brand 58+gear+双行文案、搜索框 34+/ kbd+显式 focus 边色[GPUIX 无 :focus-within]、nav 行图标+命中徽章+0 命中置灰、page-head+即时生效 pill、st-card r12 COLORS.card）· 控件层对齐（controlBox r6/controlText 12·16/focusRing→ring/Toggle 34×20/NumberInput 76+步进 18/Select·SearchSelect 弹层 r8+overlay+阴影/RangeInput 轨道~180/Textarea fill）· 搜索语义补差：presets/acp 恒在结果列（原型 sectionHasContent），卡内「无匹配」；ACP agent 参与命中；settings-ui §9 同步 · SettingRow h58 pad 0 16+moddot 右移 12 语义化；listEditorParts 重写（le-card/le-add 实线近似虚线[无 dashed]/le-empty）；AcpAgentsSection 共享件化 · GPUIX 不支持项跳过：letterSpacing/textTransform/dashed · 验收：proto-shot settings/font 目检+geom 逐字段对齐（218/482+34/728/58）· 测试三文件按新语义更新 · gate：双包 tsc + 根 bun test 462 + fmt/lint 全绿 · 下一步：R5/R6/R7 剩余模块
 - 2026-09-21 · **R9 完成（空态与会话面对齐 React 原型）**：空态重建为 .home/.home-card 件组（680 渐变卡+kicker+ctx 行+section-head+.pills 双列网格卡 h42 + featured pi 胶囊），WorkspaceEmpty 复用同壳 · ConversationView 重建（conv-head 44 avatar+title+status、ConvIn 760 居中列、user 气泡不对称圆角、thinking-dot「正在思考…」、composer-shell 704+send-btn arrowRight+hint）；CHAT/ACP pill 退役 · TerminalSurface 只动周边 chrome（term 底色+exited-bar 去分隔线）· Icon 增 arrowRight · 平台发现：virtual-list 行根 margin 不测量→改 paddingBottom（行距塌陷真 bug，修后 chat 4.60→3.92）；geom 报 content-box；原生 markdown fenced code 恒带语言头行+ink 洗底（与 MdLite 裸 pre 的不可消除差异）· 六态差异全降：home 2.46/chat 3.92/acp 1.70/workspace 2.78/sess-main 1.58/sess-shell 1.54（基线 4.02/7.85/3.48/4.90/2.72/2.67）· 工具链：geom-proto 选择器扩展 + pngdiff/report Retina 归一 · gate：双包 tsc + bun test 523 + e2e 34 + fmt/lint + export-patches --check 全绿 · 下一步：R10（tokens/图标/全局样式）或 R11（键位/窄屏/深链）
 - 2026-09-21 · **R10 完成（tokens/图标/全局样式对账原型）**：第二段 `:root` 全表核对全数命中（无新增无消费者 token）；SIZES 删死键 rowPaddingX/activeBarWidth + sidebarWidth 接 schema catch + AgentPlane 窄断点改消费 token · Icon.tsx 30 项字形重写为 lucide-react@1.46.0 节点逐字 path（chat→circle-dot/terminal→`>_`/acp→trending-up 等），arrowLeft 原型死映射不收 · button fw500 补三处（Select trigger/st-nav-item/st-clear），focusRing 注释更正双环原型 vs 单阴影近似 · 滚动条盘点结论=不可达差异（GPUIX 无 thumb/track 用户级 API；终端 Zed 滚动条独立机制不动）· stash A/B 验证本轮像素面中性（各态 ±0.03% 内）；proto-shot 坑：crash 独立 root 会与同进程后续态抢 testId，须单独跑 · gate：双包 tsc + bun test 523 + e2e 34 + fmt/lint + export-patches --check 全绿 · 下一步：R11（键位/窄屏/深链）或 R12 收官
+- 2026-09-21 · **R11 完成（键位/窄屏/抽屉/深链对齐原型）**：useGlobalKeys 八层链全量移植 keybindings.ts——ui/keyboard 增 keyConsumed（一次性消费标记，escConsumed 泛化退役：捕获格编辑态吞全键、Modal/Popover/Combobox/Select Esc 一律置位防连坐）+ overlayEsc（Popover 挂载登记的浮层 Esc 栈，未聚焦浮层可关——原型 notifOpen/fontPicker 层）；dialogKeyboard 增 isOpen/close（弹窗开着全键让位 + Esc 兜底关，Radix document 级等价）；修「设置 query 非空且搜索框未聚焦 → Esc 静默」缺口（settingsKeyboard.clearQuery 回调）；AgentPlane 补 drawerRef 化的 isOpen 注册 + 越 760 断口变宽抽屉复位（原型 fit() 语义）· newSession 补设置面键位表行（KEY_ACTIONS 漏项）· 深链结论：?view= 系原型截图设施不落地——正式路由已覆盖 home/settings/workspace/chat/acp，余者 proto-shot 种子态对应 · gate：双包 tsc + 根 bun test 532 + e2e 35 + fmt/lint + export-patches --check 全绿 · 下一步：R12 收官

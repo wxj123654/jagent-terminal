@@ -8,12 +8,15 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
+import { inputFocus, keyConsumed, overlayEsc } from '@jagent/ui'
 import { dialogKeyboard } from '../../dialogs/dialogKeyboard'
 import { createGitGraphStore } from '../../git/store'
 import { createWorktreeStore } from '../../git/worktree'
-import { navigateTarget } from '../../router'
+import { createGlobalKeydown, type GlobalKeydown } from '../../keybindings'
+import { activeTargetFromLocation, lastNonSettings, navigateTarget, router } from '../../router'
 import { memoryAdapter } from '../../settings/file'
 import { createSettingsStore, type SettingsStore } from '../../settings/store'
+import { settingsKeyboard } from '../../settings/ui/settingsKeyboard'
 import { createThreadStore, type ThreadStore, type ThreadDeps } from '../../threads/store'
 import { defaultWorkspace } from '../../threads/workspaces'
 import { App } from '../AgentPlane'
@@ -44,13 +47,49 @@ function makeDeps(): ThreadDeps {
 
 function setup(
   width: number,
-  opts: { branch?: string } = {},
+  opts: { branch?: string; wireKeys?: boolean } = {},
 ): { store: ThreadStore; settings: SettingsStore } {
   const settings = createSettingsStore(memoryAdapter())
   const store = createThreadStore(makeDeps(), {
     initialWorkspaces: [defaultWorkspace('/w/x')],
   })
-  t = createTestRoot({ width, height: 700 })
+  // R11：wireKeys = 真键位层（与 main.tsx/e2e 同一 createGlobalKeydown 语义）
+  let handleKeydown: GlobalKeydown = () => {}
+  if (opts.wireKeys) {
+    handleKeydown = createGlobalKeydown({
+      store,
+      inSettings: () =>
+        activeTargetFromLocation(router.history.location.pathname)?.type === 'settings',
+      closeSettings: () => store.activate(lastNonSettings()),
+      focusSearch: () => {},
+      openSearch: () => dialogKeyboard.openSearch(),
+      newSession: () => dialogKeyboard.newSession(),
+      toggleSidebar: () => planeKeyboard.toggleSidebar(),
+      drawerEsc: () => planeKeyboard.escape(),
+      inputFocused: () => inputFocus.any,
+      settingsQuery: settingsKeyboard.query,
+      clearSettingsQuery: () => settingsKeyboard.clearQuery(),
+      keyConsumed: () => keyConsumed.take(),
+      dialogOpen: () => dialogKeyboard.isOpen(),
+      closeDialog: () => dialogKeyboard.close(),
+      overlayEsc: () => overlayEsc.escape(),
+      keys: () => settings.get().keybindings,
+    })
+  }
+  t = createTestRoot({
+    width,
+    height: 700,
+    onKeyDown: opts.wireKeys
+      ? (e) =>
+          handleKeydown(
+            e.key ?? '',
+            e.modifiers?.ctrl ?? false,
+            e.modifiers?.shift ?? false,
+            e.modifiers?.cmd ?? false,
+          )
+      : undefined,
+  })
+  if (opts.wireKeys) keyConsumed.take() // 排空前面用例/文件遗留的消费标记
   t.render(
     createElement(App, {
       store,
@@ -135,6 +174,37 @@ describe('AgentPlane：窄窗口抽屉（W4）', () => {
     // drawer-panel 自身无 Esc handler，抽屉仍在（锁定不误关）
     expect(t.renderer.findByTestId('drawer-panel') != null).toBe(true)
   })
+
+  test('root 键位层 Esc 关抽屉（R11 真链路）：开着关、关了 no-op、宽窗 no-op', async () => {
+    setup(700, { wireKeys: true })
+    // useEffect 注册（planeKeyboard/dialogKeyboard）需 macrotask 提交
+    await new Promise((r) => setTimeout(r, 0))
+    t.renderer.flush()
+    click('drawer-toggle')
+    t.renderer.flush()
+    expect(t.renderer.findByTestId('drawer-panel') != null).toBe(true)
+    // Esc → root 层 → drawerEsc → 关闭（原型：winW<760 && drawerOpen → close）
+    t.renderer.simulateKeystrokes('escape')
+    await new Promise((r) => setTimeout(r, 0))
+    t.renderer.flush()
+    expect(t.renderer.findByTestId('drawer-panel')).toBeUndefined()
+    // 抽屉已关：Esc 无操作（不崩溃、不重开）
+    t.renderer.simulateKeystrokes('escape')
+    await new Promise((r) => setTimeout(r, 0))
+    t.renderer.flush()
+    expect(t.renderer.findByTestId('drawer-panel')).toBeUndefined()
+  })
+
+  test('宽窗口 Esc no-op（抽屉层不吃；终端表面 Esc 透传 PTY 的硬约束）', async () => {
+    setup(800, { wireKeys: true })
+    await new Promise((r) => setTimeout(r, 0))
+    t.renderer.flush()
+    t.renderer.simulateKeystrokes('escape')
+    await new Promise((r) => setTimeout(r, 0))
+    t.renderer.flush()
+    expect(t.renderer.findByTestId('drawer-panel')).toBeUndefined()
+    expect(t.renderer.findByTestId('modal-card')).toBeUndefined()
+  })
 })
 
 describe('AgentPlane：⌘K/Ctrl-K 聚焦搜索 → 打字 → Esc（无 terminal 场景闭环）', () => {
@@ -166,6 +236,38 @@ describe('AgentPlane：⌘K/Ctrl-K 聚焦搜索 → 打字 → Esc（无 termina
     // 收尾：Esc 关闭弹窗（DialogHost onKeyDown）
     key('search-dialog-input', 'escape')
     t.renderer.flush()
+  })
+})
+
+describe('AgentPlane：⌘N newSession（R11 全链路：键位层 → dialogKeyboard → ToolDialog）', () => {
+  test('⌘N/Ctrl-Shift-N → tool 弹窗（目标工作区 = 当前上下文；Esc 关闭不连坐）', async () => {
+    const { store } = setup(900, { wireKeys: true })
+    await new Promise((r) => setTimeout(r, 0))
+    t.renderer.flush()
+    // 激活该工作区（newSessionWorkspace：工作区路由 → active.id）
+    const wsId = store.getState().workspaces[0]!.id
+    store.activate({ type: 'workspace', id: wsId })
+    await new Promise((r) => setTimeout(r, 10))
+    t.renderer.flush()
+    t.renderer.simulateKeystrokes(process.platform === 'darwin' ? 'cmd-n' : 'ctrl-shift-n')
+    await until2(() => t.renderer.findByTestId('modal-card') != null)
+    expect(t.renderer.findByTestId('tool-dialog-workspace') != null).toBe(true)
+    // 工作区上下文条显示当前工作区 path（newSessionWorkspace 命中）
+    expect(t.renderer.getAllText().some((x) => x.includes('/w/x'))).toBe(true)
+    // 弹窗层：全局动作让位——⌘B 不收侧栏（原型 dialog.kind!=='none' → return）
+    t.renderer.simulateKeystrokes(process.platform === 'darwin' ? 'cmd-b' : 'ctrl-b')
+    await new Promise((r) => setTimeout(r, 0))
+    t.renderer.flush()
+    expect(t.renderer.findByTestId('open-settings') != null).toBe(true) // 侧栏仍在
+    // Esc 关闭（root 弹窗层兜底 / modal-card 消费——两条路径都到 'none'）
+    t.renderer.simulateKeystrokes('escape')
+    await until2(() => t.renderer.findByTestId('modal-card') == null)
+    // 关闭后再按 ⌘N 可重开（状态无残留）
+    t.renderer.simulateKeystrokes(process.platform === 'darwin' ? 'cmd-n' : 'ctrl-shift-n')
+    await until2(() => t.renderer.findByTestId('modal-card') != null)
+    // 收尾
+    t.renderer.simulateKeystrokes('escape')
+    await until2(() => t.renderer.findByTestId('modal-card') == null)
   })
 })
 

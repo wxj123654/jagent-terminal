@@ -13,8 +13,10 @@
  */
 
 import type { StyleDesc } from '@gpuix/react'
+import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 
+import { keyConsumed, overlayEsc } from '../keyboard'
 import { COLORS, FONT } from '../theme/tokens'
 
 export type PopoverAnchor =
@@ -61,6 +63,13 @@ export function Popover({
     background: style?.background,
     borderRadius: style?.borderRadius ?? 6,
   }
+  // 浮层 Esc 栈（R11）：挂载期间登记 close——焦点不在浮层内时 root 键位
+  // 层也能关（原型 notifOpen/fontPicker 层语义：Radix 的 Esc 是 document
+  // 级）。焦点在浮层内时下方元素级 Esc 先置 keyConsumed，root 层跳过
+  // ——两条路径各关一次、不重复。
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  useEffect(() => overlayEsc.push(() => closeRef.current()), [])
   return (
     <anchored position={position} anchor={anchor} deferred occlude style={surface}>
       {/*
@@ -74,7 +83,10 @@ export function Popover({
         autoFocus={autoFocus}
         onMouseDownOutside={onClose}
         onKeyDown={(e) => {
-          if (e.key === 'escape') onClose()
+          if (e.key === 'escape') {
+            keyConsumed.mark()
+            onClose()
+          }
         }}
         style={{
           display: 'flex',

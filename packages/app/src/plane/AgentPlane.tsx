@@ -127,6 +127,10 @@ export function App({
   toggleRef.current = toggleSidebar
   const drawerRef = useRef({ narrow, drawerOpen })
   drawerRef.current = { narrow, drawerOpen }
+  // 原型 fit()：宽度越过 760 断口变宽时抽屉态复位（再收窄不自动重开）
+  useEffect(() => {
+    if (!narrow) setDrawerOpen(false)
+  }, [narrow])
 
   // 分支 chip 菜单（原型 chip-branch → ctx 菜单：打开 Git 图 / 查看变更）
   const [branchMenu, setBranchMenu] = useState<{ x: number; y: number } | null>(null)
@@ -180,6 +184,9 @@ export function App({
   const [dialog, setDialog] = useState<DialogState>(
     lastCrash ? { kind: 'crash', last: lastCrash } : { kind: 'none' },
   )
+  // 最新弹窗态 ref（D18 同款纪律）：注册一次永不重挂，isOpen 读最新值
+  const dialogRef = useRef(dialog)
+  dialogRef.current = dialog
   const dialogOpener = {
     openToolMenu: (workspaceId: string) => setDialog({ kind: 'tool', workspaceId }),
     openAddWorkspace: () => setDialog({ kind: 'addWorkspace' }),
@@ -192,6 +199,9 @@ export function App({
     dialogKeyboard.register({
       openSearch: () => setDialog({ kind: 'search' }),
       newSession: () => setDialog({ kind: 'tool', workspaceId: newSessionWorkspace() }),
+      // 弹窗层（R11）：root 键位层判活 + Esc 兜底关闭（焦点不在卡内时）
+      isOpen: () => dialogRef.current.kind !== 'none',
+      close: () => setDialog({ kind: 'none' }),
     })
     planeKeyboard.register({
       toggle: () => toggleRef.current(),

@@ -25,7 +25,7 @@ import {
   takePaintPerf,
 } from '@jagent/native'
 
-import { inputFocus, PLATFORM } from '@jagent/ui'
+import { inputFocus, keyConsumed, overlayEsc, PLATFORM } from '@jagent/ui'
 import { appWindow } from './appWindow'
 import { installCanvasNative } from './canvas/native'
 import { watchFrameOverlay } from './diagnostics/frameOverlay'
@@ -197,8 +197,15 @@ async function mountApp(): Promise<void> {
     }),
     inputFocused: () => inputFocus.any,
     settingsQuery: settingsKeyboard.query,
-    escConsumed: settingsKeyboard.escConsumed,
-    clearEscConsumed: settingsKeyboard.clearEscConsumed,
+    // R11：设置面 Esc 分层——query 非空且搜索框未聚焦时 root 层清空
+    // （聚焦时输入框自理并置消费标记，到不了这层）
+    clearSettingsQuery: () => settingsKeyboard.clearQuery(),
+    // R11 原型分层链：L0 元素级消费标记（捕获格全键/Modal·浮层 Esc）→
+    // L1 弹窗层（开着吞全部 + Esc 兜底关）→ L2 浮层 Esc 栈
+    keyConsumed: () => keyConsumed.take(),
+    dialogOpen: () => dialogKeyboard.isOpen(),
+    closeDialog: () => dialogKeyboard.close(),
+    overlayEsc: () => overlayEsc.escape(),
     // 键位真值 = settings 快照（修改即时生效，无需重启；T3+.2）
     keys: () => settingsStore.get().keybindings,
   })

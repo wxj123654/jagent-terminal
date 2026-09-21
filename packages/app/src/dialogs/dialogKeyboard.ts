@@ -8,11 +8,23 @@
  * AgentPlane 把入口注册到模块态；装配层（main.tsx/e2e）
  * openSearch → openSearch() / newSession → newSession()。
  * 未注册（如局部测试装配）时 no-op。
+ *
+ * R11（原型 useGlobalKeys 弹窗层）：`dialog.kind!=='none'` 时全局键位
+ * 层整体让位（Radix Dialog 自管语义）——isOpen/close 供 root 层判活与
+ * Esc 兜底关闭（焦点不在卡内时；卡内 Esc 由 modal-card 置 keyConsumed
+ * 挡在上游，到不了这里）。
  */
 
 import { createKeyboardSlot } from '../keybindings'
 
-const slot = createKeyboardSlot<{ openSearch: () => void; newSession: () => void }>()
+const slot = createKeyboardSlot<{
+  openSearch: () => void
+  newSession: () => void
+  /** 弹窗开着（DialogState.kind !== 'none'） */
+  isOpen: () => boolean
+  /** 关闭弹窗（root 层 Esc 兜底——Radix document 级 Esc 的等价物） */
+  close: () => void
+}>()
 
 export const dialogKeyboard = {
   /** AgentPlane 挂载时注册（卸载置 null） */
@@ -24,5 +36,13 @@ export const dialogKeyboard = {
   /** 全局键位层消费面（newSession ⌘N 挂点） */
   newSession(): void {
     slot.impl()?.newSession()
+  },
+  /** 弹窗开着 → root 键位层吞掉全部全局动作（原型 dialog 层 return） */
+  isOpen(): boolean {
+    return slot.impl()?.isOpen() ?? false
+  },
+  /** root 层 Esc 兜底关闭（焦点不在卡内时；卡内 Esc 已被消费标记挡） */
+  close(): void {
+    slot.impl()?.close()
   },
 }

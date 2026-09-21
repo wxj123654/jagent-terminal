@@ -15,7 +15,7 @@
 
 import { useState, type ReactElement } from 'react'
 
-import { COLORS, FONT } from '@jagent/ui'
+import { keyConsumed, COLORS, FONT } from '@jagent/ui'
 import { DEFAULT_KEYBINDINGS, type KeybindingAction, type Keybindings } from '../../keybindings'
 import { APP_VERSION } from '../../version'
 import { openInSystemApp } from '../file'
@@ -27,7 +27,6 @@ import { AcpAgentsSection } from './AcpAgentsSection'
 import { MiniButton, ModDot } from './listEditorParts'
 import { PresetsSection } from './PresetsSection'
 import { SettingRow } from './SettingRow'
-import { settingsKeyboard } from './settingsKeyboard'
 
 export type SectionProps = {
   settings: SettingsStore
@@ -153,9 +152,10 @@ export function CliConventionsCard(): ReactElement {
 
 // ── Keybindings 分区（S5；T3+.2 解锁可编辑）──────────────────────
 
-/** 可编辑动作（settings.keybindings 四叶）。requireCtrl 语义约束：
- *  cycleNext/cyclePrev/toggleSettings 生活在全局修饰键层（硬约束 2：不吃裸键——终端里
- *  vim/claude 按键必须透传）；focusSearch 生活在设置面裸键层。 */
+/** 可编辑动作（settings.keybindings 全部叶子）。requireCtrl 语义约束：
+ *  cycleNext/cyclePrev/toggleSettings/searchThreads/toggleSidebar/newSession
+ *  生活在全局修饰键层（硬约束 2：不吃裸键——终端里 vim/claude 按键必须
+ *  透传）；focusSearch 生活在设置面裸键层。顺序对齐原型 KEY_ROWS。 */
 const KEY_ACTIONS: {
   action: KeybindingAction
   label: string
@@ -168,6 +168,7 @@ const KEY_ACTIONS: {
   { action: 'focusSearch', label: '聚焦设置搜索', requireCtrl: false },
   { action: 'searchThreads', label: '搜索会话（⌘K/Ctrl-K）', requireCtrl: true },
   { action: 'toggleSidebar', label: '收起 / 展开侧栏（⌘B/Ctrl-B）', requireCtrl: true },
+  { action: 'newSession', label: '新建会话（⌘N）', requireCtrl: true },
 ]
 
 /** 平台语义只读行（不参与配置） */
@@ -210,8 +211,9 @@ export function keybindingHits(q: string, keybindings?: Keybindings): number {
   ).length
 }
 
-/** 单个捕获格：点击/enter 进入编辑态 → 按组合即时写入；Esc 取消（同步消费
- *  标记防 root 层连坐关设置——T2.6 时序）；无效组合拒绝并提示。 */
+/** 单个捕获格：点击/enter 进入编辑态 → 按组合即时写入；编辑态吞掉一切
+ *  按键（原型 kbCapturing 层——keyConsumed 标记防 root 层连坐触发全局
+ *  动作/连坐关设置，T2.6 时序）；Esc/失焦取消；无效组合拒绝并提示。 */
 function KeyCap({
   settings,
   action,
@@ -237,9 +239,12 @@ function KeyCap({
       }
       return
     }
+    // 原型 kbCapturing 层：编辑态吞掉一切按键（含修饰键单按的等待帧）——
+    // 不置位的话组合键会「写入 + 触发全局动作」双重生效（如捕获 ctrl-tab
+    // 同时 cycle 会话）
+    keyConsumed.mark()
     if (e.key === 'escape') {
       // 取消编辑：同步置消费标记（root 层后到不连坐关设置）
-      settingsKeyboard.markEscConsumed()
       setEditing(false)
       setHint(null)
       return
@@ -277,6 +282,14 @@ function KeyCap({
       onClick={() => {
         setEditing(true)
         setHint(null)
+      }}
+      // 失焦退出编辑态（原型 kbCapturing 是全局态、点走仍捕获——这里
+      // 焦点域捕获：点走即取消，不留「按下新组合…」僵尸态）
+      onBlur={() => {
+        if (editing) {
+          setEditing(false)
+          setHint(null)
+        }
       }}
       onKeyDown={onKeyDown}
       style={{
