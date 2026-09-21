@@ -258,7 +258,7 @@ describe('GitGraphStore.refresh / unmount', () => {
 })
 
 describe('GitGraphStore.files / find / runAction', () => {
-  test('select 加载 files；muteShas 排除第一父链', async () => {
+  test('select 加载 files', async () => {
     const { streams, spawn } = fakeStream()
     const deps = makeDeps({
       listChangedFiles: async (_cwd, sha) => [{ path: `${sha}.ts`, added: 1, deleted: 0 }],
@@ -267,37 +267,39 @@ describe('GitGraphStore.files / find / runAction', () => {
     const store = createGitGraphStore(deps)
     store.mount('/w1')
     await until()
-    streams[0]!.onChunk([
-      c('f', ['e', 'd']),
-      c('e', ['c']),
-      c('d', ['b']),
-      c('c', ['b']),
-      c('b', ['a']),
-      c('a', []),
-    ])
+    streams[0]!.onChunk([c('f', ['e', 'd']), c('e', ['c']), c('d', [])])
     streams[0]!.finish(true)
     await until()
-    expect(store.getState().muteShas.has('d')).toBe(true)
-    expect(store.getState().muteShas.has('f')).toBe(false)
     store.select('f')
     await until()
     expect(store.getState().files).toEqual([{ path: 'f.ts', added: 1, deleted: 0 }])
   })
 
-  test('find 按 subject/sha 命中并跳到第一条', async () => {
+  // 原型语义（gitFindStep）：输入只更新匹配集（非命中行淡化），步进才移动选中
+  test('find 输入不跳选中；findNext 循环步进并选中', async () => {
     const { streams, spawn } = fakeStream()
     const deps = makeDeps()
     deps.spawnGitLog = spawn
     const store = createGitGraphStore(deps)
     store.mount('/w1')
     await until()
-    streams[0]!.onChunk([c('abc111', []), c('def222', [])])
+    streams[0]!.onChunk([c('abc111', []), c('def222', []), c('def333', [])])
     streams[0]!.finish(true)
     await until()
     store.find('def')
     expect(store.getState().findQuery).toBe('def')
-    expect(store.getState().findMatches).toEqual(['def222'])
+    expect(store.getState().findMatches).toEqual(['def222', 'def333'])
+    expect(store.getState().findIndex).toBe(0)
+    expect(store.getState().selectedSha).toBeNull()
+    store.findNext(1)
+    expect(store.getState().findIndex).toBe(1)
+    expect(store.getState().selectedSha).toBe('def333')
+    store.findNext(1) // 循环回 0
+    expect(store.getState().findIndex).toBe(0)
     expect(store.getState().selectedSha).toBe('def222')
+    store.findNext(-1) // 反向循环
+    expect(store.getState().findIndex).toBe(1)
+    expect(store.getState().selectedSha).toBe('def333')
     store.find('')
     expect(store.getState().findMatches).toEqual([])
   })

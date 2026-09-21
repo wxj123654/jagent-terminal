@@ -27,6 +27,7 @@ export function TextInput({
   onSubmit,
   testId,
   width = 220,
+  height = 30,
   autoFocus = false,
   radius = 8,
 }: {
@@ -40,6 +41,8 @@ export function TextInput({
   testId: string
   /** 宽度：数字 = 固定 px；'fill' = 撑满容器（弹窗表单） */
   width?: number | 'fill'
+  /** 壳高（原型 .git-find input = 24；表单默认 30 对齐 .txt-in 第二段） */
+  height?: number
   /** 挂载即聚焦（弹窗内主输入框；deferred 层点击聚焦不可靠，弹窗输入必须 autoFocus） */
   autoFocus?: boolean
   /** 圆角（原型 .txt-in=8 / .field-row input=6）；默认 8 */
@@ -55,7 +58,7 @@ export function TextInput({
         alignItems: 'center',
         width: width === 'fill' ? '100%' : width,
         // 原型 .txt-in（第二段 h30 r8；padding 0 8）
-        height: 30,
+        height,
         paddingLeft: 8,
         paddingRight: 8,
         borderRadius: radius,

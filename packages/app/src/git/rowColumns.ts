@@ -7,9 +7,10 @@
  * 145 个 text 节点每帧重跑 taffy 测量闭包是滚动帧 65% 的成本；custom
  * element 内 ShapedLine 直接 paint，零测量闭包。
  *
- * 颜色统一转 #RRGGBBAA（gpui::rgba 解析；主题 token 是 '#rrggbb'，
- * muted 行的透明度折叠进 alpha）。规格对象由调用方 useMemo——GPUIX 对
- * custom props 按引用 diff，每次新对象都会触发 set_prop + 缓存清空。
+ * 颜色统一转 #RRGGBBAA（gpui::rgba 解析；主题 token 是 '#rrggbb'）。
+ * 规格对象由调用方 useMemo——GPUIX 对 custom props 按引用 diff，每次
+ * 新对象都会触发 set_prop + 缓存清空。find 非命中行的淡化为行级
+ * opacity（原型 .git-row opacity:.35），不再折叠进文本 alpha。
  */
 
 import { COLORS, FONT } from '@jagent/ui'
@@ -89,47 +90,50 @@ export interface RowSpec {
 export function buildRowColumns(input: {
   subject: string
   subjectColor: string
-  subjectWeight: number
-  dim: number
   author: string
   date: string
   sha: string
+  /** 原型 @media(max-width:900px)：author/date 列与表头隐藏 */
+  narrow?: boolean
 }): RowSpec {
-  const muted = cssToHex8(COLORS.muted, input.dim)
+  const tail = input.narrow
+    ? []
+    : [
+        {
+          text: input.author,
+          color: cssToHex8(COLORS.muted),
+          fontFamily: FONT.ui,
+          fontSize: 12,
+          width: COL_AUTHOR,
+          marginLeft: 8,
+          ellipsis: true,
+        },
+        {
+          text: input.date,
+          color: cssToHex8(COLORS.muted),
+          fontFamily: FONT.ui,
+          fontSize: 12,
+          width: COL_DATE,
+          marginLeft: 8,
+          alignRight: true,
+        },
+      ]
   return {
     rowHeight: ROW_HEIGHT,
     columns: [
       {
         text: input.subject,
-        color: cssToHex8(input.subjectColor, input.dim),
+        color: cssToHex8(input.subjectColor),
         fontFamily: FONT.ui,
-        fontSize: 13,
-        weight: input.subjectWeight,
+        fontSize: 12,
         ellipsis: true,
       },
-      {
-        text: input.author,
-        color: muted,
-        fontFamily: FONT.ui,
-        fontSize: 11,
-        width: COL_AUTHOR,
-        marginLeft: 8,
-        ellipsis: true,
-      },
-      {
-        text: input.date,
-        color: muted,
-        fontFamily: FONT.ui,
-        fontSize: 11,
-        width: COL_DATE,
-        marginLeft: 8,
-        alignRight: true,
-      },
+      ...tail,
       {
         text: input.sha,
-        color: muted,
+        color: cssToHex8(COLORS.faint),
         fontFamily: FONT.mono,
-        fontSize: 11,
+        fontSize: 12,
         width: COL_SHA,
         marginLeft: 8,
       },

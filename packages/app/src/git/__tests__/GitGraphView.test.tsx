@@ -186,9 +186,10 @@ describe('GitGraphView 渲染与选中', () => {
     expect(gitStore.getState().body).toBe('BODY-c2')
     expect(gitStore.getState().selectedSha).toBe('c2')
     expect(texts()).toContain('subject c2')
-    expect(texts()).toContain('Commit:')
-    expect(texts()).toContain('Parents:')
+    // 原型 .cdv-meta：Author / Date / SHA 三行
     expect(texts()).toContain('Author:')
+    expect(texts()).toContain('Date:')
+    expect(texts()).toContain('SHA:')
     expect(texts()).toContain('wxj <wxj@jagent.dev>')
     expect(texts()).not.toContain('PATCH-')
   })
@@ -221,7 +222,7 @@ describe('GitGraphView 渲染与选中', () => {
     expect(b1!.y).toBeGreaterThanOrEqual(bd!.y + bd!.height - 1)
   })
 
-  test('CDV 左栏元数据与右栏文件树分栏，长路径不盖住统计', async () => {
+  test('CDV 左栏元数据与右栏文件列表分栏', async () => {
     const gitStore = createGitGraphStore({
       findRepoRoot: async () => '/repo/demo',
       spawnGitLog: (_cwd, onChunk) => {
@@ -280,10 +281,9 @@ describe('GitGraphView 渲染与选中', () => {
     expect(bf).toBeDefined()
     // 左栏裁剪盒右缘不得越过右栏左缘（允许 1px 分割线误差）
     expect(bs!.x + bs!.width).toBeLessThanOrEqual(bf!.x + 1)
-    expect(texts()).toContain('packages / app / src / very / long / path')
+    // 原型 .frow：目录前缀（muted）+ 文件名，整条路径一行、无增删统计
+    expect(texts()).toContain('packages/app/src/very/long/path/')
     expect(texts()).toContain('name.ts')
-    expect(texts()).toContain('+2')
-    expect(texts()).toContain('-1')
 
     // 文件树（一行路径）远短于右栏：padding 10 不该造出 20px 幽灵滚动范围
     // （box 记录曾是 absolute().size_full() 子节点，把 content_size 撑到元素自身大小）。
