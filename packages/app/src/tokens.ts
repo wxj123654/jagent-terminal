@@ -51,4 +51,7 @@ export const SIZES = {
   /** 侧栏头高（原型 .sb-head 46px——第二段 CSS 覆盖 var(--sbHeadH):52；
       含 mac 红绿灯让位 + 1px 底部分隔线） */
   sidebarHeadHeight: 46,
+  /** 窄窗口断点（原型 @media(max-width:760px)——home/pills/conv 内距与
+      抽屉化的同一阈值；AgentPlane 有同名局部常量） */
+  narrowBreakpoint: 760,
 } as const

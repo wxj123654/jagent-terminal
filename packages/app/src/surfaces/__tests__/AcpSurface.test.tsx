@@ -90,11 +90,13 @@ async function until(desc: string, pred: () => boolean, timeoutMs = 2000): Promi
 }
 
 describe('AcpSurface', () => {
-  test('顶栏：ACP pill + agent 标题；空消息区', async () => {
+  test('顶栏：acp avatar + agent 标题 + 已连接 status；空消息区', async () => {
     await newAcp()
-    expect(texts()).toContain('ACP')
+    // R9 顶栏 = conv-avatar 图标块（非文本 pill）+ conv-title + conv-status
+    expect(t.renderer.findByTestId('acp-title')).not.toBeUndefined()
     expect(texts()).toContain('Fake Agent')
-    expect(texts()).not.toContain('thinking…')
+    expect(texts()).toContain('已连接')
+    expect(texts()).not.toContain('正在思考…')
   })
 
   test('composer enter → sendAcpMessage 状态机（user + thinking → assistant markdown）', async () => {
@@ -102,12 +104,12 @@ describe('AcpSurface', () => {
     t.renderer.simulateKeystrokes('fixbuild')
     t.renderer.simulateKeystrokes('enter')
     await until('user painted', () => texts().includes('fixbuild'))
-    expect(texts()).toContain('thinking…')
+    expect(texts()).toContain('正在思考…')
     expect(acpCalls).toHaveLength(1)
 
     acpCalls[0].resolve('- tool · execute · npm run build · completed\n\n修好了')
     await until('reply painted', () => markdownSources().includes('修好了'))
-    expect(texts()).not.toContain('thinking…')
+    expect(texts()).not.toContain('正在思考…')
     expect(texts()).toContain('ASSISTANT')
   })
 
@@ -115,7 +117,7 @@ describe('AcpSurface', () => {
     await newAcp()
     t.renderer.simulateKeystrokes('crashpls')
     t.renderer.simulateKeystrokes('enter')
-    await until('pending', () => texts().includes('thinking…'))
+    await until('pending', () => texts().includes('正在思考…'))
     const last = acpCalls[acpCalls.length - 1]
     last.reject(new Error('ACP 进程退出（code 3）'))
     await until('error painted', () => markdownSources().includes('code 3'))

@@ -115,18 +115,26 @@ beforeEach(() => {
 })
 
 describe('WorkspaceEmpty：工作区起始页', () => {
-  test('引导渲染：工作区名 + path + pi 主按钮 + 其余预设快捷行', async () => {
+  test('引导渲染：kicker + 工作区名 + path + pi featured 主胶囊 + 其余预设快捷行', async () => {
     mount()
     t.renderer.flush()
     await until('empty page visible', () =>
       t.renderer.getAllText().some((s) => s.includes('这个工作区还没有会话')),
     )
+    // R9 新件：WORKSPACE kicker + section-head（原型 WorkspaceEmpty）
+    expect(t.renderer.getAllText().some((s) => s === 'WORKSPACE')).toBe(true)
+    expect(t.renderer.getAllText().some((s) => s === '启动会话')).toBe(true)
+    expect(t.renderer.getAllText().some((s) => s === '在当前工作区运行')).toBe(true)
     expect(t.renderer.getAllText().some((s) => s === 'demo')).toBe(true)
     expect(t.renderer.getAllText().some((s) => s.includes('/w/demo'))).toBe(true)
-    // 快捷列表 = 非 pi 预设（内置五预设去 pi → Claude Code/Codex/Amp/Shell）
-    for (const label of ['Claude Code', 'Codex', 'Amp', 'Shell']) {
+    // pi featured 胶囊（label 'Pi'）+ 快捷列表 = 非 pi 预设
+    // （内置五预设去 pi → Claude Code/Codex/Amp/Shell）+「选择其他工具」
+    for (const label of ['Pi', 'Claude Code', 'Codex', 'Amp', 'Shell', '选择其他工具']) {
       expect(t.renderer.getAllText().some((s) => s === label)).toBe(true)
     }
+    // featured 样式：pi 胶囊边色 rgba(97,175,239,.42)（原型 .pill.featured）
+    const piPill = t.renderer.findByTestId(`workspace-new-pi-${wsId}`)!
+    expect(t.renderer.getElement(piPill.id)?.style?.borderColor).toBe('rgba(97,175,239,0.42)')
   })
 
   test('「新建 pi 会话」→ spawnFromPreset(pi, ws) + 激活', async () => {

@@ -468,7 +468,7 @@
     /AcpSection 列表编辑）。
   - app：`surfaces/SettingsView.tsx` + `SettingsSections.tsx` + `PresetsSection.tsx`
     + `AcpAgentsSection.tsx` + `SettingRow.tsx`（声明式 defs 渲染面不动语义）。
-- [ ] **R9 空态与会话面**
+- [x] **R9 空态与会话面** ✅ 2026-09-21
   - 锚点：panes.tsx `HomePane`/`WorkspaceEmpty`（.home 卡片/kicker/ctx/.pills
     胶囊行/featured 主胶囊）+ `ConversationView`（.conv-head/.conv-msgs/.msg
     .bubble/.composer/.thinking）+ `TerminalSurface`（.term-surface/.term/.ln/
@@ -752,6 +752,54 @@
   SettingRow/PresetsSection 三文件按新语义更新（scroll 约束断言适配
   新卡结构）。gate：双包 tsc + 根 bun test 462 + fmt/lint 全绿。
 
+- **R9（空态与会话面，2026-09-21）**：**空态重建**——EmptyPresets 重构为
+  原型 .home/.home-card 件组（HomeShell/HomeCard/HomeMark/HomeKicker/
+  HomeTitle/HomeSub/HomeContext/HomeSectionHead/HomePills/Pill 导出供
+  sidebar/WorkspaceEmpty 复用）：居中 680 渐变卡（r12+borderSubtle+
+  0 18 50 .22 影）+ home-mark 34² 图标块 + mono kicker（「J-AGENT
+  WORKSPACE」/「WORKSPACE」）+ h1「想做点什么？」+ sub + ctx 行
+  （folder12+mono path，h36 inputBg r8）+ section-head（600 标题 + muted
+  「N 个工具」/「在当前工作区运行」）+ .pills 双列网格（h42 r8 卡：
+  pill-icon 24² tile + label + arrowRight 尾标；窄态单列）——旧胶囊 chip
+  布局整体替换。WorkspaceEmpty 加 featured pi 胶囊（accentSoft 底 +
+  rgba(97,175,239,.42) 边）+「选择其他工具」项（more 图标 →
+  openToolMenu）。**会话面重建**——conv-head 44（26² avatar 图标块 +
+  title 600 + 右置 status：done 点 +「已连接/正在回复」，chat/acp 旧
+  CHAT/ACP pill 文本撤除）；conv-msgs virtual-list alignment=top +
+  followTail，行内套 ConvIn 居中列（min(760,100%) pad 0 28，窄 18）；
+  user 气泡 accentSoft + rgba(97,175,239,.28) 边 + 12·12·3·12 不对称
+  圆角 + 620 上限 + 0 1 2 影；assistant = role 标签（mono 10 terminalKind，
+  error→bell）+ markdown（MD_THEME：14/23.1、mdBlockGap 12、code pad
+  14/13 r8、inline code inputBg——error 行 text→bell）；thinking = 7²
+  accent 点 + 4px accentSoft 环 +「正在思考…」；composer 居中 704 列 =
+  composer-shell（inputBg r12 盒 + textarea 透明底 + send-btn 34² accent
+  arrowRight，pending→surface/muted 禁发）+ hint「Enter 发送 · Shift +
+  Enter 换行」右对齐；:focus-within 走 shellFocused state（focusBorder 边
+  + 3px accentSoft 环影）。**TerminalSurface 只动周边 chrome**（真终端
+  像素面未改）：term 壳补 terminal 底色 + SessionTerminal exited-bar 改
+  terminal 底去分隔线（读作网格末行非独立 chrome）。**Icon 新增
+  arrowRight**（lucide arrow-right 路径）。**平台发现（新）**：①
+  virtual-list 行根 margin 不被 ListState 测量（行距塌陷）——行距必须
+  用行根 paddingBottom 计入自身尺寸；② geom-proto/getElementBounds
+  均报 content-box（conv-head 44+1 边 → geom 43，逐字段换算后全等）；
+  ③ 原生 markdown 对有 lang 的 fenced code 恒渲染语言头行（无 theme
+  开关）+ code 块底是 ink(.035) 洗色非 theme.bg——与原型 MdLite 的裸
+  pre 存在不可消除的高度/底色差（记入有意偏离）。**有意偏离汇总**：
+  letter-spacing/textTransform 不支持、pill hover translateY(-1px) 跳过、
+  composer 顶渐隐近似为底部渐变带、focus 双环近似单环、markdown 语言
+  头与 code 洗底为原生渲染差异。**对比结果**（pngdiff 全图，
+  Retina 归一后）：home 4.02→**2.46%**、chat 7.85→**3.92%**、acp
+  3.48→**1.70%**、workspace 4.90→**2.78%**、sess-main 2.72→**1.58%**、
+  sess-shell 2.67→**1.54%**（六态全降，残余=文本整形底噪+markdown
+  原生差异）；geom 逐字段对齐（卡 x432 w680 / conv-head 44 / 内列
+  760 / composer 704×50 / pill 301×42 双列，全部 content-box 换算后
+  命中）。**工具链**：geom-proto 增 HOME_SELS/CONV_SELS/term 选择器；
+  pngdiff/report 归一 impl 2x 物理像素到 proto 视口尺寸（此前只裁重叠
+  区）。**测试**：ChatSurface/AcpSurface 断言换 avatar/title/「已连接·
+  正在回复·正在思考…」；WorkspaceEmpty 断言 kicker/section-head/
+  featured 边色；e2e 两链路断言同步。gate：双包 tsc + 根 bun test 523 +
+  e2e 34 + fmt:check + lint + export-patches --check 全绿。
+
 ---
 
 
@@ -909,3 +957,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-21 · **R5 完成（工作面板 WorkPanel）**：归域实现 `git/components/WorkPanel.tsx` 全项对齐 `.wp-*`（第二段 :root 生效值）——bg sidebar/左缘 borderSubtle、wp-head 44、ptab 28r8+1px边+active 阴影、file-row 32r8、bdg/nm/dir/add/del 字号色板逐项、wp-sum/wp-file-head/hint · **diff/预览改手动 .dl/.cl 行渲染**（原生 `<diff>` 双行号 gutter 放不进 244–280px 窄面板且内容自然宽 525>267 只能 x 滚；顺带修掉 diffAdd 0.12 alpha 二次乘算的真 bug）· x 溢出 = row 视口 scroll + 内列 minWidth:数值（'100%' 不解析为视口宽）· 壳：拖宽 244–720、<1100 absolute overlay（无把手，min(420,winW) 上限）、刷新钮 refresh()+toast · 新增 `panel-files` 对比态（两侧点击交互复刻）+ WT_DIFF fixture 去文件头对齐原型种子 · 结果：panel 面板区 14.69%→9.03%、panel-files 12.05%（文本密集底噪带内）· 两轴评审修复：关面板焦点回面板钮（focusElement seam+ToolButton refEl）、idle 态提示、FileName 截断方向、HeadButton→IconButton、w-12→w-13 off-by-one、pe:none 补齐、分区口径 77→83、死选择器清理 · 测试 WorkPanel.test.tsx 12 例（坑：getElementBounds content-box，宽断言减 1px 边线）· gate：bun test 469（icons 超时为全量负载 flake，单跑绿）+ tsc + fmt + lint + export-patches --check 全绿 · 下一步：R6（Git 图）或 R3/R4
 - 2026-09-21 · **C7 drawImage/gradient/pattern/toDataURL**：交接文档（/tmp/jagent-canvas-handoff-3.md）下一步执行——`PaintSpec::Gradient`（peniko 0.6.1 原生：`new_linear`/`new_two_point_radial`/`new_sweep`，`interpolation_alpha_space=Unpremultiplied`、`Extend::Pad`；退化/零 stop 渐变按规范拦成 transparent 而非 vello 默认黑）+ `PaintSpec::Pattern`（`ImageBrush`+`ImageSource::Pixmap(Arc<Pixmap>)` 直接携带像素，无需图像注册表；repeat-x/y/no-repeat 用 pattern_band 用户空间 clip 表达「越界透明」——peniko Extend 只有 Pad/Repeat/Reflect）+ `resolve_draw_image` 几何归一化（源矩形裁剪+dst 等比收缩+负 dw/dh 负缩放镜像）+ `Ctx2d::draw_image`/`encode_png` + backend `draw_pixels`（`set_paint_transform` 映射图像素→用户空间，绘制后 `reset_paint_transform` 防泄漏）· **vello_cpu 0.2.0 坑**：`sampler.alpha != 1.0` 在 encode 时 `unimplemented!()` panic——globalAlpha 一律 `Pixmap::multiply_alpha` 烘进像素，不传 sampler.alpha · napi：`serde_json::Value` 入参（serde-json feature 已开）让 fillStyle/strokeStyle 同时吃字符串与渐变对象 · JS：`gradient.ts` 双类 + `context.ts` applyPaint 三分支（string/gradient/pattern）+ drawImage 参形归一化 + `gpuixCanvas.toDataURL` · gate：cargo lib 38 绿（canvas:: 35）、fake 单测 39、app tsc 0、e2e 11 绿、fmt(oxfmt)/lint(oxlint)/cargo fmt 干净 · 下一步：C8 uPlot/Chart.js 验收 + benchmark + conformance 参数化用例
 - 2026-09-21 · **R8 完成（设置面对齐 React 原型）**：外壳重建（st-nav 217+1 边/COLORS.settingsNav 半透明、brand 58+gear+双行文案、搜索框 34+/ kbd+显式 focus 边色[GPUIX 无 :focus-within]、nav 行图标+命中徽章+0 命中置灰、page-head+即时生效 pill、st-card r12 COLORS.card）· 控件层对齐（controlBox r6/controlText 12·16/focusRing→ring/Toggle 34×20/NumberInput 76+步进 18/Select·SearchSelect 弹层 r8+overlay+阴影/RangeInput 轨道~180/Textarea fill）· 搜索语义补差：presets/acp 恒在结果列（原型 sectionHasContent），卡内「无匹配」；ACP agent 参与命中；settings-ui §9 同步 · SettingRow h58 pad 0 16+moddot 右移 12 语义化；listEditorParts 重写（le-card/le-add 实线近似虚线[无 dashed]/le-empty）；AcpAgentsSection 共享件化 · GPUIX 不支持项跳过：letterSpacing/textTransform/dashed · 验收：proto-shot settings/font 目检+geom 逐字段对齐（218/482+34/728/58）· 测试三文件按新语义更新 · gate：双包 tsc + 根 bun test 462 + fmt/lint 全绿 · 下一步：R5/R6/R7 剩余模块
+- 2026-09-21 · **R9 完成（空态与会话面对齐 React 原型）**：空态重建为 .home/.home-card 件组（680 渐变卡+kicker+ctx 行+section-head+.pills 双列网格卡 h42 + featured pi 胶囊），WorkspaceEmpty 复用同壳 · ConversationView 重建（conv-head 44 avatar+title+status、ConvIn 760 居中列、user 气泡不对称圆角、thinking-dot「正在思考…」、composer-shell 704+send-btn arrowRight+hint）；CHAT/ACP pill 退役 · TerminalSurface 只动周边 chrome（term 底色+exited-bar 去分隔线）· Icon 增 arrowRight · 平台发现：virtual-list 行根 margin 不测量→改 paddingBottom（行距塌陷真 bug，修后 chat 4.60→3.92）；geom 报 content-box；原生 markdown fenced code 恒带语言头行+ink 洗底（与 MdLite 裸 pre 的不可消除差异）· 六态差异全降：home 2.46/chat 3.92/acp 1.70/workspace 2.78/sess-main 1.58/sess-shell 1.54（基线 4.02/7.85/3.48/4.90/2.72/2.67）· 工具链：geom-proto 选择器扩展 + pngdiff/report Retina 归一 · gate：双包 tsc + bun test 523 + e2e 34 + fmt/lint + export-patches --check 全绿 · 下一步：R10（tokens/图标/全局样式）或 R11（键位/窄屏/深链）

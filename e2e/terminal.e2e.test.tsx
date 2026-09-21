@@ -509,7 +509,7 @@ describe('T3.2 e2e: chat 全链（菜单入口 → ChatSurface → echo 回复 �
         return item !== undefined && t.renderer.getElementBounds(item.id) != null
       })
 
-      // ② 点击 New Chat → ChatSurface 挂载（CHAT pill + composer autoFocus）
+      // ② 点击 New Chat → ChatSurface 挂载（conv-head avatar + composer autoFocus）
       //    对话组在 tool-list 底部：320px 视口先滚到底再取 bounds，
       //    否则点击落在滚动容器外被裁剪。
       const toolList = t.renderer.findByTestId('tool-list')!
@@ -522,7 +522,11 @@ describe('T3.2 e2e: chat 全链（菜单入口 → ChatSurface → echo 回复 �
       expect(chatId).toMatch(/^c/)
       await until('chat surface mounted', () => {
         const texts = t.renderer.getAllText()
-        return texts.includes('CHAT') && t.renderer.findByTestId('chat-composer') !== undefined
+        return (
+          t.renderer.findByTestId('chat-title') !== undefined &&
+          texts.includes('已连接') &&
+          t.renderer.findByTestId('chat-composer') !== undefined
+        )
       })
 
       // ③ 混排：chat 行与既有 terminal 行同列表（图标/标题渲染面）
@@ -541,7 +545,7 @@ describe('T3.2 e2e: chat 全链（菜单入口 → ChatSurface → echo 回复 �
       t.renderer.simulateKeystrokes('enter')
       await until('user message + thinking', () => {
         const texts = t.renderer.getAllText()
-        return texts.includes('helloe2e') && texts.includes('thinking…')
+        return texts.includes('helloe2e') && texts.includes('正在思考…')
       })
       await until('echo reply rendered', () =>
         t.renderer
@@ -600,7 +604,7 @@ describe('T3+.1 e2e: ACP 全链（菜单入口 → AcpSurface → 真子进程 J
         return item !== undefined && t.renderer.getElementBounds(item.id) != null
       })
 
-      // ③ 点击 → AcpSurface 挂载（ACP pill + 标题 = label）
+      // ③ 点击 → AcpSurface 挂载（acp avatar + 标题 = label）
       const item = t.renderer.findByTestId('new-acp-e2e-fake')!
       const ib = t.renderer.getElementBounds(item.id)!
       t.renderer.nativeSimulateClick(ib.x + ib.width / 2, ib.y + ib.height / 2)
@@ -608,7 +612,11 @@ describe('T3+.1 e2e: ACP 全链（菜单入口 → AcpSurface → 真子进程 J
       expect(acpId).toMatch(/^a/)
       await until('acp surface mounted', () => {
         const texts = t.renderer.getAllText()
-        return texts.includes('ACP') && t.renderer.findByTestId('acp-composer') !== undefined
+        return (
+          t.renderer.findByTestId('acp-title') !== undefined &&
+          texts.includes('已连接') &&
+          t.renderer.findByTestId('acp-composer') !== undefined
+        )
       })
       await until(
         'acp row in mixed list',
@@ -625,7 +633,7 @@ describe('T3+.1 e2e: ACP 全链（菜单入口 → AcpSurface → 真子进程 J
       t.renderer.simulateKeystrokes('enter')
       await until('user message + thinking', () => {
         const texts = t.renderer.getAllText()
-        return texts.includes('pingacp') && texts.includes('thinking…')
+        return texts.includes('pingacp') && texts.includes('正在思考…')
       })
       await until('fake agent reply rendered', () =>
         t.renderer

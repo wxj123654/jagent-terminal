@@ -145,14 +145,15 @@ j-agent window
 
 ### 5.2 Chat
 
-- 薄顶栏可保留（类型 pill + 标题）—— 只属于 chat 表面，不共享给 terminal
-- `virtual-list` 消息 + 底 composer
+- 薄顶栏（conv-head 44px：avatar 图标块 + 标题 + 右置 status 点/文案）——
+  只属于 chat 表面，不共享给 terminal（R9 起对齐 React 原型 .conv-*）
+- `virtual-list` 消息（居中 760px 列）+ 底 composer（shell + 发送钮 + hint）
 - composer 只把输入送进 chat agent，与 PTY stdin 无关
 
 ### 5.3 ACP
 
 - 与 chat 同构的 transcript + composer
-- 顶部可用 ACP pill 标明「外部 JSON-RPC，不是 PTY」
+- 顶部 avatar 用 acp 图标标明「外部 JSON-RPC，不是 PTY」（原型同色 accent）
 - ACP 的 diff / accept **不**画在 Terminal Thread 上
 
 ### 5.4 空状态（E2）

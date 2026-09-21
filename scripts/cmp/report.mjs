@@ -90,18 +90,20 @@ try {
             im.src = src
           })
         const [ia, ib] = await Promise.all([load(a64), load(b64)])
-        const draw = (im) => {
+        // 归一到 proto 分辨率：macOS Retina 下 impl 截图是 2x 物理像素
+        // （drawImage 缩放）；同尺寸时等价原样的逐像素比较。
+        const draw = (im, w, h) => {
           const c = document.createElement('canvas')
-          c.width = im.width
-          c.height = im.height
+          c.width = w
+          c.height = h
           const g = c.getContext('2d', { willReadFrequently: true })
-          g.drawImage(im, 0, 0)
-          return g.getImageData(0, 0, im.width, im.height)
+          g.drawImage(im, 0, 0, w, h)
+          return g.getImageData(0, 0, w, h)
         }
-        const da = draw(ia),
-          db = draw(ib)
-        const w = Math.min(ia.width, ib.width)
-        const h = Math.min(ia.height, ib.height)
+        const da = draw(ia, ia.width, ia.height),
+          db = draw(ib, ia.width, ia.height)
+        const w = ia.width
+        const h = ia.height
         const count = (x0, y0, rw, rh, out) => {
           const x1 = Math.min(x0 + rw, w),
             y1 = Math.min(y0 + rh, h)

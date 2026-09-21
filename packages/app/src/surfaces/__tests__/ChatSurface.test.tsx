@@ -100,14 +100,16 @@ function clickAt(testId: string): void {
 }
 
 describe('ChatSurface', () => {
-  test('顶栏：CHAT pill + 标题；空消息区无 thinking', async () => {
+  test('顶栏：avatar + 标题 + 已连接 status；空消息区无 thinking', async () => {
     await newChat()
-    expect(texts()).toContain('CHAT')
+    // R9 顶栏 = conv-avatar 图标块（非文本 pill）+ conv-title + conv-status
+    expect(t.renderer.findByTestId('chat-title')).not.toBeUndefined()
     expect(texts()).toContain('Chat')
-    expect(texts()).not.toContain('thinking…')
+    expect(texts()).toContain('已连接')
+    expect(texts()).not.toContain('正在思考…')
   })
 
-  test('composer 打字 + enter（Submit）→ user 落列 + thinking 占位 + draft 清空', async () => {
+  test('composer 打字 + enter（Submit）→ user 落列 + thinking 占位 + status 翻回复中 + draft 清空', async () => {
     await newChat()
     t.renderer.simulateKeystrokes('hello')
     await flush()
@@ -116,7 +118,8 @@ describe('ChatSurface', () => {
 
     t.renderer.simulateKeystrokes('enter')
     await until('user message painted', () => texts().includes('hello'))
-    expect(texts()).toContain('thinking…')
+    expect(texts()).toContain('正在思考…')
+    expect(texts()).toContain('正在回复')
     expect(chatCalls).toHaveLength(1)
     expect(chatCalls[0].text).toBe('hello')
     // draft 清空
@@ -126,17 +129,18 @@ describe('ChatSurface', () => {
   test('回复 resolve → assistant 消息可见（markdown）+ thinking 消失 + 标题改写', async () => {
     chatCalls[0].resolve('**收到**了 hello')
     await until('assistant reply painted', () => markdownSources().includes('收到'))
-    expect(texts()).not.toContain('thinking…')
+    expect(texts()).not.toContain('正在思考…')
+    expect(texts()).toContain('已连接')
     expect(texts()).toContain('ASSISTANT')
     // 首条消息改写标题（顶栏不再是默认 'Chat'——用 rowTitle 语义同串不可分辨，改断言次数）
     expect(texts().split('hello').length - 1).toBeGreaterThanOrEqual(2) // 顶栏标题 + 消息体
   })
 
-  test('pendingReply 时 Send 钮点击无效（无第二条 agent 调用）', async () => {
+  test('pendingReply 时 send 钮点击无效（无第二条 agent 调用）', async () => {
     await newChat()
     t.renderer.simulateKeystrokes('second')
     t.renderer.simulateKeystrokes('enter')
-    await until('pending', () => texts().includes('thinking…'))
+    await until('pending', () => texts().includes('正在思考…'))
     expect(chatCalls).toHaveLength(2)
     clickAt('chat-send')
     await flush()

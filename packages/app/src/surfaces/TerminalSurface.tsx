@@ -72,6 +72,9 @@ export function SessionTerminal({
     >
       <TerminalView sessionId={view.sessionId} settings={settings} />
       {view.status === 'exited' ? (
+        // 原型 .term .exited-bar 是终端网格内的弱化行（真终端无法注入）——
+        // 就近似：条带沿用 terminal 底色 + 无分隔线，读作网格末行而非独立
+        // chrome（R9 复核：色 exited、左距 10 与 .term padding 对齐）
         <div
           testId="session-exited-bar"
           style={{
@@ -82,9 +85,7 @@ export function SessionTerminal({
             flexShrink: 0,
             paddingLeft: 10,
             paddingRight: 10,
-            borderTopWidth: 1,
-            borderColor: COLORS.border,
-            backgroundColor: COLORS.pane,
+            backgroundColor: COLORS.terminal,
           }}
         >
           <text
@@ -115,6 +116,8 @@ function TerminalView({
   // flexGrow + minWidth/minHeight：主轴吃满剩余、交叉轴 stretch——
   // 主面（workbench 行内）与会话内视图（SessionTerminal 列内 + 退出条
   // 兄弟节点）两种父布局下尺寸都正确；不写死 100% 防兄弟节点溢出。
+  // 底色调 terminal（原型 .term-surface background:var(--terminal)）——
+  // 终端元素自身也画 palette 底，这层在元素未铺满的边角兜底。
   return (
     <div
       style={{
@@ -123,6 +126,7 @@ function TerminalView({
         flexGrow: 1,
         minWidth: 0,
         minHeight: 0,
+        backgroundColor: COLORS.terminal,
       }}
     >
       <terminal
