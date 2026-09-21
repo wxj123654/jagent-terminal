@@ -18,8 +18,9 @@ use std::sync::Arc;
 
 use gpui::prelude::*;
 use gpui::{App, AppContext};
-use jagent_terminal::pool::set_session_event_fn;
-use jagent_terminal::{SessionEvent, SpawnOptions, TerminalPool, TerminalView};
+use jagent_terminal::{
+    set_session_event_fn, SessionEvent, SpawnOptions, TerminalPool, TerminalView,
+};
 
 fn main() {
     #[cfg(windows)]
@@ -46,11 +47,8 @@ fn main() {
             .expect("failed to create terminal session");
         println!("session {session_id} spawned");
 
-        let bounds = gpui::Bounds::centered(
-            None,
-            gpui::size(gpui::px(1100.0), gpui::px(750.0)),
-            cx,
-        );
+        let bounds =
+            gpui::Bounds::centered(None, gpui::size(gpui::px(1100.0), gpui::px(750.0)), cx);
 
         let window = cx
             .open_window(
@@ -83,9 +81,9 @@ fn main() {
 #[cfg(windows)]
 fn enable_per_monitor_dpi() {
     use windows::Win32::UI::HiDpi::{
-        AreDpiAwarenessContextsEqual, GetThreadDpiAwarenessContext,
+        AreDpiAwarenessContextsEqual, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE,
+        DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetThreadDpiAwarenessContext,
         SetProcessDpiAwarenessContext, SetThreadDpiAwarenessContext,
-        DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
     };
 
     unsafe {

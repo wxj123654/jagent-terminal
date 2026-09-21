@@ -20,6 +20,7 @@
 | `docs/gpuix-zed-terminal-fusion.md` | 调研与硬约束（§4 硬约束 6：字节流不过 napi；GPUIX pin GPUI fork） |
 | `docs/nested-scroll-research.md` | 嵌套滚动机制调研 + 当前实现：浏览器 scroll latching（序列锁定目标）与 Chromium/Firefox 源码依据；0003 补丁的 `ScrollSequence` 规则与差距 |
 | `design/*.html` | HTML 原型（布局/设置/交互方案），样式对齐用 |
+| `design/prototype-react/` | **React 版原型（当前唯一视觉/交互基准）**：React19+Vite+Tailwind+Radix/shadcn；`src/components/*` ↔ app 各模块一一对应；`src/index.css` 是样式真值（`:root` 全 token 表）；`bun run dev` + `bun run smoke.mjs` 截全状态 |
 
 **待评审工作区方案（不是实现契约）**：`design/workspace-plane.html`，操作说明 `design/workspace-plane.md`。用户已选择独立 HTML、Codex 式工作区分组；正式应用尚未迁移。落地拆解见下方 **Phase W（工作区平面迁移）**。
 
@@ -41,9 +42,10 @@
 | W 工作区平面迁移 | ✅ W0–W5 完成（含 ctrl-tab PTY 真 bug 修复）|
 | G Git 树（commit graph） | ✅ G1–G3 完成（docs/git-graph.md；只读 graph + workspace tab）|
 | E 统一错误管理（A/B/C/D） | ✅ 完成（docs/error-management.md；总线+边界+panic 收编+minidump sidecar+watchdog）|
-| D 桌面工作台 v2（Codex 灰阶） | 🚧 D0 tokens+基座 → D1 双区侧栏 → D2 工具栏 → D3 工作面板 |
+| D 桌面工作台 v2（Codex 灰阶） | 🚧 D0–D5 完成（方案 C 侧栏 + 工作面板）；配色已回 One Dark |
+| R React 原型还原（全模块对齐） | 🚧 R0 工具链基线 → R1–R11 分模块 → R12 收官；当前 WIP 未提交 |
 
-**当前指针**：→ Phase E 收官 ✅（错误总线 / ErrorBoundary / thiserror+catch_unwind / crash_handler+minidumper sidecar / launcher watchdog）· 待办：G4 另立设计（status/commit 面板）；真窗口手验清单（W3/W4/W5 + G 的 Ctrl+Shift+G + 错误面板/崩溃提示）
+**当前指针**：→ **Phase R（React 原型还原）开工**——基准 `design/prototype-react`（HTML 原型已退役为其移植源）；R0 工具链先行，R1–R11 按模块逐块跑 agent。**工作区有未提交 WIP**（SessionTabs/会话视图 store/FileSurface/SessionTerminal/Pane 调度/TitleBar 两行），用户实测还原度差 → 各模块以原型逐项核对修正，不是续写。· 旧待办不变：G4 另立设计；真窗口手验清单（W3/W4/W5 + G + 错误面板/崩溃提示）
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -332,7 +334,266 @@
   simulateKeystrokes('enter') 可靠）；② useEffect 注册的模块态回调（planeKeyboard）后 setState 需 macrotask
   提交（时序三律之二，toggle 断言要 await）。
 
-## 验收锚点速查（settings-ui.md §15）
+## Phase R —— React 原型还原（design/prototype-react → packages/app 全模块对齐）
+
+> **基准：`design/prototype-react`**（React 19 + shadcn/Radix 版原型，唯一视觉/交互
+> spec）。`design/j-agent-prototype.html` 已被取代——其窗口级 tabs/navBack/navGo
+> 在 React 版 store 里是**移植残留死代码（无组件渲染），不落地**（2026-09-17 用户
+> 拍板：以 React 原型渲染为准，标签条 = 会话内视图页签）。
+> **范围：全模块重对齐**（用户拍板）——不止补标签栏，侧栏/顶栏/面板/弹窗/设置/
+> 空态全部逐项复核。09-15 对 HTML 原型的走查成果（差异率 1–4%）是起点不是终点。
+> **当前 WIP 基线**：工作区未提交改动已落 SessionTabs/会话视图 store/FileSurface/
+> SessionTerminal/Pane 调度/TitleBar 两行——是 R1–R3 的**起点而非成品**，用户实测
+> 还原度差，各模块按原型逐项核对修正（几何/样式/交互/状态全查）。
+> 硬约束不变：不动 `.refs/`；`<terminal>` 唯一写点；字节流不过 napi；新依赖先过
+> architecture.md §11。
+> **GPUIX 能力差速查**（每个模块都会踩，详 `docs/gpuix-usage` skill 与既往结论区）：
+> 无 transition/:focus-visible（用 hover 态 + focusRing() 手动）；`<text>` 多子节点
+> 按 column 堆叠（插值改单模板串）；virtual-list 只认显式 height；anchored occlude
+> 无外点关闭（用 Popover onMouseDownOutside）；事件不冒泡（装饰子元素 pe:none）；
+> font_family 单名精确查找（FONT.ui/mono 已是平台单名，勿回退 CSS 逗号列表）。
+> **每个模块的通用验收**：`bun run proto-shot.mjs --geom` 对应状态截图 + geom
+> 逐字段对比 + 相关测试全绿 + tsc/fmt/lint；逐像素不可达（文本整形管线差异），
+> 目标 = 布局坐标 + 颜色 + 文案 + 交互一致。
+
+- [x] **R0 工具链 + 基线报告（先做，所有模块依赖）** ✅ 2026-09-17
+  - 原型侧截图：`design/prototype-react` `bun install`（如缺）→ `bun run dev`
+    （vite）→ `bun run smoke.mjs`；或适配 `.shots/cmp/shot-proto.mjs` 打 React 版：
+    规范化 1280×800、隐藏 `#demo` 演示条与水印、`*:focus{outline:none}`（.term
+    是 tabIndex div，focus-ring 污染整图）、去 `#winwrap` 边框圆角（窗口<视口时）。
+  - 原型侧几何：probe/geom 脚本对 React DOM 重校选择器集（index.css 类名基本沿用，
+    注意 Radix  Portal 挂 body 下不在 #app 内——浮层几何以 body 原点换算）。
+  - 实现侧：proto-shot.mjs 种子补 `t-ime` 三 views（git / file:Sidebar.tsx /
+    shell:1，activeViewId:'git'，对齐原型 seed.ts）+ 新状态 `sess-git` /
+    `sess-file` / `sess-shell` / `sess-add`（+ 浮层）/ `addws`；React 原型缺对应
+    `?view=` 深链的，补交互步骤（点 + → 选文件）或给原型加深链（原型可加，
+    不改语义）。
+  - 产出：逐状态 pngdiff/region 基线差异表 + 差异清单 → **`docs/prototype-react-diff.md`**
+    （新文件；旧 `prototype-walkthrough-report.md` 属 HTML 基线，不覆盖不删）。
+  - **顺手修 dev 崩溃**：用户 `bun run dev` 起来后 GPUI UI thread 停（日志：
+    `window not found` + `无效的窗口句柄` → `getDebugFrameOverlayStats` 报
+    「UI thread stopped」→ exit 9）。PerfHud 只是首个发现者，根因未定——先二分
+    WIP（SessionTabs/tabs 插槽/新视图渲染路径），再查 native。不修通真机验收不可做。
+    → **未结（2026-09-17）**：调查进展见 docs/prototype-react-diff.md 末节——
+    死亡序列已理清（窗口 removed→trail 清理→DestroyWindow→LastWindowClosed quit），
+    但复现是竞态（默认日志 ~2min 崩一次；RUST_LOG=debug 连跑 43min 未崩）。
+    下一步：二分 WIP 确认是否新渲染路径触发窗口移除。
+- [x] **R1 会话视图数据层（threads/store.ts）** ✅ 2026-09-17
+  - 锚点：prototype-react `src/types.ts` SessionView（git/file/shell 三 kind）+
+    `src/store.ts`：`activateSessionView` / `closeSessionView`（'main' 不可关，
+    关当前视图回退左邻→主面）/ `openSessionFile`（`file:<path>` 去重）/
+    `addSessionShell`（`shell:n` 递增编号，cwd=会话 cwd→工作区 path）/
+    `openGitGraph`（**活跃会话已归属工作区 → 会话内 git 视图不切路由**；否则
+    工作区 paneTab 路径）。
+  - app 侧 WIP 已落同型 API——逐语义核对：shell 视图绑独立真 PTY
+    （spawnSession）、close 视图销毁其 PTY、close thread 连带销毁全部 shell 视图
+    PTY、**onSessionEvent 归属**：视图 PTY 的 title/bell/exit 事件按 sessionId
+    路由——视图终端也要能收（查事件定位是否只认 `t${sessionId}` 主会话）。
+  - 验收：store 测试覆盖视图全规则（激活/关闭回退/去重/编号/PTY 生命周期/
+    事件归属）；存量用例零回归。
+  - 结论：WIP 的 API 面与原型逐语义核对一致（file 去重/shell 编号/左邻回退/
+    openGitGraph 双路径）；**事件归属确为缺口**——原 `onSessionEvent` 只认
+    `t$sid` 主会话，视图 PTY 事件全被静默丢弃。已补归属路由，详见
+    Phase R 结论区（R1）。
+- [x] **R2 顶栏两行 + SessionTabs** ✅ 2026-09-18
+  - 锚点：prototype-react `src/components/TitleBar.tsx` + index.css `#titlebar`
+    `#titlebar-main` `#tb-tabs` `.tab` `.tb-context` `.tb-cell` `.tb-branch-btn`
+    `.session-add-pop` `.win-ctl`。~~几何真值：toolbarH 40 / tabbarH 36 / tab
+    h28 r6 pad 0 8~~ **更正（geom-proto 实测）**：index.css 存在两段平级
+    `:root`——第二段（694 行起）覆盖第一段，浏览器计算值才是真值：
+    main 44 / tabs 38（总高 83 含三线分隔）/ tab h28 r8 pad 0 10 max-w 210 /
+    active 底 surfaceActive #303743 / 分支钮 tile 底无阴影 / 浮层 r12 +
+    shadow 0 14 38 rgba(0,0,0,.5)。`.tx` 20px 仅 hover|active|focus-within 显 /
+    add 浮层 280px（sa-act h28 + sa-sub + sa-files max-h 220）。
+  - app：`plane/TitleBar.tsx`（WIP 已重排为两行+`tabs` 插槽）、
+    `plane/SessionTabs.tsx`（WIP 新）、`AgentPlane.tsx` 装配。
+  - 逐项核对：context 块（settings→gear 其余→folder；名 12px/550 + cwd 11.5px
+    faint max-w 420，纯展示 pe:none）；分支钮（1px borderSubtle + tile 底 +
+    mono 名 + caret → DropMenu「打开 Git 图/查看变更」）；搜索钮仅
+    narrow/hidden 渲染；错误钮 alert icon+mono 11 计数 bell 色；panelRight
+    on 态；win 三键 Segoe 图形 + close hover 红；mac/linux 拖拽面不被两行
+    结构破坏；ContextTab（workspace→folder/gitBranch、settings→gear、
+    home→home）；tab 中键关 + Enter/Space 激活；「+」浮层三项+文件列表。
+  - 验收：geom 逐字段对齐 ✓ + TitleBar.test / SessionTabs.test 更新 ✓。
+    结论详见 Phase R 结论区（R2）。
+- [ ] **R3 Pane 调度 + FileSurface + SessionShell**
+  - 锚点：panes.tsx `Pane()` 调度序（thread.views 命中 → git→归属 ws 的
+    GitGraphView / file→FileSurface / shell→SessionShell；失效 id/无视图 → 主面；
+    ws 已删 → 回主面）。
+  - app：`plane/Pane.tsx`（WIP 已落调度）、`surfaces/FileSurface.tsx`（WIP 已落：
+    路径条 32px + mono 11 lh1.55 行号 34px 列；真读盘 512KB/400 行截断保留——
+    原型 PREVIEWS 假数据不搬）、`surfaces/TerminalSurface.tsx` SessionTerminal
+    （独立 PTY；外观四设置同主面）。
+  - 验收：三视图截图对齐 + 视图切换 PTY retain（切走不销毁进程）+ close 视图
+    后 PTY 真销毁。
+- [ ] **R4 侧栏全件**
+  - 锚点：`src/components/Sidebar.tsx`（threadMenuItems/wsMenuItems/WorkspaceGroup/
+    Unassigned/ThreadRow）+ index.css `.sb-*`/`.nav-row`/`.sec-head`/`.ghost`/
+    `.ws-*`/`.t-row`/notif popover。几何：sb-head 52 / nav-row 30 / sec-head
+    min-h 28 / ws-row 32 / ghost 24px opacity 显隐规则 / .foot 顶分隔线。
+  - app：`plane/Sidebar.tsx`、`WorkspaceList.tsx`、`ThreadRow.tsx`、`ContextMenu.tsx`。
+  - 逐项：nav 行组（新建会话/搜索）、sec-head「工作区」+＋显隐、ws-head 展开
+    箭头/名字/ghost 组、ws-body 缩进+1px 引导线（06% 白）、sortThreads 排序+
+    截断+Show more/less、unassigned 虚拟组、通知条目点击已读+跳转、sb-foot
+    版本号、两级上下文菜单项与原型一致（含 disabled 态）。
+- [x] **R5 工作面板 WorkPanel** ✅ 2026-09-21
+  - 锚点：`src/components/WorkPanel.tsx`（ChangeRow/FileRow/Diff/Preview）+
+    index.css `.wp-*`。契约：默认收起、拖宽 244–720、<1100 覆盖式不压终端、
+    changes/files 两 tab、选中文件 diff/预览。
+  - app：`git/components/WorkPanel.tsx`（归域后位置）+ `git/worktree.ts` 数据面。
+    结论详见 Phase R 结论区（R5）。
+- [ ] **R6 Git 图**
+  - 锚点：`src/components/GitGraphView.tsx`——工具条（分支菜单/find/refresh）/
+    lane 几何（LANE_W/PAD_X）/RefChip/选中详情列/find 步进（gitFindOpen/Draft/
+    findIdx）。
+  - app：`git/components/GitGraphView.tsx` + `graphSvg.ts`/`rowColumns.ts`/
+    `graphKeys.ts`。
+- [ ] **R7 弹窗与浮层**
+  - 锚点：`src/components/Dialogs.tsx`（Tool/Search/Workspace/Rename/Error/Crash
+    六弹窗）+ `ui/dialog·menu·popover`（Radix 封装形态：居中模态/外点关闭/Esc）。
+  - app：`plane/DialogHost.tsx` + ToolDialog/SearchDialog/WorkspaceDialog/
+    RenameDialog/ErrorDialog/CrashDialog + ui `Modal`/`Popover`/`Toast`。
+  - 逐项：ToolDialog 440 宽/分组标签/筛选/「默认」徽标/cmd 右列；SearchDialog
+    空 query 列全部+↑↓+归属标签；ErrorDialog .err-item 行结构；CrashDialog；
+    NotifPopover；ContextMenu；Toast 右下。
+- [ ] **R8 设置面**
+  - 锚点：`src/components/SettingsView.tsx`（745 行：7 分区 nav/SearchAll 全局
+    命中列表/SettingRow+Control/FontControl 弹层/KbSection 捕获格/PresetsSection
+    /AcpSection 列表编辑）。
+  - app：`surfaces/SettingsView.tsx` + `SettingsSections.tsx` + `PresetsSection.tsx`
+    + `AcpAgentsSection.tsx` + `SettingRow.tsx`（声明式 defs 渲染面不动语义）。
+- [ ] **R9 空态与会话面**
+  - 锚点：panes.tsx `HomePane`/`WorkspaceEmpty`（.home 卡片/kicker/ctx/.pills
+    胶囊行/featured 主胶囊）+ `ConversationView`（.conv-head/.conv-msgs/.msg
+    .bubble/.composer/.thinking）+ `TerminalSurface`（.term-surface/.term/.ln/
+    .cursor/.exited-bar）。
+  - app：`surfaces/EmptyPresets.tsx` + `plane/WorkspaceEmpty.tsx` +
+    `surfaces/ConversationView.tsx`/`ChatSurface.tsx`/`AcpSurface.tsx` +
+    `surfaces/TerminalSurface.tsx`（真终端像素面不改，只核对周边 chrome）。
+- [ ] **R10 tokens/图标/全局样式**
+  - 锚点：index.css `:root` 全表——`--toolbarH 40 --tabbarH 36 --sbHeadH 52
+    --rowH 28 --rowR 6 --sidebarW 264` + 全色板（One Dark）；`src/icons.tsx`
+    lucide 名集。
+  - app：`src/tokens.ts` + `packages/ui/src/theme/tokens.ts` + `Icon.tsx` 名集差
+    （原型新用名补 svg path）；SIZES 尺寸表对账。
+  - 滚动条：原型 ::-webkit-scrollbar 10px 双 padding 框——终端已有 Zed 三态
+    滚动条，面板/列表侧滚动条形态统一核对（GPUIX 滚动区 scrollbar 现状盘点）。
+- [ ] **R11 键位/窄屏/抽屉/深链**
+  - 锚点：App.tsx `useGlobalKeys` 优先级表：kbCapturing > dialog(Radix 自管) >
+    notif/fontPicker Esc > 设置面 Esc/`/` > searchThreads/**newSession(⌘N/Ctrl-N)**
+    /toggleSidebar > 窄屏抽屉 Esc > git 面 r/Esc/↑↓/Enter > ctrl 层 cycle/
+    toggleSettings/ctrl-shift-g；`?view=` 深链表（home/settings/git/workspace/
+    chat/acp/panel/search/tool/addws/errors/crash/notif/narrow/hidden/font）。
+  - app：`keybindings.ts`（**newSession 动作缺失——新增**，schema/键位表/KeyCap
+    同步）、planeKeyboard/dialogKeyboard、AgentPlane 抽屉（760 断点）、router.tsx。
+- [ ] **R12 收官**：全量回归（app+ui 单测 + e2e + tsc + fmt:check + lint +
+  export-patches --check）+ 全状态截图复测差异率表回写
+  `docs/prototype-react-diff.md` + 真窗口手验清单 + commit。
+
+### Phase R 结论区（各模块完成后填写）
+
+- **R1（会话视图数据层，2026-09-17）**：WIP API 面核对 = 与原型一致
+  （openGitGraph 归属双路径 / `file:<path>` 去重 / `shell:n` 递增 / 关闭
+  回退左邻→'main' / 孤儿 PTY 回收）。**真正缺口 = `onSessionEvent` 归属**：
+  只按 `t${sessionId}` 定位主会话，shell 视图的独立 PTY 事件全被静默
+  丢弃。补齐：主会话落空 → `findShellView` 按 `view.sessionId` 归属
+  （sessionId 与主会话 disjoint）；语义与主会话对称——title →
+  `view.oscTitle`（空串忽略）；bell 三级：视图正显示（会话 active 且为
+  活动视图）→ 丢弃 / 同会话他视图 → `view.hasBell` / 会话后台 → 会话级
+  提醒（terminal=`hasBell`，chat·acp=`unread`）+ notice + notify；
+  exit → notice + `view.status='exited'`+exitCode（closeOnExit → 共享
+  removeSessionView 单点移除）。`hasBell` 清除 = 「已看到」同一判定
+  （activateSessionView / activate 落在该视图）。配套放宽：shell 视图
+  类型 +oscTitle/hasBell/status/exitCode；`SessionNotice.viewId`（openNotice
+  直达视图）；`pushNotice`/`deps.notify` 放宽到 `Thread`（nativeDeps
+  title = terminal→displayTitle / 其余→title）。**R2/R3 消费点备忘**：
+  tab label 展示 `oscTitle ?? label`、shell tab 画 hasBell 标记、
+  SessionTerminal 按 `view.status==='exited'` 画 exited bar。
+  测试：store.test 64（+6 视图事件用例）+ app 354 + e2e 23 + tsc/fmt/lint
+  全绿；architecture.md §3.1/§3.2/§3.3 已同步。
+
+- **R2（顶栏两行 + SessionTabs，2026-09-18）**：**规格级发现——原型
+  index.css 有两段平级 `:root`**（694 行起第二段无注释）：覆盖色板/
+  圆角/顶栏高度并新增 ~160 行规则（home-card/pill-icon 等 React 化时
+  一并落地的「v2 设计层」，非死代码）。看板原「几何真值」抄自被覆盖的
+  第一段。geom-proto 实测裁决：**第二段生效**，用户拍板「以原型实测
+  为准」→ COLORS 全表换第二段色板（app #242830/pane #1c1f25/surface
+  #2a3039/surfaceActive #303743/muted #818b99·faint #626c79 正序恢复；
+  新增 tabStrip #1b1e24/ring/card 三键），SIZES 44/38/83。
+  **几何对齐**（geom-proto vs proto-shot --geom 逐字段）：titlebar
+  83=main 44+tabs 38+根边 1（main/tabs 各自 borderSubtle/border 底边，
+  叠出暗→亮双收边）；titlebar-main `align-items:stretch`+去 gap（cell
+  自居中 margin 0 2 / first-child 6）；context 块贴左缘 stretch 43（原
+  padLeft 12 双重内距已修）；tb-fill min-width 12；分支钮 tile 底去阴影
+  r8；错误钮重建为 .tb-cell.tb-error-btn（alert 图标新增 + mono 11 计数，
+  hover 只换底仍 bell）；tab r8 pad 0 10 active=surfaceActive+0.3 阴影；
+  tb-tabs 内凹面 #1b1e24 pad 5/8 + 自身底边。**锚点定位**：「+」浮层与
+  分支菜单从「点击坐标 +offset」改 `getElementBounds` → Radix
+  side=bottom/align=start/sideOffset=4 同位（按钮左下 +4），键盘触发
+  兜底末指针位——geom 复核 pop (723,80) ≈ 原型 (725,81)。**R1 消费落
+  地**：shell tab `sessionViewTitle`（oscTitle ?? label）、hasBell →
+  need 紫点、exited → 灰题。**平台保真偏离（有意）**：win/linux 三键
+  维持 36px 全高 NC/CSD 命中区（原型 28px 居中钮是 CSS mock，真标题栏
+  语义更重要）；focus 环维持全局 accentSoft 2px 约定（原型 4px 双环是
+  R10 全局议题）。**GPUIX 事实补录**：svg tint 只读自身 style.color 不
+  继承父级/hover——cell/tab 图标 hover 提亮改显式 hovered state。
+  测试：TitleBar.test 高度断言改 43/37/82 + padLeft 0 + first ml6；
+  app 354 + 双包 tsc + fmt/lint 全绿（window-visibility 单跑偶超时 =
+  PowerShell 冷启动基线，非本次引入）。
+
+- **R5（工作面板 WorkPanel，2026-09-21）**：归域实现 `git/components/WorkPanel.tsx`
+  全项对齐原型 `.wp-*`（第二段 :root 生效值）：面板 bg `sidebar` + 左缘
+  `borderSubtle`；wp-head 44；ptab 28/r8/1px 边（active=surface+borderSubtle+
+  `0 1 2` 阴影）图标 12；hbtn 28² 图标 16；file-row 32/r8/pad 0 10/gap 7；
+  bdg mono 10 w700 w18（files tab 同位放 file 图标）；nm mono 12 拆 name+dir
+  （dir muted）；add/del mono 10；wp-sum pad 4/6/8；wp-file-head pad 4/6/8
+  gap6 mono11；hint 11.5 muted pad12。
+  **diff/预览手渲染（有意偏离原生元素）**：原生 `<diff>` 的双行号 gutter 在
+  244–280px 窄面板放不下，且其内部内容自然宽溢出（实测 525px > 267 可视宽）
+  只能靠 x 滚动；原型 `.diff`/`.code-view` 本来就是扁平着色行——照 FileSurface
+  同款手动 `.dl`/`.cl` 行渲染（hunk=tile 底 cyan / add=12% 绿洗 / del=12% 红洗 /
+  meta=muted；ln-no 34px 右对齐 pr10 muted；mono 11 lh 16.5/17）。顺带修掉
+  diffAdd 0.12 alpha 经原生元素二次乘算导致标记近乎不可见的真 bug。横向溢出
+  = row 视口 `overflowX:scroll` + 内列 `minWidth:内容宽`（'100%' 在滚动容器内
+  不解析为视口宽，须传数值 `w-12`——短行洗色才能铺满整宽）。
+  **壳契约**：宽 244–720 拖左缘把手（mouseDown+move 自动 capture，把手左探
+  3px）；<1100 → absolute 右贴 overlay（无把手，w=min(panelW, min(420, winW))，
+  阴影 -12/0/32/35%）；刷新钮 = `worktree.refresh()` + toast「已刷新工作区
+  状态」（原型同款）。
+  **数据面**：真实 `WorktreeStore`（git status/diff/readFile，零原型假数据）；
+  `selected` 单字段同喂 diff 与 preview。测试 `git/__tests__/WorkPanel.test.tsx`
+  11 例（changes/files 两 tab 行渲染、选中→diff/预览、无 diff/非仓库/空态
+  提示、overlay 宽度+无把手+420 上限、拖拽 244–720 clamp、refresh/close 钮）。
+  坑：`getElementBounds` 是 content-box——面板宽断言须减自身 1px 左边线。
+  **截图对比**：新增 `panel-files` 对比态（原型无深链，shot-proto/geom-proto
+  走点击交互：开面板→文件 tab→选 tokens.ts；proto-shot 同步交互复刻）；
+  WT_DIFF fixture 去掉 diff --git/index/---/+++ 头行对齐原型种子（原型假数据
+  从 @@ 起）。结果：panel 工作面板区 14.69%→**9.03%**（全图 7.94%）、
+  panel-files 12.05%（预览区 21 行 mono 文本密集，底噪带内——侧栏列表基线
+  10.22% 同量级）。geom 逐项核：wp-head/body、ptab、file-row y133–293、
+  file-head、code-view 坐标全等或 ≤1.5px 文本整形差。
+  **两轴评审修复（同 commit）**：① 关闭后焦点恢复——`closePanel` 经注入的
+  `focusElement` 聚焦面板钮（ToolButton 新增 refEl 外抛元素实例，TitleBar
+  `panelToggleEl` 透传，main.tsx 接 `renderer.focusElement`）；②
+  `status==='idle'`（无 cwd 路由开面板）补中性提示，不再误报「工作区干净」；
+  ③ FileName 截断方向修正——原型 `.nm` 整段 ellipsis 砍尾部 dir，原实现
+  dir `flexShrink:0` 恒全显反而砍 name，现两段都 shrink+ellipsis（dir 先
+  见底、name 兜底）；④ HeadButton 换 `IconButton`（28²/radius8/图标16，
+  顺带白捡原型 `title` 等价的 Tip 提示 + focus 环），删 `_label` 死参数；
+  ⑤ `w-12`→`w-13`（面板自身 1px 左边线 + body pad 12，原值恒触发 1px
+  横向滚动）；⑥ FileName 装饰 text 补 `pointerEvents:'none'`（父级
+  pe:none 不继承到子元素）；⑦ 分区口径修正——region.mjs/report.mjs 顶壳
+  77→83（R2 实测值，旧值致 workpanel/main 区域错位 6px）、geom-proto 删
+  死选择器 `.wp-tabs`；⑧ 测试补 244 下限断言 + idle 用例，删 setup 返回的
+  `closed` 死快照。**判定不修**：enter/space onKeyDown 内联是全仓惯例
+  （5+ 文件同款）；`onWidthChange` 保持可选（overlay 无把手本就不需要）。
+  gate：WorkPanel.test 12 + bun test 469（icons.test 1 例 5s 超时为全量负载
+  flake，单跑 12/12 绿）+ typecheck + fmt:check + lint + export-patches
+  --check 全绿。
+
+---
+
+
 
 core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-advanced→6 · 第12条（无障碍）横切随切片验收。
 ## 硬约束速查（违反 = 返工）
@@ -460,6 +721,25 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-15 · **走查报告修复轮（A/C/D/E 全类清零）**：按 `docs/prototype-walkthrough-report.md` 逐项修复 · A 类 7 处：TitleBar panelLeft 仅 narrow/hidden 渲染、删 titlebar-git 钮（分支 chip → ContextMenu：打开 Git 图/查看变更）、ErrorIndicator 徽章→纯文本 `⚠ n`、分支 chip 加 caret、WorkspacePage 删 tab 条（paneTab=git 整页 Git 图）、WorkspaceList 删 ws-body 竖线+isCurrent 整行底色 · B 类原型 bug 已修（`.ws-head .acts`、`mountTerminals` appendChild）· C 类：ToolDialog 重写（440px/.tool-ctx 整行 bare SelectField+mono cwd/.tool-filter/分组标签/28px 图标块/「默认」+cmd 徽章/.mhint）、Modal 真垂直居中（anchor=leftCenter+y=vh/2）+标题 14px、ErrorDialog 重写（.err-item 行：level UPPERCASE+msg+kind·context+relTime）、NotifPopover 字号对齐（12/600、nt 12/lh17、ns 10.5）· D 类：`FONT.ui`/`FONT.mono` → 平台单名（win Segoe UI/Consolas）、ConversationView virtual-list padding 移到行根（真 bug）· E 类：pin 12px、通知红点 10px 盒、chip icon 14/caret 12、ws-head 去定高（高=子行 26）· 数据：`pushNotice` 加 reason 参数（BEL → `工作区 · BEL`）· GitGraphView RefBadges → 原型 .ref-chip（h16/8px 色块/10px mono/透明底）· 测试：5 个测试文件断言跟随新结构 · 复测差异率：main 1.13% / chat 3.33% / git 4.39% / search 1.31% / tool 2.90% / notif 1.98% / errors 1.36% / hidden 0.46%（残余 = 字体整形/markdown 高亮/git 节点样式，渲染管线固有）· gate：app 330 通过（1 个既有 flake：error log 钩子）+ tsc 干净
 - 2026-09-15 · **终端面板鼠标选区 + 滚动条落地**：用户报「terminal 面板鼠标拖动选中不了，而且没有滚动条」· 诊断：vendored view.rs 的 on_mouse_down 只聚焦、on_mouse_up/on_mouse_move 是空函数，选区从未实现；滚动条无任何绘制（gpuix pin 的 gpui fork 没有上游 Scrollbar/ScrollbarState 元素）· 落地（crates/jagent-terminal）：① view.rs 新增 ContentMetrics/ScrollbarLayout 几何快照（Rc<Cell>，paint 阶段写、事件阶段读）+ grid_point_and_side（移植 Zed mappings/mouse.rs：窗口坐标→grid 坐标+半格 Side，display_offset 换算负行号）；② 选区语义同 Zed/alacritty——单击 Simple/双击 Semantic(词)/三击 Lines(整行)/Shift+单击扩展，MOUSE_MODE（vim 等）下按住 Shift 才本地选区；③ 拖拽用窗口级 window.on_mouse_event（paint 阶段注册、Bubble 相，Zed terminal_element 同款）——拖出元素 bounds 仍能收到事件，越界自动滚动（每事件 ≤5 行），按钮在窗外松开由 move 兜底收尾；④ 松开左键 copy-on-release：term.selection_to_string → cx.write_to_clipboard（当前无显式 copy 快捷键路径）；⑤ render.rs paint 在行循环后画选区高亮（SelectionRange→屏幕行换算，半透明 fg.alpha(0.3) quad，is_block 走矩形分支）；⑥ 滚动条自绘：仅 history>0 时出现（alt screen 无历史不画），thumb 高=track×screen/total（最小 20px）、位置=1−offset/history，命中区 12px 宽，支持拖 thumb（grab offset 线性映射 display_offset）与点轨道翻页 · gate：cargo check/test/clippy -p jagent-terminal 全绿（41 测试）· 未做：鼠标上报给 PTY（SGR mouse，vim 内点选）、Ctrl+C 显式复制键位、选区自动滚动在鼠标静止时无持续 timer（alacritty 有，Zed 也无）· 下一步：真机验收（拖选/复制/滚动条拖拽/双击选词）
 - 2026-09-15 · **gpuix/gpui 上游升级（pin 6b4be86→d85a31e，zed gitlink 1f9d1cd→81c99f81）**：28 个 gpuix 提交 + 6 个 zed 提交 · 破坏性变更 `eac7181`：`getElementBounds` 返回 `number[]`→`{x,y,width,height}`，56 处调用点迁移（codemod `scripts/fix-element-bounds.ts` 收集 getElementBounds 赋值变量→下标换属性；`boundsOf` helper 保持 `number[]` 内部映射零调用点改动；`RangeInput` 鸭子类型同步；`gpuix.d.ts` 的 `getElementBounds` augmentation 删除——上游 `NativeRenderer` 已声明）· patch 退役：gpuix `0002` 内 `input.rs` 行高修复上游 `18e695e` 已含等价实现（`style.line_height_in_pixels`），MANIFEST 移除该文件 · rebase 策略：两仓各「临时 commit → `git rebase <new>` → `reset --soft`+`reset`+`detach`」，zed 零冲突、gpuix 仅 input.rs 一处语义冲突（取上游版）· 新功能可取：`onFileDrop`/`simulateFileDrop`、`checkUpdate()` 自动更新（GitHub Releases+minisign）、`focusNextWithin`/`focusPreviousWithin`/`getFocusedElementId` 子树焦点、`WindowOptions.layerShell`、Select/Combobox `asChild`、debug PNG 编码加速、gpui 动态图像原地更新（Metal/wgpu/DX atlas）· 升级暴露的既有问题（非回归）：`ToolDialog` WIP 改版把 `new-chat`/`new-acp-*` 推到 `tool-list`（maxHeight 320）滚动视口外，e2e 两个用例点击落在裁剪区外——修法：先 `scrollTo(toolList,0,-100000)` 再取 bounds 点击；`GitGraphView 非 repo 空态` 10ms 等待不足改 200ms（时序敏感）· gate：app 331 + ui 33 + e2e 23 + refs-state 11（--timeout 30000，beforeEach 环境慢）+ 双包 tsc + fmt:check + lint + `export-patches -- --check` + `setup-refs` 快速路径全绿 · `SettingsSections` 诊断卡 GPUIX pin 同步 `d85a31e` · 注：`packages/native/index.d.ts` 由 napi build 重新生成（`getElementBounds` 新签名 + `checkUpdate`/`AvailableUpdate`/`simulateFileDrop` 等）
+- 2026-09-15 · **终端滚动条淡入淡出（Zed 语义移植）**：用户要求滚动条优化成 Zed 效果（移入渐入/不滚动渐出/移出渐出）· 调研：Zed 实现在 `crates/ui/src/components/scrollbar.rs`（非 gpui 元素层）——`ScrollbarVisibility` 三态（Hidden/Visible/Animating{start,delta}）+ `SCROLLBAR_SHOW_DURATION=1s` 自动隐藏 + `parent_hitbox.is_hovered` 移出即渐出 + 拖拽/悬停抑制隐藏 · 落地（crates/jagent-terminal/src/view.rs）：① 新增 `ScrollbarFx`（visibility/hovered/generation，Rc<Cell> 供 paint 推进动画）+ `view_bounds`/`mouse_inside` 快照；② `fade_scrollbar` 从当前 alpha 线性插值到目标态，同向动画不重启（防连续 mousemove 卡死渐入）；③ `show_scrollbar` 渐入 150ms + generation 防过期 timer 误隐藏（Zed 原实现无此保护）；④ paint 阶段 `request_animation_frame` 驱动逐帧推进、动画完成收敛终态；⑤ 事件接线：mousemove 进/出视图（view_bounds.contains）、滚轮真实滚动、点击滚动条 → show；MouseExited/移出视图/松手不在条上 → 渐出 400ms；⑥ 完全透明时 `scrollbar_layout=None`（不可见滚动条不抢右缘选区点击）；⑦ 悬停 thumb 加亮 0.35→0.6；⑧ history 归零复位 Hidden（历史重现时重新渐入）· gate：cargo check/test -p jagent-terminal 全绿（41 测试）· 下一步：真机验收手感
+- 2026-09-15 · **滚动条 thumb 三态 + 最小高度**：用户反馈「选中（拖拽）态也要有效果」「thumb 要有最小高度」· 调研：Zed `ThumbState` 三态 Inactive/Hover/Dragging 分别映射 `scrollbar_thumb_background/hover/active`（neutral step_3/4/5 递进变亮），`MINIMUM_THUMB_SIZE=25px` · 落地（view.rs）：① `ScrollbarFx` 加 `dragging` 镜像位（paint 阶段 App::read view 会 double-lease panic，只能走 Cell）；② thumb alpha 三态 0.35/0.6/0.75；③ 最小 thumb 20→25px；④ 拖拽起止三处同步 dragging（on_mouse_down 置位、on_mouse_up/handle_mouse_move 兜底清除）· gate：check/test 全绿
+- 2026-09-15 · **滚动条常态透明度修正**：用户指出常态应为 ~0.6 而非 0.35 · 复查 Zed 源码（.refs/gpuix/zed）：thumb 色与 `surface_background`（`blend_color.min(blend_color.alpha(MAXIMUM_OPACITY=0.7))`）blend → 常态有效 alpha ≈0.7；hover/drag 用不透明主题色（One Dark `#363c46ff`/`#dfdfe0ff`）· 修正三态：常态 0.35→0.6、悬停 0.6→0.75、拖拽 0.75→0.9 · gate：check 绿
+- 2026-09-16 · **通知中心可点击跳转 + 进入会话自动已读**：用户报「点桌面通知没跳到 session、进 session 后消息没变已读」· 排查：桌面 toast 不跳转是 notify.rs 已知限制（toast 激活只拉起快捷方式目标进程，无深链——本次未动）；应用内两处缺陷修复：① `SessionNotice` 加 `threadId`/`read` 字段，`noticesRead` 计数器改为按条 `read` 标记（单条已读语义需要它，50 条截断的 clamp 不变量随之消失）；② store 新增 `openNotice(noticeId)`——标已读 + 来源会话仍在则 activate 跳转（已关闭仅标已读不导航，路由不得指向不存在的行）；③ `activate(thread)` 顺带把该会话的 notice 全标已读（activate 是「已看到」的唯一判定，与 hasBell/unread 同处清）；④ Sidebar 通知条目可点击（testId `notif-item-{id}`，enter/space 同效），未读条目提亮加粗 + tone 点实色、已读压淡 · proto-shot.mjs 注入条目补新字段 · 测试：store 4 例（落 notice 带 threadId/activate 只清目标会话/openNotice 跳转与死会话兜底/markNoticesRead）+ 新 Sidebar.test.tsx 2 例（红点出现→点条目已读+跳转/全部已读留条目）· 坑：useSyncExternalStore 的 store→React 更新在 TestRenderer 里异步调度，断言前需一次真微任务 tick；beforeEach 换 store 实例需 key 强制重挂载（subscribe 是稳定箭头函数不重订阅）· gate：app tsc + bun test 336 绿（error log 1 例为预存在测试间干扰，基线同挂）
+- 2026-09-15 · **滚动条悬停/拖拽透明度修正**：用户实测 Zed 观感「悬停变更浅、拖拽≈悬停」· 修正：常态 0.6 不变，悬停 0.75→0.9（明显变亮），拖拽 0.9→0.9（与悬停一致）· gate：check 绿
+- 2026-09-16 · **输入框光标回退上游实现**：用户拍板「input 这块看 gpuix 就行了，之前魔改的回退」· 撤销本轮未收尾的 glyph-extent 魔改：`.refs/gpuix` 的 `input.rs` 整体 checkout 回上游 d85a31e（caret = `font_size×0.75` cap-height ≈9.4px@12.5px 字、上限 line-height、行内垂直居中——上游原生形态）、`test_renderer.rs`/`zed window.rs` 的 `set_active_for_tests` 测试基建（为截图 caret 加的）一并撤掉 · 补丁面：`0004-input-caret-glyph-extent.patch` 删除、MANIFEST 同步；`index.d.ts`（napi 再生产物，diff 全是 0002 seam API 的 `startWindowMove`/`titlebarDoubleClick`）正式纳入 0002 manifest · 保留 `element.rs` 终端焦点兜底修复（`focused && window.focused(cx).is_none()`——PTY 输出每帧抢焦点导致输入框光标不画的真 bug，属 j-agent 侧非 gpuix 魔改）· 清场：caret-shot/caret-scan 系列脚本与 .shots 临时产物删除 · gate：`export-patches` + `--check` 绿（gpuix 2 patch + zed 3 patch）· jagent-native 重新构建与上游源码一致
+- 2026-09-15 · **滚动条三态亮度修正（按 Zed 源码实算）**：用户纠正「悬停是更暗不是更亮」· 理清 Zed 机制：`blending_color` 在 hover/常驻轨道时用不透明底色，且 `Hsla::blend` 结果 alpha=底色 alpha → 终端（stable_track）三态都叠到不透明 editor bg；One Dark 实算：常态 rgb(88,92,99) 最亮、悬停 rgb(54,60,70) 最暗（thumb≈轨道色）、拖拽 rgb(69,72,76) 居中偏悬停 · 修正 alpha：常态 0.6 / 悬停 0.35 / 拖拽 0.45 · gate：check 绿
+- 2026-09-16 · **输入框光标改 Zed bar 形态 + 配色修正**：回退上游 cap-height 后用户实测光标比 CJK 字形矮一截（0.75em=9px vs 中文字 ~12px），拍板「按 Zed 一样的来」· 落地 `0004-input-caret-zed-bar.patch`（input.rs + theme.rs）：① `caret_rect` 对齐 Zed `CursorShape::Bar`（element.rs `size(px(2.0), line_height)`）——光标高=整行 line-height 不再 inset，比 glyph-extent 版还简单（不用摸 shaped line）；IME `bounds_for_range` 同步；② `theme.rs` dark caret 从 indigo accent（oklch 276.9 ≈ #7c86ff）改为 `#61afef`（One Dark 蓝，与 j-agent accent/focusBorder 同色，Zed One Dark 实际用 #74ade8 同族）· 坑：上游 caret x=文本行起点=占位符首字起点，空输入聚焦时光标条压在首字左缘——上游原生行为非布局问题 · gate：`cargo check -p gpuix-native` 绿 + `export-patches --check` 绿（gpuix 3 patch + zed 3 patch）· 待办：release `.node` 重建因机器内存耗尽（页面文件 os error 1455，rustc alloc 4MB 即失败）未跑通——下次 `bun run dev` 自动重建生效
+- 2026-09-16 · **侧栏会话区布局对齐原型（用户截图走查）**：WorkspaceList 与 codex-sidebar-v2 几何对齐——① 展开箭头移出 .ws-name 作兄弟节点（原型 .chev：16×26 独立钮 + 10px 图标；原 12×12 嵌在名字行内，点击区小且靠 skipRow 抑制冒泡——兄弟节点天然不触发行激活，skipRow 机制整体删除）；② .ws-head 补 height 28 + padding 0 2（名字行/ghost 钮内缩）；③ 会话区 .ws-body 改 margin-left 17 + padding-left 8 + 恢复 1px 竖引导线（6% 白 rgba(255,255,255,0.06)，对齐箭头中心——选中高亮块有归属锚点不悬空；此前走查轮误删，原型 .ws-body 本有 border-left）；④ 「工作区」区头定高 26（原 minHeight+上下 padding 撑到 ~32）+ .grow 弹簧把 ＋ 推到右缘；⑤ ghost 钮组 gap 2、图标统一 12px（原 13）；⑥ 空组引导去掉多余 marginLeft 4 与会话行同槽位；⑦ folder 图标 14→12 · 未归属虚拟组同步同一套几何 · gate：app tsc + WorkspaceList 20 例绿 + oxlint/oxfmt 绿 + sidebar-shot.mjs 截图复核
+- 2026-09-16 · **单文件原型 → React 重构（design/prototype-react）**：用户要求「原型优化成 React 实现，单文件太大实现慢，组件库用 shadcn」· 落地独立 Vite 工程（不进根 bun workspace）：React 19.3 + Vite 8.3 + TS 5.9.3 + Tailwind v4.3 + Zustand/Immer + Radix 全家桶（dialog/dropdown/select/switch/slider/scroll-area/tooltip/popover/context-menu/tabs/separator）+ lucide 图标，版本全部 registry 联网核实正式 release · 2452 行 `j-agent-prototype.html` 拆分为 types/seed/model/store + Sidebar/TitleBar/panes/GitGraphView/WorkPanel/SettingsView/Dialogs + ui 封装层（shadcn 风格 Radix 封装）；全局 `S` 对象 → zustand+immer store，CSS 原样移植保 One Dark 视觉 · 覆盖面：侧栏分组/会话行/右键与…菜单、标题栏分段+tab strip、Home/工作区页/终端模拟/Chat/ACP 会话、Git 图、WorkPanel（变更/文件/diff/预览）、设置 7 分区（含搜索高亮/键位捕获/预设与 ACP 列表编辑/字体弹层）、工具选择/搜索/加工作区/重命名/错误历史/崩溃弹窗、通知 popover/Toast、全局键位/窄屏 drawer/侧栏与面板拖拽/`?view=` 深链/demo 控制条 · 修复点：`MdLite` 非法嵌套（`<ul>` 在 `<p>` 内）、Radix `Select.Item` 禁空串 value（''→哨兵映射，「跟随上次使用」/「未归属」选中态恢复显示）、index.html 空 favicon 消 404 · gate：`bun run typecheck` + `bun run build`（JS 481KB/gz 153KB）+ `smoke.mjs` 18 状态截图全量走查无 JS 错误（.shots/react/）· 用途：设计验证/快速迭代原型，不改正式 GPUIX 应用架构
+- 2026-09-17 · **gpuix 0.9.0 上游同步（pin d85a31e→7ac9880；GPUI/zed 81c99f81 不变）**：联网核实 remorses/gpuix main 为 `7ac9880`，包含 `onSelectionChange` 与文本选区拖拽嵌套更新 panic 修复；最新版 gpuix 的 zed gitlink及 remorses/zed `gpuix` 分支均仍为 `81c99f81`，因此 GPUI 已跟随到该上游可用最新 pin、无需独立迁移 · 本地 gpuix 补丁重放并重新导出，保留上游与项目 seam；两个 zed/GPUI 补丁套件继续校验 · 顺手修掉既有 flake：`errors/log.test.ts` 的 `flushWrites` 固定 5ms sleep 改落盘轮询（此前 Windows 上 mkdir+appendFile 常超时，基线 2/3 失败）· gate：`cargo check -p gpuix-native` + `build:debug` + app/ui 370 + e2e 23 + refs-state 11 + 双包 tsc + fmt:check + lint + `export-patches --check` + `setup-refs` 快速路径全绿 · 注：首次构建被 Windows commit charge 耗尽阻塞（50.3/50.8GB），用户释放内存后 21s 编完
+- 2026-09-18 · **最新原型会话视图 tab 条落地正式 app（两行顶栏 + SessionTabs）**：原型 store 的 ui.tabs/navBack/navFwd 实为死代码（无 UI 消费），真设计 = 标题栏第二行会话内视图 tab strip——据此实现而非应用级路由 tab · ① ThreadStore 增 SessionView 模型（git/file/shell + activeViewId；main 为虚拟 id）与四动作：openGitGraph 在归属会话上落会话内 'git' 视图（不切路由/不动 paneTab，未归属/工作区路由仍走 paneTab 整页路径）、openSessionFile（file:<path> 去重激活）、addSessionShell（spawnSession 独立 PTY + cwd 三级继承 + spawn 间会话已关→孤儿回收）、closeSessionView（shell 销毁 PTY + 当前视图回退左邻/主面）；close() 连带销毁 shell 视图 PTY · ② TitleBar 两行化（主行 40 + tb-tabs 36，tokens SIZES.toolbarHeight/tabBarHeight/topChrome=77；上下文块 tb-context + 新分支钮样式 + win-ctl 容器）· ③ 新组件 plane/SessionTabs.tsx（主面 tab + 视图 tab（中键/× 关）+「+」Popover：打开 Git 图/新建 Shell/打开文件=当前工作区变更文件列表；ContextTab 供非会话路由）· ④ Pane 视图调度：git→归属工作区 GitGraphView、file→新 FileSurface（真读盘 512KB/400 行截断 + 行号列）、shell→TerminalSurface 抽出的共享 TerminalView（SessionTerminal 绑 view.sessionId 独立 PTY）· ⑤ graphKeys 激活面扩展（工作区 paneTab=git ∨ 会话 git 视图激活），main.tsx 注入判定 · ⑥ Icon 增 home · **坑**：flex 子元素负 margin 让 Taffy 把父容器宽度塌成 padding（× 钮 marginRight:-4 → tab 16px、子元素溢出到容器外点不中）——已记入 .agents/skills/gpuix-usage；getElementBounds 报 content-box（定高 40+border 1 → h=39）· gate：app tsc + bun test 348 全绿（SessionTabs 4 例 + store 会话视图 6 例 + graphKeys 1 例 + TitleBar 两行断言更新）+ oxlint/oxfmt 绿
+- 2026-09-17 · **Phase R 立项（React 原型全模块重对齐）**：用户实测昨日 WIP（会话视图 tab 条轮）还原度差，拍板①基准=design/prototype-react 渲染面（HTML 原型窗口级 tabs/navGo 在 React 版是 store 死代码，不落地）②范围=全模块重对齐非只补标签栏 · 拆 13 块进看板：R0 截图/几何工具链适配 React 原型+基线报告+修 dev 崩溃（UI thread 停，根因未定）→ R1 store 会话视图语义核对 → R2 顶栏两行+SessionTabs → R3 Pane/FileSurface/SessionShell → R4 侧栏 → R5 WorkPanel → R6 Git 图 → R7 弹窗浮层 → R8 设置面 → R9 空态/会话面 → R10 tokens/图标 → R11 键位/窄屏/深链（含原型新增 newSession ⌘N）→ R12 收官 · 下一步：用户逐模块派 agent，从 R0 起
+- 2026-09-17 · **R0 完成（React 原型还原工具链 + 基线报告）**：新建 `scripts/cmp/` 九件套（chrome 共享层：playwright-core 复用原型 node_modules + 系统 Chrome + 1280×800 视口 + vite 自动拉起 + 规范化注入；shot-proto 23 态截图；geom-proto 几何导出 `#app` 原点含 Radix Portal 换算；pngdiff/region 逐像素+分区对比；report.mjs 批量报告 → report.json；probe-dom/crop/tree/show 辅助）· 原型 App.tsx 补 `?view=sess-main/git/file/shell` 深链 · proto-shot.mjs：getElementBounds 数组下标→对象 API（3 处）、t-ime 三视图种子、新状态 sess-main/git/file/shell/add + addws、ctxmenu 截图后 Esc 关 Popover（此前污染全部后续态）· **顺手修 FileSurface 真 bug**：代码区缺 column 布局 + `lineHeight:1.55` 被 GPUIX 当 px（非 CSS 倍数）→ 600 行叠成 2px 马赛克；修后 sess-file 差异 15.89%→7.20% · 基线：22 态全图差异 1.67–9.27%（文本整形底噪为主）+ 8 项人工复查文案差异入档 → **docs/prototype-react-diff.md** · dev 崩溃调查：理清死亡序列（窗口 removed→trail→DestroyWindow→LastWindowClosed quit），PerfHud 仅发现者；复现为竞态（RUST_LOG=debug 下 43min 未崩），panic.log 的 TerminalView 泄漏记录均为更早会话 · gate：proto typecheck/build/smoke ✓ + app tsc + bun test 348 + ui tsc + fmt/lint + export-patches --check 全绿 · 下一步：R1（会话视图语义核对）/ 崩溃二分 WIP
+- 2026-09-18 · **R1 两轴评审 + 修复收口**：Standards 轴 0 硬违规/7 judgement call，Spec 轴 0 缺失/5 可疑——已修实锤项：① 测试引用 bug（activate 't2' 不存在→threads[1].id，原靠无条件导航碰巧成立）② 视图 notice 文案改 `sessionViewTitle`（oscTitle ?? label，与 tab 规则同点）③ `activateSessionView` 清 view.hasBell 补 active 校验（后台程序化调用不算「已看到」）④ 清视图 bell 落 `clearViewBell` 单点（activate/activateSessionView 共用）⑤ `titleOf` 提升为模块级 `threadTitle`（nativeDeps notify 复用，消跨文件重复）⑥ `pushNotice` 五参→opts 对象 + `exitTone` 共享 ⑦ `findShellView`→`findShellViewOwner`、`ShellView` 别名、`MAIN_VIEW_ID` 常量、`openSessionFile` `??`→`||`（split 空串死兜底）⑧ architecture.md §3.1 补 SessionNotice/notices + Thread 公共字段（unread/pin）、§3.2/§3.3 activateSessionView 补 active 限定、git-graph.md §4.3 openGitGraph 双路径 · **权衡不修**：关闭被 bell 视图后 thread 级标记残留——hasBell 主/视图源不可分，重算会误清主会话 bell，残留随 activate 自愈更安全 · 测试 +2 断言（后台调用不清标记、notice oscTitle）· gate：store.test 64 + app 353 + e2e 23 + tsc/fmt/lint 全绿
+- 2026-09-17 · **R1 完成（会话视图数据层）**：WIP API 面与原型逐语义核对一致（openGitGraph 双路径/file:<path> 去重/shell:n 递增/左邻回退/独立 PTY spawn+孤儿回收/close 连带销毁视图 PTY）· **真缺口补齐：`onSessionEvent` 归属**——原实现只按 `t${sessionId}` 定位主会话，shell 视图独立 PTY 的 title/bell/exit 全被静默丢弃；现主会话落空 → `findShellView` 按 `view.sessionId` 归属（sessionId disjoint）· 语义与主会话对称：title→view.oscTitle（空串忽略）；bell 三级（视图正显示→丢弃/他视图→view.hasBell/会话后台→会话级提醒 terminal=hasBell·chat·acp=unread + notice + notify）；exit→notice+view.status=exited+exitCode（closeOnExit→共享 removeSessionView 单点）· hasBell 清除=「已看到」同一判定（activateSessionView/activate 落在该视图）· 配套：SessionNotice.viewId（openNotice 直达视图）、pushNotice/notify 放宽到 Thread、shell 视图类型 +oscTitle/hasBell/status/exitCode · R2/R3 消费点已备忘结论区（tab 展示 oscTitle??label、hasBell 标记、exited bar）· gate：store.test 64（+6）+ app 354 + e2e 23 + 双包 tsc + fmt/lint 全绿（window-visibility 单跑 4.2s 属基线 PowerShell 冷启动耗时，全量偶超时非本次引入）· architecture.md §3.1/§3.2/§3.3 已同步 · 下一步：R2（顶栏两行 + SessionTabs）或 R3（Pane 调度 + FileSurface + SessionShell）
+- 2026-09-18 · **架构深化评审 + 六候选全部落地（目录归位 + internal seams）**：codebase-design 词汇评审（module/interface/depth/seam/adapter/leverage/locality）出 HTML 报告六候选，用户拍板全做 · ① **plane/ 四分**：plane/ 留壳（AgentPlane/Pane/TitleBar/SessionTabs/planeKeyboard），Sidebar 族六件 → `sidebar/`，DialogHost+六弹窗+dialogKeyboard → `dialogs/`（git mv 保历史 97–100% rename 检测）② **settings UI 归域**：surfaces/ 七件（SettingsView/SettingsSections/SettingRow/PresetsSection/AcpAgentsSection/listEditorParts/settingsKeyboard/PhaseBadge）→ `settings/ui/`——设置面是路由表面非 surface，surfaces/ 回归「按 thread.kind 注册」语义 ③ **git 域归位**：WorkPanel → `git/components/`、useWorktree → `git/useWorktree.ts`；FileSurface 与 git 共享的文件读取抽 `fs/readTextFile.ts`（第二个消费方坐实 seam）④ **Pane 真 bug 修复**：渲染期 `getState().workspaces` 非响应式直读（rename/path 变化不重渲染）→ useThreadStore selector 订阅 ⑤ **ThreadStore internal seams**：989→547 行；类型契约+interface+装配表+核心方法（spawn/activate/close/rename/cycle/onSessionEvent）留 store.ts，四簇实现进 `threads/internal/`（ctx/sessionViews/notices/workspaceOps/conversations）；**不拆 store**——removeWorkspace→close 等跨簇规则 locality 保留；跨簇调用单向 import + ctx 接线点防环；interface 即测试面不变（threads 87 例原样全过）⑥ **native 整理**：element.rs+git_graph.rs → `elements/`（element.rs 改 terminal.rs 对齐元素名）；jagent-terminal 六 pub mod 收私有，对外只留根部 re-export 单面（set_session_event_fn 补 re-export，两处深路径调用点改走根部）· **文档**：新建 `CONTEXT.md` 领域词汇表（此前仓库没有）；architecture.md §1.1 目录树/§1.2 依赖方向/§3.3 internal seam 注记/§5 目录映射/§8.1-8.2 native 清单全部回写 · gate：app tsc + oxlint/oxfmt + bun test 353 过 1 挂（`TestGpuixRenderer stays hidden on Windows`——PowerShell 窗口句柄查询超时，未改动基线同样失败，环境性预存问题非本次回归）+ cargo build + cargo test 41/41 · 六个独立 commit（21a2ce4/b7d44c2/d9e4571/d80f62c/5697a8c/fed2444）· 未动 .refs/.node
+- 2026-09-18 · **R2 完成（顶栏两行 + SessionTabs）**：规格级发现=原型 index.css 两段平级 `:root`，第二段（694 行起）覆盖生效（geom-proto 实测裁决）→ 用户拍板以原型实测为准，COLORS 全表换第二段色板（+tabStrip/ring/card 三键）· SIZES 44/38/83（非看板旧抄 40/36/77）· 几何逐项对齐：stretch 主行去 gap、cell margin 0 2/first 6、context 贴左缘、分支钮 tile 底去阴影、错误钮 tb-cell 化（新增 alert 图标）、tab r8 pad 0 10 active=surfaceActive、tb-tabs 内凹 #1b1e24+自身底边、win-ctl 去 marginLeft · 「+」浮层/分支菜单改 getElementBounds 锚定（Radix bottom+start+4 同位，geom 复核 (723,80)≈(725,81)）+ 浮层 r12+0 14 38 阴影 · R1 消费落地：shell tab oscTitle ?? label + hasBell 紫点 + exited 灰题 · 有意偏离：win/linux 三键维持 36px 全高 NC/CSD 命中区（原型 28px 钮是 mock）、focus 环维持 accentSoft 2px（4px 双环归 R10）· GPUIX 补录：svg tint 只读自身 style.color——图标 hover 提亮走显式 hovered state · gate：TitleBar/SessionTabs 测试更新 + app 354 + 双包 tsc + fmt/lint 全绿 · 下一步：R3（Pane 调度 + FileSurface + SessionShell）
+- 2026-09-21 · **R5 完成（工作面板 WorkPanel）**：归域实现 `git/components/WorkPanel.tsx` 全项对齐 `.wp-*`（第二段 :root 生效值）——bg sidebar/左缘 borderSubtle、wp-head 44、ptab 28r8+1px边+active 阴影、file-row 32r8、bdg/nm/dir/add/del 字号色板逐项、wp-sum/wp-file-head/hint · **diff/预览改手动 .dl/.cl 行渲染**（原生 `<diff>` 双行号 gutter 放不进 244–280px 窄面板且内容自然宽 525>267 只能 x 滚；顺带修掉 diffAdd 0.12 alpha 二次乘算的真 bug）· x 溢出 = row 视口 scroll + 内列 minWidth:数值（'100%' 不解析为视口宽）· 壳：拖宽 244–720、<1100 absolute overlay（无把手，min(420,winW) 上限）、刷新钮 refresh()+toast · 新增 `panel-files` 对比态（两侧点击交互复刻）+ WT_DIFF fixture 去文件头对齐原型种子 · 结果：panel 面板区 14.69%→9.03%、panel-files 12.05%（文本密集底噪带内）· 两轴评审修复：关面板焦点回面板钮（focusElement seam+ToolButton refEl）、idle 态提示、FileName 截断方向、HeadButton→IconButton、w-12→w-13 off-by-one、pe:none 补齐、分区口径 77→83、死选择器清理 · 测试 WorkPanel.test.tsx 12 例（坑：getElementBounds content-box，宽断言减 1px 边线）· gate：bun test 469（icons 超时为全量负载 flake，单跑绿）+ tsc + fmt + lint + export-patches --check 全绿 · 下一步：R6（Git 图）或 R3/R4
 - 2026-09-20 · **Canvas 2D 最小闭环落地（Phase C C1–C5）**：交接文档（/tmp/jagent-canvas-handoff.md）下一步执行——backend trait（`canvas/backend.rs`：隔离 vello 录制式 RenderContext 与 tiny-skia 直绘式，clip 设备空间 canonical 栈 commit 后重推）+ `VelloBackend`（vello_cpu 0.2.0 联网核实最新版，`render_with(SrcOver)` 叠加持久 Pixmap + reset）+ `Ctx2d` 状态机（styles/alpha/全量 composite/transform/save/restore/path/clip/fillText via cosmic-text 0.19 peniko feature→`as_peniko()` FontData→`glyph_run`/getImageData unpremultiply/putImageData）+ surface 注册表 ~35 个 `canvas*` napi + `<canvas>` custom element（BGRA swizzle→RenderImage→paint_image，rev 帧缓存 + drop_image）+ `installCanvasElement` 进 main.tsx · 修：kurbo 0.13 无 `Fill`（在 peniko）、`PremulRgba8::from_u32(0)`、cosmic-text 0.19 `borrow_with` 独占 font_system（先收 glyph 再解析字体）、napi `Result<T,String>` 的 String 是 status 泛型非 error 值（helper 返 `napi::Error<String>`）· gate：cargo test canvas:: 18/18 + `.node` bun 冒烟（fillRect 精确像素/clearRect/measureText 真度量/fillText 落像素）+ napi build:debug + index.d.ts 重生成 · 下一步：C6 JS ctx shim（CanvasRenderingContext2D 形态 + font shorthand）→ rough.js 验收 → conformance 选测
 - 2026-09-20 · **C6 JS ctx shim + rough.js 验收 + .refs pin 修复**：交接文档（/tmp/jagent-canvas-handoff-2.md）下一步执行——`packages/app/src/canvas/`（native.ts seam + font.ts shorthand 解析 + context.ts ctx 形态封装：shadow state、非法值静默忽略、setLineDash 校验/奇数翻倍、save/restore 双层同步、putImageData 全图快路径 + gpuixCanvas.ts surface 生命周期/订阅 + Canvas.tsx pixelRatio DPR + rev→useSyncExternalStore 重渲染）+ `installCanvasNative()` 进 main.tsx + `docs/canvas-conformance.json` 机器可读清单 · 验收：单测 32 绿（fake native 录制）；**roughjs 4.6.6**（联网核实）离屏 + 挂载真窗口截图像素断言全绿；cargo canvas:: 18/18 · 修：canvas.ts/Canvas.tsx 大小写撞名→gpuixCanvas.ts；native `<canvas>` 不上 ctx.style 零高 → 直接给 gpui canvas()（实现 Styled）上盒样式 · **环境坑**：`.refs/gpuix` 停在旧 pin 6b4be86（gitignored 不随仓更新），重建 native 反向降级 Cargo.lock 且 86 测试因 getElementBounds 形态（数组 vs 对象）级联失败——已原地修到 d85a31e + 重打补丁 + zed 对齐 81c99f81，顺手修 `refs-state.ts` index 哈希缩写长度误报（浅克隆 7 位 vs 导出 8 位）· gate：全量 `bun test` 472 绿、app `tsc --noEmit` 0 错、fmt/lint 干净、cargo lib 21 绿；e2e 包独立 `tsc --noEmit` 报 TS2688（@types/react 未被 bun isolated install 提升到 e2e 可达路径）为历史遗留环境项，不影响 `bun test` 运行时 · 下一步：C7 drawImage/gradient/toDataURL → C8 uPlot 验收
 - 2026-09-21 · **C7 drawImage/gradient/pattern/toDataURL**：交接文档（/tmp/jagent-canvas-handoff-3.md）下一步执行——`PaintSpec::Gradient`（peniko 0.6.1 原生：`new_linear`/`new_two_point_radial`/`new_sweep`，`interpolation_alpha_space=Unpremultiplied`、`Extend::Pad`；退化/零 stop 渐变按规范拦成 transparent 而非 vello 默认黑）+ `PaintSpec::Pattern`（`ImageBrush`+`ImageSource::Pixmap(Arc<Pixmap>)` 直接携带像素，无需图像注册表；repeat-x/y/no-repeat 用 pattern_band 用户空间 clip 表达「越界透明」——peniko Extend 只有 Pad/Repeat/Reflect）+ `resolve_draw_image` 几何归一化（源矩形裁剪+dst 等比收缩+负 dw/dh 负缩放镜像）+ `Ctx2d::draw_image`/`encode_png` + backend `draw_pixels`（`set_paint_transform` 映射图像素→用户空间，绘制后 `reset_paint_transform` 防泄漏）· **vello_cpu 0.2.0 坑**：`sampler.alpha != 1.0` 在 encode 时 `unimplemented!()` panic——globalAlpha 一律 `Pixmap::multiply_alpha` 烘进像素，不传 sampler.alpha · napi：`serde_json::Value` 入参（serde-json feature 已开）让 fillStyle/strokeStyle 同时吃字符串与渐变对象 · JS：`gradient.ts` 双类 + `context.ts` applyPaint 三分支（string/gradient/pattern）+ drawImage 参形归一化 + `gpuixCanvas.toDataURL` · gate：cargo lib 38 绿（canvas:: 35）、fake 单测 39、app tsc 0、e2e 11 绿、fmt(oxfmt)/lint(oxlint)/cargo fmt 干净 · 下一步：C8 uPlot/Chart.js 验收 + benchmark + conformance 参数化用例

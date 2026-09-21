@@ -15,16 +15,18 @@
 //! (it must implement the gpuix `CustomElement` trait); there is no
 //! element module here.
 
-pub mod error;
-pub mod model;
-pub mod perf;
-pub mod pool;
-pub mod pty;
-pub mod view;
+// 模块全部私有：对外契约只有根部 re-export 这一个 interface
+// （element/git_graph 之外不再有 jagent_terminal::xxx:: 深路径）。
+mod error;
+mod model;
+mod perf;
+mod pool;
+mod pty;
+mod view;
 
 pub use error::{HostPanic, TerminalError, terminal_error_code};
 pub use model::{Event, TerminalModel, TerminalStyle};
 pub use perf::{PaintPerfSnapshot, take_paint_perf};
-pub use pool::{SessionEvent, SessionEventFn, TerminalPool};
+pub use pool::{SessionEvent, SessionEventFn, TerminalPool, set_session_event_fn};
 pub use pty::SpawnOptions;
 pub use view::{ColorPalette, TerminalRenderer, TerminalView, keystroke_to_bytes};

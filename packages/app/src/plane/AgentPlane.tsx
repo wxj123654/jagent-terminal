@@ -12,55 +12,35 @@
  */
 
 import { useWindowSize } from '@gpuix/react'
+import type { PublicInstance } from '@gpuix/react'
 import { PLATFORM, ToastHost, COLORS, FONT } from '@jagent/ui'
 import { useEffect, useRef, useState } from 'react'
 import type { PerfSource } from '../diagnostics/PerfHud'
 import { PerfHud } from '../diagnostics/PerfHud'
+import { DialogHost, type DialogState } from '../dialogs/DialogHost'
+import { dialogKeyboard } from '../dialogs/dialogKeyboard'
 import type { LastCrash } from '../errors/crashReport'
 import { ErrorIndicator } from '../errors/ErrorIndicator'
+import { WorkPanel, type WorkPanelTab } from '../git/components/WorkPanel'
 import type { GitGraphStore } from '../git/store'
+import { useWorktree } from '../git/useWorktree'
 import type { WorktreeStore } from '../git/worktree'
 import { useActiveTarget } from '../router'
 import type { SettingsStore } from '../settings/store'
 import { useSettingsValue } from '../settings/useSettings'
+import { ContextMenu } from '../sidebar/ContextMenu'
+import { Sidebar } from '../sidebar/Sidebar'
+import type { DirectoryPicker } from '../sidebar/WorkspaceList'
 import type { ThreadStore } from '../threads/store'
-import { displayTitle } from '../threads/terminal'
 import { useThreadStore } from '../threads/useThreadStore'
 import { SIZES } from '../tokens'
-import { ContextMenu } from './ContextMenu'
-import { DialogHost, type DialogState } from './DialogHost'
-import { dialogKeyboard } from './dialogKeyboard'
 import { Pane } from './Pane'
 import { planeKeyboard } from './planeKeyboard'
-import { Sidebar } from './Sidebar'
+import { ContextTab, SessionTabs } from './SessionTabs'
 import { TitleBar, type WindowControls } from './TitleBar'
-import { useWorktree, WorkPanel, type WorkPanelTab } from './WorkPanel'
-import type { DirectoryPicker } from './WorkspaceList'
 
 /** 窄窗口抽屉断点（原型 W0 契约）：低于此宽 sidebar 变 overlay 抽屉 */
 const NARROW_BREAKPOINT = 760
-
-/** 工具栏会话 chip：当前上下文 → 图标 + 文案（原型 #chip-session） */
-function useSessionChip(store: ThreadStore): {
-  icon: 'terminal' | 'chat' | 'acp' | 'agent' | 'folder' | 'gear'
-  label: string
-} {
-  const active = useActiveTarget()
-  const thread = useThreadStore(store, (s) =>
-    active?.type === 'thread' ? s.threads.find((t) => t.id === active.id) : undefined,
-  )
-  const workspace = useThreadStore(store, (s) =>
-    active?.type === 'workspace' ? s.workspaces.find((w) => w.id === active.id) : undefined,
-  )
-  if (active?.type === 'settings') return { icon: 'gear', label: '设置' }
-  if (active?.type === 'workspace' && workspace) return { icon: 'folder', label: workspace.name }
-  if (!thread) return { icon: 'agent', label: 'j-agent' }
-  const icon = thread.kind === 'terminal' ? 'terminal' : thread.kind === 'acp' ? 'acp' : 'chat'
-  return {
-    icon,
-    label: thread.kind === 'terminal' ? displayTitle(thread) : thread.title,
-  }
-}
 
 export function App({
   store,
@@ -70,6 +50,7 @@ export function App({
   gitStore,
   worktree,
   scrollToItem,
+  focusElement,
   perfSource,
   lastCrash,
   version,
@@ -85,6 +66,8 @@ export function App({
   worktree: WorktreeStore
   /** 键盘导航视口跟随（renderer.scrollToItem；装配层注入） */
   scrollToItem?: (elementId: number, index: number) => void
+  /** 程序化聚焦（renderer.focusElement；装配层注入）——WorkPanel 关闭后焦点回面板钮 */
+  focusElement?: (elementId: number) => void
   /** 性能 HUD 数据源（main.tsx 装配：takePaintPerf + process CPU/MEM 采样器；不传则 HUD 不挂载） */
   perfSource?: PerfSource
   /** 上次会话崩溃残留（方案 C 启动提示；main.tsx 读 crash.json 注入） */
@@ -92,8 +75,39 @@ export function App({
   /** 侧栏脚版本号（装配层注入；缺省不显示） */
   version?: string
 }) {
-  const chip = useSessionChip(store)
   const active = useActiveTarget()
+  // 顶栏上下文（原型 contextLabel：会话→归属工作区名/未归属 Session；
+  // 工作区→名；设置→「设置」；其余→j-agent）。tab 条按路由装配。
+  const thread = useThreadStore(store, (s) =>
+    active?.type === 'thread' ? s.threads.find((t) => t.id === active.id) : undefined,
+  )
+  const workspace = useThreadStore(store, (s) =>
+    active?.type === 'workspace' ? s.workspaces.find((w) => w.id === active.id) : undefined,
+  )
+  const threadWs = useThreadStore(store, (s) =>
+    thread?.workspaceId ? s.workspaces.find((w) => w.id === thread.workspaceId) : undefined,
+  )
+  const context: { icon: 'folder' | 'gear'; label: string } =
+    active?.type === 'settings'
+      ? { icon: 'gear', label: '设置' }
+      : active?.type === 'workspace'
+        ? { icon: 'folder', label: workspace?.name ?? 'j-agent' }
+        : active?.type === 'thread'
+          ? { icon: 'folder', label: threadWs?.name ?? '未归属 Session' }
+          : { icon: 'folder', label: 'j-agent' }
+  // 标签行（原型 #tb-tabs）：会话 → SessionTabs；工作区/设置/起始页 → ContextTab
+  const tabStrip = thread ? (
+    <SessionTabs store={store} thread={thread} worktree={worktree} />
+  ) : active?.type === 'workspace' && workspace ? (
+    <ContextTab
+      icon={workspace.paneTab === 'git' ? 'gitBranch' : 'folder'}
+      label={workspace.name}
+    />
+  ) : active?.type === 'settings' ? (
+    <ContextTab icon="gear" label="设置" />
+  ) : (
+    <ContextTab icon="home" label="主页" />
+  )
   // 窄窗口抽屉（W4）：useWindowSize poll 100ms（TestRenderer 无窗口面时
   // fallback 800×600 → 宽窗口态，测试零影响）
   const { width } = useWindowSize()
@@ -123,6 +137,14 @@ export function App({
   // 工作面板（D5）：开关 / tab / 宽（本地态——原型同款非持久 UI 态）
   const [panelOpen, setPanelOpen] = useState(false)
   const [panelTab, setPanelTab] = useState<WorkPanelTab>('changes')
+  // 面板钮元素实例（TitleBar ref 外抛）：WorkPanel 关闭后焦点回它——
+  // 面板关闭钮随卸载失焦，DOM 惯例是焦点回落到触发它的开关。
+  const panelToggleEl = useRef<PublicInstance | null>(null)
+  const closePanel = () => {
+    setPanelOpen(false)
+    const el = panelToggleEl.current
+    if (el) focusElement?.(el.id)
+  }
   const [panelWidth, setPanelWidth] = useState<number>(SIZES.panelWidth)
   const panelOverlay = width < SIZES.panelOverlayWidth
 
@@ -230,7 +252,7 @@ export function App({
       overlayMaxWidth={Math.min(420, width)}
       tab={panelTab}
       onTabChange={setPanelTab}
-      onClose={() => setPanelOpen(false)}
+      onClose={closePanel}
       onWidthChange={(w) => setPanelWidth(w)}
       windowWidth={width}
     />
@@ -271,16 +293,18 @@ export function App({
           onToggleDrawer={narrow ? () => setDrawerOpen((v) => !v) : undefined}
           sidebarHidden={!narrow && sidebarHidden}
           onToggleSidebar={!narrow ? toggleSidebar : undefined}
-          chipIcon={chip.icon}
-          chipLabel={chip.label}
-          onChipClick={() => dialogOpener.openToolMenu(newSessionWorkspace())}
+          contextIcon={context.icon}
+          contextLabel={context.label}
           cwd={contextCwd}
           branch={branch}
-          // 原型 chip-branch：点击点下方开菜单（打开 Git 图 / 查看变更）
-          onBranchClick={(pos) => setBranchMenu({ x: pos.x, y: pos.y + 16 })}
+          // 原型 chip-branch → DropMenu（side=bottom align=start）：
+          // TitleBar 回调给的是「按钮左下 +4」锚点，直接用
+          onBranchClick={(pos) => setBranchMenu(pos)}
           onSearch={() => dialogOpener.openSearch()}
           panelOpen={panelOpen}
-          onTogglePanel={() => (panelOpen ? setPanelOpen(false) : openPanel())}
+          onTogglePanel={() => (panelOpen ? closePanel() : openPanel())}
+          panelToggleEl={(el) => (panelToggleEl.current = el)}
+          tabs={tabStrip}
           trailing={
             <>
               <ErrorIndicator onOpen={dialogOpener.openErrors} />

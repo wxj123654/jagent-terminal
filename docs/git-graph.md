@@ -262,7 +262,7 @@ workspace route 时：
 
 | 键 | 行为 |
 |---|---|
-| `Ctrl+Shift+G` / 顶栏 Git 图标 | 当前工作区（会话归属 / 已激活 / 第一个）切 Git 图 tab（`store.openGitGraph`，TitleBar trailing `titlebar-git`） |
+| `Ctrl+Shift+G` / 顶栏 Git 图标 | `store.openGitGraph`（TitleBar trailing `titlebar-git`；Phase R 双路径）：活跃会话已归属工作区 → 会话内 `'git'` 视图（SessionTabs tab，不切路由）；否则当前工作区（会话归属 / 已激活 / 第一个）切 `paneTab='git'` |
 | `↑/↓` | Git 图内移动选中行（virtual-list scrollTo 跟随） |
 | `Enter` / 点击 | 选中并打开 diff 详情 |
 | `Esc` | 关 diff 详情 → 清选中 |

@@ -1,0 +1,87 @@
+diff --git a/packages/native/src/custom_elements/input.rs b/packages/native/src/custom_elements/input.rs
+index d58199c..64dc85d 100644
+--- a/packages/native/src/custom_elements/input.rs
++++ b/packages/native/src/custom_elements/input.rs
+@@ -71,7 +71,6 @@ const TEXTAREA_KEY_CONTEXT: &str = "GpuixTextarea";
+ const TEXTAREA_SUBMIT_KEY_CONTEXT: &str = "GpuixTextareaSubmit";
+ const CARET_BLINK_MS: u64 = 500;
+ const CARET_WIDTH: Pixels = px(2.0);
+-const CARET_HEIGHT_RATIO: f32 = 0.75;
+ const DRAG_SCROLL_FRAME_MS: u64 = 16;
+ const UNDO_COALESCE: Duration = Duration::from_millis(700);
+ const UNDO_LIMIT: usize = 200;
+@@ -80,16 +79,11 @@ fn caret_visible(ms_since_activity: u64) -> bool {
+     (ms_since_activity / CARET_BLINK_MS) % 2 == 0
+ }
+ 
+-// Size the bar to cap height, not the line box. Default leading is phi, so a
+-// full-height caret sticks out above and below the glyphs. Cap height is about
+-// 0.75em; the em square itself still looks taller than the letters.
+-fn caret_rect(origin: Point<Pixels>, line_height: Pixels, font_size: Pixels) -> Bounds<Pixels> {
+-    let height = (font_size * CARET_HEIGHT_RATIO).min(line_height);
+-    let y_offset = (line_height - height) / 2.;
+-    Bounds::new(
+-        point(origin.x, origin.y + y_offset),
+-        size(CARET_WIDTH, height),
+-    )
++// j-agent patch: match Zed's bar cursor (CursorShape::Bar = 2px × full
++// line_height). The cap-height inset upstream applies reads short next to
++// CJK glyphs, which fill nearly the whole em.
++fn caret_rect(origin: Point<Pixels>, line_height: Pixels) -> Bounds<Pixels> {
++    Bounds::new(origin, size(CARET_WIDTH, line_height))
+ }
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+@@ -1612,7 +1606,6 @@ impl EntityInputHandler for TextEditorState {
+                 bounds.top() + start.y - px(self.scroll_top),
+             ),
+             self.line_height,
+-            self.font_size,
+         ))
+     }
+ 
+@@ -1809,7 +1802,6 @@ impl gpui::Element for EditorTextElement {
+                 caret_rect(
+                     point(origin.x + caret_point.x, origin.y + caret_point.y),
+                     input.line_height,
+-                    input.font_size,
+                 ),
+                 input.caret_color,
+             ));
+@@ -2036,16 +2028,10 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn caret_matches_the_font_size_inside_the_line() {
+-        let bounds = caret_rect(point(px(10.0), px(4.0)), px(20.0), px(16.0));
+-        assert_eq!(bounds.origin, point(px(10.0), px(8.0)));
+-        assert_eq!(bounds.size, size(px(2.0), px(12.0)));
+-        assert_eq!(
+-            caret_rect(point(px(0.0), px(0.0)), px(20.0), px(40.0))
+-                .size
+-                .height,
+-            px(20.0)
+-        );
++    fn caret_spans_the_full_line_height() {
++        let bounds = caret_rect(point(px(10.0), px(4.0)), px(20.0));
++        assert_eq!(bounds.origin, point(px(10.0), px(4.0)));
++        assert_eq!(bounds.size, size(px(2.0), px(20.0)));
+     }
+ 
+     #[test]
+diff --git a/packages/native/src/theme.rs b/packages/native/src/theme.rs
+index e952167..6ad0f43 100644
+--- a/packages/native/src/theme.rs
++++ b/packages/native/src/theme.rs
+@@ -487,7 +487,10 @@ impl Theme {
+             text_faint: neutral(0.556),
+             text_dim: grey(0x98),
+             accent: oklch(0.673, 0.182, 276.935),
+-            caret: oklch(0.673, 0.182, 276.935),
++            // j-agent patch: One Dark blue matching the app accent (#61afef,
++            // same family as Zed One Dark's #74ade8 player cursor) instead of
++            // the indigo accent.
++            caret: gpui::rgba(0x61afefff).into(),
+             code_text: oklch(0.811, 0.111, 293.571),
+             code_wash: with_alpha(oklch(0.702, 0.183, 293.541), 0.12),
+             diff_add: oklch(0.765, 0.177, 163.223),

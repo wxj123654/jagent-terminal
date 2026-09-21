@@ -20,12 +20,13 @@ j-agent 是一个桌面 Agent 会话管理器（Windows 优先开发中）：Cla
 ```
 ┌────────────────────────────────────────────────────────────────────┐
 │ packages/app（React 壳，JS 拥有会话）                                │
-│   plane/（AgentPlane/Sidebar/Pane）  threads/（ThreadStore）        │
-│   surfaces/（Terminal/Chat/Acp）     settings/（SettingsStore）     │
+│   plane/ + sidebar/ + dialogs/     threads/（ThreadStore，           │
+│   surfaces/（Terminal/Chat/Acp）    internal/ 按簇实现）              │
+│   settings/（SettingsStore + ui/）  git/ + fs/                       │
 └──────────────────────────┬─────────────────────────────────────────┘
                            │ napi（唯一的跨语言 seam）
 ┌──────────────────────────┴─────────────────────────────────────────┐
-│ packages/native（薄 napi 壳：元素注册 + 3 个会话命令）                │
+│ packages/native（薄 napi 壳：lib.rs 协议面 + elements/ 适配层）      │
 │ crates/jagent-terminal（深库：TerminalPool / PTY / 终端仿真与绘制）  │
 └────────────────────────────────────────────────────────────────────┘
 ```
@@ -33,10 +34,13 @@ j-agent 是一个桌面 Agent 会话管理器（Windows 优先开发中）：Cla
 ## 仓库布局
 
 ```
-crates/jagent-terminal/     Rust 深库：pool / model / pty / view(vendored)
-packages/native/            @jagent/native：napi 壳（lib/host/element 三文件）
+crates/jagent-terminal/     Rust 深库：pool / model / pty / view(vendored)；
+                            模块私有，对外只有根部 re-export 单面
+packages/native/            @jagent/native：napi 壳（lib.rs 协议面 +
+                            elements/ CustomElement 适配层 + 平台 adapter）
 packages/gpuix-native-alias @gpuix/native 别名 → 复用同一 .node 二进制
-packages/app/               React 应用：plane / threads / surfaces / settings / ui
+packages/app/               React 应用：plane·sidebar·dialogs（壳）/ threads /
+                            surfaces / settings(+ui/) / git / fs / errors
 e2e/                        TestGpuixRenderer + 真 PTY 端到端测试
 docs/                       已拍板契约文档（见下表）
 design/                     两个 HTML 可交互原型（布局 / 设置）

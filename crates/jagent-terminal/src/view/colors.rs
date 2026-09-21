@@ -589,7 +589,8 @@ impl ColorPaletteBuilder {
     /// Builds the color palette.
     pub fn build(self) -> ColorPalette {
         self.palette
-    }}
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -705,6 +706,9 @@ mod palette_tests {
     fn by_name_one_dark_differs_from_default() {
         let one_dark = by_name("one-dark");
         assert_ne!(one_dark.background(), ColorPalette::default().background());
-        assert_eq!(by_name("nope").background(), ColorPalette::default().background());
+        assert_eq!(
+            by_name("nope").background(),
+            ColorPalette::default().background()
+        );
     }
 }

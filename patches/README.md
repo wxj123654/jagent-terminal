@@ -22,7 +22,7 @@ export 与 setup 复用 `scripts/refs-state.ts`，导出也拒绝 staged 或未�
 
 ## 剩余补丁（gpuix 2 份 + gpuix-zed 3 份）
 
-### gpuix/（pin `d85a31e` @ remorses/gpuix）
+### gpuix/（pin `7ac9880` @ remorses/gpuix）
 
 `0002-jagent-native-seam.patch` 包含：
 

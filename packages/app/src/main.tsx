@@ -30,6 +30,7 @@ import { appWindow } from './appWindow'
 import { installCanvasNative } from './canvas/native'
 import { watchFrameOverlay } from './diagnostics/frameOverlay'
 import { createPerfSource } from './diagnostics/perfSource'
+import { dialogKeyboard } from './dialogs/dialogKeyboard'
 import { enterCrashSidecarIfRequested, setupCrashReportingForApp } from './errors/crashReport'
 import { ErrorBoundary } from './errors/ErrorBoundary'
 import { installGlobalGuards } from './errors/guards'
@@ -41,18 +42,18 @@ import { createGitGraphStore } from './git/store'
 import { createWorktreeStore } from './git/worktree'
 import { createGlobalKeydown } from './keybindings'
 import { App } from './plane/AgentPlane'
-import { dialogKeyboard } from './plane/dialogKeyboard'
 import { planeKeyboard } from './plane/planeKeyboard'
 import type { WindowControls } from './plane/TitleBar'
 import {
   router,
   activeTargetFromLocation,
+  currentActiveThreadId,
   currentActiveWorkspaceId,
   lastNonSettings,
 } from './router'
 import { fsAdapter } from './settings/file'
 import { createSettingsStore } from './settings/store'
-import { settingsKeyboard } from './surfaces/settingsKeyboard'
+import { settingsKeyboard } from './settings/ui/settingsKeyboard'
 import { narrowSessionEvent } from './threads/events'
 import { createNativeThreadDeps } from './threads/nativeDeps'
 import { createWorkspacePersister } from './threads/statePersistence'
@@ -185,6 +186,13 @@ async function mountApp(): Promise<void> {
     gitGraphKey: createGitGraphKey({
       activeWorkspaceId: currentActiveWorkspaceId,
       workspaces: () => threadStore.getState().workspaces,
+      // 会话内 git 视图（SessionTabs 'git' tab）也算 Git 图激活态
+      activeSessionGitView: () => {
+        const id = currentActiveThreadId()
+        if (!id) return false
+        const t = threadStore.getState().threads.find((x) => x.id === id)
+        return t?.views?.find((v) => v.id === t.activeViewId)?.kind === 'git'
+      },
       store: gitStore,
     }),
     inputFocused: () => inputFocus.any,
@@ -205,6 +213,7 @@ async function mountApp(): Promise<void> {
         version={APP_VERSION}
         windowControls={windowControls}
         scrollToItem={(elementId, index) => renderer.scrollToItem(elementId, index)}
+        focusElement={(id) => renderer.focusElement?.(id)}
         pickDirectory={() =>
           // native 面是回调式（TSF 两参契约）；装配层包装成 Promise（面板可能
           // 长时间开着——macOS runModal 阻塞 JS 线程，resolve 在模态结束后）

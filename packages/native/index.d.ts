@@ -114,6 +114,8 @@ export declare class GpuixRenderer {
   /** Enable the window key events requested by the React renderer. */
   setWindowKeyEvents(keyDown: boolean, keyUp: boolean, eventId: number): void
   blur(): void
+  /** Enable the window selectionChange event requested by the React renderer. */
+  setWindowSelectionChange(enabled: boolean, eventId: number): void
   /** The current text selection joined in document order, or null. */
   getSelectedText(): string | null
   /** Drop the current selection and request a repaint. */
@@ -262,6 +264,7 @@ export declare class TestGpuixRenderer {
   focusNextWithin(elementId: number): void
   focusPreviousWithin(elementId: number): void
   setWindowKeyEvents(keyDown: boolean, keyUp: boolean, eventId: number): void
+  setWindowSelectionChange(enabled: boolean, eventId: number): void
   /**
    * Simulate a mouse down event at the given window coordinates.
    * Button: 0=left, 1=middle, 2=right. Defaults to left (0).
@@ -532,7 +535,8 @@ export interface EventPayload {
    * Element-defined string payload.
    * Populated for: `<diff>` toggleFile (the file path), showMore (the
    * hidden line count), and lineClick (the line text); `<markdown>`
-   * linkClick (the URL).
+   * linkClick (the URL); `selectionChange` (joined selected text, or
+   * absent when the selection is empty).
    */
   value?: string
   /** Line number on the pre-change side. Populated for: `<diff>` lineClick. */

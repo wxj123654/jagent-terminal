@@ -22,8 +22,7 @@ import { navigateTarget, currentActiveThreadId, currentActiveWorkspaceId } from 
 import type { SettingsStore } from '../settings/store'
 import { createAcpConnection } from './acp'
 import { createEchoAgent } from './chat'
-import type { ThreadDeps } from './store'
-import { displayTitle } from './terminal'
+import { threadTitle, type ThreadDeps } from './store'
 
 /** 可覆盖项：装配层差异点（e2e：notify 静默、注入测试预设、chatAgent 零延迟、
  *  ambient deps 换确定性值） */
@@ -61,10 +60,11 @@ export function createNativeThreadDeps(
     presetOf: (id) => settings.get().presets.items.find((p) => p.id === id),
     // bell → 非激活 thread → 桌面 toast（WinRT；Rust 侧 AUMID 注册幂等）。
     // sound 依赖 desktop（settings-ui.md §6）；失败在 Rust 侧静默 warn。
+    // 入参放宽到 Thread（R1）：shell 视图 PTY 的 bell 可能属于 chat/acp 会话
     notify: (t) => {
       const n = settings.get().notifications
       if (!n.desktop) return
-      notifyDesktop(`j-agent · ${displayTitle(t)}`, '终端铃（BEL）', n.sound)
+      notifyDesktop(`j-agent · ${threadTitle(t)}`, '终端铃（BEL）', n.sound)
     },
     closeOnExit: () => settings.get().terminal.closeOnExit,
     // chat 后端 seam（T3.2）：默认 EchoAgent 本地模拟——ACP/LLM 接入时换 adapter

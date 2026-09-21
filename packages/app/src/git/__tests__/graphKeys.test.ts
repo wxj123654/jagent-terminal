@@ -30,11 +30,12 @@ function fakeStore() {
   }
 }
 
-function keyFn(opts: { wsId: string | null; workspaces: Workspace[] }) {
+function keyFn(opts: { wsId: string | null; workspaces: Workspace[]; sessionGitView?: boolean }) {
   const store = fakeStore()
   const fn = createGitGraphKey({
     activeWorkspaceId: () => opts.wsId,
     workspaces: () => opts.workspaces,
+    activeSessionGitView: () => opts.sessionGitView ?? false,
     store,
   })
   return { fn, calls: store.calls }
@@ -55,6 +56,17 @@ describe('createGitGraphKey', () => {
     const c = keyFn({ wsId: 'ghost', workspaces: [ws('w1', 'git')] })
     expect(c.fn('down')).toBe(false)
     expect(c.calls).toEqual([])
+  })
+
+  test('会话内 git 视图激活（SessionTabs git tab）：路由是 thread 时同键生效', () => {
+    // 路由不在 workspace（wsId null）但会话 git 视图激活 → 仍生效
+    const { fn, calls } = keyFn({ wsId: null, workspaces: [], sessionGitView: true })
+    expect(fn('down')).toBe(true)
+    expect(fn('r')).toBe(true)
+    expect(calls).toEqual(['move:1', 'refresh'])
+    // 视图未激活 → 透传
+    const off = keyFn({ wsId: null, workspaces: [], sessionGitView: false })
+    expect(off.fn('down')).toBe(false)
   })
 
   test('git tab 激活：↓/↑ 移动选择，enter 吃掉，esc 清选，r 刷新', () => {

@@ -15,7 +15,7 @@ import { createElement } from 'react'
 
 import { TRAFFIC_LIGHT_WIDTH } from '@jagent/ui'
 
-import { SidebarHeader } from '../Sidebar'
+import { SidebarHeader } from '../../sidebar/Sidebar'
 import { TitleBar, type WindowControls } from '../TitleBar'
 
 let t: TestRoot
@@ -66,11 +66,9 @@ function plane(wc: WindowControls, platform: 'mac' | 'win' | 'linux', titleBarPr
 // ── mac：红绿灯让位在 SidebarHeader 段；工具栏 46px / 左 padding 12 ──
 
 describe('TitleBar · mac', () => {
-  test(`SidebarHeader 让位红绿灯（52px 头），工具栏 46px 12px 内距`, () => {
+  test(`SidebarHeader 让位红绿灯（52px 头），两行顶栏 44+38`, () => {
     const { wc } = controlsSpy()
-    t.render(
-      plane(wc, 'mac', { chipIcon: 'agent' as const, chipLabel: 'j-agent', panelOpen: false }),
-    )
+    t.render(plane(wc, 'mac', { contextLabel: 'j-agent', panelOpen: false }))
     t.renderer.flush()
 
     // padding 不放在横向 flex item 上，因此整个左段与内容列严格
@@ -84,11 +82,17 @@ describe('TitleBar · mac', () => {
     const bar = boundsOf('titlebar')
     expect(bar[0]).toBe(248 + 6)
     expect(bar[2]).toBe(900 - 248 - 6) // 主列撑满剩余宽
-    expect(bar[3]).toBe(46)
+    // 原型实测两行：main 44 + tabs 38 + 根底边 1（bounds 报 content-box：
+    // 根 82 + 根底边 1px = 视觉 83，见 SIZES.topChrome）
+    expect(bar[3]).toBe(82)
+    // main 的 1px 下边框在 44 定高盒内 → content-box 43
+    expect(boundsOf('titlebar-main')[3]).toBe(43)
+    // tabs 38 定高含自身 1px 底边 → content-box 37
+    expect(boundsOf('tb-tabs')[3]).toBe(37)
     // 原型：侧栏可见时无 panelLeft 钮（收起入口在侧栏头）——
-    // 左 padding 12 → 会话 chip 直接在 x = 254+12
+    // 主行 padLeft 0：上下文块贴主列左缘（其自带 padding-left 12）
     expect(t.renderer.findByTestId('toggle-sidebar')).toBeUndefined()
-    expect(boundsOf('chip-session')[0]).toBe(248 + 6 + 12)
+    expect(boundsOf('tb-context')[0]).toBe(248 + 6)
     const texts = t.renderer.getAllText()
     expect(texts.join('\n')).toContain('j-agent')
     // 面板开关常驻右端前（三键在 mac 不渲染）
@@ -99,16 +103,16 @@ describe('TitleBar · mac', () => {
     const { wc } = controlsSpy()
     t.render(
       plane(wc, 'mac', {
-        chipIcon: 'agent' as const,
-        chipLabel: 'j-agent',
+        contextLabel: 'j-agent',
         sidebarHidden: true,
       }),
     )
     t.renderer.flush()
-    // mac 收起态：红绿灯让位 TRAFFIC_LIGHT_WIDTH（本机平台值）+ 恢复钮
+    // mac 收起态：红绿灯让位 TRAFFIC_LIGHT_WIDTH + 首 cell margin-left 6
     // （fixture 中 SidebarHeader marginRight:6 → 右列从 254 起）
-    expect(boundsOf('toggle-sidebar')[0]).toBe(248 + 6 + TRAFFIC_LIGHT_WIDTH)
-    expect(boundsOf('chip-session')[0]).toBe(248 + 6 + TRAFFIC_LIGHT_WIDTH + 28 + 8)
+    const btn = boundsOf('toggle-sidebar')
+    expect(btn[0]).toBe(248 + 6 + TRAFFIC_LIGHT_WIDTH + 6)
+    expect(boundsOf('tb-context')[0]).toBe(btn[0] + btn[2] + 2)
   })
 
   test('drag：mousedown + 按住 move → startMove 一次；单击不误触 zoom', () => {
@@ -142,7 +146,8 @@ describe('TitleBar · win', () => {
     for (const area of ['min', 'max', 'close'] as const) {
       const b = boundsOf(`titlebar-${area}`)
       expect(b[2]).toBe(36)
-      expect(b[3]).toBe(46)
+      // 三键在 titlebar-main（44px 含下边框）内撑满 → 43
+      expect(b[3]).toBe(43)
     }
     // 右缘对齐：close 右缘贴窗口右缘（900；父条 bounds 的 x/w
     // 在 gpuix automation 中分别表示 content 起点与盒宽）
@@ -168,7 +173,7 @@ describe('TitleBar · linux', () => {
     for (const area of ['min', 'max', 'close'] as const) {
       const b = boundsOf(`titlebar-${area}`)
       expect(b[2]).toBe(36)
-      expect(b[3]).toBe(46)
+      expect(b[3]).toBe(43)
     }
     const close = boundsOf('titlebar-close')
     expect(close[0] + close[2]).toBe(900)

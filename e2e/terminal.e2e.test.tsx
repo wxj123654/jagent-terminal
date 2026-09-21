@@ -29,11 +29,11 @@ import { installTerminalElement, destroyTerminalSession, onSessionEvent } from '
 
 import { inputFocus } from '@jagent/ui'
 import { createElement } from 'react'
+import { dialogKeyboard } from '../packages/app/src/dialogs/dialogKeyboard'
 import { createGitGraphStore } from '../packages/app/src/git/store'
 import { createWorktreeStore } from '../packages/app/src/git/worktree'
 import { createGlobalKeydown, type GlobalKeydown } from '../packages/app/src/keybindings'
 import { App } from '../packages/app/src/plane/AgentPlane'
-import { dialogKeyboard } from '../packages/app/src/plane/dialogKeyboard'
 import { planeKeyboard } from '../packages/app/src/plane/planeKeyboard'
 import {
   currentActiveThreadId,
@@ -43,7 +43,7 @@ import {
 } from '../packages/app/src/router'
 import { memoryAdapter } from '../packages/app/src/settings/file'
 import { createSettingsStore } from '../packages/app/src/settings/store'
-import { settingsKeyboard } from '../packages/app/src/surfaces/settingsKeyboard'
+import { settingsKeyboard } from '../packages/app/src/settings/ui/settingsKeyboard'
 import { createEchoAgent } from '../packages/app/src/threads/chat'
 import { narrowSessionEvent, type TerminalSessionEvent } from '../packages/app/src/threads/events'
 import { createNativeThreadDeps } from '../packages/app/src/threads/nativeDeps'

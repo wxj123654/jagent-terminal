@@ -52,8 +52,17 @@ export function Popover({
   /** 挂载即聚焦内容盒（上下文菜单等需要 Esc/键盘命中的场景） */
   autoFocus?: boolean
 }) {
+  // anchored 的 Rust 兜底（anchored.rs）：元素自身 style 无不透明背景时
+  // 强制填 #1A1A1A——而圆角卡片的角是透明的，兜底色会从四角透出黑色
+  // 三角块。把卡片的面色（背景 + 圆角）同步到 anchored 上，兜底填充与
+  // 卡片同色同形即不可见（Modal/GitGraphView 同款写法）。
+  const surface: StyleDesc = {
+    backgroundColor: style?.backgroundColor ?? COLORS.overlay,
+    background: style?.background,
+    borderRadius: style?.borderRadius ?? 6,
+  }
   return (
-    <anchored position={position} anchor={anchor} deferred occlude>
+    <anchored position={position} anchor={anchor} deferred occlude style={surface}>
       {/*
         onMouseDownOutside 挂内层内容盒（对齐 gpuix events.test anchored
         dialog）：外点命中以内容 bounds 为准，不挂在 <anchored> 自定义元

@@ -795,9 +795,273 @@ describe('activateWorkspace / close / removeWorkspace', () => {
     await store.spawnFromPreset('shell', wsId)
     expect(currentActiveThreadId()).toBeTruthy()
     store.setWorkspacePaneTab(wsId, 'home')
+    // 最新原型（40d30e8）：活跃会话已归属工作区 → 会话内 'git' 视图，
+    // 不切路由、不动 paneTab
     store.openGitGraph()
+    const t = store.getState().threads[0]!
+    expect(t.views?.some((v) => v.id === 'git')).toBe(true)
+    expect(t.activeViewId).toBe('git')
+    expect(store.getState().workspaces[0]!.paneTab).toBe('home')
+    expect(currentActiveThreadId()).toBe(t.id)
+  })
+})
+
+describe('会话内视图（最新原型 SessionTabs：main/git/file/shell）', () => {
+  let store: ThreadStore
+  let deps: ReturnType<typeof makeDeps>
+  beforeEach(() => {
+    void router.navigate({ to: '/' })
+    deps = makeDeps()
+    store = createThreadStore(deps.deps, {
+      initialWorkspaces: [defaultWorkspace('/w/proj')],
+    })
+  })
+
+  test('openGitGraph 在归属会话上 → git 视图（去重 + 激活）', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    await store.spawnFromPreset('shell', wsId)
+    store.openGitGraph()
+    store.openGitGraph() // 幂等：同 id 不重复落
+    expect(store.getState().threads[0]!.views).toEqual([
+      { id: 'git', kind: 'git', label: 'Git 图' },
+    ])
+    expect(store.getState().threads[0]!.activeViewId).toBe('git')
+    // 未归属会话 → 回退工作区 paneTab 路径
+    await store.spawnFromPreset('shell')
+    store.openGitGraph()
+    expect(store.getState().threads[1]!.views).toBeUndefined()
     expect(store.getState().workspaces[0]!.paneTab).toBe('git')
     expect(currentActiveWorkspaceId()).toBe(wsId)
+  })
+
+  test('openSessionFile：file:<path> 去重 + 激活；activateSessionView 回主面', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    await store.spawnFromPreset('shell', wsId)
+    const tid = store.getState().threads[0]!.id
+    store.openSessionFile(tid, 'src/a.ts')
+    store.openSessionFile(tid, 'src/a.ts')
+    store.openSessionFile(tid, 'src/b.ts')
+    const t = store.getState().threads[0]!
+    expect(t.views?.map((v) => v.id)).toEqual(['file:src/a.ts', 'file:src/b.ts'])
+    expect(t.views?.[0]!.label).toBe('a.ts')
+    expect(t.activeViewId).toBe('file:src/b.ts')
+    // 激活既有视图与 'main'；未知 id no-op
+    store.activateSessionView(tid, 'file:src/a.ts')
+    expect(store.getState().threads[0]!.activeViewId).toBe('file:src/a.ts')
+    store.activateSessionView(tid, 'file:ghost')
+    expect(store.getState().threads[0]!.activeViewId).toBe('file:src/a.ts')
+    store.activateSessionView(tid, 'main')
+    expect(store.getState().threads[0]!.activeViewId).toBe('main')
+  })
+
+  test('addSessionShell：真 PTY spawn（cwd=会话 cwd）；shell:N 递增 + 激活', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    await store.spawnFromPreset('shell', wsId) // sessionId 1 → t1
+    const tid = store.getState().threads[0]!.id
+    await store.addSessionShell(tid)
+    await store.addSessionShell(tid)
+    const t = store.getState().threads[0]!
+    expect(t.views?.map((v) => v.id)).toEqual(['shell:1', 'shell:2'])
+    expect(t.activeViewId).toBe('shell:2')
+    // shell 视图绑的是独立 PTY（非 thread.sessionId）
+    const v = t.views![0]!
+    expect(v.kind).toBe('shell')
+    if (v.kind === 'shell') {
+      expect(v.sessionId).toBe(2)
+      expect(v.cwd).toBe('/w/proj')
+    }
+    expect(deps.spawned.map((o) => o.cwd)).toEqual(['/w/proj', '/w/proj', '/w/proj'])
+  })
+
+  test('closeSessionView：shell 视图销毁 PTY；当前视图被关 → 回退左邻/主面', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    await store.spawnFromPreset('shell', wsId)
+    const tid = store.getState().threads[0]!.id
+    await store.addSessionShell(tid) // shell:1 = sessionId 2
+    await store.addSessionShell(tid) // shell:2 = sessionId 3
+    store.activateSessionView(tid, 'shell:2')
+    store.closeSessionView(tid, 'shell:2')
+    let t = store.getState().threads[0]!
+    expect(t.views?.map((v) => v.id)).toEqual(['shell:1'])
+    expect(t.activeViewId).toBe('shell:1') // 左邻
+    expect(deps.destroyed).toEqual([3])
+    store.closeSessionView(tid, 'shell:1')
+    t = store.getState().threads[0]!
+    expect(t.views).toEqual([])
+    expect(t.activeViewId).toBe('main')
+    expect(deps.destroyed).toEqual([3, 2])
+    // 'main' 不可关；unknown no-op
+    store.closeSessionView(tid, 'main')
+    store.closeSessionView(tid, 'shell:9')
+    expect(deps.destroyed).toEqual([3, 2])
+  })
+
+  test('close 会话 → shell 视图 PTY 一并销毁', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    await store.spawnFromPreset('shell', wsId) // sessionId 1
+    const tid = store.getState().threads[0]!.id
+    await store.addSessionShell(tid) // sessionId 2
+    store.close(tid)
+    expect(deps.destroyed).toEqual([1, 2])
+    expect(store.getState().threads).toHaveLength(0)
+  })
+
+  test('spawn 期间会话被关 → 孤儿 PTY 回收不落视图', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    await store.spawnFromPreset('shell', wsId)
+    const tid = store.getState().threads[0]!.id
+    // spawn 挂起可控：先触发 addSessionShell（不 await），再 close，再放行
+    let release!: (id: number) => void
+    deps.deps.spawnSession = () => new Promise((r) => (release = r))
+    const pending = store.addSessionShell(tid)
+    store.close(tid)
+    release(9)
+    await pending
+    expect(deps.destroyed).toEqual([1, 9])
+    expect(store.getState().threads).toHaveLength(0)
+  })
+
+  const shellView = (store: ThreadStore, i = 0) => {
+    const v = store.getState().threads[0]!.views?.[i]
+    if (v?.kind !== 'shell') throw new Error('not a shell view')
+    return v
+  }
+
+  test('视图 PTY 事件归属：title → view.oscTitle（空串忽略；不误伤主会话）', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    await store.spawnFromPreset('shell', wsId) // sessionId 1 → t1
+    const tid = store.getState().threads[0]!.id
+    await store.addSessionShell(tid) // shell:1 = sessionId 2
+    store.onSessionEvent({ type: 'title', sessionId: 2, title: 'vim' })
+    expect(shellView(store).oscTitle).toBe('vim')
+    expect((store.getState().threads[0] as TerminalThread).oscTitle).toBeUndefined()
+    store.onSessionEvent({ type: 'title', sessionId: 2, title: '' })
+    expect(shellView(store).oscTitle).toBe('vim')
+    // 不存在的 sessionId：静默丢弃不炸
+    store.onSessionEvent({ type: 'title', sessionId: 99, title: 'x' })
+    store.onSessionEvent({ type: 'bell', sessionId: 99 })
+    store.onSessionEvent({ type: 'exit', sessionId: 99 })
+  })
+
+  test('视图 bell 三级：正显示→丢弃；同会话他视图→view.hasBell；会话后台→会话级+通知', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    await store.spawnFromPreset('shell', wsId) // t1
+    const tid = store.getState().threads[0]!.id
+    await store.addSessionShell(tid) // shell:1 = sid 2，激活该视图
+    await store.spawnFromPreset('shell', wsId) // 第二会话 = t3（sid 3；t1 转后台）
+
+    // ① t1 在后台：bell → view.hasBell + t1.hasBell + notice + notify
+    store.activate({ type: 'thread', id: tid })
+    store.activateSessionView(tid, 'shell:1')
+    await store.activate({ type: 'thread', id: store.getState().threads[1]!.id })
+    store.onSessionEvent({ type: 'bell', sessionId: 2 })
+    expect(shellView(store).hasBell).toBe(true)
+    const t1 = store.getState().threads[0] as TerminalThread
+    expect(t1.hasBell).toBe(true)
+    expect(deps.notified).toEqual(['t1'])
+    const n = store.getState().notices.at(-1)!
+    expect(n.threadId).toBe('t1')
+    expect(n.viewId).toBe('shell:1')
+
+    // ② 会话 active 但显示主面：view.hasBell，无会话级标记/新通知
+    store.activate({ type: 'thread', id: tid }) // t1 active：展示 shell:1 → 视图标记清除
+    expect(shellView(store).hasBell).toBe(false)
+    store.activateSessionView(tid, 'main')
+    const noticeCount = store.getState().notices.length
+    store.onSessionEvent({ type: 'bell', sessionId: 2 })
+    expect(shellView(store).hasBell).toBe(true)
+    expect((store.getState().threads[0] as TerminalThread).hasBell).toBe(false)
+    expect(store.getState().notices).toHaveLength(noticeCount)
+    expect(deps.notified).toEqual(['t1'])
+
+    // ③ 视图正显示（t1 active + activeViewId=shell:1）→ 全部不落
+    store.activateSessionView(tid, 'shell:1') // 展示即清除
+    expect(shellView(store).hasBell).toBe(false)
+    store.onSessionEvent({ type: 'bell', sessionId: 2 })
+    expect(shellView(store).hasBell).toBe(false)
+  })
+
+  test('view.hasBell 清除：activateSessionView 与 activate（落在该视图）同语义', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    await store.spawnFromPreset('shell', wsId)
+    const tid = store.getState().threads[0]!.id
+    await store.addSessionShell(tid) // shell:1 = sid 2
+    store.activateSessionView(tid, 'main')
+    store.onSessionEvent({ type: 'bell', sessionId: 2 })
+    expect(shellView(store).hasBell).toBe(true)
+    // activateSessionView 直达该视图 → 清
+    store.activateSessionView(tid, 'shell:1')
+    expect(shellView(store).hasBell).toBe(false)
+    // 离开会话后再 bell（activeViewId 停在 shell:1）
+    store.activate(null)
+    store.onSessionEvent({ type: 'bell', sessionId: 2 })
+    expect(shellView(store).hasBell).toBe(true)
+    // 后台会话上的 activateSessionView 不算「已看到」→ 标记保留
+    store.activateSessionView(tid, 'shell:1')
+    expect(shellView(store).hasBell).toBe(true)
+    // activate 回来展示该视图 → 清
+    store.activate({ type: 'thread', id: tid })
+    expect(shellView(store).hasBell).toBe(false)
+  })
+
+  test('视图 PTY exit：status=exited + exitCode + notice（closeOnExit=false）', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    await store.spawnFromPreset('shell', wsId)
+    const tid = store.getState().threads[0]!.id
+    await store.addSessionShell(tid) // sid 2
+    store.onSessionEvent({ type: 'title', sessionId: 2, title: 'vim' })
+    store.onSessionEvent({ type: 'exit', sessionId: 2, code: 3 })
+    const v = shellView(store)
+    expect(v.status).toBe('exited')
+    expect(v.exitCode).toBe(3)
+    // notice 带 viewId；文案 = oscTitle ?? label（同 tab 展示规则）；主会话不受影响
+    const n = store.getState().notices.at(-1)!
+    expect(n.tone).toBe('err')
+    expect(n.viewId).toBe('shell:1')
+    expect(n.text).toContain('vim')
+    expect((store.getState().threads[0] as TerminalThread).status).toBe('running')
+    // 视图保留（同主会话 exited 灰行语义）；仍可手动关 → 销毁
+    store.closeSessionView(tid, 'shell:1')
+    expect(deps.destroyed).toEqual([2])
+    expect(store.getState().threads[0]!.views).toEqual([])
+  })
+
+  test('视图 PTY exit + closeOnExit=true → 视图移除 + 当前视图回退', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    const ctx = makeDeps({ closeOnExit: () => true })
+    const store2 = createThreadStore(ctx.deps, {
+      initialWorkspaces: store.getState().workspaces,
+    })
+    await store2.spawnFromPreset('shell', wsId)
+    const tid = store2.getState().threads[0]!.id
+    await store2.addSessionShell(tid) // shell:1 = sid 2（activeViewId=shell:1）
+    store2.onSessionEvent({ type: 'exit', sessionId: 2, code: 0 })
+    expect(store2.getState().threads[0]!.views).toEqual([])
+    expect(store2.getState().threads[0]!.activeViewId).toBe('main')
+    expect(store2.getState().notices.at(-1)!.tone).toBe('ok')
+    expect(ctx.destroyed).toEqual([2])
+  })
+
+  test('chat 会话的 shell 视图 bell → unread + notice + notify（非 terminal 父级）', async () => {
+    const wsId = store.getState().workspaces[0]!.id
+    store.createChat(wsId)
+    const cid = store.getState().threads[0]!.id
+    await store.addSessionShell(cid) // sid 1（chat 主面无 PTY）
+    // 切走 → 会话在后台
+    store.activate(null)
+    store.onSessionEvent({ type: 'bell', sessionId: 1 })
+    const t = store.getState().threads[0]!
+    expect(t.kind).toBe('chat')
+    expect(t.unread).toBe(true)
+    expect(t.views![0]!.kind === 'shell' && t.views![0]!.hasBell).toBe(true)
+    expect(deps.notified).toEqual([cid])
+    // openNotice → 直达该视图 + 标记清除（重读快照——t 是旧引用）
+    store.openNotice(store.getState().notices.at(-1)!.id)
+    expect(currentActiveThreadId()).toBe(cid)
+    const t2 = store.getState().threads[0]!
+    expect(t2.activeViewId).toBe('shell:1')
+    expect(t2.views![0]!.kind === 'shell' && t2.views![0]!.hasBell).toBe(false)
+    expect(t2.unread).toBe(false)
   })
 })
 
@@ -848,5 +1112,80 @@ describe('方案 C：pin / unread（codex-sidebar-v2）', () => {
     expect(persisted.at(-1)?.[0]?.pin).toBe(true)
     store.setWorkspacePinned('w-void', true) // no-op
     expect(store.getState().workspaces.filter((w) => w.pin)).toHaveLength(1)
+  })
+})
+
+describe('通知中心（D8）：threadId / read / openNotice', () => {
+  let store: ThreadStore
+  let ctx: ReturnType<typeof makeDeps>
+  beforeEach(() => {
+    void router.navigate({ to: '/' })
+    ctx = makeDeps()
+    store = createThreadStore(ctx.deps)
+  })
+
+  const unreadCount = () => store.getState().notices.filter((n) => !n.read).length
+
+  test('bell/exit 落 notice：带 threadId + read=false；activate 自动已读该会话条目', async () => {
+    await store.spawnFromPreset('shell') // t1 active
+    await store.spawnFromPreset('shell') // t2 active，t1 转后台
+    store.onSessionEvent({ type: 'bell', sessionId: 1 })
+    store.onSessionEvent({ type: 'exit', sessionId: 1, code: 0 })
+
+    const notices = store.getState().notices
+    expect(notices).toHaveLength(2)
+    expect(notices.every((n) => n.threadId === 't1' && !n.read)).toBe(true)
+    expect(unreadCount()).toBe(2)
+
+    // 进入 t1 → 其 notice 全部已读（activate 是「已看到」的判定）
+    store.activate({ type: 'thread', id: 't1' })
+    expect(unreadCount()).toBe(0)
+    expect(store.getState().notices.every((n) => n.read)).toBe(true)
+  })
+
+  test('activate 只清目标会话的 notice，其他会话未读保留', async () => {
+    await store.spawnFromPreset('shell') // t1
+    await store.spawnFromPreset('shell') // t2
+    await store.spawnFromPreset('shell') // t3 active
+    store.onSessionEvent({ type: 'bell', sessionId: 1 })
+    store.onSessionEvent({ type: 'bell', sessionId: 2 })
+    expect(unreadCount()).toBe(2)
+
+    store.activate({ type: 'thread', id: 't1' })
+    const notices = store.getState().notices
+    expect(notices.find((n) => n.threadId === 't1')?.read).toBe(true)
+    expect(notices.find((n) => n.threadId === 't2')?.read).toBe(false)
+    expect(unreadCount()).toBe(1)
+  })
+
+  test('openNotice：标已读 + 跳来源会话；已关闭会话仅标已读不导航', async () => {
+    await store.spawnFromPreset('shell') // t1
+    await store.spawnFromPreset('shell') // t2 active
+    store.onSessionEvent({ type: 'bell', sessionId: 1 })
+    const n = store.getState().notices[0]!
+
+    store.openNotice(n.id)
+    expect(store.getState().notices[0]!.read).toBe(true)
+    expect(currentActiveThreadId()).toBe('t1')
+
+    // exit 落 notice（closeOnExit=false → 行保留）→ 再 close 掉 t1，
+    // 模拟「通知还在、会话已不在」的点击路径
+    store.onSessionEvent({ type: 'exit', sessionId: 1, code: 1 })
+    const dead = store.getState().notices.at(-1)!
+    expect(dead.threadId).toBe('t1')
+    store.close('t1')
+    store.openNotice(dead.id)
+    expect(store.getState().notices.at(-1)!.read).toBe(true)
+    expect(currentActiveThreadId()).not.toBe('t1') // 未导航到不存在的行
+  })
+
+  test('markNoticesRead：全部已读，条目保留；openNotice 未知 id no-op', async () => {
+    await store.spawnFromPreset('shell')
+    await store.spawnFromPreset('shell')
+    store.onSessionEvent({ type: 'bell', sessionId: 1 })
+    store.markNoticesRead()
+    expect(unreadCount()).toBe(0)
+    expect(store.getState().notices).toHaveLength(1)
+    store.openNotice('n-void') // 不炸
   })
 })

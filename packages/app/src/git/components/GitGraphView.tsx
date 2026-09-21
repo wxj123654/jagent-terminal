@@ -893,7 +893,7 @@ export function GitGraphView({
   const { width: winW, height: winH } = useWindowSize()
   const listHeight =
     winH -
-    SIZES.titleBarHeight -
+    SIZES.topChrome -
     TAB_H -
     TOOLBAR_H -
     HEADER_H -
@@ -1299,7 +1299,7 @@ export function GitGraphView({
       {menu ? <MenuLayer menu={menu} onClose={() => setMenu(null)} onPick={pickMenu} /> : null}
       {branchOpen ? (
         <anchored
-          position={{ x: 56, y: SIZES.titleBarHeight + TAB_H + TOOLBAR_H }}
+          position={{ x: 56, y: SIZES.topChrome + TAB_H + TOOLBAR_H }}
           deferred
           occlude
           onMouseDownOutside={() => setBranchOpen(false)}

@@ -85,7 +85,7 @@ crates/jagent-terminal/      终端栈（model/pool/pty/view/view/render）—�
 | # | 怀疑项 | 状态 | 结论与证据 |
 |---|--------|------|-----------|
 | 7.1 | TerminalSurface 重渲染 → setCustomProp 风暴 | ✅ | 双保险 diff：element.rs apply_style 层（`*style != new` 跳过）+ model.rs set_style 层（PartialEq 幂等）；稳态帧零成本 |
-| 7.2 | focused 每帧抢焦点 | ✅ | gpui focus() 已聚焦时 no-op；单元素挂载场景无争抢 |
+| 7.2 | focused 每帧抢焦点 | ✅→🐛→✅ | 原结论「单元素挂载场景无争抢」在多焦点元素场景不成立：终端每帧 focus() 会抢走输入框焦点（点击输入框无效）。已修：element.rs 改为真空才聚焦（`window.focused().is_none()`），保住挂载聚焦 + 弹窗关闭后焦点回落终端两条语义 |
 | 7.3 | host.rs 调度开销 | ✅ | 非热路径（spawn/destroy/命令级跨界） |
 
 ## ~~8. GPUIX 底座~~（外部依赖，已移出分析范围）
