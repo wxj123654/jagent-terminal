@@ -31,7 +31,8 @@ export function Textarea({
   /** 失焦回调（draft 提交点；内部 inputFocus 登记仍执行） */
   onBlur?: () => void
   testId: string
-  width?: number
+  /** 宽度：数字 = 固定 px；'fill' = 撑满容器（.field-row 内表单） */
+  width?: number | 'fill'
 }): ReactElement {
   const [focused, setFocused] = useState(false)
 
@@ -54,11 +55,11 @@ export function Textarea({
         onBlur?.()
       }}
       style={{
-        width,
-        paddingTop: 5,
-        paddingBottom: 5,
-        paddingLeft: 9,
-        paddingRight: 9,
+        width: width === 'fill' ? '100%' : width,
+        paddingTop: 6,
+        paddingBottom: 6,
+        paddingLeft: 8,
+        paddingRight: 8,
         ...controlBox(focused, disabled),
         ...controlText(mono),
         cursor: disabled ? 'default' : 'text',

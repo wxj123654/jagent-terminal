@@ -81,7 +81,7 @@ describe('SettingRow', () => {
     expect(resets).toBe(1)
   })
 
-  test('未修改行保留 reset 槽；显隐切换不改变控件与槽位布局', () => {
+  test('未修改行保留 reset 槽；moddot 挂载使 label/槽位右移 12px，右列控件不动', () => {
     const def = defOf('terminal.scrollbackLines')
     const renderRow = (modified: boolean) =>
       t.render(
@@ -97,13 +97,20 @@ describe('SettingRow', () => {
     renderRow(false)
     expect(t.renderer.findByTestId('reset-terminal.scrollbackLines')).toBeUndefined()
     expect(t.renderer.findByTestId('reset-inactive-terminal.scrollbackLines')).toBeDefined()
+    expect(t.renderer.findByTestId('moddot-terminal.scrollbackLines')).toBeUndefined()
     const slotBefore = boundsOf('reset-slot-terminal.scrollbackLines')
     const controlBefore = boundsOf('setting-terminal.scrollbackLines')
     expect(slotBefore[2]).toBe(18)
 
     renderRow(true)
     expect(t.renderer.findByTestId('reset-terminal.scrollbackLines')).toBeDefined()
-    expect(boundsOf('reset-slot-terminal.scrollbackLines')).toEqual(slotBefore)
+    expect(t.renderer.findByTestId('moddot-terminal.scrollbackLines')).toBeDefined()
+    // 原型 `{mod && <span className="moddot"/>}` 条件挂载——label 与 reset
+    // 槽整体右移 moddot 6 + gap 6 = 12px（原型接受此位移，不做槽位稳定化）
+    const slotAfter = boundsOf('reset-slot-terminal.scrollbackLines')
+    expect(slotAfter[0] - slotBefore[0]).toBe(12)
+    expect(slotAfter.slice(1)).toEqual(slotBefore.slice(1))
+    // 右列控件右对齐不受左列位移影响
     expect(boundsOf('setting-terminal.scrollbackLines')).toEqual(controlBefore)
     expect(t.renderer.getAllText().some((s) => s.includes('回滚行数'))).toBe(true)
     expect(t.renderer.getAllText().some((s) => s.includes('scrollback 缓冲区大小'))).toBe(true)

@@ -1,9 +1,10 @@
 /**
  * settings/ui/PresetsSection.tsx — 设置 Presets 分区（settings-ui.md §7 预设编辑器；T3.1）。
+ * R8 对齐原型：顶部 `.srow`（「+」按钮默认预设 + 描述 + Sel）→ 「预设列表」
+ * 小标题 → le-card 列表 → le-add 新增行。
  *
- * 顶部 `+` 按钮默认（presets.plusDefault，null=跟随 lastUsedPreset）+ 预设列表 +
- * 底部「新增预设」。行收起态：图标 + label + mono 命令摘要 + 徽章（内置/自定义、
- * modified 蓝点）+ 行尾动作（复制 / 重置[仅内置且改过] / 删除[仅自定义]）。展开态
+ * 行收起态：chevron + label + mono 命令摘要 + 徽章（内置/自定义 + modified
+ * 蓝点）+ 行尾动作（复制 / 重置[仅内置且改过] / 删除[仅自定义]）。展开态
  * 六字段编辑器：label / program / args(每行一个) / env(每行 KEY=VALUE) /
  * initCommand / cwd——即时生效（onChange → store.updatePreset；args/env 走
  * draft + onBlur 提交，NumberInput 同款中间态纪律）。
@@ -23,7 +24,7 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
 
-import { Badge, IconButton, SelectField, TextInput, COLORS, FONT } from '@jagent/ui'
+import { SelectField, TextInput, COLORS, FONT } from '@jagent/ui'
 import type { TerminalPreset } from '../../threads/presets'
 import {
   presetCommandSummary,
@@ -35,11 +36,13 @@ import type { SettingsStore } from '../store'
 import { useSettings } from '../useSettings'
 import {
   FieldRow,
+  HeadBadge,
   LinesField,
   ListEditorAdd,
   ListEditorCard,
   ListEditorEmpty,
   ListEditorError,
+  MiniButton,
   ModDot,
 } from './listEditorParts'
 
@@ -57,41 +60,79 @@ export function PresetsSection({
   const err = settings.writeError()
 
   const visible = query ? items.filter((p) => presetMatches(p, query)) : items
-  const customCount = items.filter((p) => !p.builtin).length
 
   return (
-    <div>
-      {/* + 按钮默认（§7 顶部一行） */}
+    <div style={{ minWidth: 0 }}>
+      {/* 「+」按钮默认（原型 .srow 变体：无底边、paddingBottom 4） */}
       <div
         style={{
           display: 'flex',
           flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
-          marginBottom: 6,
+          alignItems: 'flex-start',
+          gap: 16,
+          paddingTop: 13,
+          paddingBottom: 4,
+          paddingLeft: 16,
+          paddingRight: 16,
         }}
       >
-        <text style={{ fontSize: 12.5, fontFamily: FONT.ui, color: COLORS.text, flexShrink: 0 }}>
-          「+」按钮默认预设
-        </text>
-        <SelectField
-          testId="plus-default"
-          value={snap.presets.plusDefault ?? ''}
-          options={[
-            { value: '', label: '跟随上次使用' },
-            ...items.map((p) => ({ value: p.id, label: p.label })),
-          ]}
-          onChange={(v) => settings.patch('presets.plusDefault', v === '' ? null : v)}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flexGrow: 1 }}>
+          <text
+            style={{
+              fontSize: 13,
+              fontFamily: FONT.ui,
+              color: COLORS.textBright,
+              whiteSpace: 'normal',
+            }}
+          >
+            「+」按钮默认预设
+          </text>
+          <text
+            style={{
+              marginTop: 3,
+              fontSize: 12,
+              fontFamily: FONT.ui,
+              color: COLORS.muted,
+              whiteSpace: 'normal',
+              lineHeight: 17,
+            }}
+          >
+            点侧栏「新建会话」时直接启动该预设；选「跟随上次使用」则记住上次选择
+          </text>
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            minHeight: 22,
+            flexShrink: 0,
+          }}
+        >
+          <SelectField
+            testId="plus-default"
+            width="auto"
+            value={snap.presets.plusDefault ?? ''}
+            options={[
+              { value: '', label: '跟随上次使用' },
+              ...items.map((p) => ({ value: p.id, label: p.label })),
+            ]}
+            onChange={(v) => settings.patch('presets.plusDefault', v === '' ? null : v)}
+          />
+        </div>
       </div>
 
+      {/* 「预设列表」小标题（原型：11px w500 muted margin 14 0 6 pad 0 2） */}
       <text
         style={{
-          fontSize: 12,
+          fontSize: 11,
+          fontWeight: 500,
           fontFamily: FONT.ui,
           color: COLORS.muted,
-          marginTop: 10,
-          marginBottom: 4,
+          marginTop: 14,
+          marginBottom: 6,
+          paddingLeft: 2,
+          paddingRight: 2,
         }}
       >
         预设列表
@@ -118,7 +159,7 @@ export function PresetsSection({
       <ListEditorAdd
         testId="add-preset"
         label="新增预设"
-        onAdd={() => setExpandedId(settings.addPreset({ label: `自定义 ${customCount + 1}` }))}
+        onAdd={() => setExpandedId(settings.addPreset({ label: '自定义预设' }))}
       />
     </div>
   )
@@ -152,15 +193,14 @@ function PresetCard({
       onToggle={onToggle}
       badges={
         <>
+          <HeadBadge text={p.builtin ? '内置' : '自定义'} testId={`badge-${p.id}`} />
           {modified ? <ModDot testId={`mod-dot-${p.id}`} /> : null}
-          <Badge variant={p.builtin ? 'builtin' : 'custom'}>{p.builtin ? '内置' : '自定义'}</Badge>
         </>
       }
       actions={(suppress) => (
         <>
-          <IconButton
-            name="copy"
-            label={`复制预设 ${p.label} 为自定义副本`}
+          <MiniButton
+            icon="copy"
             testId={`preset-copy-${p.id}`}
             onClick={() => {
               suppress()
@@ -168,9 +208,8 @@ function PresetCard({
             }}
           />
           {p.builtin && modified ? (
-            <IconButton
-              name="reset"
-              label={`重置预设 ${p.label} 为出厂值`}
+            <MiniButton
+              icon="reset"
               testId={`preset-reset-${p.id}`}
               onClick={() => {
                 suppress()
@@ -179,10 +218,9 @@ function PresetCard({
             />
           ) : null}
           {!p.builtin ? (
-            <IconButton
-              name="trash"
+            <MiniButton
+              icon="trash"
               danger
-              label={`删除预设 ${p.label}`}
               testId={`preset-delete-${p.id}`}
               onClick={() => {
                 suppress()
@@ -199,7 +237,7 @@ function PresetCard({
   )
 }
 
-// ── 展开态编辑器（§7 字段表）─────────────────────────────────────────
+// ── 展开态编辑器（§7 字段表；原型 fieldRow Label/Program/Args/Env/Init command/Cwd）─
 
 function PresetEditor({
   p,
@@ -213,24 +251,28 @@ function PresetEditor({
 
   return (
     <div>
-      <FieldRow label="Label" name="label" modified={presetFieldModified(p, 'label')}>
+      <FieldRow label="Label" modified={presetFieldModified(p, 'label')}>
         <TextInput
           testId={`field-label-${p.id}`}
+          width="fill"
+          radius={6}
           value={p.label}
           placeholder="显示名"
           onChange={(v) => update({ label: v })}
         />
       </FieldRow>
-      <FieldRow label="Program" name="program" modified={presetFieldModified(p, 'program')}>
+      <FieldRow label="Program" modified={presetFieldModified(p, 'program')}>
         <TextInput
           testId={`field-program-${p.id}`}
+          width="fill"
+          radius={6}
           mono
           value={p.program ?? ''}
           placeholder="可执行文件名或绝对路径；留空 = 系统默认 shell"
           onChange={(v) => update({ program: v })}
         />
       </FieldRow>
-      <FieldRow label="Args" name="args[]" modified={presetFieldModified(p, 'args')}>
+      <FieldRow label="Args" modified={presetFieldModified(p, 'args')}>
         <LinesField
           testId={`field-args-${p.id}`}
           placeholder="每行一个参数"
@@ -239,7 +281,7 @@ function PresetEditor({
           commit={(v) => update({ args: v as string[] })}
         />
       </FieldRow>
-      <FieldRow label="Env" name="env" modified={presetFieldModified(p, 'env')}>
+      <FieldRow label="Env" modified={presetFieldModified(p, 'env')}>
         <LinesField
           testId={`field-env-${p.id}`}
           placeholder="每行 KEY=VALUE，如 AMP_FORCE_BEL=1"
@@ -262,22 +304,22 @@ function PresetEditor({
           commit={(v) => update({ env: v as Record<string, string> })}
         />
       </FieldRow>
-      <FieldRow
-        label="InitCommand"
-        name="initCommand"
-        modified={presetFieldModified(p, 'initCommand')}
-      >
+      <FieldRow label="Init command" modified={presetFieldModified(p, 'initCommand')}>
         <TextInput
           testId={`field-initCommand-${p.id}`}
+          width="fill"
+          radius={6}
           mono
           value={p.initCommand ?? ''}
           placeholder="作为普通键入打进 shell，不是 exec 替换进程"
           onChange={(v) => update({ initCommand: v })}
         />
       </FieldRow>
-      <FieldRow label="Cwd" name="cwd?" modified={presetFieldModified(p, 'cwd')}>
+      <FieldRow label="Cwd" modified={presetFieldModified(p, 'cwd')}>
         <TextInput
           testId={`field-cwd-${p.id}`}
+          width="fill"
+          radius={6}
           mono
           value={p.cwd ?? ''}
           placeholder="可选；默认项目根目录"

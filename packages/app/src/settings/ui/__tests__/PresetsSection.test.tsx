@@ -169,8 +169,8 @@ describe('PresetsSection · 复制 / 删除 / 新增', () => {
       return ids.length === 1 && exists(`preset-editor-${ids[0]}`)
     })
     const nid = store.get().presets.items.find((p) => !p.builtin)!.id
-    expect(store.get().presets.items.find((p) => p.id === nid)!.label).toBe('自定义 1')
-    expect(texts().includes('自定义 1')).toBe(true)
+    expect(store.get().presets.items.find((p) => p.id === nid)!.label).toBe('自定义预设')
+    expect(texts().includes('自定义预设')).toBe(true)
 
     // program 即时输入
     const prog = t.renderer.findByTestId(`field-program-${nid}`)!

@@ -39,8 +39,8 @@ export function SelectField({
   disabled?: boolean
   onChange: (next: string) => void
   testId: string
-  /** 宽度：数字 = 固定 px；'fill' = 撑满容器（弹窗表单） */
-  width?: number | 'fill'
+  /** 宽度：数字 = 固定 px；'fill' = 撑满容器（弹窗表单）；'auto' = 内容宽（min-width 120，原型 .sel-trig） */
+  width?: number | 'fill' | 'auto'
   /** 裸触发器（原型 .tool-ctx select：无壳无底无边，嵌在自带壳的行内） */
   bare?: boolean
 }): ReactElement {
@@ -64,11 +64,16 @@ export function SelectField({
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          width: width === 'fill' ? '100%' : width,
-          height: bare ? 24 : 28,
-          paddingLeft: bare ? 0 : 9,
-          paddingRight: bare ? 0 : 6,
-          borderRadius: 4,
+          gap: 8,
+          ...(width === 'fill'
+            ? { width: '100%' as const }
+            : width === 'auto'
+              ? { minWidth: 120 }
+              : { width }),
+          height: bare ? 24 : 30,
+          paddingLeft: bare ? 0 : 10,
+          paddingRight: bare ? 0 : 8,
+          borderRadius: 8,
           cursor: disabled ? 'default' : 'pointer',
           opacity: disabled ? 0.5 : 1,
           backgroundColor: bare ? 'transparent' : COLORS.inputBg,
@@ -90,7 +95,7 @@ export function SelectField({
             {current?.label ?? value}
           </text>
         </SelectValue>
-        <Icon name="chevronDown" size={13} color={COLORS.muted} />
+        <Icon name="chevronDown" size={12} color={COLORS.muted} />
       </SelectTrigger>
 
       <SelectContent
@@ -99,12 +104,19 @@ export function SelectField({
         align="start"
         testId={`${testId}-menu`}
         style={{
-          minWidth: 220,
+          minWidth: 140,
           paddingTop: 4,
           paddingBottom: 4,
-          borderRadius: 6,
+          borderRadius: 12,
           borderWidth: 1,
           borderColor: COLORS.borderSubtle,
+          boxShadow: {
+            offsetX: 0,
+            offsetY: 14,
+            blurRadius: 38,
+            spreadRadius: 0,
+            color: 'rgba(0,0,0,0.5)',
+          },
         }}
       >
         {options.map((o) => (
@@ -112,20 +124,36 @@ export function SelectField({
             key={o.value}
             value={o.value}
             testId={`${testId}-item-${o.value}`}
-            style={({ selected, highlighted }) => ({
+            style={({ highlighted }) => ({
               display: 'flex',
               flexDirection: 'row',
               alignItems: 'center',
+              gap: 6,
               height: 26,
-              paddingLeft: 10,
-              paddingRight: 10,
+              paddingLeft: 8,
+              paddingRight: 8,
               borderRadius: 4,
-              ...controlText(),
-              color: selected ? COLORS.accent : COLORS.text,
-              backgroundColor: highlighted ? COLORS.surfaceHover : 'transparent',
+              backgroundColor: highlighted ? COLORS.surface : 'transparent',
             })}
           >
-            {o.label}
+            {({ selected }) => (
+              <>
+                <div
+                  style={{
+                    width: 14,
+                    flexShrink: 0,
+                    display: 'flex',
+                    color: COLORS.accent,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {selected ? <Icon name="check" size={12} /> : null}
+                </div>
+                <text style={{ ...controlText(), color: COLORS.text, pointerEvents: 'none' }}>
+                  {o.label}
+                </text>
+              </>
+            )}
           </SelectItem>
         ))}
       </SelectContent>

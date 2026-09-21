@@ -62,9 +62,11 @@ export function NumberInput({
         // 一行文字的 input 垂直居中（native input 文字元素是 measured 一行高，
         // stretch 会把它顶在盒顶 → 文字贴顶；同 TextInput/gpuix 官方 composer）
         alignItems: 'center',
-        width: 220,
-        height: 28,
-        borderRadius: 4,
+        // 原型 .num-in 76px 是含原生步进钮的总宽；GPUIX 无原生 number
+        // 步进钮，自绘列占 18 → 文本区 ≈46px（mono 2~3 位数字足够）
+        width: 76,
+        height: 30,
+        borderRadius: 8,
         backgroundColor: COLORS.inputBg,
         borderWidth: 1,
         borderColor: COLORS.borderSubtle,
@@ -90,17 +92,17 @@ export function NumberInput({
         style={{
           flexGrow: 1,
           minWidth: 0,
-          paddingLeft: 9,
+          paddingLeft: 8,
           paddingRight: 4,
-          ...controlText(),
+          ...controlText(true),
         }}
       />
-      {/* 步进钮列：↑/↓，各 22×~13；alignSelf stretch 铺满壳高（外层改 center 后需显式声明） */}
+      {/* 步进钮列：↑/↓，各 18×~13；alignSelf stretch 铺满壳高（外层改 center 后需显式声明） */}
       <div
         style={{
           display: 'flex',
           flexDirection: 'column',
-          width: 22,
+          width: 18,
           alignSelf: 'stretch',
           flexShrink: 0,
         }}

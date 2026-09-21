@@ -3,7 +3,9 @@
  * §5.2「窄范围数值 → slider + 实时数值」，原型 .range-wrap：180px 轨道 +
  * 38px mono 数值）。
  *
- * GPUIX 无 input[type=range]：自绘轨道 + 拇指。定位策略（两级降级）：
+ * GPUIX 无 input[type=range]：自绘轨道 + 拇指（原型 .rslider：200px 宽、
+ * 18px hit 高、3px 轨道 surfaceHover、13px 拇指 textBright、range-val
+ * mono 44px）。定位策略（两级降级）：
  * 1. 比例定位——renderer 实例有 getElementBounds（GpuixRenderer 与
  *    TestGpuixRenderer 都实现；仅 NativeRenderer TS 接口未列，鸭子调用）
  *    → mouseDown 即跳到点击比例位，拖拽全程绝对定位；
@@ -45,7 +47,7 @@ export function RangeInput({
   disabled = false,
   onChange,
   testId,
-  width = 180,
+  width = 200,
   format,
 }: {
   value: number
@@ -162,7 +164,7 @@ export function RangeInput({
   }
 
   const ratio = (value - min) / (max - min)
-  const thumbLeft = ratio * (width - 12)
+  const thumbLeft = ratio * (width - 13)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -186,7 +188,7 @@ export function RangeInput({
         style={{
           position: 'relative',
           width,
-          height: 16,
+          height: 18,
           flexShrink: 0,
           cursor: disabled ? 'default' : 'pointer',
           opacity: disabled ? 0.5 : 1,
@@ -201,12 +203,10 @@ export function RangeInput({
             position: 'absolute',
             left: 0,
             right: 0,
-            top: 6,
-            bottom: 6,
-            borderRadius: 999,
-            backgroundColor: COLORS.inputBg,
-            borderWidth: 1,
-            borderColor: COLORS.borderSubtle,
+            top: 7,
+            bottom: 8,
+            borderRadius: 2,
+            backgroundColor: COLORS.surfaceHover,
             pointerEvents: 'none',
           }}
         />
@@ -215,26 +215,26 @@ export function RangeInput({
           style={{
             position: 'absolute',
             left: 0,
-            top: 6,
-            bottom: 6,
+            top: 7,
+            bottom: 8,
             width: Math.max(0, Math.min(width, ratio * width)),
-            borderRadius: 999,
+            borderRadius: 2,
             backgroundColor: COLORS.accent,
             pointerEvents: 'none',
           }}
         />
-        {/* 拇指：12px，dragging/focused 放大感（GPUIX 无 scale，用边框加粗） */}
+        {/* 拇指：13px 圆 textBright 无边框（原型 .rs-thumb） */}
         <div
           style={{
             position: 'absolute',
             left: thumbLeft,
             top: 2,
-            width: 12,
-            height: 12,
+            width: 13,
+            height: 13,
             borderRadius: 999,
             backgroundColor: COLORS.textBright,
-            borderWidth: 1,
-            borderColor: dragging || focused ? COLORS.focusBorder : COLORS.borderSubtle,
+            borderWidth: dragging || focused ? 1 : 0,
+            borderColor: COLORS.focusBorder,
             pointerEvents: 'none',
           }}
         />
@@ -243,7 +243,7 @@ export function RangeInput({
       <text
         testId={`${testId}-val`}
         style={{
-          minWidth: 38,
+          minWidth: 44,
           textAlign: 'right',
           fontSize: 12,
           fontFamily: FONT.mono,

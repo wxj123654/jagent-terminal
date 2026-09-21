@@ -462,7 +462,7 @@
   - 逐项：ToolDialog 440 宽/分组标签/筛选/「默认」徽标/cmd 右列；SearchDialog
     空 query 列全部+↑↓+归属标签；ErrorDialog .err-item 行结构；CrashDialog；
     NotifPopover；ContextMenu；Toast 右下。结论详见 Phase R 结论区（R7）。
-- [ ] **R8 设置面**
+- [x] **R8 设置面**
   - 锚点：`src/components/SettingsView.tsx`（745 行：7 分区 nav/SearchAll 全局
     命中列表/SettingRow+Control/FontControl 弹层/KbSection 捕获格/PresetsSection
     /AcpSection 列表编辑）。
@@ -691,6 +691,30 @@
   （window-visibility 单跑偶超时=PowerShell 冷启动基线，隔离重跑 4.4s
   过，非本次引入）+ ui 33 + fmt/lint 全绿。
 
+- **R8（设置面，2026-09-21）**：外壳重建——st-nav 218（217+1 边，
+  `COLORS.settingsNav` rgba(32,36,43,.55) 新增）、brand 58（gear 图标 +
+  「设置/偏好与工具」）、搜索框 34（search 图标 + `/` kbd + 显式 focus
+  边色——GPUIX 无 :focus-within，input onFocus/onBlur 翻容器态）、nav 行
+  34 + 分区图标 + 命中徽章 + 0 命中置灰、page-head（title+sub）+
+  「即时生效」pill、st-card r12 `COLORS.card` 包分区。**控件层**：
+  controlBox r6、controlText 12/16、focusRing 默认 `COLORS.ring`、
+  Toggle 34×20、NumberInput 总宽 76（步进列 18）、Select/SearchSelect
+  弹层 r8+overlay+subtle 边+0 14 38 阴影、RangeInput 轨道~180、
+  Textarea 支持 width fill；FontSelect 弹层 280/264 已在早前对齐。
+  **搜索语义补差**：原型 `sectionHasContent` 对 presets/acp 恒 true——
+  搜索结果列两个分区恒在，列表空则卡内「无匹配」；ACP agent 参与命中
+  （label/command/args），settings-ui.md §9 同步补 ACP + 恒在语义。
+  **SettingRow**：srow h58 pad 0 16、moddot 挂载使 label/reset 槽右移 12
+  （原型 .srow 语义，非缺陷——测试改断言新几何）；reset 槽位布局稳定。
+  **listEditorParts 重写**：le-card 展开卡/le-add 虚线近似（GPUIX 无
+  dashed borderStyle，实线代替）/le-empty；AcpAgentsSection 改共享件 +
+  intro 文案。**有意偏离/不支持**：letterSpacing、textTransform 跳过；
+  SelectItem children 用 render-prop 形态（已核实合法）。**验收**：
+  proto-shot settings/font 截图目检一致 + geom 逐字段（nav 217+1 /
+  content x=482 pad34 / card 728 / srow 58）。测试：SettingsView/
+  SettingRow/PresetsSection 三文件按新语义更新（scroll 约束断言适配
+  新卡结构）。gate：双包 tsc + 根 bun test 462 + fmt/lint 全绿。
+
 ---
 
 
@@ -846,3 +870,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-20 · **C6 JS ctx shim + rough.js 验收 + .refs pin 修复**：交接文档（/tmp/jagent-canvas-handoff-2.md）下一步执行——`packages/app/src/canvas/`（native.ts seam + font.ts shorthand 解析 + context.ts ctx 形态封装：shadow state、非法值静默忽略、setLineDash 校验/奇数翻倍、save/restore 双层同步、putImageData 全图快路径 + gpuixCanvas.ts surface 生命周期/订阅 + Canvas.tsx pixelRatio DPR + rev→useSyncExternalStore 重渲染）+ `installCanvasNative()` 进 main.tsx + `docs/canvas-conformance.json` 机器可读清单 · 验收：单测 32 绿（fake native 录制）；**roughjs 4.6.6**（联网核实）离屏 + 挂载真窗口截图像素断言全绿；cargo canvas:: 18/18 · 修：canvas.ts/Canvas.tsx 大小写撞名→gpuixCanvas.ts；native `<canvas>` 不上 ctx.style 零高 → 直接给 gpui canvas()（实现 Styled）上盒样式 · **环境坑**：`.refs/gpuix` 停在旧 pin 6b4be86（gitignored 不随仓更新），重建 native 反向降级 Cargo.lock 且 86 测试因 getElementBounds 形态（数组 vs 对象）级联失败——已原地修到 d85a31e + 重打补丁 + zed 对齐 81c99f81，顺手修 `refs-state.ts` index 哈希缩写长度误报（浅克隆 7 位 vs 导出 8 位）· gate：全量 `bun test` 472 绿、app `tsc --noEmit` 0 错、fmt/lint 干净、cargo lib 21 绿；e2e 包独立 `tsc --noEmit` 报 TS2688（@types/react 未被 bun isolated install 提升到 e2e 可达路径）为历史遗留环境项，不影响 `bun test` 运行时 · 下一步：C7 drawImage/gradient/toDataURL → C8 uPlot 验收
 - 2026-09-21 · **R5 完成（工作面板 WorkPanel）**：归域实现 `git/components/WorkPanel.tsx` 全项对齐 `.wp-*`（第二段 :root 生效值）——bg sidebar/左缘 borderSubtle、wp-head 44、ptab 28r8+1px边+active 阴影、file-row 32r8、bdg/nm/dir/add/del 字号色板逐项、wp-sum/wp-file-head/hint · **diff/预览改手动 .dl/.cl 行渲染**（原生 `<diff>` 双行号 gutter 放不进 244–280px 窄面板且内容自然宽 525>267 只能 x 滚；顺带修掉 diffAdd 0.12 alpha 二次乘算的真 bug）· x 溢出 = row 视口 scroll + 内列 minWidth:数值（'100%' 不解析为视口宽）· 壳：拖宽 244–720、<1100 absolute overlay（无把手，min(420,winW) 上限）、刷新钮 refresh()+toast · 新增 `panel-files` 对比态（两侧点击交互复刻）+ WT_DIFF fixture 去文件头对齐原型种子 · 结果：panel 面板区 14.69%→9.03%、panel-files 12.05%（文本密集底噪带内）· 两轴评审修复：关面板焦点回面板钮（focusElement seam+ToolButton refEl）、idle 态提示、FileName 截断方向、HeadButton→IconButton、w-12→w-13 off-by-one、pe:none 补齐、分区口径 77→83、死选择器清理 · 测试 WorkPanel.test.tsx 12 例（坑：getElementBounds content-box，宽断言减 1px 边线）· gate：bun test 469（icons 超时为全量负载 flake，单跑绿）+ tsc + fmt + lint + export-patches --check 全绿 · 下一步：R6（Git 图）或 R3/R4
 - 2026-09-21 · **C7 drawImage/gradient/pattern/toDataURL**：交接文档（/tmp/jagent-canvas-handoff-3.md）下一步执行——`PaintSpec::Gradient`（peniko 0.6.1 原生：`new_linear`/`new_two_point_radial`/`new_sweep`，`interpolation_alpha_space=Unpremultiplied`、`Extend::Pad`；退化/零 stop 渐变按规范拦成 transparent 而非 vello 默认黑）+ `PaintSpec::Pattern`（`ImageBrush`+`ImageSource::Pixmap(Arc<Pixmap>)` 直接携带像素，无需图像注册表；repeat-x/y/no-repeat 用 pattern_band 用户空间 clip 表达「越界透明」——peniko Extend 只有 Pad/Repeat/Reflect）+ `resolve_draw_image` 几何归一化（源矩形裁剪+dst 等比收缩+负 dw/dh 负缩放镜像）+ `Ctx2d::draw_image`/`encode_png` + backend `draw_pixels`（`set_paint_transform` 映射图像素→用户空间，绘制后 `reset_paint_transform` 防泄漏）· **vello_cpu 0.2.0 坑**：`sampler.alpha != 1.0` 在 encode 时 `unimplemented!()` panic——globalAlpha 一律 `Pixmap::multiply_alpha` 烘进像素，不传 sampler.alpha · napi：`serde_json::Value` 入参（serde-json feature 已开）让 fillStyle/strokeStyle 同时吃字符串与渐变对象 · JS：`gradient.ts` 双类 + `context.ts` applyPaint 三分支（string/gradient/pattern）+ drawImage 参形归一化 + `gpuixCanvas.toDataURL` · gate：cargo lib 38 绿（canvas:: 35）、fake 单测 39、app tsc 0、e2e 11 绿、fmt(oxfmt)/lint(oxlint)/cargo fmt 干净 · 下一步：C8 uPlot/Chart.js 验收 + benchmark + conformance 参数化用例
+- 2026-09-21 · **R8 完成（设置面对齐 React 原型）**：外壳重建（st-nav 217+1 边/COLORS.settingsNav 半透明、brand 58+gear+双行文案、搜索框 34+/ kbd+显式 focus 边色[GPUIX 无 :focus-within]、nav 行图标+命中徽章+0 命中置灰、page-head+即时生效 pill、st-card r12 COLORS.card）· 控件层对齐（controlBox r6/controlText 12·16/focusRing→ring/Toggle 34×20/NumberInput 76+步进 18/Select·SearchSelect 弹层 r8+overlay+阴影/RangeInput 轨道~180/Textarea fill）· 搜索语义补差：presets/acp 恒在结果列（原型 sectionHasContent），卡内「无匹配」；ACP agent 参与命中；settings-ui §9 同步 · SettingRow h58 pad 0 16+moddot 右移 12 语义化；listEditorParts 重写（le-card/le-add 实线近似虚线[无 dashed]/le-empty）；AcpAgentsSection 共享件化 · GPUIX 不支持项跳过：letterSpacing/textTransform/dashed · 验收：proto-shot settings/font 目检+geom 逐字段对齐（218/482+34/728/58）· 测试三文件按新语义更新 · gate：双包 tsc + 根 bun test 462 + fmt/lint 全绿 · 下一步：R5/R6/R7 剩余模块

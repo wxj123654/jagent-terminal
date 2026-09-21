@@ -242,8 +242,9 @@ CLI 侧 BEL / OSC 约定（j-agent 只信任这两个信号）
 搜索：
 
 - 搜索框置顶 nav，`/` 全局聚焦（不在输入态时）
-- 过滤范围：设置项 label / description / key 路径、预设名、键位表动作名
+- 过滤范围：设置项 label / description / key 路径、预设名（label/id/program/initCommand）、ACP agent（label/command/args）、键位表动作名与当前键值
 - 命中行所属分区在 nav 上显示计数徽章；0 命中分区置灰
+- presets / acp 分区在搜索结果列恒在：列表无命中项时卡内显示「无匹配」空态（对齐原型 `sectionHasContent`）；其余分区无命中则不出现在结果列
 - label 内 `<mark>` 高亮；`Esc` 清空；无结果显示空态 + 清除按钮
 - 搜索不改分区结构，只是过滤视图（对齐 Zed 行为）
 

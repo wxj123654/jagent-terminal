@@ -28,6 +28,7 @@ export function TextInput({
   testId,
   width = 220,
   autoFocus = false,
+  radius = 8,
 }: {
   value: string
   placeholder?: string
@@ -41,6 +42,8 @@ export function TextInput({
   width?: number | 'fill'
   /** 挂载即聚焦（弹窗内主输入框；deferred 层点击聚焦不可靠，弹窗输入必须 autoFocus） */
   autoFocus?: boolean
+  /** 圆角（原型 .txt-in=8 / .field-row input=6）；默认 8 */
+  radius?: number
 }): ReactElement {
   const [focused, setFocused] = useState(false)
 
@@ -55,7 +58,7 @@ export function TextInput({
         height: 30,
         paddingLeft: 8,
         paddingRight: 8,
-        borderRadius: 8,
+        borderRadius: radius,
         backgroundColor: COLORS.inputBg,
         borderWidth: 1,
         borderColor: focused ? COLORS.focusBorder : COLORS.borderSubtle,

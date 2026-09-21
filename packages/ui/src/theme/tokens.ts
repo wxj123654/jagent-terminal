@@ -77,8 +77,10 @@ export const COLORS = {
   tabStrip: '#1b1e24',
   /** 键盘 focus 环外圈（原型 --ring；focus-visible 双环 4px 的外圈色） */
   ring: 'rgba(97, 175, 239, 0.38)',
-  /** 玻璃卡面（原型 --card；home 卡等半透明抬升面） */
+  /** 玻璃卡面（原型 --card；home 卡/设置 st-card 等半透明抬升面） */
   card: 'rgba(42, 48, 57, 0.72)',
+  /** 设置左列底色（原型 .st-nav rgba(32,36,43,.55)——sidebar 色半透明叠 pane） */
+  settingsNav: 'rgba(32, 36, 43, 0.55)',
 } as const
 
 /** gpui font_family 是单名精确查找（direct_write GetMatchingFonts）——
