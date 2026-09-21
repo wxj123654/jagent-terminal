@@ -208,16 +208,19 @@ describe('SettingsView · 搜索（§15 3/5 部分）', () => {
     // 搜索模式右列：terminal 命中行（跨分区列表）
     expect(t.renderer.findByTestId('row-terminal.fontFamily')).toBeDefined()
 
-    // 0 命中分区置灰（opacity 0.4），点击不切分区（guard）
+    // R8 对齐原型 sectionHasContent：presets/acp 恒有内容（卡内「无匹配」），
+    // nav 不置灰且可点；0 内容的 defs 分区（notifications）置灰 + 点击不切
+    const notif = t.renderer.findByTestId('nav-notifications')!
+    expect(notif.style.opacity).toBe(0.4)
     const acp = t.renderer.findByTestId('nav-acp')!
-    expect(acp.style.opacity).toBe(0.4)
-    click('nav-acp')
+    expect(acp.style.opacity).toBe(1)
+    click('nav-notifications')
     t.renderer.flush()
     // 搜索态未被打断（仍是跨分区命中列表）
     expect(t.renderer.findByTestId('row-terminal.fontFamily')).toBeDefined()
   })
 
-  test('无命中空态 + 清除按钮恢复', async () => {
+  test('无命中：presets/acp 恒在结果列（卡内「无匹配」）+ Esc 清空恢复', async () => {
     // 清空后键入乱串
     let search = t.renderer.findByTestId('settings-search')!
     t.renderer.nativeSimulateKeystrokes(search.id, 'backspace backspace backspace backspace')
@@ -225,12 +228,16 @@ describe('SettingsView · 搜索（§15 3/5 部分）', () => {
     t.renderer.nativeSimulateKeystrokes(search.id, 'z z z q')
     t.renderer.flush()
 
-    expect(t.renderer.findByTestId('settings-empty')).toBeDefined()
+    // 原型 sectionHasContent：presets/acp 无条件出现在结果列，空列表
+    // 显示卡内「无匹配」提示（全局空态卡不可达——同原型）
+    expect(t.renderer.findByTestId('settings-empty-hits')).toBeDefined()
+    expect(texts().includes('无匹配预设')).toBe(true)
+    expect(texts().includes('无匹配 agent')).toBe(true)
+    expect(texts().includes('找到 2 个相关分区')).toBe(true)
 
-    click('settings-clear-search')
+    // Esc 清空 → 回当前分区视图（keybindings——上一用例遗留的 section）
+    t.renderer.nativeSimulateKeyDown(search.id, 'escape')
     t.renderer.flush()
-    expect(t.renderer.findByTestId('settings-empty')).toBeUndefined()
-    // 清除后回到当前分区视图（keybindings——上一用例遗留的 section）
     expect(texts().includes('ctrl-tab')).toBe(true)
   })
 
@@ -315,12 +322,14 @@ describe('SettingsView · scroll containment', () => {
 
     try {
       navigateSettingsSection('presets')
-      constrained.render(frame(500))
+      // R8 外壳加高（品牌头 58 + 页头 ~50 + st-card 内边距）——500 已装不下
+      // presets 全内容，「短内容不空滚」的判定高度抬到 700
+      constrained.render(frame(700))
       constrained.renderer.flush()
 
       let scroll = constrained.renderer.findByTestId('settings-content-scroll')!
       let bounds = constrained.renderer.getElementBounds(scroll.id)!
-      expect(bounds.height).toBe(500)
+      expect(bounds.height).toBe(700)
       constrained.renderer.nativeSimulateScrollWheel(
         bounds.x + bounds.width / 2,
         bounds.y + 100,

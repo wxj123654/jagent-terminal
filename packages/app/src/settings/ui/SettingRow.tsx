@@ -6,13 +6,16 @@
  * 运行时零耦合——ui/ 不依赖任何人的运行时依赖不变），值与回调全由上层
  * （SettingsView）注入，自身不碰 store——纯受控组件，测试面干净。
  *
- * 可见性规则（§5.1 + §11 折中）：
- * - modified 蓝点常显（键盘可发现）；
+ * 可见性规则（§5.1 + §11 折中，R8 对齐原型 .srow）：
+ * - modified 蓝点仅在修改后挂载（原型 `{mod && <span class="moddot"/>}`——
+ *   label 随点出现右移 12px，原型接受此位移）；
  * - 可用行始终保留 18×18 reset 槽，槽内始终挂载同一个 IconButton：
  *   modified 只切 opacity / pointerEvents / tabIndex，不增删布局节点，因此
  *   恢复图标出现或消失不会推动 label 或右侧控件；
- * - Undo 图标视觉尺寸 10px，modified 时常显且可聚焦（避免 hover-only）；
+ * - Undo 图标视觉尺寸 12px，modified 时常显且可聚焦（避免 hover-only）；
  * - def.phase 项：控件 disabled + PhaseBadge（§5.3「可见但 disabled」）。
+ * 几何：min-height 58 / padding 13 16（st-card 行内边距）/ gap 16 /
+ * alignItems flex-start；desc 12px muted lh1.45 max-width 560。
  */
 
 import type { ReactElement } from 'react'
@@ -139,40 +142,40 @@ export function SettingRow({
       style={{
         display: 'flex',
         flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 20,
-        paddingTop: 11,
-        paddingBottom: 11,
-        paddingLeft: 2,
-        paddingRight: 2,
+        alignItems: 'flex-start',
+        gap: 16,
+        minHeight: 58,
+        paddingTop: 13,
+        paddingBottom: 13,
+        paddingLeft: 16,
+        paddingRight: 16,
         borderBottomWidth: 1,
-        borderColor: COLORS.border,
+        borderColor: COLORS.borderSubtle,
+        opacity: disabled ? 0.5 : 1,
       }}
     >
       {/* 左列：label（+蓝点+PhaseBadge） / description */}
       <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flexGrow: 1 }}>
-        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-          {/* modified 蓝点：常显；未修改 = 空心圈（原型 .mod-dot） */}
-          <div
-            testId={`moddot-${def.path}`}
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: 999,
-              flexShrink: 0,
-              backgroundColor: modified ? COLORS.accent : 'transparent',
-              borderWidth: 1,
-              borderColor: modified ? COLORS.accent : COLORS.borderSubtle,
-            }}
-          />
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {/* modified 蓝点：仅修改后挂载（原型 .moddot 条件渲染） */}
+          {modified ? (
+            <div
+              testId={`moddot-${def.path}`}
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: 999,
+                flexShrink: 0,
+                backgroundColor: COLORS.accent,
+              }}
+            />
+          ) : null}
           <text
             style={{
               fontSize: 13,
               fontFamily: FONT.ui,
               color: COLORS.textBright,
-              whiteSpace: 'nowrap',
-              textOverflow: 'ellipsis',
+              whiteSpace: 'normal',
             }}
             highlight={
               highlightQuery ? { query: highlightQuery, color: 'rgba(229, 192, 123, 0.28)' } : null
@@ -198,7 +201,7 @@ export function SettingRow({
             >
               <IconButton
                 name="reset"
-                size={10}
+                size={12}
                 hitSize={18}
                 label={`恢复默认：${def.label}`}
                 disabled={!modified}
@@ -220,6 +223,7 @@ export function SettingRow({
               color: COLORS.muted,
               whiteSpace: 'normal',
               lineHeight: 17,
+              maxWidth: 560,
             }}
             highlight={
               highlightQuery ? { query: highlightQuery, color: 'rgba(229, 192, 123, 0.28)' } : null
@@ -230,12 +234,13 @@ export function SettingRow({
         ) : null}
       </div>
 
-      {/* 右列只放控件；reset 属于设置项状态，放在左侧 label 后。 */}
+      {/* 右列只放控件（.ctl：min-height 22 居中）；reset 属于设置项状态，放在左侧 label 后。 */}
       <div
         style={{
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
+          minHeight: 22,
           flexShrink: 0,
         }}
       >

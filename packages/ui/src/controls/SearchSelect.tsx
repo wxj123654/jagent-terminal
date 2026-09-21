@@ -40,9 +40,9 @@ import { inputFocus } from '../keyboard'
 import { controlText, focusRing } from '../theme/style'
 import { COLORS, FONT } from '../theme/tokens'
 
-/** 弹层宽度（原型 280） */
+/** 弹层宽度（原型 .font-pop 280） */
 const POP_WIDTH = 280
-/** 行高（虚拟列表 estimatedItemHeight 与滚动跟随计算共用） */
+/** 行高（虚拟列表 estimatedItemHeight 与滚动跟随计算共用；原型 .font-row 26） */
 const ROW_H = 26
 /** 列表最大高（超出滚动） */
 const LIST_MAX_H = 264
@@ -105,6 +105,7 @@ export function SearchSelect({
   onChange,
   testId,
   width = 220,
+  triggerMinWidth = 180,
 }: {
   value: string
   options?: SearchSelectOption[]
@@ -126,8 +127,10 @@ export function SearchSelect({
   disabled?: boolean
   onChange: (next: string) => void
   testId: string
-  /** 触发器宽度：数字 = 固定 px；'fill' = 撑满容器 */
-  width?: number | 'fill'
+  /** 触发器宽度：数字 = 固定 px；'fill' = 撑满容器；'auto' = 内容宽（min-width 见 triggerMinWidth） */
+  width?: number | 'fill' | 'auto'
+  /** width='auto' 时的最小宽（原型 .font-trig min-width 180） */
+  triggerMinWidth?: number
 }): ReactElement {
   const { renderer } = useGpuix()
   const [open, setOpen] = useState(false)
@@ -311,11 +314,16 @@ export function SearchSelect({
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          width: width === 'fill' ? '100%' : width,
-          height: 28,
-          paddingLeft: 9,
-          paddingRight: 6,
-          borderRadius: 4,
+          gap: 8,
+          ...(width === 'fill'
+            ? { width: '100%' as const }
+            : width === 'auto'
+              ? { minWidth: triggerMinWidth }
+              : { width }),
+          height: 30,
+          paddingLeft: 10,
+          paddingRight: 8,
+          borderRadius: 8,
           cursor: disabled ? 'default' : 'pointer',
           opacity: disabled ? 0.5 : 1,
           backgroundColor: COLORS.inputBg,
@@ -337,7 +345,7 @@ export function SearchSelect({
             {value}
           </text>
         </ComboboxValue>
-        <Icon name="chevronDown" size={13} color={COLORS.muted} />
+        <Icon name="chevronDown" size={12} color={COLORS.muted} />
       </ComboboxTrigger>
 
       <ComboboxContent
@@ -349,10 +357,17 @@ export function SearchSelect({
           width: POP_WIDTH,
           paddingTop: 4,
           paddingBottom: 4,
-          borderRadius: 6,
+          borderRadius: 12,
           borderWidth: 1,
           borderColor: COLORS.borderSubtle,
           backgroundColor: COLORS.overlay,
+          boxShadow: {
+            offsetX: 0,
+            offsetY: 14,
+            blurRadius: 38,
+            spreadRadius: 0,
+            color: 'rgba(0,0,0,0.5)',
+          },
         }}
       >
         {searchable ? (

@@ -4,8 +4,9 @@
  *
  * 契约 §11 说「toggle 用真 checkbox（role 正确）」——GPUIX 无 checkbox 元素
  * 与 aria 面，等价物：div + tabIndex 0 + 键盘 space/enter + testId，状态由
- * props.checked 外部可见（不依赖颜色读值）。原型 .switch：34×20 轨道 +
- * 14px knob（GPUIX 无 transform 过渡，left 定位直跳）。
+ * props.checked 外部可见（不依赖颜色读值）。原型 .toggle（第二段覆盖）：
+ * 34×20 轨道 + 16px knob（关=surfaceHover 轨 + faint 钮；开=accent 轨 +
+ * #fff 钮；GPUIX 无 transform 过渡，left 定位直跳）。
  */
 
 import { useState } from 'react'
@@ -52,9 +53,9 @@ export function Toggle({
         boxShadow: focused ? focusRing() : undefined,
       }}
     >
-      {/* 轨道：关 = 凹陷底 subtle 边；开 = accent 软底 accent 边（原型 checked）。
-          pointerEvents none：装饰层不挡 hit-test（GPUIX 事件不冒泡，命中
-          deepest 元素——handler 宿主必须是可命中的容器本身） */}
+      {/* 轨道：关 = surfaceHover 实底；开 = accent 实底（原型 .toggle/.on，
+          无边框）。pointerEvents none：装饰层不挡 hit-test（GPUIX 事件不冒泡，
+          命中 deepest 元素——handler 宿主必须是可命中的容器本身） */}
       <div
         style={{
           position: 'absolute',
@@ -63,22 +64,20 @@ export function Toggle({
           top: 0,
           bottom: 0,
           borderRadius: 999,
-          backgroundColor: checked ? COLORS.accentSoft : COLORS.inputBg,
-          borderWidth: 1,
-          borderColor: checked ? COLORS.accent : COLORS.borderSubtle,
+          backgroundColor: checked ? COLORS.accent : COLORS.surfaceHover,
           pointerEvents: 'none',
         }}
       />
-      {/* knob：14px 圆，左 3 ↔ 左 17（34-14-3） */}
+      {/* knob：16px 圆，左 2 ↔ 左 16（34-16-2）；关 faint / 开 #fff */}
       <div
         style={{
           position: 'absolute',
-          left: checked ? 17 : 3,
-          top: 3,
-          width: 14,
-          height: 14,
+          left: checked ? 16 : 2,
+          top: 2,
+          width: 16,
+          height: 16,
           borderRadius: 999,
-          backgroundColor: checked ? COLORS.accent : COLORS.muted,
+          backgroundColor: checked ? '#ffffff' : COLORS.faint,
           pointerEvents: 'none',
         }}
       />

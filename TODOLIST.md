@@ -461,7 +461,7 @@
   - 逐项：ToolDialog 440 宽/分组标签/筛选/「默认」徽标/cmd 右列；SearchDialog
     空 query 列全部+↑↓+归属标签；ErrorDialog .err-item 行结构；CrashDialog；
     NotifPopover；ContextMenu；Toast 右下。
-- [ ] **R8 设置面**
+- [x] **R8 设置面**
   - 锚点：`src/components/SettingsView.tsx`（745 行：7 分区 nav/SearchAll 全局
     命中列表/SettingRow+Control/FontControl 弹层/KbSection 捕获格/PresetsSection
     /AcpSection 列表编辑）。
@@ -607,6 +607,30 @@
   gate：app tsc + 双包 tsc + 根 bun test 462 + fmt/lint +
   export-patches --check 全绿。
 
+- **R8（设置面，2026-09-21）**：外壳重建——st-nav 218（217+1 边，
+  `COLORS.settingsNav` rgba(32,36,43,.55) 新增）、brand 58（gear 图标 +
+  「设置/偏好与工具」）、搜索框 34（search 图标 + `/` kbd + 显式 focus
+  边色——GPUIX 无 :focus-within，input onFocus/onBlur 翻容器态）、nav 行
+  34 + 分区图标 + 命中徽章 + 0 命中置灰、page-head（title+sub）+
+  「即时生效」pill、st-card r12 `COLORS.card` 包分区。**控件层**：
+  controlBox r6、controlText 12/16、focusRing 默认 `COLORS.ring`、
+  Toggle 34×20、NumberInput 总宽 76（步进列 18）、Select/SearchSelect
+  弹层 r8+overlay+subtle 边+0 14 38 阴影、RangeInput 轨道~180、
+  Textarea 支持 width fill；FontSelect 弹层 280/264 已在早前对齐。
+  **搜索语义补差**：原型 `sectionHasContent` 对 presets/acp 恒 true——
+  搜索结果列两个分区恒在，列表空则卡内「无匹配」；ACP agent 参与命中
+  （label/command/args），settings-ui.md §9 同步补 ACP + 恒在语义。
+  **SettingRow**：srow h58 pad 0 16、moddot 挂载使 label/reset 槽右移 12
+  （原型 .srow 语义，非缺陷——测试改断言新几何）；reset 槽位布局稳定。
+  **listEditorParts 重写**：le-card 展开卡/le-add 虚线近似（GPUIX 无
+  dashed borderStyle，实线代替）/le-empty；AcpAgentsSection 改共享件 +
+  intro 文案。**有意偏离/不支持**：letterSpacing、textTransform 跳过；
+  SelectItem children 用 render-prop 形态（已核实合法）。**验收**：
+  proto-shot settings/font 截图目检一致 + geom 逐字段（nav 217+1 /
+  content x=482 pad34 / card 728 / srow 58）。测试：SettingsView/
+  SettingRow/PresetsSection 三文件按新语义更新（scroll 约束断言适配
+  新卡结构）。gate：双包 tsc + 根 bun test 462 + fmt/lint 全绿。
+
 ---
 
 
@@ -730,3 +754,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-18 · **R2 完成（顶栏两行 + SessionTabs）**：规格级发现=原型 index.css 两段平级 `:root`，第二段（694 行起）覆盖生效（geom-proto 实测裁决）→ 用户拍板以原型实测为准，COLORS 全表换第二段色板（+tabStrip/ring/card 三键）· SIZES 44/38/83（非看板旧抄 40/36/77）· 几何逐项对齐：stretch 主行去 gap、cell margin 0 2/first 6、context 贴左缘、分支钮 tile 底去阴影、错误钮 tb-cell 化（新增 alert 图标）、tab r8 pad 0 10 active=surfaceActive、tb-tabs 内凹 #1b1e24+自身底边、win-ctl 去 marginLeft · 「+」浮层/分支菜单改 getElementBounds 锚定（Radix bottom+start+4 同位，geom 复核 (723,80)≈(725,81)）+ 浮层 r12+0 14 38 阴影 · R1 消费落地：shell tab oscTitle ?? label + hasBell 紫点 + exited 灰题 · 有意偏离：win/linux 三键维持 36px 全高 NC/CSD 命中区（原型 28px 钮是 mock）、focus 环维持 accentSoft 2px（4px 双环归 R10）· GPUIX 补录：svg tint 只读自身 style.color——图标 hover 提亮走显式 hovered state · gate：TitleBar/SessionTabs 测试更新 + app 354 + 双包 tsc + fmt/lint 全绿 · 下一步：R3（Pane 调度 + FileSurface + SessionShell）
 - 2026-09-20 · **R3 完成（Pane 调度 + FileSurface + SessionShell）**：调度序逐条核对与原型一致（settings→workspace→thread 视图→主面；失效 view/ws 已删均回主面）· FileSurface 几何 R0 已齐，本轮补真 bug：路径条 Icon 缺 color（svg tint 不继承父级）→ COLORS.muted · **R1 备忘 exited bar 落地**：SessionTerminal 签名 sessionId→view:ShellView，status=exited 时底部 26px 退出条（mono11 exited 色「[进程已退出 · exit code N]」）；TerminalView 外层去 100% 宽高改 flexGrow（两父布局通用，100% 会挤出兄弟）· 有意偏离：主 TerminalSurface 保残留网格无退出条（不变量 3 先例）· 验收：sess-main/git/file/shell 差异 2.53/6.40/3.66(↓自7.20)/2.50 全在底噪带；geom 逐字段一致；SessionTabs +2（视图切换 retain 同 sessionId 重挂；exit→退出条+exit code）· gate：app tsc + 根 bun test 461 + fmt/lint 全绿 · 下一步：R4（侧栏视觉/交互对齐）
 - 2026-09-20 · **R4 完成（侧栏全件对齐 React 原型）**：交互拍板「严格按原型」——ws-row 整行=折叠/展开（toggleWorkspaceExpanded，去箭头钮/激活/当前高亮+cur-dot；Enter/Space toggle + right 展开/left 收起；activateWorkspace 能力保留给关闭回退/git 图/通知路径）· 结构：sb-nav+sec-head 移出滚动区（固定+分隔线）、ws-head relative+.acts 绝对定位组（ghost 24² r8 未 hover pe:none）、ws-body margin 1 0 5 12+1px 引导线（看板项，线占原型行左缘 1px）· ThreadRow 重构：thread-kind tile 20² r5 kind 色+角标 dot（TileDot 6px+1.5 描边半出外缘）/标题 12.5（unread 600/exited 灰）/pin 右置/menu-btn 22² r8· 几何：SIZES 52→46/rowHeight 32/rowRadius 8；nav-row 34、sec-head mt12、more-link「显示另外 N 个/收起会话」+chevron、empty-hint h28「启动第一个会话」（修文案差异）、unassigned「未归属会话」+inbox 恒展开纯展示、foot pad8、右框 borderSubtle· 浮层：ctx/notif 统一 r12+boxShadow 0 14 38（BoxShadow 需 spreadRadius 字段）、ctx-item h30 r6· 验收：sidebar 区差异 3.89/5.97/7.36%（基线 8.7–11.45%，余=整形底噪+引导线有意偏离）；geom 逐字段对齐（264/46/34/247/24²/234/22²）· 测试：WorkspaceList.test 改原型语义+键盘用例、TitleBar.test 头高 45、e2e 两处补 mouseMove（ghost pe:none 需先 hover）· gate：双包 tsc + 根 bun test 462 + fmt/lint + export-patches --check 全绿 · 下一步：R5（WorkPanel）
+- 2026-09-21 · **R8 完成（设置面对齐 React 原型）**：外壳重建（st-nav 217+1 边/COLORS.settingsNav 半透明、brand 58+gear+双行文案、搜索框 34+/ kbd+显式 focus 边色[GPUIX 无 :focus-within]、nav 行图标+命中徽章+0 命中置灰、page-head+即时生效 pill、st-card r12 COLORS.card）· 控件层对齐（controlBox r6/controlText 12·16/focusRing→ring/Toggle 34×20/NumberInput 76+步进 18/Select·SearchSelect 弹层 r8+overlay+阴影/RangeInput 轨道~180/Textarea fill）· 搜索语义补差：presets/acp 恒在结果列（原型 sectionHasContent），卡内「无匹配」；ACP agent 参与命中；settings-ui §9 同步 · SettingRow h58 pad 0 16+moddot 右移 12 语义化；listEditorParts 重写（le-card/le-add 实线近似虚线[无 dashed]/le-empty）；AcpAgentsSection 共享件化 · GPUIX 不支持项跳过：letterSpacing/textTransform/dashed · 验收：proto-shot settings/font 目检+geom 逐字段对齐（218/482+34/728/58）· 测试三文件按新语义更新 · gate：双包 tsc + 根 bun test 462 + fmt/lint 全绿 · 下一步：R5/R6/R7 剩余模块

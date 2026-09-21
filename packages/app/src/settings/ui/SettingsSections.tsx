@@ -24,7 +24,7 @@ import { SETTING_DEFS } from '../schema'
 import type { SettingsStore } from '../store'
 import { getByPath, serializeSettings } from '../store'
 import { AcpAgentsSection } from './AcpAgentsSection'
-import { ModDot } from './listEditorParts'
+import { MiniButton, ModDot } from './listEditorParts'
 import { PresetsSection } from './PresetsSection'
 import { SettingRow } from './SettingRow'
 import { settingsKeyboard } from './settingsKeyboard'
@@ -36,13 +36,15 @@ export type SectionProps = {
   defs: SettingDef[]
 }
 
-/** defs → SettingRow 列表（查询命中 + 真值接线 + writeError 红条） */
-export function DefsSection({ settings, query, defs }: SectionProps): ReactElement {
+/** defs → SettingRow 列表（查询命中 + 真值接线 + writeError 红条）。
+ *  0 命中返回 null——搜索态的分区显隐由 SettingsView.sectionHasContent
+ *  决定（有内容才渲染分区卡），卡内不再放「无匹配」行（原型同）。 */
+export function DefsSection({ settings, query, defs }: SectionProps): ReactElement | null {
   const s = settings.get()
   const err = settings.writeError()
   const rows = defs.filter((d) => matchDef(d, query))
 
-  if (rows.length === 0) return <EmptyHits />
+  if (rows.length === 0) return null
 
   return (
     <div>
@@ -54,6 +56,7 @@ export function DefsSection({ settings, query, defs }: SectionProps): ReactEleme
             modified={settings.isModified(def.path)}
             onChange={(v) => settings.patch(def.path, v)}
             onReset={() => settings.reset(def.path)}
+            highlightQuery={query}
           />
           {err?.path === def.path ? <WriteErrorBar message={err.message} /> : null}
         </div>
@@ -74,7 +77,7 @@ function WriteErrorBar({ message }: { message: string }): ReactElement {
   )
 }
 
-// ── 通知分区约定卡（§8，只读，产品文档非配置入口）──────────────────
+// ── 通知分区约定卡（§8，只读，产品文档非配置入口；原型 .conv-card）─────────
 
 const CONVENTIONS: [string, string][] = [
   ['Pi', '.pi/extensions/zed-bell.ts 在 agent_end 写 \\x07'],
@@ -83,17 +86,32 @@ const CONVENTIONS: [string, string][] = [
   ['Codex', 'tui.terminal_title → OSC 标题'],
 ]
 
+/** 约定卡命中（原型 SectionBody：'cli bel osc 约定' 字串或约定名/描述子串） */
+export function conventionMatches(q: string): boolean {
+  const kl = q.toLowerCase()
+  return (
+    'cli bel osc 约定'.includes(kl) ||
+    CONVENTIONS.some(([n, d]) => (n + d).toLowerCase().includes(kl))
+  )
+}
+
 export function CliConventionsCard(): ReactElement {
   return (
     <div
       testId="cli-conventions"
       style={{
-        marginTop: 18,
-        padding: 12,
-        backgroundColor: COLORS.sidebar,
+        marginTop: 14,
+        marginBottom: 14,
+        marginLeft: 14,
+        marginRight: 14,
+        paddingTop: 12,
+        paddingBottom: 12,
+        paddingLeft: 14,
+        paddingRight: 14,
+        backgroundColor: COLORS.inputBg,
         borderWidth: 1,
         borderColor: COLORS.borderSubtle,
-        borderRadius: 6,
+        borderRadius: 8,
       }}
     >
       <text
@@ -106,7 +124,7 @@ export function CliConventionsCard(): ReactElement {
           <text
             style={{
               width: 64,
-              fontSize: 11,
+              fontSize: 12,
               fontFamily: FONT.ui,
               color: COLORS.text,
               flexShrink: 0,
@@ -252,7 +270,6 @@ function KeyCap({
     setEditing(false)
     setHint(null)
   }
-  const modified = settings.isModified(path)
   return (
     <div
       testId={`kb-cap-${action}`}
@@ -265,27 +282,30 @@ function KeyCap({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 6,
-        paddingTop: 3,
-        paddingBottom: 3,
-        paddingLeft: 8,
-        paddingRight: 8,
+        justifyContent: 'center',
+        minWidth: 110,
+        height: 30,
+        paddingLeft: 10,
+        paddingRight: 10,
         borderWidth: 1,
-        borderColor: editing ? COLORS.accent : hint ? COLORS.bell : COLORS.borderSubtle,
-        borderRadius: 5,
-        backgroundColor: COLORS.sidebar,
+        borderColor: editing ? COLORS.focusBorder : hint ? COLORS.bell : COLORS.borderSubtle,
+        borderRadius: 8,
+        backgroundColor: COLORS.inputBg,
+        cursor: 'pointer',
+        flexShrink: 0,
+        hover: editing ? undefined : { borderColor: COLORS.faint },
       }}
     >
       <text
         style={{
           fontSize: 11,
           fontFamily: FONT.mono,
-          color: editing ? COLORS.accent : COLORS.text,
+          color: editing ? COLORS.accent : COLORS.textBright,
+          pointerEvents: 'none',
         }}
       >
         {editing ? (hint ?? '按下新组合…') : keystroke}
       </text>
-      {modified ? <ModDot /> : null}
     </div>
   )
 }
@@ -296,14 +316,16 @@ export function KeybindingsSection({
 }: {
   settings: SettingsStore
   query: string | null
-}): ReactElement {
+}): ReactElement | null {
   const s = settings.get().keybindings
   const q = query?.toLowerCase() ?? null
   const matchRow = (label: string, key: string): boolean =>
     !q || label.toLowerCase().includes(q) || key.toLowerCase().includes(q)
   const editable = KEY_ACTIONS.filter(({ action, label }) => matchRow(label, s[action]))
   const fixed = FIXED_KEYS.filter(([label, key]) => matchRow(label, key))
-  if (editable.length === 0 && fixed.length === 0) return <EmptyHits />
+  // 0 命中 → null（分区显隐由 sectionHasContent 决定；原型 SectionBody 同）
+  if (editable.length === 0 && fixed.length === 0) return null
+  const highlight = query ? { query, color: 'rgba(229, 192, 123, 0.28)' } : null
   return (
     <div>
       {editable.map(({ action, label, requireCtrl }) => {
@@ -311,37 +333,63 @@ export function KeybindingsSection({
         const conflict = KEY_ACTIONS.find((o) => o.action !== action && s[o.action] === s[action])
         const modified = settings.isModified(`keybindings.${action}` as SettingsPath)
         return (
-          <div key={action} style={{ borderBottomWidth: 1, borderColor: COLORS.border }}>
+          <div key={action}>
+            {/* .kb-row：gap 12 / pad 9 16（st-card 行内边距）/ subtle 底边 */}
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'row',
-                justifyContent: 'space-between',
                 alignItems: 'center',
+                gap: 12,
                 paddingTop: 9,
                 paddingBottom: 9,
+                paddingLeft: 16,
+                paddingRight: 16,
+                borderBottomWidth: 1,
+                borderColor: COLORS.borderSubtle,
               }}
             >
-              <text style={{ fontSize: 12.5, fontFamily: FONT.ui, color: COLORS.text }}>
-                {label}
-              </text>
-              <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                {modified ? (
-                  <text
-                    testId={`kb-reset-${action}`}
-                    style={{ fontSize: 12, fontFamily: FONT.mono, color: COLORS.muted }}
-                    onClick={() => settings.reset(`keybindings.${action}` as SettingsPath)}
-                  >
-                    ↺
-                  </text>
-                ) : null}
-                <KeyCap
-                  settings={settings}
-                  action={action}
-                  requireCtrl={requireCtrl}
-                  keystroke={s[action]}
-                />
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  flexGrow: 1,
+                  minWidth: 0,
+                }}
+              >
+                <text
+                  style={{
+                    fontSize: 12.5,
+                    fontFamily: FONT.ui,
+                    color: COLORS.text,
+                    minWidth: 0,
+                    whiteSpace: 'nowrap',
+                    textOverflow: 'ellipsis',
+                  }}
+                  highlight={highlight}
+                >
+                  {label}
+                </text>
+                {/* 原型 .kb-row .lbl 内联 moddot */}
+                {modified ? <ModDot /> : null}
               </div>
+              {/* 原型 .mini-btn「↺ 恢复」（仅 modified 挂载） */}
+              {modified ? (
+                <MiniButton
+                  icon="reset"
+                  text="恢复"
+                  testId={`kb-reset-${action}`}
+                  onClick={() => settings.reset(`keybindings.${action}` as SettingsPath)}
+                />
+              ) : null}
+              <KeyCap
+                settings={settings}
+                action={action}
+                requireCtrl={requireCtrl}
+                keystroke={s[action]}
+              />
             </div>
             {conflict ? (
               <text
@@ -350,7 +398,9 @@ export function KeybindingsSection({
                   fontSize: 11,
                   fontFamily: FONT.mono,
                   color: COLORS.bell,
+                  marginTop: 2,
                   marginBottom: 6,
+                  marginLeft: 16,
                 }}
               >
                 {`⚠ 与「${conflict.label}」冲突（同绑 ${s[action]}）`}
@@ -365,15 +415,29 @@ export function KeybindingsSection({
           style={{
             display: 'flex',
             flexDirection: 'row',
-            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
             paddingTop: 9,
             paddingBottom: 9,
+            paddingLeft: 16,
+            paddingRight: 16,
             borderBottomWidth: 1,
-            borderColor: COLORS.border,
+            borderColor: COLORS.borderSubtle,
           }}
         >
-          <text style={{ fontSize: 12.5, fontFamily: FONT.ui, color: COLORS.text }}>{label}</text>
-          <text style={{ fontSize: 11.5, fontFamily: FONT.mono, color: COLORS.muted }}>{key}</text>
+          <text
+            style={{
+              fontSize: 12.5,
+              fontFamily: FONT.ui,
+              color: COLORS.text,
+              flexGrow: 1,
+              minWidth: 0,
+            }}
+            highlight={highlight}
+          >
+            {label}
+          </text>
+          <text style={{ fontSize: 11, fontFamily: FONT.mono, color: COLORS.muted }}>{key}</text>
         </div>
       ))}
     </div>
@@ -395,12 +459,18 @@ function DiagnosticsCard(): ReactElement {
     <div
       testId="diagnostics-card"
       style={{
-        marginTop: 18,
-        padding: 12,
-        backgroundColor: COLORS.sidebar,
+        marginTop: 14,
+        marginBottom: 14,
+        marginLeft: 14,
+        marginRight: 14,
+        paddingTop: 12,
+        paddingBottom: 12,
+        paddingLeft: 14,
+        paddingRight: 14,
+        backgroundColor: COLORS.inputBg,
         borderWidth: 1,
         borderColor: COLORS.borderSubtle,
-        borderRadius: 6,
+        borderRadius: 8,
       }}
     >
       {rows.map(([k, v]) => (
@@ -408,7 +478,7 @@ function DiagnosticsCard(): ReactElement {
           <text
             style={{
               width: 88,
-              fontSize: 11,
+              fontSize: 12,
               fontFamily: FONT.ui,
               color: COLORS.text,
               flexShrink: 0,
@@ -433,12 +503,18 @@ function JsonViewCard({ settings }: { settings: SettingsStore }): ReactElement {
     <div
       testId="settings-json-card"
       style={{
-        marginTop: 18,
-        padding: 12,
-        backgroundColor: COLORS.sidebar,
+        marginTop: 14,
+        marginBottom: 14,
+        marginLeft: 14,
+        marginRight: 14,
+        paddingTop: 12,
+        paddingBottom: 12,
+        paddingLeft: 14,
+        paddingRight: 14,
+        backgroundColor: COLORS.inputBg,
         borderWidth: 1,
         borderColor: COLORS.borderSubtle,
-        borderRadius: 6,
+        borderRadius: 8,
       }}
     >
       <div
@@ -493,18 +569,6 @@ export function AdvancedSection({
 
 // ── 共享小件 ─────────────────────────────────────────────────────────
 
-/** 搜索无命中空态（§9：空态 + 清除按钮由 SettingsView 提供 query 清空） */
-export function EmptyHits(): ReactElement {
-  return (
-    <text
-      testId="settings-empty-hits"
-      style={{ fontSize: 12, fontFamily: FONT.ui, color: COLORS.muted, padding: 8 }}
-    >
-      无匹配设置项
-    </text>
-  )
-}
-
 /** def × query 子串匹配（label / description / key 路径；不区分大小写） */
 export function matchDef(d: SettingDef, query: string | null): boolean {
   if (!query) return true
@@ -513,15 +577,6 @@ export function matchDef(d: SettingDef, query: string | null): boolean {
     d.label.toLowerCase().includes(q) ||
     (d.description?.toLowerCase().includes(q) ?? false) ||
     d.path.toLowerCase().includes(q)
-  )
-}
-
-/** 分区标题（右列顶部；搜索模式下列出跨分区命中时用） */
-export function SectionHeading({ label }: { label: string }): ReactElement {
-  return (
-    <text style={{ fontSize: 15, fontFamily: FONT.ui, color: COLORS.textBright, marginBottom: 6 }}>
-      {label}
-    </text>
   )
 }
 
@@ -551,7 +606,8 @@ export function renderSectionContent(
             query={query}
             defs={DEFS_BY_SECTION.notifications ?? []}
           />
-          <CliConventionsCard />
+          {/* 约定卡随查询过滤（原型 SectionBody：无 q 或约定命中才渲染） */}
+          {!query || conventionMatches(query) ? <CliConventionsCard /> : null}
         </div>
       )
     case 'terminal':
