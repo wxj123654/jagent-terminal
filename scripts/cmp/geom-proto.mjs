@@ -57,7 +57,6 @@ const BASE = [
   '.gg-toolbar',
   '.gg-wrap',
   '.wp-head',
-  '.wp-tabs',
   '.wp-body',
 ]
 const PER_STATE = {
@@ -77,7 +76,8 @@ const PER_STATE = {
   ctxmenu: ['[role="menu"]', '[role="menuitem"]'],
   settings: ['.st-nav', '.st-body', '.srow', '.sec-title'],
   git: ['.gg-toolbar', '.gg-row', '.ref-chip', '.gg-detail'],
-  panel: ['.wp-head', '.wp-tabs', '.wp-row', '.wp-diff'],
+  panel: ['.wp-head', '.ptab', '.hbtn', '.wp-sum', '.file-row', '.diff', '.dl'],
+  'panel-files': ['.wp-head', '.ptab', '.file-row', '.wp-file-head', '.code-view', '.ln-no'],
   font: ['.font-trig', '.font-pop'],
 }
 
@@ -90,6 +90,7 @@ const STATES = [
   ['git', '?view=git'],
   ['settings', '?view=settings'],
   ['panel', '?view=panel'],
+  ['panel-files', '?view=panel'],
   ['search', '?view=search'],
   ['tool', '?view=tool'],
   ['addws', '?view=addws'],
@@ -170,6 +171,11 @@ try {
     } else if (qs === 'ADD') {
       await page.locator('.tb-add-btn').click()
       await page.waitForTimeout(250)
+    } else if (name === 'panel-files') {
+      // 同 shot-proto：?view=panel 开面板后切「文件」tab + 选 tokens.ts
+      await page.locator('.ptab', { hasText: '文件' }).click()
+      await page.locator('.file-row', { hasText: 'tokens.ts' }).first().click()
+      await page.waitForTimeout(200)
     }
     const sels = [...BASE, ...(PER_STATE[name] ?? [])]
     const nodes = await page.evaluate(COLLECT, sels)

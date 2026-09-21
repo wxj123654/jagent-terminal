@@ -12,6 +12,7 @@
  */
 
 import { useWindowSize } from '@gpuix/react'
+import type { PublicInstance } from '@gpuix/react'
 import { PLATFORM, ToastHost, COLORS, FONT } from '@jagent/ui'
 import { useEffect, useRef, useState } from 'react'
 import type { PerfSource } from '../diagnostics/PerfHud'
@@ -49,6 +50,7 @@ export function App({
   gitStore,
   worktree,
   scrollToItem,
+  focusElement,
   perfSource,
   lastCrash,
   version,
@@ -64,6 +66,8 @@ export function App({
   worktree: WorktreeStore
   /** 键盘导航视口跟随（renderer.scrollToItem；装配层注入） */
   scrollToItem?: (elementId: number, index: number) => void
+  /** 程序化聚焦（renderer.focusElement；装配层注入）——WorkPanel 关闭后焦点回面板钮 */
+  focusElement?: (elementId: number) => void
   /** 性能 HUD 数据源（main.tsx 装配：takePaintPerf + process CPU/MEM 采样器；不传则 HUD 不挂载） */
   perfSource?: PerfSource
   /** 上次会话崩溃残留（方案 C 启动提示；main.tsx 读 crash.json 注入） */
@@ -133,6 +137,14 @@ export function App({
   // 工作面板（D5）：开关 / tab / 宽（本地态——原型同款非持久 UI 态）
   const [panelOpen, setPanelOpen] = useState(false)
   const [panelTab, setPanelTab] = useState<WorkPanelTab>('changes')
+  // 面板钮元素实例（TitleBar ref 外抛）：WorkPanel 关闭后焦点回它——
+  // 面板关闭钮随卸载失焦，DOM 惯例是焦点回落到触发它的开关。
+  const panelToggleEl = useRef<PublicInstance | null>(null)
+  const closePanel = () => {
+    setPanelOpen(false)
+    const el = panelToggleEl.current
+    if (el) focusElement?.(el.id)
+  }
   const [panelWidth, setPanelWidth] = useState<number>(SIZES.panelWidth)
   const panelOverlay = width < SIZES.panelOverlayWidth
 
@@ -240,7 +252,7 @@ export function App({
       overlayMaxWidth={Math.min(420, width)}
       tab={panelTab}
       onTabChange={setPanelTab}
-      onClose={() => setPanelOpen(false)}
+      onClose={closePanel}
       onWidthChange={(w) => setPanelWidth(w)}
       windowWidth={width}
     />
@@ -290,7 +302,8 @@ export function App({
           onBranchClick={(pos) => setBranchMenu(pos)}
           onSearch={() => dialogOpener.openSearch()}
           panelOpen={panelOpen}
-          onTogglePanel={() => (panelOpen ? setPanelOpen(false) : openPanel())}
+          onTogglePanel={() => (panelOpen ? closePanel() : openPanel())}
+          panelToggleEl={(el) => (panelToggleEl.current = el)}
           tabs={tabStrip}
           trailing={
             <>

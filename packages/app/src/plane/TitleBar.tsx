@@ -343,6 +343,7 @@ function ToolButton({
   first,
   iconSize = 15,
   onClick,
+  refEl,
 }: {
   icon: 'menu' | 'panelLeft' | 'panelRight' | 'search'
   testId: string
@@ -352,11 +353,14 @@ function ToolButton({
   /** 原型图标尺寸：menu/panelLeft 16，search/panelRight 15 */
   iconSize?: number
   onClick?: () => void
+  /** 元素实例外抛（关闭面板后 focusElement 恢复焦点用） */
+  refEl?: (el: PublicInstance | null) => void
 }) {
   const [focused, setFocused] = useState(false)
   const [hovered, setHovered] = useState(false)
   return (
     <div
+      ref={refEl}
       tabIndex={0}
       testId={testId}
       onClick={onClick}
@@ -418,6 +422,7 @@ export function TitleBar({
   onSearch,
   panelOpen,
   onTogglePanel,
+  panelToggleEl,
   trailing,
   tabs,
 }: {
@@ -445,6 +450,8 @@ export function TitleBar({
   /** 工作面板开关（panelRight；on 态抬亮） */
   panelOpen?: boolean
   onTogglePanel?: () => void
+  /** 面板钮元素实例外抛（WorkPanel 关闭后 focusElement 恢复焦点到此） */
+  panelToggleEl?: (el: PublicInstance | null) => void
   /** 右侧尾部插槽（ErrorIndicator / 性能 HUD 等；元素零依赖，数据源由调用方装配）。win 下落在窗口控制三键左侧 */
   trailing?: ReactNode
   /** 标签行内容（原型 #tb-tabs；调用方按路由装配 SessionTabs/ContextTab） */
@@ -562,6 +569,7 @@ export function TitleBar({
           testId="panel-toggle"
           on={panelOpen}
           onClick={onTogglePanel}
+          refEl={panelToggleEl}
         />
 
         {/* 窗口控制（原型 .win-ctl：左边框分隔 + 左内距 6；与上个 cell

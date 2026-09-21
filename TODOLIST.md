@@ -436,11 +436,12 @@
     箭头/名字/ghost 组、ws-body 缩进+1px 引导线（06% 白）、sortThreads 排序+
     截断+Show more/less、unassigned 虚拟组、通知条目点击已读+跳转、sb-foot
     版本号、两级上下文菜单项与原型一致（含 disabled 态）。
-- [ ] **R5 工作面板 WorkPanel**
+- [x] **R5 工作面板 WorkPanel** ✅ 2026-09-21
   - 锚点：`src/components/WorkPanel.tsx`（ChangeRow/FileRow/Diff/Preview）+
     index.css `.wp-*`。契约：默认收起、拖宽 244–720、<1100 覆盖式不压终端、
     changes/files 两 tab、选中文件 diff/预览。
-  - app：`plane/WorkPanel.tsx` + `git/worktree.ts` 数据面。
+  - app：`git/components/WorkPanel.tsx`（归域后位置）+ `git/worktree.ts` 数据面。
+    结论详见 Phase R 结论区（R5）。
 - [ ] **R6 Git 图**
   - 锚点：`src/components/GitGraphView.tsx`——工具条（分支菜单/find/refresh）/
     lane 几何（LANE_W/PAD_X）/RefChip/选中详情列/find 步进（gitFindOpen/Draft/
@@ -539,6 +540,56 @@
   测试：TitleBar.test 高度断言改 43/37/82 + padLeft 0 + first ml6；
   app 354 + 双包 tsc + fmt/lint 全绿（window-visibility 单跑偶超时 =
   PowerShell 冷启动基线，非本次引入）。
+
+- **R5（工作面板 WorkPanel，2026-09-21）**：归域实现 `git/components/WorkPanel.tsx`
+  全项对齐原型 `.wp-*`（第二段 :root 生效值）：面板 bg `sidebar` + 左缘
+  `borderSubtle`；wp-head 44；ptab 28/r8/1px 边（active=surface+borderSubtle+
+  `0 1 2` 阴影）图标 12；hbtn 28² 图标 16；file-row 32/r8/pad 0 10/gap 7；
+  bdg mono 10 w700 w18（files tab 同位放 file 图标）；nm mono 12 拆 name+dir
+  （dir muted）；add/del mono 10；wp-sum pad 4/6/8；wp-file-head pad 4/6/8
+  gap6 mono11；hint 11.5 muted pad12。
+  **diff/预览手渲染（有意偏离原生元素）**：原生 `<diff>` 的双行号 gutter 在
+  244–280px 窄面板放不下，且其内部内容自然宽溢出（实测 525px > 267 可视宽）
+  只能靠 x 滚动；原型 `.diff`/`.code-view` 本来就是扁平着色行——照 FileSurface
+  同款手动 `.dl`/`.cl` 行渲染（hunk=tile 底 cyan / add=12% 绿洗 / del=12% 红洗 /
+  meta=muted；ln-no 34px 右对齐 pr10 muted；mono 11 lh 16.5/17）。顺带修掉
+  diffAdd 0.12 alpha 经原生元素二次乘算导致标记近乎不可见的真 bug。横向溢出
+  = row 视口 `overflowX:scroll` + 内列 `minWidth:内容宽`（'100%' 在滚动容器内
+  不解析为视口宽，须传数值 `w-12`——短行洗色才能铺满整宽）。
+  **壳契约**：宽 244–720 拖左缘把手（mouseDown+move 自动 capture，把手左探
+  3px）；<1100 → absolute 右贴 overlay（无把手，w=min(panelW, min(420, winW))，
+  阴影 -12/0/32/35%）；刷新钮 = `worktree.refresh()` + toast「已刷新工作区
+  状态」（原型同款）。
+  **数据面**：真实 `WorktreeStore`（git status/diff/readFile，零原型假数据）；
+  `selected` 单字段同喂 diff 与 preview。测试 `git/__tests__/WorkPanel.test.tsx`
+  11 例（changes/files 两 tab 行渲染、选中→diff/预览、无 diff/非仓库/空态
+  提示、overlay 宽度+无把手+420 上限、拖拽 244–720 clamp、refresh/close 钮）。
+  坑：`getElementBounds` 是 content-box——面板宽断言须减自身 1px 左边线。
+  **截图对比**：新增 `panel-files` 对比态（原型无深链，shot-proto/geom-proto
+  走点击交互：开面板→文件 tab→选 tokens.ts；proto-shot 同步交互复刻）；
+  WT_DIFF fixture 去掉 diff --git/index/---/+++ 头行对齐原型种子（原型假数据
+  从 @@ 起）。结果：panel 工作面板区 14.69%→**9.03%**（全图 7.94%）、
+  panel-files 12.05%（预览区 21 行 mono 文本密集，底噪带内——侧栏列表基线
+  10.22% 同量级）。geom 逐项核：wp-head/body、ptab、file-row y133–293、
+  file-head、code-view 坐标全等或 ≤1.5px 文本整形差。
+  **两轴评审修复（同 commit）**：① 关闭后焦点恢复——`closePanel` 经注入的
+  `focusElement` 聚焦面板钮（ToolButton 新增 refEl 外抛元素实例，TitleBar
+  `panelToggleEl` 透传，main.tsx 接 `renderer.focusElement`）；②
+  `status==='idle'`（无 cwd 路由开面板）补中性提示，不再误报「工作区干净」；
+  ③ FileName 截断方向修正——原型 `.nm` 整段 ellipsis 砍尾部 dir，原实现
+  dir `flexShrink:0` 恒全显反而砍 name，现两段都 shrink+ellipsis（dir 先
+  见底、name 兜底）；④ HeadButton 换 `IconButton`（28²/radius8/图标16，
+  顺带白捡原型 `title` 等价的 Tip 提示 + focus 环），删 `_label` 死参数；
+  ⑤ `w-12`→`w-13`（面板自身 1px 左边线 + body pad 12，原值恒触发 1px
+  横向滚动）；⑥ FileName 装饰 text 补 `pointerEvents:'none'`（父级
+  pe:none 不继承到子元素）；⑦ 分区口径修正——region.mjs/report.mjs 顶壳
+  77→83（R2 实测值，旧值致 workpanel/main 区域错位 6px）、geom-proto 删
+  死选择器 `.wp-tabs`；⑧ 测试补 244 下限断言 + idle 用例，删 setup 返回的
+  `closed` 死快照。**判定不修**：enter/space onKeyDown 内联是全仓惯例
+  （5+ 文件同款）；`onWidthChange` 保持可选（overlay 无把手本就不需要）。
+  gate：WorkPanel.test 12 + bun test 469（icons.test 1 例 5s 超时为全量负载
+  flake，单跑 12/12 绿）+ typecheck + fmt:check + lint + export-patches
+  --check 全绿。
 
 ---
 
@@ -661,3 +712,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-17 · **R1 完成（会话视图数据层）**：WIP API 面与原型逐语义核对一致（openGitGraph 双路径/file:<path> 去重/shell:n 递增/左邻回退/独立 PTY spawn+孤儿回收/close 连带销毁视图 PTY）· **真缺口补齐：`onSessionEvent` 归属**——原实现只按 `t${sessionId}` 定位主会话，shell 视图独立 PTY 的 title/bell/exit 全被静默丢弃；现主会话落空 → `findShellView` 按 `view.sessionId` 归属（sessionId disjoint）· 语义与主会话对称：title→view.oscTitle（空串忽略）；bell 三级（视图正显示→丢弃/他视图→view.hasBell/会话后台→会话级提醒 terminal=hasBell·chat·acp=unread + notice + notify）；exit→notice+view.status=exited+exitCode（closeOnExit→共享 removeSessionView 单点）· hasBell 清除=「已看到」同一判定（activateSessionView/activate 落在该视图）· 配套：SessionNotice.viewId（openNotice 直达视图）、pushNotice/notify 放宽到 Thread、shell 视图类型 +oscTitle/hasBell/status/exitCode · R2/R3 消费点已备忘结论区（tab 展示 oscTitle??label、hasBell 标记、exited bar）· gate：store.test 64（+6）+ app 354 + e2e 23 + 双包 tsc + fmt/lint 全绿（window-visibility 单跑 4.2s 属基线 PowerShell 冷启动耗时，全量偶超时非本次引入）· architecture.md §3.1/§3.2/§3.3 已同步 · 下一步：R2（顶栏两行 + SessionTabs）或 R3（Pane 调度 + FileSurface + SessionShell）
 - 2026-09-18 · **架构深化评审 + 六候选全部落地（目录归位 + internal seams）**：codebase-design 词汇评审（module/interface/depth/seam/adapter/leverage/locality）出 HTML 报告六候选，用户拍板全做 · ① **plane/ 四分**：plane/ 留壳（AgentPlane/Pane/TitleBar/SessionTabs/planeKeyboard），Sidebar 族六件 → `sidebar/`，DialogHost+六弹窗+dialogKeyboard → `dialogs/`（git mv 保历史 97–100% rename 检测）② **settings UI 归域**：surfaces/ 七件（SettingsView/SettingsSections/SettingRow/PresetsSection/AcpAgentsSection/listEditorParts/settingsKeyboard/PhaseBadge）→ `settings/ui/`——设置面是路由表面非 surface，surfaces/ 回归「按 thread.kind 注册」语义 ③ **git 域归位**：WorkPanel → `git/components/`、useWorktree → `git/useWorktree.ts`；FileSurface 与 git 共享的文件读取抽 `fs/readTextFile.ts`（第二个消费方坐实 seam）④ **Pane 真 bug 修复**：渲染期 `getState().workspaces` 非响应式直读（rename/path 变化不重渲染）→ useThreadStore selector 订阅 ⑤ **ThreadStore internal seams**：989→547 行；类型契约+interface+装配表+核心方法（spawn/activate/close/rename/cycle/onSessionEvent）留 store.ts，四簇实现进 `threads/internal/`（ctx/sessionViews/notices/workspaceOps/conversations）；**不拆 store**——removeWorkspace→close 等跨簇规则 locality 保留；跨簇调用单向 import + ctx 接线点防环；interface 即测试面不变（threads 87 例原样全过）⑥ **native 整理**：element.rs+git_graph.rs → `elements/`（element.rs 改 terminal.rs 对齐元素名）；jagent-terminal 六 pub mod 收私有，对外只留根部 re-export 单面（set_session_event_fn 补 re-export，两处深路径调用点改走根部）· **文档**：新建 `CONTEXT.md` 领域词汇表（此前仓库没有）；architecture.md §1.1 目录树/§1.2 依赖方向/§3.3 internal seam 注记/§5 目录映射/§8.1-8.2 native 清单全部回写 · gate：app tsc + oxlint/oxfmt + bun test 353 过 1 挂（`TestGpuixRenderer stays hidden on Windows`——PowerShell 窗口句柄查询超时，未改动基线同样失败，环境性预存问题非本次回归）+ cargo build + cargo test 41/41 · 六个独立 commit（21a2ce4/b7d44c2/d9e4571/d80f62c/5697a8c/fed2444）· 未动 .refs/.node
 - 2026-09-18 · **R2 完成（顶栏两行 + SessionTabs）**：规格级发现=原型 index.css 两段平级 `:root`，第二段（694 行起）覆盖生效（geom-proto 实测裁决）→ 用户拍板以原型实测为准，COLORS 全表换第二段色板（+tabStrip/ring/card 三键）· SIZES 44/38/83（非看板旧抄 40/36/77）· 几何逐项对齐：stretch 主行去 gap、cell margin 0 2/first 6、context 贴左缘、分支钮 tile 底去阴影、错误钮 tb-cell 化（新增 alert 图标）、tab r8 pad 0 10 active=surfaceActive、tb-tabs 内凹 #1b1e24+自身底边、win-ctl 去 marginLeft · 「+」浮层/分支菜单改 getElementBounds 锚定（Radix bottom+start+4 同位，geom 复核 (723,80)≈(725,81)）+ 浮层 r12+0 14 38 阴影 · R1 消费落地：shell tab oscTitle ?? label + hasBell 紫点 + exited 灰题 · 有意偏离：win/linux 三键维持 36px 全高 NC/CSD 命中区（原型 28px 钮是 mock）、focus 环维持 accentSoft 2px（4px 双环归 R10）· GPUIX 补录：svg tint 只读自身 style.color——图标 hover 提亮走显式 hovered state · gate：TitleBar/SessionTabs 测试更新 + app 354 + 双包 tsc + fmt/lint 全绿 · 下一步：R3（Pane 调度 + FileSurface + SessionShell）
+- 2026-09-21 · **R5 完成（工作面板 WorkPanel）**：归域实现 `git/components/WorkPanel.tsx` 全项对齐 `.wp-*`（第二段 :root 生效值）——bg sidebar/左缘 borderSubtle、wp-head 44、ptab 28r8+1px边+active 阴影、file-row 32r8、bdg/nm/dir/add/del 字号色板逐项、wp-sum/wp-file-head/hint · **diff/预览改手动 .dl/.cl 行渲染**（原生 `<diff>` 双行号 gutter 放不进 244–280px 窄面板且内容自然宽 525>267 只能 x 滚；顺带修掉 diffAdd 0.12 alpha 二次乘算的真 bug）· x 溢出 = row 视口 scroll + 内列 minWidth:数值（'100%' 不解析为视口宽）· 壳：拖宽 244–720、<1100 absolute overlay（无把手，min(420,winW) 上限）、刷新钮 refresh()+toast · 新增 `panel-files` 对比态（两侧点击交互复刻）+ WT_DIFF fixture 去文件头对齐原型种子 · 结果：panel 面板区 14.69%→9.03%、panel-files 12.05%（文本密集底噪带内）· 两轴评审修复：关面板焦点回面板钮（focusElement seam+ToolButton refEl）、idle 态提示、FileName 截断方向、HeadButton→IconButton、w-12→w-13 off-by-one、pe:none 补齐、分区口径 77→83、死选择器清理 · 测试 WorkPanel.test.tsx 12 例（坑：getElementBounds content-box，宽断言减 1px 边线）· gate：bun test 469（icons 超时为全量负载 flake，单跑绿）+ tsc + fmt + lint + export-patches --check 全绿 · 下一步：R6（Git 图）或 R3/R4

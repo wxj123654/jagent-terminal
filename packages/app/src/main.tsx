@@ -209,6 +209,7 @@ async function mountApp(): Promise<void> {
         version={APP_VERSION}
         windowControls={windowControls}
         scrollToItem={(elementId, index) => renderer.scrollToItem(elementId, index)}
+        focusElement={(id) => renderer.focusElement?.(id)}
         pickDirectory={() =>
           // native 面是回调式（TSF 两参契约）；装配层包装成 Promise（面板可能
           // 长时间开着——macOS runModal 阻塞 JS 线程，resolve 在模态结束后）

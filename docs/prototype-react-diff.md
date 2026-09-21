@@ -40,6 +40,7 @@ proto 状态 → impl 状态（`?view=` 深链 → proto-shot case）：
 | workspace | ws | ws-web 工作区页 |
 | git | git | ws-jt 工作区 git 整页（paneTab） |
 | settings / panel / search / tool / addws / errors / crash / notif / font | 同名 | 弹窗态 impl 侧关 Esc/遮罩 |
+| panel-files | panel-files | 无深链：两侧交互复刻（开面板 → 文件 tab → 选 tokens.ts） |
 | sess-main / sess-git / sess-file / sess-shell | 同名 | t-ime 会话内视图（原型 ?view= 深链） |
 | sess-add | sess-add | 「+」浮层：proto 点 .tb-add-btn，impl 点 testId=session-add |
 | ctxmenu | ctxmenu | 右键「IME 候选窗定位」行 |
@@ -57,7 +58,8 @@ proto 状态 → impl 状态（`?view=` 深链 → proto-shot case）：
 | workspace | 4.90% | 8.70% | 3.50% | 1.12% | 5.04% |
 | git | 6.45% | 8.71% | 5.16% | 4.71% | 6.41% |
 | settings | 6.23% | 8.69% | 2.69% | 4.85% | 6.29% |
-| panel | 9.27% | 8.87% | 7.30% | **14.69%** | 7.66% |
+| panel | 7.94%（R5 后；基线 9.27%） | 9.06% | 4.53% | **9.03%**（基线 14.69%） | 7.62% |
+| panel-files | 8.53% | 9.06% | 4.53% | 12.05% | 7.62% |
 | search | 2.91% | 4.07% | 2.81% | 1.10% | 3.15% |
 | tool | 4.18% | 4.09% | 2.80% | 1.10% | 5.59% |
 | addws | 3.57% | 4.06% | 2.81% | 1.10% | 4.43% |
@@ -74,7 +76,9 @@ proto 状态 → impl 状态（`?view=` 深链 → proto-shot case）：
 | hidden | 2.51% | 6.22% | 2.74% | 2.42% | 1.05% |
 | narrow | 7.82%（pngdiff 全图，700×800） | — | — | — | — |
 
-机器可读版：`.shots/cmp/report.json`。
+机器可读版：`.shots/cmp/report.json`。（R5 修正了分区边界：顶壳 77→83 =
+main 44+tabs 38+根底边 1，与 R2 实测口径一致；panel/panel-files 两行按
+新边界测量，与基线行有 ≤0.2pt 的口径差。）
 
 ## 已知差异（不可达 / 设计内）
 
@@ -102,7 +106,7 @@ proto 状态 → impl 状态（`?view=` 深链 → proto-shot case）：
 | 相对时间 | `昨天 21:40`（>1 天给「昨天 HH:MM」） | `1 天前` | R6 Git 图 relTime |
 | git 工具行 `9 提交` | 右侧图标组旁 | toggle 旁（位置偏左） | R6 Git 图 |
 | notif/sess-add 态侧栏差异 11.45%/9.96% | 通知铃红点样式 | 同义但描法略异 | R7 浮层 |
-| panel 态 workpanel 14.69% | 变更列表 + diff | 布局同、内容行距/字号差异 | R5 WorkPanel |
+| ~~panel 态 workpanel 14.69%~~ | 变更列表 + diff | ✅ R5 已修：行高/字号/着色全项对齐 → 9.03%；panel-files 12.05% 为文本密集区底噪带内 | R5 WorkPanel |
 
 ## R0 工具链修复记录（顺手做的）
 

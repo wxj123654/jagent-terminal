@@ -62,7 +62,7 @@ const GEOM = args.includes('--geom')
 const STATES = String(
   arg(
     'states',
-    'main,home,chat,acp,ws,git,settings,panel,search,tool,addws,notif,ctxmenu,' +
+    'main,home,chat,acp,ws,git,settings,panel,panel-files,search,tool,addws,notif,ctxmenu,' +
       'sess-main,sess-git,sess-file,sess-shell,sess-add',
   ),
 ).split(',')
@@ -462,12 +462,22 @@ const WT_FILES = [
   { path: 'design/j-agent-prototype.html', status: 'a', added: 812, deleted: 0 },
   { path: 'packages/app/src/plane/ToolMenu.tsx', status: 'd', added: 0, deleted: 88 },
 ]
+// 原型 seed.ts DIFFS['Sidebar.tsx'] 同源拷贝（无 diff --git/index 头行——
+// 原型假数据直接从 @@ hunk 起）
 const WT_DIFF =
-  'diff --git a/packages/app/src/plane/Sidebar.tsx b/packages/app/src/plane/Sidebar.tsx\nindex 1111111..2222222 100644\n--- a/packages/app/src/plane/Sidebar.tsx\n+++ b/packages/app/src/plane/Sidebar.tsx\n@@ -44,6 +44,18 @@ export function Sidebar({\n   const drag = useTitleBarDrag(windowControls)\n   return (\n-    <div testId="sidebar">\n+    <div testId="sidebar" style={{ width }}>\n       <SidebarHeader />\n       <WorkspaceList />\n+      {/* 脚：设置 + 通知铃 + 版本号 */}\n       <SidebarFooter />'
+  '@@ -44,6 +44,18 @@ export function Sidebar({\n   const drag = useTitleBarDrag(windowControls)\n   return (\n-    <div testId="sidebar">\n+    <div testId="sidebar" style={{ width }}>\n      <SidebarHeader />\n      <WorkspaceList />\n+      {/* 脚：设置 + 通知铃 + 版本号 */}\n      <SidebarFooter />'
+// 预览内容 = 原型 seed.ts PREVIEWS 同源拷贝（files tab 截图逐行可比）
+const WT_PREVIEWS = {
+  'packages/app/src/tokens.ts':
+    "export const GRAPH_LANE_COLORS = [\n  '#61afef', // 蓝\n  '#98c379', // 绿\n  '#c678dd', // 紫\n  '#e5c07b', // 琥珀\n  '#56b6c2', // 青\n  '#e06c75', // 红\n] as const\n\nexport const SIZES = {\n  sidebarWidth: 264,\n  rowHeight: 28,\n  rowMarginX: 8,\n  rowPaddingX: 8,\n  rowRadius: 6,\n  panelWidth: 280,\n  panelOverlayWidth: 1100,\n  titleBarHeight: 34,\n  toolbarHeight: 46,\n  sidebarHeadHeight: 52,\n} as const",
+}
 const worktree = createWorktreeStore({
   status: async () => ({ root: 'D:/document/j-agent', branch: 'main', files: WT_FILES }),
   diff: async (_root, path) => (path.endsWith('Sidebar.tsx') ? WT_DIFF : ''),
-  readFile: async () => null,
+  readFile: async (abs) => {
+    const rel = Object.keys(WT_PREVIEWS).find((p) => abs.endsWith(p))
+    return rel ? WT_PREVIEWS[rel] : null
+  },
 })
 
 // ── 渲染 ────────────────────────────────────────────────────────────
@@ -617,6 +627,20 @@ for (const state of STATES) {
       shot('panel')
       // 面板是持续态：不关会污染后续 search/tool/notif/ctxmenu 截图
       // （原型的 ?view=search 等不带面板）。
+      clickTestId('panel-toggle')
+      await flush()
+      break
+    case 'panel-files':
+      // 原型同态（shot-proto 交互复刻）：面板开 → 文件 tab → 选 tokens.ts
+      navigateTarget({ type: 'thread', id: imeId })
+      store.activateSessionView(imeId, 'git')
+      await flush()
+      clickTestId('panel-toggle')
+      await flush()
+      clickTestId('work-panel-tab-files')
+      worktree.select('packages/app/src/tokens.ts')
+      await flush()
+      shot('panel-files')
       clickTestId('panel-toggle')
       await flush()
       break

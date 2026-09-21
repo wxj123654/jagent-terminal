@@ -36,6 +36,7 @@ const STATES = [
   ['git', '?view=git'],
   ['settings', '?view=settings'],
   ['panel', '?view=panel'],
+  ['panel-files', '?view=panel'],
   ['search', '?view=search'],
   ['tool', '?view=tool'],
   ['addws', '?view=addws'],
@@ -53,7 +54,7 @@ const STATES = [
   ['sess-add', null],
 ]
 
-/** 无深链状态的交互步骤（页面已加载默认态后调用）。 */
+/** 交互步骤（默认所有状态调用；无对应分支则 no-op）。 */
 async function interact(page, name) {
   if (name === 'ctxmenu') {
     const row = page.locator('.t-row', { hasText: 'IME 候选窗定位' }).first()
@@ -61,6 +62,12 @@ async function interact(page, name) {
     await page.waitForTimeout(200)
   } else if (name === 'sess-add') {
     await page.locator('.tb-add-btn').click()
+    await page.waitForTimeout(200)
+  } else if (name === 'panel-files') {
+    // ?view=panel 已开面板（changes tab）：切文件 tab + 选 tokens.ts
+    // （PREVIEWS 有真实预览内容，可与 impl 逐行比）
+    await page.locator('.ptab', { hasText: '文件' }).click()
+    await page.locator('.file-row', { hasText: 'tokens.ts' }).first().click()
     await page.waitForTimeout(200)
   }
 }
@@ -82,8 +89,8 @@ try {
       // 交互态：先回默认页再操作
       await page.goto(`${base}/`, { waitUntil: 'networkidle' })
       await page.waitForTimeout(300)
-      await interact(page, name)
     }
+    await interact(page, name)
     await normalize(page)
     await page.waitForTimeout(50)
     const out = join(CMP_DIR, `proto-${name}.png`)

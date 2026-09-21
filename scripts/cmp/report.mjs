@@ -29,6 +29,7 @@ const PAIRS = [
   ['git', 'git'],
   ['settings', 'settings'],
   ['panel', 'panel'],
+  ['panel-files', 'panel-files'],
   ['search', 'search'],
   ['tool', 'tool'],
   ['addws', 'addws'],
@@ -45,12 +46,12 @@ const PAIRS = [
   ['hidden', 'hidden'],
 ]
 
-// 与 region.mjs 同分区（1280×800 壳：侧栏 264 / 顶壳 77）
+// 与 region.mjs 同分区（1280×800 壳：侧栏 264 / 顶壳 83 = main 44 + tabs 38 + 根底边 1，R2 实测口径）
 const REGIONS = [
   ['sidebar', 0, 0, 264, 800],
-  ['titlebar', 264, 0, 1016, 77],
-  ['workpanel', 1000, 77, 280, 723],
-  ['main', 264, 77, 736, 723],
+  ['titlebar', 264, 0, 1016, 83],
+  ['workpanel', 1000, 83, 280, 717],
+  ['main', 264, 83, 736, 717],
 ]
 
 const argv = process.argv.slice(2)
