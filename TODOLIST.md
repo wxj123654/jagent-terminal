@@ -43,9 +43,9 @@
 | G Git 树（commit graph） | ✅ G1–G3 完成（docs/git-graph.md；只读 graph + workspace tab）|
 | E 统一错误管理（A/B/C/D） | ✅ 完成（docs/error-management.md；总线+边界+panic 收编+minidump sidecar+watchdog）|
 | D 桌面工作台 v2（Codex 灰阶） | 🚧 D0–D5 完成（方案 C 侧栏 + 工作面板）；配色已回 One Dark |
-| R React 原型还原（全模块对齐） | 🚧 R0 工具链基线 → R1–R11 分模块 → R12 收官；当前 WIP 未提交 |
+| R React 原型还原（全模块对齐） | ✅ R0–R12 全完成（2026-09-21 收官；结论见 Phase R 结论区） |
 
-**当前指针**：→ **Phase R（React 原型还原）开工**——基准 `design/prototype-react`（HTML 原型已退役为其移植源）；R0 工具链先行，R1–R11 按模块逐块跑 agent。**工作区有未提交 WIP**（SessionTabs/会话视图 store/FileSurface/SessionTerminal/Pane 调度/TitleBar 两行），用户实测还原度差 → 各模块以原型逐项核对修正，不是续写。· 旧待办不变：G4 另立设计；真窗口手验清单（W3/W4/W5 + G + 错误面板/崩溃提示）
+**当前指针**：→ **Phase R 已完成（R0–R12 全绿收官，2026-09-21）**——正式 app 全模块已对齐 `design/prototype-react`（唯一视觉/交互基准），差异率表与手验清单见 `docs/prototype-react-diff.md`。剩余待办：① **真窗口手验清单**（docs/prototype-react-diff.md 末节，含 W3 NSOpenPanel/W4 抽屉/⌘K 打字/G 图行点击/错误面板·崩溃提示/终端选区与滚动条/dev 崩溃未结观察）；② G4 Git 图写操作另立设计；③ C8 验收阶梯（uPlot → Chart.js + benchmark）；④ Windows 真机图标/ConPTY 验收（本机 macOS）；⑤ 条件性 Rust 扩展项（滚动条样式 API 等，见 ui-extensions.md——出现具体缺口再做）。
 **约束**：一次会话只做一两个任务块；做到哪更新到哪；测试不过不算完成。
 
 ---
@@ -493,9 +493,10 @@
   - app：`keybindings.ts`（**newSession 动作缺失——新增**，schema/键位表/KeyCap
     同步）、planeKeyboard/dialogKeyboard、AgentPlane 抽屉（760 断点）、router.tsx。
   - 结论详见 Phase R 结论区（R11）。
-- [ ] **R12 收官**：全量回归（app+ui 单测 + e2e + tsc + fmt:check + lint +
-  export-patches --check）+ 全状态截图复测差异率表回写
-  `docs/prototype-react-diff.md` + 真窗口手验清单 + commit。
+- [x] **R12 收官** ✅ 2026-09-21：全量回归（app+ui 单测 + e2e + tsc +
+  fmt:check + lint + export-patches --check）+ 全状态截图复测差异率表
+  回写 `docs/prototype-react-diff.md` + 真窗口手验清单 + commit。
+  结论详见 Phase R 结论区（R12）。
 
 ### Phase R 结论区（各模块完成后填写）
 
@@ -883,6 +884,29 @@
   用例 + ⌘N/抽屉 Esc 全链）+ e2e 35（+1：⌘N 真管线开 ToolDialog +
   弹窗层吞 ctrl-tab + Esc 关）+ export-patches --check 全绿。
 
+- **R12（收官，2026-09-21）**：**工具链真 bug 修复**——`report.mjs`
+  归一后仍按 `ib.width`（2560）作行步长采样 `db`（实为 1280），
+  macOS Retina 下差异率系统性偏高（errors 报 10.5% 实应 0.96%）；
+  `region.mjs` 从未做 Retina 归一（只裁重叠区=错比左上 1/4）。修后
+  复测值与 R10 当日 pngdiff 抽查逐字吻合。**全量回归**：双包 tsc 0 错
+  · fmt:check 224 文件 · lint 0 警 · 根 bun test **532/0 fail** ·
+  e2e **35/0** · export-patches --check · cargo -p jagent-terminal
+  **41/0**（Phase R 未动 Rust 确认无漂移）。**截图复测**：proto 24 态
+  + impl 24 态全量重采（crash/hidden/narrow 按 R10 坑分独立进程）；
+  全态全图差异收敛到 **0.96%–5.68%**（仅 search 14.64% = 空 query
+  列全表的契约差异 + 文本整形底噪；hidden 3.47% 窄条带底噪放大），
+  相对 09-17 基线（1.67–8.53%）全面下降；表已回写
+  `docs/prototype-react-diff.md`（基线→R12 双列对照）。「需人工复查
+  的真实差异」表**逐项核销清零**（R4/R6 文案差异全修并有测试锁定，
+  像素类残余均落底噪带）；「已知差异」补录 R7–R10 条目（search 契约 /
+  markdown 语言头+ink 洗底 / 滚动条不可达 / CSS 表现力天花板 /
+  平台保真偏离）。**真窗口冒烟**：无 headless mount 脚本——产物核验
+  `jagent-native.darwin-arm64.node`（当日构建 116MB，`bun -e` 加载
+  71 导出正常），未强起 GUI。**手验清单**已汇总进
+  `docs/prototype-react-diff.md` 末节（窗口顶栏/终端/侧栏工作区/
+  Git 图/弹窗提示/系统遗留六组 20 项，含 W3–W5/G/错误面板/崩溃提示
+  旧待办与 dev 崩溃未结观察项）。
+
 ---
 
 
@@ -1043,3 +1067,4 @@ core→1/2/4 · controls→3/5/10/11 · term-notify→9 · presets→7/8 · acp-
 - 2026-09-21 · **R9 完成（空态与会话面对齐 React 原型）**：空态重建为 .home/.home-card 件组（680 渐变卡+kicker+ctx 行+section-head+.pills 双列网格卡 h42 + featured pi 胶囊），WorkspaceEmpty 复用同壳 · ConversationView 重建（conv-head 44 avatar+title+status、ConvIn 760 居中列、user 气泡不对称圆角、thinking-dot「正在思考…」、composer-shell 704+send-btn arrowRight+hint）；CHAT/ACP pill 退役 · TerminalSurface 只动周边 chrome（term 底色+exited-bar 去分隔线）· Icon 增 arrowRight · 平台发现：virtual-list 行根 margin 不测量→改 paddingBottom（行距塌陷真 bug，修后 chat 4.60→3.92）；geom 报 content-box；原生 markdown fenced code 恒带语言头行+ink 洗底（与 MdLite 裸 pre 的不可消除差异）· 六态差异全降：home 2.46/chat 3.92/acp 1.70/workspace 2.78/sess-main 1.58/sess-shell 1.54（基线 4.02/7.85/3.48/4.90/2.72/2.67）· 工具链：geom-proto 选择器扩展 + pngdiff/report Retina 归一 · gate：双包 tsc + bun test 523 + e2e 34 + fmt/lint + export-patches --check 全绿 · 下一步：R10（tokens/图标/全局样式）或 R11（键位/窄屏/深链）
 - 2026-09-21 · **R10 完成（tokens/图标/全局样式对账原型）**：第二段 `:root` 全表核对全数命中（无新增无消费者 token）；SIZES 删死键 rowPaddingX/activeBarWidth + sidebarWidth 接 schema catch + AgentPlane 窄断点改消费 token · Icon.tsx 30 项字形重写为 lucide-react@1.46.0 节点逐字 path（chat→circle-dot/terminal→`>_`/acp→trending-up 等），arrowLeft 原型死映射不收 · button fw500 补三处（Select trigger/st-nav-item/st-clear），focusRing 注释更正双环原型 vs 单阴影近似 · 滚动条盘点结论=不可达差异（GPUIX 无 thumb/track 用户级 API；终端 Zed 滚动条独立机制不动）· stash A/B 验证本轮像素面中性（各态 ±0.03% 内）；proto-shot 坑：crash 独立 root 会与同进程后续态抢 testId，须单独跑 · gate：双包 tsc + bun test 523 + e2e 34 + fmt/lint + export-patches --check 全绿 · 下一步：R11（键位/窄屏/深链）或 R12 收官
 - 2026-09-21 · **R11 完成（键位/窄屏/抽屉/深链对齐原型）**：useGlobalKeys 八层链全量移植 keybindings.ts——ui/keyboard 增 keyConsumed（一次性消费标记，escConsumed 泛化退役：捕获格编辑态吞全键、Modal/Popover/Combobox/Select Esc 一律置位防连坐）+ overlayEsc（Popover 挂载登记的浮层 Esc 栈，未聚焦浮层可关——原型 notifOpen/fontPicker 层）；dialogKeyboard 增 isOpen/close（弹窗开着全键让位 + Esc 兜底关，Radix document 级等价）；修「设置 query 非空且搜索框未聚焦 → Esc 静默」缺口（settingsKeyboard.clearQuery 回调）；AgentPlane 补 drawerRef 化的 isOpen 注册 + 越 760 断口变宽抽屉复位（原型 fit() 语义）· newSession 补设置面键位表行（KEY_ACTIONS 漏项）· 深链结论：?view= 系原型截图设施不落地——正式路由已覆盖 home/settings/workspace/chat/acp，余者 proto-shot 种子态对应 · gate：双包 tsc + 根 bun test 532 + e2e 35 + fmt/lint + export-patches --check 全绿 · 下一步：R12 收官
+- 2026-09-21 · **R12 完成（Phase R 收官）**：全量回归全绿（双包 tsc · fmt:check 224 · lint 0 警 · 根 bun test 532 · e2e 35 · export-patches --check · cargo 41）· 抓到并修复工具链真 bug——report.mjs 归一后错用 ib.width 作步长（Retina 下差异率系统性偏高）+ region.mjs 未归一；修后全态复测差异率 0.96–5.68%（search 14.64% 为契约差异），差异表基线→R12 双列回写 docs/prototype-react-diff.md，人工复查表核销清零，已知差异补录 R7–R10 项 · 真窗口手验清单六组 20 项汇总进 diff 文档末节（含 W3–W5/G/错误面板/崩溃提示旧待办 + dev 崩溃未结）· Phase R（R0–R12）全部完成 · 下一步：真窗口手验（用户）/ G4 另立设计 / C8 验收阶梯

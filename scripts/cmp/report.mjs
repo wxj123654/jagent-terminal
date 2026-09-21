@@ -114,7 +114,9 @@ try {
           for (let y = ys; y < y1; y++)
             for (let x = xs; x < x1; x++) {
               const i = (y * ia.width + x) * 4
-              const j = (y * ib.width + x) * 4
+              // db 已归一到 proto 尺寸（draw(ib, ia.width, ia.height)），
+              // 步长必须取 db.width——用 ib.width 在 Retina 2x 下会错行采样。
+              const j = (y * db.width + x) * 4
               const d =
                 Math.abs(da.data[i] - db.data[j]) > TH ||
                 Math.abs(da.data[i + 1] - db.data[j + 1]) > TH ||

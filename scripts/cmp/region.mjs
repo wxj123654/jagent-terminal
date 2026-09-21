@@ -47,18 +47,20 @@ try {
           im.src = src
         })
       const [ia, ib] = await Promise.all([load(a64), load(b64)])
+      // 归一到 A 图分辨率：macOS Retina 下 B（impl）截图是 2x 物理像素
+      // （与 pngdiff.mjs 同款归一——此前只裁重叠区，等于错比左上四分之一）。
+      const w = ia.width
+      const h = ia.height
       const draw = (im) => {
         const c = document.createElement('canvas')
-        c.width = im.width
-        c.height = im.height
+        c.width = w
+        c.height = h
         const g = c.getContext('2d', { willReadFrequently: true })
-        g.drawImage(im, 0, 0)
-        return g.getImageData(0, 0, im.width, im.height)
+        g.drawImage(im, 0, 0, w, h)
+        return g.getImageData(0, 0, w, h)
       }
       const da = draw(ia),
         db = draw(ib)
-      const w = Math.min(ia.width, ib.width)
-      const h = Math.min(ia.height, ib.height)
       const pct = (x0, y0, rw, rh) => {
         const x1 = Math.min(x0 + rw, w),
           y1 = Math.min(y0 + rh, h)
@@ -68,8 +70,8 @@ try {
         let diff = 0
         for (let y = ys; y < y1; y++)
           for (let x = xs; x < x1; x++) {
-            const i = (y * ia.width + x) * 4
-            const j = (y * ib.width + x) * 4
+            const i = (y * da.width + x) * 4
+            const j = (y * db.width + x) * 4
             if (
               Math.abs(da.data[i] - db.data[j]) > TH ||
               Math.abs(da.data[i + 1] - db.data[j + 1]) > TH ||
