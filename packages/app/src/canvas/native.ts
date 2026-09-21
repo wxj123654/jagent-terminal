@@ -6,9 +6,11 @@
  * 装配期 installCanvasNative() 注入真 .node 模块；单测注入录制 fake。
  */
 
+import { Path2D } from './path2d'
+
 type NativeModule = typeof import('@jagent/native')
 
-/** GpuixCanvas / Canvas2dContext 使用的 canvas* 函数全集。 */
+/** GpuixCanvas / Canvas2dContext / Path2D 使用的 canvas* 函数全集。 */
 export type CanvasNative = Pick<
   NativeModule,
   | 'canvasArc'
@@ -17,12 +19,14 @@ export type CanvasNative = Pick<
   | 'canvasCheckColor'
   | 'canvasClearRect'
   | 'canvasClip'
+  | 'canvasClipPath'
   | 'canvasClosePath'
   | 'canvasCreate'
   | 'canvasDestroy'
   | 'canvasDrawImage'
   | 'canvasEncodePng'
   | 'canvasFill'
+  | 'canvasFillPath'
   | 'canvasFillRect'
   | 'canvasFillText'
   | 'canvasGetImageData'
@@ -56,6 +60,7 @@ export type CanvasNative = Pick<
   | 'canvasSetTextBaseline'
   | 'canvasSetTransform'
   | 'canvasStroke'
+  | 'canvasStrokePath'
   | 'canvasStrokeRect'
   | 'canvasStrokeText'
   | 'canvasTransform'
@@ -63,9 +68,15 @@ export type CanvasNative = Pick<
 
 let binding: CanvasNative | null = null
 
-/** seam 装配期调用。surface 注册表与窗口无关，renderer 创建前/后均可。 */
+/**
+ * seam 装配期调用。surface 注册表与窗口无关，renderer 创建前/后均可。
+ * 同时把 Path2D 挂到 globalThis——canvas 库按 `typeof Path2D ===
+ * 'function'` 探测（uPlot 直接 new，Chart.js usePath2D 分支）。
+ */
 export function installCanvasNative(native: CanvasNative): void {
   binding = native
+  const g = globalThis as unknown as { Path2D?: typeof Path2D }
+  g.Path2D ??= Path2D
 }
 
 export function canvasNative(): CanvasNative {

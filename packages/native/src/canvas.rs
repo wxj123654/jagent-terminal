@@ -445,6 +445,27 @@ pub fn canvas_clip(id: f64, rule: String) -> Result<(), String> {
     with_surface(id, |ctx| ctx.clip(rule))
 }
 
+// ── Path2D：ops 为 JS 侧录制的扁平 f64 op 流（编码见 state.rs path_from_ops）──
+
+#[napi]
+pub fn canvas_fill_path(id: f64, ops: Float64Array, rule: String) -> Result<(), String> {
+    let rule = parse_fill_rule(&rule)
+        .ok_or_else(|| canvas_error(format!("unknown fill rule '{rule}'")))?;
+    with_surface(id, |ctx| ctx.fill_path(ops.as_ref(), rule))?.map_err(canvas_error)
+}
+
+#[napi]
+pub fn canvas_stroke_path(id: f64, ops: Float64Array) -> Result<(), String> {
+    with_surface(id, |ctx| ctx.stroke_path(ops.as_ref()))?.map_err(canvas_error)
+}
+
+#[napi]
+pub fn canvas_clip_path(id: f64, ops: Float64Array, rule: String) -> Result<(), String> {
+    let rule = parse_fill_rule(&rule)
+        .ok_or_else(|| canvas_error(format!("unknown clip rule '{rule}'")))?;
+    with_surface(id, |ctx| ctx.clip_path(ops.as_ref(), rule))?.map_err(canvas_error)
+}
+
 #[napi]
 pub fn canvas_fill_rect(id: f64, x: f64, y: f64, w: f64, h: f64) -> Result<(), String> {
     with_surface(id, |ctx| ctx.fill_rect(x, y, w, h))
@@ -876,6 +897,29 @@ mod tests {
     }
 
     #[test]
+    fn clip_same_depth_swap_resyncs() {
+        // 回归：clip A → 绘制 → restore → clip B（同深度）→ 绘制。
+        // backend clip 栈只按深度计数对齐时无法发现内容被换，会残留 A 把
+        // 第二次绘制裁到 A 区（Chart.js 轴 clip 覆盖数据线就是这条路径）。
+        let mut c = ctx(32, 32);
+        c.save();
+        c.begin_path();
+        c.rect(0.0, 0.0, 10.0, 10.0);
+        c.clip(Fill::NonZero);
+        c.set_fill_style(solid("#ff0000"));
+        c.fill_rect(0.0, 0.0, 10.0, 10.0); // backend 推入 clip A
+        c.restore();
+        c.save();
+        c.begin_path();
+        c.rect(16.0, 16.0, 16.0, 16.0);
+        c.clip(Fill::NonZero); // canonical [B]：深度仍是 1，内容已换
+        c.set_fill_style(solid("#00ff00"));
+        c.fill_rect(0.0, 0.0, 32.0, 32.0);
+        assert_eq!(pixel(&mut c, 20, 20), [0, 255, 0, 255], "B 区内应绘制");
+        assert_eq!(pixel(&mut c, 5, 5), [255, 0, 0, 255], "B 区外应被裁");
+    }
+
+    #[test]
     fn save_restore_restores_clip_and_style() {
         let mut c = ctx(32, 32);
         c.save();
@@ -1275,5 +1319,106 @@ mod tests {
         let img = image::load_from_memory(&png).unwrap().to_rgba8();
         assert_eq!(img.dimensions(), (8, 4));
         assert_eq!(img.get_pixel(4, 2).0, [0x33, 0x66, 0xcc, 0xff]);
+    }
+
+    // ── Path2D op 流（编码与 packages/app/src/canvas/path2d.ts 对应）──
+
+    #[test]
+    fn fill_path_paints_triangle() {
+        // [moveTo 4,4][lineTo 28,4][lineTo 16,28][close]
+        let ops = [0.0, 4.0, 4.0, 1.0, 28.0, 4.0, 1.0, 16.0, 28.0, 4.0];
+        let mut c = ctx(32, 32);
+        c.set_fill_style(solid("#ff0000"));
+        c.fill_path(&ops, Fill::NonZero).unwrap();
+        assert_eq!(pixel(&mut c, 16, 8), [255, 0, 0, 255]);
+        assert_eq!(pixel(&mut c, 4, 28), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn fill_path_ignores_current_path() {
+        // current default path 必须保持不动：Path2D 填充后，原路径仍可 fill。
+        let ops = [7.0, 24.0, 0.0, 8.0, 8.0]; // rect(24,0,8,8)
+        let mut c = ctx(32, 32);
+        c.begin_path();
+        c.rect(0.0, 0.0, 8.0, 8.0);
+        c.set_fill_style(solid("#ff0000"));
+        c.fill_path(&ops, Fill::NonZero).unwrap();
+        c.fill(Fill::NonZero);
+        assert_eq!(pixel(&mut c, 4, 4), [255, 0, 0, 255]);
+        assert_eq!(pixel(&mut c, 28, 4), [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn stroke_path_strokes_decoded_line() {
+        let ops = [0.0, 2.0, 8.0, 1.0, 30.0, 8.0];
+        let mut c = ctx(32, 32);
+        c.set_stroke_style(solid("#00ff00"));
+        c.set_line_width(4.0);
+        c.stroke_path(&ops).unwrap();
+        assert_eq!(pixel(&mut c, 16, 8), [0, 255, 0, 255]);
+        assert_eq!(pixel(&mut c, 16, 16), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn clip_path_limits_fill() {
+        let ops = [7.0, 0.0, 0.0, 10.0, 10.0]; // rect(0,0,10,10)
+        let mut c = ctx(32, 32);
+        c.clip_path(&ops, Fill::NonZero).unwrap();
+        c.set_fill_style(solid("#ff0000"));
+        c.fill_rect(0.0, 0.0, 32.0, 32.0);
+        assert_eq!(pixel(&mut c, 5, 5), [255, 0, 0, 255]);
+        assert_eq!(pixel(&mut c, 20, 20), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn path_ops_arc_fills_circle() {
+        // arc(16,16,8,0,τ,cw=false)
+        let ops = [5.0, 16.0, 16.0, 8.0, 0.0, std::f64::consts::TAU, 0.0];
+        let mut c = ctx(32, 32);
+        c.set_fill_style(solid("#ff0000"));
+        c.fill_path(&ops, Fill::NonZero).unwrap();
+        assert_eq!(pixel(&mut c, 16, 16), [255, 0, 0, 255]);
+        assert_eq!(pixel(&mut c, 16, 10), [255, 0, 0, 255]);
+        assert_eq!(pixel(&mut c, 4, 4), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn path_ops_ellipse_is_wider_than_tall() {
+        // ellipse(16,16,12,4,0,0,τ)
+        let ops = [
+            6.0,
+            16.0,
+            16.0,
+            12.0,
+            4.0,
+            0.0,
+            0.0,
+            std::f64::consts::TAU,
+            0.0,
+        ];
+        let mut c = ctx(32, 32);
+        c.set_fill_style(solid("#ff0000"));
+        c.fill_path(&ops, Fill::NonZero).unwrap();
+        assert_eq!(pixel(&mut c, 26, 16), [255, 0, 0, 255]);
+        assert_eq!(pixel(&mut c, 16, 11), [0, 0, 0, 0]); // ry=4 → y=11 在椭圆外
+    }
+
+    #[test]
+    fn path_ops_malformed_stream_errors() {
+        let mut c = ctx(8, 8);
+        assert!(c.fill_path(&[0.0, 1.0], Fill::NonZero).is_err()); // moveTo 参数截断
+        assert!(c.fill_path(&[99.0, 0.0], Fill::NonZero).is_err()); // 未知 tag
+        assert!(c.fill_path(&[0.5, 0.0, 0.0], Fill::NonZero).is_err()); // 非整数 tag
+    }
+
+    #[test]
+    fn path_ops_non_finite_args_skipped() {
+        // [moveTo NaN][lineTo 8,8][lineTo 8,8...] — 非有限参数整条丢弃
+        let ops = [0.0, f64::NAN, 0.0, 1.0, 4.0, 4.0, 1.0, 8.0, 4.0];
+        let mut c = ctx(16, 16);
+        c.set_stroke_style(solid("#ff0000"));
+        c.set_line_width(2.0);
+        c.stroke_path(&ops).unwrap();
+        assert_eq!(pixel(&mut c, 6, 4), [255, 0, 0, 255]);
     }
 }

@@ -1,6 +1,6 @@
 {
-  "$schema": "WHATWG HTML Canvas 2D 兼容子集清单（C7）",
-  "说明": "status: pass=已实现并测试; partial=实现但有文档化偏差; no=明确未实现。C6 不声明完整规范兼容；语义细节以 docs/canvas-2d-standard-research.md 为准。本文件被 packages/app/src/canvas/__tests__/canvas.test.ts 的机器校验消费：pass/partial 成员必须存在于 GpuixCanvas/Canvas2dContext，no 成员必须不存在。",
+  "$schema": "WHATWG HTML Canvas 2D 兼容子集清单（C8）",
+  "说明": "status: pass=已实现并测试; partial=实现但有文档化偏差; no=明确未实现。C6 不声明完整规范兼容；语义细节以 docs/canvas-2d-standard-research.md 为准。本文件被 packages/app/src/canvas/__tests__/canvas.test.ts 的机器校验消费：element/properties/methods 段校验 GpuixCanvas/Canvas2dContext，path2d 段校验 Path2D.prototype：pass/partial 成员必须存在，no 成员必须不存在（段内只允许成员键）。Path2D（path2d.ts）：JS 录制扁平 op 流，fill/stroke/clip(path) 一次 napi 解码为 BezPath，不动 current default path；库侧经 globalThis.Path2D 探测（uPlot 直接构造，Chart.js usePath2D 分支）。",
   "element": {
     "getContext": "pass — '2d' 单例 ctx；其他模式 null",
     "width": "pass — backing 像素；setter=resize=清空+状态重置",
@@ -8,7 +8,7 @@
     "toDataURL": "partial — 仅 image/png；其他 type 按规范回退 PNG",
     "toBlob": "no",
     "addEventListener": "no — GPUIX 非 DOM；事件走 props（本阶段未接）",
-    "getBoundingClientRect": "no — C7 uPlot 需要时再定",
+    "getBoundingClientRect": "no — GpuixCanvas 本体不实现；e2e dom-shim 包装 canvas 提供（uPlot 验收路径）",
     "style": "no — 尺寸经 <Canvas> props/style 通道"
   },
   "properties": {
@@ -59,9 +59,9 @@
     "roundRect": "partial — 只支持单半径（DOMPoint 半径数组 no）",
     "arcTo": "no",
     "ellipse": "no",
-    "fill": "pass — nonzero/evenodd；Path2D 参数 no",
-    "stroke": "pass",
-    "clip": "pass",
+    "fill": "pass — nonzero/evenodd；支持 Path2D 参数（C8）",
+    "stroke": "pass — 支持 Path2D 参数（C8）",
+    "clip": "pass — 支持 Path2D 参数（C8）",
     "fillRect": "pass",
     "strokeRect": "pass",
     "clearRect": "pass",
@@ -84,5 +84,36 @@
     "getContextAttributes": "no",
     "isContextLost": "no",
     "drawFocusIfNeeded": "no"
+  },
+  "path2d": {
+    "moveTo": "pass",
+    "lineTo": "pass",
+    "quadraticCurveTo": "pass",
+    "bezierCurveTo": "pass",
+    "closePath": "pass",
+    "arc": "pass — 负半径抛 IndexSizeError",
+    "arcTo": "pass — JS 解算为 lineTo+arc op；共线/零半径退化 lineTo(p1)",
+    "ellipse": "pass — rx/ry/rotation 全参数（Rust 椭圆弧解码）",
+    "rect": "pass",
+    "roundRect": "partial — 只支持单半径（与 ctx.roundRect 一致）",
+    "addPath": "partial — 仅路径合并；DOMMatrix transform 参数抛 TypeError",
+    "constructor": "partial — Path2D(other) 拷贝支持；SVG path 字符串抛 TypeError",
+    "getPathData": "no — 规范较新的读回 API"
+  },
+  "cases": {
+    "_说明": "实测验收用例（信息性段，不参与成员存在性机器校验）。全部经真 .node 像素断言，见 e2e/canvas-libs.e2e.test.tsx 与 e2e/canvas.bench.ts。",
+    "path2d-fill-triangle": "pass — fill(Path2D) 三角形 64×64：(32,40)=色 (10,10)=透明；当前路径不受影响",
+    "path2d-stroke-reuse": "pass — stroke(Path2D) 同实例连续两次（Chart.js _path 缓存路径模式）",
+    "path2d-clip": "pass — clip(Path2D) 限定后续 fillRect；栈外像素不变",
+    "path2d-arcTo-roundrect": "pass — 4×arcTo 圆角矩形（uPlot 柱图同款手法）+ ellipse 全参数",
+    "path2d-copy-evenodd": "pass — new Path2D(other) 拷贝 + fill(path,'evenodd') 镂空",
+    "clip-same-depth-swap": "pass — clip A→绘制→restore→clip B(同深度)→绘制；backend clip 栈按值前缀比对（回归 canvas.rs::clip_same_depth_swap_resyncs）",
+    "uplot-1.6.32-offscreen": "pass — 400×300 dom-shim 离屏：数据线红像素在 valToPos 坐标、轴线蓝像素存在、角外透明；setData 重绘断言新数据点",
+    "uplot-1.6.32-mounted": "pass — <canvas surface> 挂真窗口 + captureScreenshot：数据线出现在 PNG 帧",
+    "chartjs-4.5.1-line": "pass — BasicPlatform+animation:false：数据点坐标邻域红像素、meta.dataset._path instanceof Path2D（usePath2D 生效）",
+    "chartjs-4.5.1-bar-update": "pass — bar 图 update() 换数据换色重绘",
+    "chartjs-4.5.1-mounted": "pass — 同共享 test root 重渲染挂载，截图帧含数据线",
+    "bench-5k-cmd-frame": "measured — 5000 混合命令/帧 ×120f @800×600：mean 1.20ms p95 1.41ms max 1.75ms（预算 16.6ms，JS→napi→光栅化）",
+    "bench-dirty-frame-readback": "measured — 1.92MB 脏帧全帧提取 mean 1.03ms → 1870MB/s（预算 ~220MB/s；commit+unpremultiply+Buffer，代理 current_frame swizzle，不含 GPU atlas 上传）"
   }
 }

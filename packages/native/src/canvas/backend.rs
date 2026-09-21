@@ -42,8 +42,10 @@ pub trait Backend {
     fn clear_bitmap(&mut self);
     fn set_transform(&mut self, transform: Affine);
     /// 让 backend 的 clip 栈与 canonical `clips` 一致。clips 是设备空间路径。
-    /// vello 实现：多出则 pop，缺少则以 identity transform 逐个 push；
-    /// commit 重放后 clip_depth 归零、由 canonical 栈重新推入。
+    /// vello 实现：与已推栈按值比对找公共前缀，失配部分 pop，缺少部分以
+    /// identity transform 逐个 push；commit 重放后已推栈清空、由 canonical
+    /// 栈重新推入。不能按深度计数对齐——同深度 pop A + push B 之间若无绘制，
+    /// 深度不变但内容已换，会残留旧 clip（Chart.js 轴 clip 覆盖数据线）。
     fn sync_clips(&mut self, clips: &[Clip]);
     /// `imageSmoothingEnabled`：draw_pixels/pattern 采样质量开关。
     /// 由 prepare_draw 连同 transform 一起下推（状态调用，非绘制 op）。
@@ -114,8 +116,9 @@ pub struct VelloBackend {
     ctx: RenderContext,
     resources: Resources,
     pixmap: Pixmap,
-    /// ctx 内已录制的 clip 深度。
-    clip_depth: usize,
+    /// ctx 内已录制的 clip 栈（设备空间路径），与 canonical 栈按公共前缀
+    /// 比对同步——只用深度计数无法发现同深度内容被换（pop A + push B）。
+    pushed_clips: Vec<Clip>,
     /// 最近一次 set_transform 的用户 CTM；clip 重推时先切 identity 再恢复。
     transform: Affine,
     /// 是否有未 commit 的绘制 op（clip push 本身不算）。
@@ -130,7 +133,7 @@ impl VelloBackend {
             ctx: RenderContext::new(width, height),
             resources: Resources::new(),
             pixmap: Pixmap::new(width, height),
-            clip_depth: 0,
+            pushed_clips: Vec::new(),
             transform: Affine::IDENTITY,
             pending: false,
             smoothing: true,
@@ -180,14 +183,14 @@ impl Backend for VelloBackend {
     fn resize(&mut self, width: u16, height: u16) {
         self.ctx.reset_and_resize(width, height);
         self.pixmap = Pixmap::new(width, height);
-        self.clip_depth = 0;
+        self.pushed_clips.clear();
         self.pending = false;
     }
 
     fn clear_bitmap(&mut self) {
         self.ctx.reset();
         self.pixmap.data_mut().fill(PremulRgba8::from_u32(0));
-        self.clip_depth = 0;
+        self.pushed_clips.clear();
         self.pending = false;
     }
 
@@ -197,17 +200,25 @@ impl Backend for VelloBackend {
     }
 
     fn sync_clips(&mut self, clips: &[Clip]) {
-        while self.clip_depth > clips.len() {
-            self.ctx.pop_clip_path();
-            self.clip_depth -= 1;
+        // 与已推栈逐层比对：公共前缀保持，从首个失配层起 pop 后重推。
+        let mut keep = 0;
+        while keep < self.pushed_clips.len()
+            && keep < clips.len()
+            && self.pushed_clips[keep] == clips[keep]
+        {
+            keep += 1;
         }
-        if self.clip_depth < clips.len() {
+        while self.pushed_clips.len() > keep {
+            self.ctx.pop_clip_path();
+            self.pushed_clips.pop();
+        }
+        if self.pushed_clips.len() < clips.len() {
             // canonical clip 是设备空间：重推时必须绕开用户 CTM。
             self.ctx.set_transform(Affine::IDENTITY);
-            for clip in &clips[self.clip_depth..] {
+            for clip in &clips[self.pushed_clips.len()..] {
                 self.ctx.set_fill_rule(clip.rule);
                 self.ctx.push_clip_path(&clip.path);
-                self.clip_depth += 1;
+                self.pushed_clips.push(clip.clone());
             }
             self.ctx.set_transform(self.transform);
         }
@@ -362,7 +373,7 @@ impl Backend for VelloBackend {
             },
         );
         self.ctx.reset();
-        self.clip_depth = 0;
+        self.pushed_clips.clear();
         self.pending = false;
     }
 

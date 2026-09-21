@@ -242,7 +242,7 @@ pub enum TextBaseline {
 
 /// clip() 时刻已把 CTM 并入路径，canonical 栈存设备空间路径；
 /// backend 重推 clip 时用 identity transform。
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct Clip {
     pub path: BezPath,
     pub rule: Fill,
@@ -602,17 +602,34 @@ impl<B: Backend> Ctx2d<B> {
         self.path.move_to(Point::new(x, y));
     }
 
+    /// 规范：空路径上的 lineTo 等价为 moveTo（kurbo 空路径 line_to 会
+    /// debug_assert panic）。
     pub fn line_to(&mut self, x: f64, y: f64) {
-        self.path.line_to(Point::new(x, y));
+        let p = Point::new(x, y);
+        if self.path.elements().is_empty() {
+            self.path.move_to(p);
+        } else {
+            self.path.line_to(p);
+        }
     }
 
+    /// 规范：空路径上先「ensure subpath」于控制点。
     pub fn quadratic_to(&mut self, cx: f64, cy: f64, x: f64, y: f64) {
-        self.path.quad_to(Point::new(cx, cy), Point::new(x, y));
+        let cp = Point::new(cx, cy);
+        if self.path.elements().is_empty() {
+            self.path.move_to(cp);
+        }
+        self.path.quad_to(cp, Point::new(x, y));
     }
 
+    /// 规范：同上。
     pub fn bezier_to(&mut self, c1x: f64, c1y: f64, c2x: f64, c2y: f64, x: f64, y: f64) {
+        let c1 = Point::new(c1x, c1y);
+        if self.path.elements().is_empty() {
+            self.path.move_to(c1);
+        }
         self.path
-            .curve_to(Point::new(c1x, c1y), Point::new(c2x, c2y), Point::new(x, y));
+            .curve_to(c1, Point::new(c2x, c2y), Point::new(x, y));
     }
 
     pub fn close_path(&mut self) {
@@ -632,8 +649,8 @@ impl<B: Backend> Ctx2d<B> {
         self.path.extend(rounded.to_path(BEZIER_TOLERANCE));
     }
 
-    /// canvas `arc(cx, cy, r, start, end, anticlockwise)`。椭圆 arc/ellipse 后续用
-    /// kurbo::Ellipse + 旋转补。
+    /// canvas `arc(cx, cy, r, start, end, anticlockwise)`。椭圆形态走
+    /// append_arc 的 rx/ry/rotation 参数（Path2D ellipse op）。
     pub fn arc(
         &mut self,
         cx: f64,
@@ -643,47 +660,17 @@ impl<B: Backend> Ctx2d<B> {
         end: f64,
         anticlockwise: bool,
     ) {
-        if !radius.is_finite() || radius < 0.0 {
-            return;
-        }
-        let tau = std::f64::consts::TAU;
-        let mut sweep = end - start;
-        if anticlockwise {
-            if sweep <= -tau {
-                sweep = -tau;
-            } else if sweep > 0.0 {
-                sweep = sweep.rem_euclid(tau) - tau;
-            }
-        } else {
-            if sweep >= tau {
-                sweep = tau;
-            } else if sweep < 0.0 {
-                sweep = sweep.rem_euclid(tau);
-            }
-        }
-        let arc = Arc::new(
-            Point::new(cx, cy),
-            Vec2::new(radius, radius),
-            start,
-            sweep,
+        append_arc(
+            &mut self.path,
+            cx,
+            cy,
+            radius,
+            radius,
             0.0,
+            start,
+            end,
+            anticlockwise,
         );
-        let mut segment = arc.to_path(BEZIER_TOLERANCE).into_iter();
-        // 规范：路径非空时，arc 起点与当前点直线相连；空路径则 move_to 起点。
-        if let Some(first) = segment.next() {
-            let start_point = match first {
-                vello_cpu::kurbo::PathEl::MoveTo(p) => p,
-                _ => Point::new(cx + radius * start.cos(), cy + radius * start.sin()),
-            };
-            if self.path.is_empty() {
-                self.path.move_to(start_point);
-            } else {
-                self.path.line_to(start_point);
-            }
-        }
-        for el in segment {
-            self.path.push(el);
-        }
     }
 
     // ---- paint ops ----
@@ -720,6 +707,50 @@ impl<B: Backend> Ctx2d<B> {
             path: device_path,
             rule,
         });
+    }
+
+    // ---- Path2D（JS 侧录制的扁平 op 流，编码见 path2d.ts）----
+
+    /// `fill(path2d)`：解码 op 流后按当前 transform/样式填充；
+    /// 不触碰 current default path。
+    pub fn fill_path(&mut self, ops: &[f64], rule: Fill) -> Result<(), String> {
+        let path = path_from_ops(ops).ok_or_else(|| "malformed Path2D op stream".to_string())?;
+        self.prepare_draw();
+        self.backend.fill(
+            &path,
+            rule,
+            &self.state.fill,
+            self.state.alpha,
+            self.state.composite,
+        );
+        self.rev += 1;
+        Ok(())
+    }
+
+    /// `stroke(path2d)`：同上，描边。
+    pub fn stroke_path(&mut self, ops: &[f64]) -> Result<(), String> {
+        let path = path_from_ops(ops).ok_or_else(|| "malformed Path2D op stream".to_string())?;
+        self.prepare_draw();
+        self.backend.stroke(
+            &path,
+            &self.state.stroke,
+            &self.state.stroke_paint,
+            self.state.alpha,
+            self.state.composite,
+        );
+        self.rev += 1;
+        Ok(())
+    }
+
+    /// `clip(path2d)`：与 clip() 相同——只入 canonical 栈。
+    pub fn clip_path(&mut self, ops: &[f64], rule: Fill) -> Result<(), String> {
+        let path = path_from_ops(ops).ok_or_else(|| "malformed Path2D op stream".to_string())?;
+        let device_path = self.state.transform * &path;
+        self.state.clips.push(Clip {
+            path: device_path,
+            rule,
+        });
+        Ok(())
     }
 
     pub fn fill_rect(&mut self, x: f64, y: f64, w: f64, h: f64) {
@@ -975,6 +1006,184 @@ fn rect_path(x: f64, y: f64, w: f64, h: f64) -> BezPath {
     path.line_to(Point::new(x, y + h));
     path.close_path();
     path
+}
+
+/// arc()/ellipse() 共用：sweep 归一化 + 「路径非空先 line_to 弧起点，
+/// 空路径 move_to」的连接语义。rotation 为椭圆 x 轴旋转角（弧度）。
+#[allow(clippy::too_many_arguments)]
+fn append_arc(
+    path: &mut BezPath,
+    cx: f64,
+    cy: f64,
+    rx: f64,
+    ry: f64,
+    rotation: f64,
+    start: f64,
+    end: f64,
+    anticlockwise: bool,
+) {
+    if !rx.is_finite() || !ry.is_finite() || rx < 0.0 || ry < 0.0 {
+        return;
+    }
+    let tau = std::f64::consts::TAU;
+    let mut sweep = end - start;
+    if anticlockwise {
+        if sweep <= -tau {
+            sweep = -tau;
+        } else if sweep > 0.0 {
+            sweep = sweep.rem_euclid(tau) - tau;
+        }
+    } else {
+        if sweep >= tau {
+            sweep = tau;
+        } else if sweep < 0.0 {
+            sweep = sweep.rem_euclid(tau);
+        }
+    }
+    let arc = Arc::new(
+        Point::new(cx, cy),
+        Vec2::new(rx, ry),
+        start,
+        sweep,
+        rotation,
+    );
+    let mut segment = arc.to_path(BEZIER_TOLERANCE).into_iter();
+    if let Some(first) = segment.next() {
+        let start_point = match first {
+            vello_cpu::kurbo::PathEl::MoveTo(p) => p,
+            _ => Point::new(cx + rx * start.cos(), cy + ry * start.sin()),
+        };
+        if path.elements().is_empty() {
+            path.move_to(start_point);
+        } else {
+            path.line_to(start_point);
+        }
+    }
+    for el in segment {
+        path.push(el);
+    }
+}
+
+// Path2D op tag（与 packages/app/src/canvas/path2d.ts 一一对应）。
+const OP_MOVE_TO: u8 = 0;
+const OP_LINE_TO: u8 = 1;
+const OP_QUAD_TO: u8 = 2;
+const OP_CURVE_TO: u8 = 3;
+const OP_CLOSE: u8 = 4;
+const OP_ARC: u8 = 5;
+const OP_ELLIPSE: u8 = 6;
+const OP_RECT: u8 = 7;
+const OP_ROUND_RECT: u8 = 8;
+
+/// 解码 JS Path2D 的扁平 op 流（每条 = [tag, args...]）为 BezPath。
+/// 结构畸形（截断/未知 tag）返回 None；非有限参数整条跳过——JS 录制
+/// 时已按规范丢弃非有限参数，这里只做防御。
+fn path_from_ops(ops: &[f64]) -> Option<BezPath> {
+    fn take<'a>(ops: &'a [f64], i: &mut usize, n: usize) -> Option<&'a [f64]> {
+        let s = ops.get(*i..*i + n)?;
+        *i += n;
+        Some(s)
+    }
+    let mut path = BezPath::new();
+    let mut i = 0;
+    while i < ops.len() {
+        let op = ops[i];
+        i += 1;
+        if op.fract() != 0.0 || !(OP_MOVE_TO as f64..=OP_ROUND_RECT as f64).contains(&op) {
+            return None;
+        }
+        match op as u8 {
+            OP_MOVE_TO => {
+                let a = take(ops, &mut i, 2)?;
+                if finite_args(a) {
+                    path.move_to(Point::new(a[0], a[1]));
+                }
+            }
+            OP_LINE_TO => {
+                let a = take(ops, &mut i, 2)?;
+                if finite_args(a) {
+                    let p = Point::new(a[0], a[1]);
+                    if path.elements().is_empty() {
+                        path.move_to(p);
+                    } else {
+                        path.line_to(p);
+                    }
+                }
+            }
+            OP_QUAD_TO => {
+                let a = take(ops, &mut i, 4)?;
+                if finite_args(a) {
+                    let cp = Point::new(a[0], a[1]);
+                    if path.elements().is_empty() {
+                        path.move_to(cp);
+                    }
+                    path.quad_to(cp, Point::new(a[2], a[3]));
+                }
+            }
+            OP_CURVE_TO => {
+                let a = take(ops, &mut i, 6)?;
+                if finite_args(a) {
+                    let c1 = Point::new(a[0], a[1]);
+                    if path.elements().is_empty() {
+                        path.move_to(c1);
+                    }
+                    path.curve_to(c1, Point::new(a[2], a[3]), Point::new(a[4], a[5]));
+                }
+            }
+            OP_CLOSE => path.close_path(),
+            OP_ARC => {
+                let a = take(ops, &mut i, 6)?;
+                append_arc(
+                    &mut path,
+                    a[0],
+                    a[1],
+                    a[2],
+                    a[2],
+                    0.0,
+                    a[3],
+                    a[4],
+                    a[5] != 0.0,
+                );
+            }
+            OP_ELLIPSE => {
+                let a = take(ops, &mut i, 8)?;
+                append_arc(
+                    &mut path,
+                    a[0],
+                    a[1],
+                    a[2],
+                    a[3],
+                    a[4],
+                    a[5],
+                    a[6],
+                    a[7] != 0.0,
+                );
+            }
+            OP_RECT => {
+                let a = take(ops, &mut i, 4)?;
+                if finite_args(a) {
+                    path.extend(rect_path(a[0], a[1], a[2], a[3]));
+                }
+            }
+            OP_ROUND_RECT => {
+                let a = take(ops, &mut i, 5)?;
+                if finite_args(a) {
+                    let rect = Rect::new(a[0], a[1], a[0] + a[2], a[1] + a[3]);
+                    let rounded = RoundedRect::from_rect(
+                        rect,
+                        RoundedRectRadii::from_single_radius(a[4].max(0.0)),
+                    );
+                    path.extend(rounded.to_path(BEZIER_TOLERANCE));
+                }
+            }
+            _ => return None,
+        }
+    }
+    Some(path)
+}
+
+fn finite_args(args: &[f64]) -> bool {
+    args.iter().all(|v| v.is_finite())
 }
 
 fn premul(channel: u8, alpha: u8) -> u8 {

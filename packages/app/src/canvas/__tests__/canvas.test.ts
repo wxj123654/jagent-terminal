@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import type { Canvas2dContext } from '../context'
 import { GpuixCanvas, createCanvas } from '../gpuixCanvas'
 import { installCanvasNative, type CanvasNative } from '../native'
+import { Path2D } from '../path2d'
 
 type Calls = Array<[string, ...unknown[]]>
 
@@ -86,6 +87,9 @@ function makeFake() {
     canvasFill: rec('canvasFill'),
     canvasStroke: rec('canvasStroke'),
     canvasClip: rec('canvasClip'),
+    canvasFillPath: rec('canvasFillPath'),
+    canvasStrokePath: rec('canvasStrokePath'),
+    canvasClipPath: rec('canvasClipPath'),
     canvasFillRect: rec('canvasFillRect'),
     canvasStrokeRect: rec('canvasStrokeRect'),
     canvasClearRect: rec('canvasClearRect'),
@@ -680,6 +684,86 @@ describe('Canvas2dContext gradient/pattern/drawImage/toDataURL（C7）', () => {
   })
 })
 
+describe('Path2D', () => {
+  test('fill/stroke/clip(path) 走 canvas*Path 通道；当前路径不动', () => {
+    const c = new GpuixCanvas(64, 64, fake)
+    const ctx = c.getContext('2d')!
+    const p = new Path2D()
+    p.moveTo(1, 2)
+    p.lineTo(3, 4)
+    p.closePath()
+    ctx.fill(p, 'evenodd')
+    ctx.stroke(p)
+    ctx.clip(p)
+    const fill = callsOf(fake, 'canvasFillPath')[0]!
+    expect(fill[1]).toBe(c.surfaceId)
+    expect(fill[3]).toBe('evenodd')
+    const ops = Array.from(fill[2] as Float64Array)
+    expect(ops).toEqual([0, 1, 2, 1, 3, 4, 4])
+    expect(callsOf(fake, 'canvasStrokePath')).toHaveLength(1)
+    expect(callsOf(fake, 'canvasClipPath')).toHaveLength(1)
+    // 当前路径形态不受影响（无 canvasFill/canvasClip 调用）
+    expect(callsOf(fake, 'canvasFill')).toHaveLength(0)
+    expect(callsOf(fake, 'canvasClip')).toHaveLength(0)
+  })
+
+  test('非法 fillRule 抛 TypeError；非 Path2D 参数回落当前路径形态', () => {
+    const c = new GpuixCanvas(64, 64, fake)
+    const ctx = c.getContext('2d')!
+    const p = new Path2D()
+    expect(() => ctx.fill(p, 'bogus' as never)).toThrow(TypeError)
+    ctx.fill('evenodd')
+    ctx.clip('nonzero')
+    expect(callsOf(fake, 'canvasFill')[0]).toEqual(['canvasFill', c.surfaceId, 'evenodd'])
+    expect(callsOf(fake, 'canvasClip')[0]).toEqual(['canvasClip', c.surfaceId, 'nonzero'])
+  })
+
+  test('Path2D 拷贝构造/addPath 合并 op 流；字符串构造抛错', () => {
+    const a = new Path2D()
+    a.rect(0, 0, 4, 4)
+    const b = new Path2D(a)
+    b.rect(8, 8, 4, 4)
+    expect(Array.from(b._opsArray())).toEqual([7, 0, 0, 4, 4, 7, 8, 8, 4, 4])
+    const c2 = new Path2D()
+    c2.addPath(a)
+    expect(Array.from(c2._opsArray())).toEqual([7, 0, 0, 4, 4])
+    expect(() => new Path2D('M0 0L1 1')).toThrow(TypeError)
+    expect(() => c2.addPath(a, {})).toThrow(TypeError)
+  })
+
+  test('arcTo 解算为 lineTo+arc op；退化形态 lineTo(p1)', () => {
+    const p = new Path2D()
+    p.moveTo(0, 0)
+    p.arcTo(10, 0, 10, 10, 5)
+    const ops = Array.from(p._opsArray())
+    // [moveTo] + [lineTo T1] + [arc cx cy r start end ccw]
+    expect(ops[0]).toBe(0)
+    expect(ops[3]).toBe(1)
+    expect(ops[6]).toBe(5)
+    expect(ops.slice(6)).toHaveLength(7)
+    expect(ops[9]).toBe(5) // r=5
+    // 退化：半径 0 → lineTo(x1,y1)
+    const q = new Path2D()
+    q.moveTo(0, 0)
+    q.arcTo(10, 0, 20, 0, 5) // 共线 → lineTo(10,0)
+    q.arcTo(20, 0, 30, 10, 0) // r=0 → lineTo(20,0)
+    expect(Array.from(q._opsArray())).toEqual([0, 0, 0, 1, 10, 0, 1, 20, 0])
+  })
+
+  test('arcTo 空路径等价 moveTo；负半径抛 IndexSizeError', () => {
+    const p = new Path2D()
+    p.arcTo(5, 5, 10, 10, 2)
+    expect(Array.from(p._opsArray())).toEqual([0, 5, 5])
+    expect(() => p.arcTo(0, 0, 1, 1, -1)).toThrow(DOMException)
+    p.arcTo(NaN, 0, 1, 1, 2) // 非有限静默
+    expect(Array.from(p._opsArray())).toEqual([0, 5, 5])
+  })
+
+  test('installCanvasNative 挂 globalThis.Path2D', () => {
+    expect((globalThis as { Path2D?: unknown }).Path2D).toBe(Path2D)
+  })
+})
+
 describe('canvas-conformance.json 机器校验', () => {
   // pass/partial → 成员必须存在；no → 必须不存在（防无意宣称兼容）
   test('成员存在性与清单一致', async () => {
@@ -702,5 +786,6 @@ describe('canvas-conformance.json 机器校验', () => {
     check(canvas, manifest.element ?? {})
     check(ctx, manifest.properties ?? {})
     check(ctx, manifest.methods ?? {})
+    check(Path2D.prototype, manifest.path2d ?? {})
   })
 })

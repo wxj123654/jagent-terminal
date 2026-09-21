@@ -10,7 +10,9 @@
     "@jagent/app": "workspace:*",
     "@jagent/native": "workspace:*",
     "@jagent/ui": "workspace:*",
+    "chart.js": "4.5.1",
     "react": "19.2.8",
-    "roughjs": "4.6.6"
+    "roughjs": "4.6.6",
+    "uplot": "1.6.32"
   }
 }

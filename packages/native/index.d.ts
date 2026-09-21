@@ -732,6 +732,8 @@ export declare function canvasClearRect(id: number, x: number, y: number, w: num
 
 export declare function canvasClip(id: number, rule: string): void
 
+export declare function canvasClipPath(id: number, ops: Float64Array, rule: string): void
+
 export declare function canvasClosePath(id: number): void
 
 /**
@@ -753,6 +755,8 @@ export declare function canvasDrawImage(dst: number, src: number, sx: number, sy
 export declare function canvasEncodePng(id: number): Buffer
 
 export declare function canvasFill(id: number, rule: string): void
+
+export declare function canvasFillPath(id: number, ops: Float64Array, rule: string): void
 
 export declare function canvasFillRect(id: number, x: number, y: number, w: number, h: number): void
 
@@ -835,6 +839,8 @@ export declare function canvasSetTextBaseline(id: number, baseline: string): voi
 export declare function canvasSetTransform(id: number, a: number, b: number, c: number, d: number, e: number, f: number): void
 
 export declare function canvasStroke(id: number): void
+
+export declare function canvasStrokePath(id: number, ops: Float64Array): void
 
 export declare function canvasStrokeRect(id: number, x: number, y: number, w: number, h: number): void
 

@@ -6,15 +6,16 @@
  * docs/canvas-2d-standard-research.md；逐条兼容状态见
  * docs/canvas-conformance.json。
  *
- * 明确不在子集内：createImageData(PNG)、DOMMatrix、ellipse/arcTo、
+ * 明确不在子集内：DOMMatrix、ctx 级 ellipse/arcTo（Path2D 上有）、
  * isPointInPath、direction/letterSpacing、CanvasPattern.setTransform 等。
- * 调用不存在的方法自然抛 TypeError（库自行 feature-detect）。
+ * fill/stroke/clip 支持 Path2D 参数形态（Path2D 见 path2d.ts）。
  */
 
 import { parseFontShorthand } from './font'
 import { GpuixCanvas } from './gpuixCanvas'
 import { CanvasGradient, CanvasPattern, type PaintStyle, type PatternRepetition } from './gradient'
 import type { CanvasNative } from './native'
+import { Path2D } from './path2d'
 
 export type LineCap = 'butt' | 'round' | 'square'
 export type LineJoin = 'bevel' | 'round' | 'miter'
@@ -575,21 +576,45 @@ export class Canvas2dContext {
 
   // ── 绘制（像素变更 → rev bump）──────────────────────────────────
 
-  fill(rule: FillRule = 'nonzero'): void {
-    if (!FILL_RULES.has(rule)) throw new TypeError(`invalid fillRule: ${rule}`)
-    this.native.canvasFill(this.id, rule)
+  /**
+   * 规范双形态：fill([rule]) 填当前路径；fill(path [, rule]) 填 Path2D
+   * （不动当前路径）。Path2D op 流一次过 napi，Rust 解码绘制。
+   */
+  fill(pathOrRule?: Path2D | FillRule, rule?: FillRule): void {
+    if (pathOrRule instanceof Path2D) {
+      const r = rule ?? 'nonzero'
+      if (!FILL_RULES.has(r)) throw new TypeError(`invalid fillRule: ${r}`)
+      this.native.canvasFillPath(this.id, pathOrRule._opsArray(), r)
+      this.dirty()
+      return
+    }
+    const r = pathOrRule ?? 'nonzero'
+    if (!FILL_RULES.has(r)) throw new TypeError(`invalid fillRule: ${r}`)
+    this.native.canvasFill(this.id, r)
     this.dirty()
   }
 
-  stroke(): void {
-    this.native.canvasStroke(this.id)
+  /** stroke() 描当前路径；stroke(path) 描 Path2D。 */
+  stroke(path?: Path2D): void {
+    if (path instanceof Path2D) {
+      this.native.canvasStrokePath(this.id, path._opsArray())
+    } else {
+      this.native.canvasStroke(this.id)
+    }
     this.dirty()
   }
 
-  clip(rule: FillRule = 'nonzero'): void {
-    if (!FILL_RULES.has(rule)) throw new TypeError(`invalid fillRule: ${rule}`)
-    this.native.canvasClip(this.id, rule)
-    // clip 是状态不是像素：下一次绘制 op 才生效——不 bump
+  /** 规范形态：clip([rule]) / clip(path [, rule])。clip 是状态不是像素——不 bump。 */
+  clip(pathOrRule?: Path2D | FillRule, rule?: FillRule): void {
+    if (pathOrRule instanceof Path2D) {
+      const r = rule ?? 'nonzero'
+      if (!FILL_RULES.has(r)) throw new TypeError(`invalid fillRule: ${r}`)
+      this.native.canvasClipPath(this.id, pathOrRule._opsArray(), r)
+      return
+    }
+    const r = pathOrRule ?? 'nonzero'
+    if (!FILL_RULES.has(r)) throw new TypeError(`invalid fillRule: ${r}`)
+    this.native.canvasClip(this.id, r)
   }
 
   fillRect(x: number, y: number, w: number, h: number): void {
