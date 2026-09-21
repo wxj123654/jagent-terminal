@@ -22,13 +22,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use gpuix_native::custom_elements::{
-    log_painted_text, CustomElement, CustomElementFactory, CustomRenderContext,
+    CustomElement, CustomElementFactory, CustomRenderContext, log_painted_text,
 };
 use serde_json::Value;
 
 use gpui::{
-    canvas, div, prelude::*, px, quad, rgba, App, BorderStyle, Bounds, Edges, Font, FontWeight,
-    Pixels, Point, SharedString, ShapedLine, TextAlign, TextRun, Window,
+    App, BorderStyle, Bounds, Edges, Font, FontWeight, Pixels, Point, ShapedLine, SharedString,
+    TextAlign, TextRun, Window, canvas, div, prelude::*, px, quad, rgba,
 };
 
 // ── 行规格（props 解析结果） ────────────────────────────────────────
@@ -168,10 +168,7 @@ fn parse_row(v: &Value) -> Option<RowSpec> {
     let obj = v.as_object()?;
     let f32_of = |v: &Value| v.as_f64().map(|n| n as f32);
     let row_height = f32_of(obj.get("rowHeight")?)?;
-    let badge_height = obj
-        .get("badgeHeight")
-        .and_then(f32_of)
-        .unwrap_or(18.0);
+    let badge_height = obj.get("badgeHeight").and_then(f32_of).unwrap_or(18.0);
     let badges = obj
         .get("badges")
         .and_then(Value::as_array)
@@ -206,10 +203,7 @@ fn parse_row(v: &Value) -> Option<RowSpec> {
                     .get("alignRight")
                     .and_then(Value::as_bool)
                     .unwrap_or(false),
-                ellipsis: co
-                    .get("ellipsis")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false),
+                ellipsis: co.get("ellipsis").and_then(Value::as_bool).unwrap_or(false),
             })
         })
         .collect();
@@ -265,19 +259,15 @@ fn shaped_line(
     let rgba = rgba(parse_hex(color));
     let text = SharedString::from(text.to_string());
     let run = text_run(text.len(), font.clone(), rgba);
-    let full = window
-        .text_system()
-        .shape_line(text.clone(), px(size), std::slice::from_ref(&run), None);
+    let full =
+        window
+            .text_system()
+            .shape_line(text.clone(), px(size), std::slice::from_ref(&run), None);
 
     let shaped = if ellipsis && full.width() > avail {
         let mut wrapper = window.text_system().line_wrapper(font.clone(), px(size));
-        let (truncated, _) = wrapper.truncate_line(
-            text,
-            avail,
-            "\u{2026}",
-            &[run],
-            gpui::TruncateFrom::End,
-        );
+        let (truncated, _) =
+            wrapper.truncate_line(text, avail, "\u{2026}", &[run], gpui::TruncateFrom::End);
         let run = text_run(truncated.len(), font, rgba);
         window
             .text_system()
@@ -354,7 +344,10 @@ fn paint_row(
         label
             .shaped
             .paint(
-                Point::new(x + px(BADGE_ICON + BADGE_PAD_LEFT), top + (row_h - label_lh) * 0.5),
+                Point::new(
+                    x + px(BADGE_ICON + BADGE_PAD_LEFT),
+                    top + (row_h - label_lh) * 0.5,
+                ),
                 label_lh,
                 TextAlign::Left,
                 None,

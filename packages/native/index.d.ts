@@ -715,6 +715,136 @@ export interface WindowSize {
  */
 export declare function applyWindowAppearance(): void
 
+export declare function canvasArc(id: number, cx: number, cy: number, radius: number, start: number, end: number, anticlockwise: boolean): void
+
+export declare function canvasBeginPath(id: number): void
+
+export declare function canvasBezierTo(id: number, c1X: number, c1Y: number, c2X: number, c2Y: number, x: number, y: number): void
+
+/** `CanvasGradient.addColorStop` 的 CSS 颜色校验（非法 → JS 抛 SyntaxError）。 */
+export declare function canvasCheckColor(css: string): boolean
+
+export declare function canvasClearRect(id: number, x: number, y: number, w: number, h: number): void
+
+export declare function canvasClip(id: number, rule: string): void
+
+export declare function canvasClosePath(id: number): void
+
+/**
+ * 创建一块 backing store surface（离屏 canvas / `<canvas>` 共用）。
+ * 返回 surface id。
+ */
+export declare function canvasCreate(width: number, height: number): number
+
+export declare function canvasDestroy(id: number): void
+
+/**
+ * `drawImage(sourceCanvas, ...)`：source 是另一块 surface（离屏或已挂载）。
+ * 先 commit 源并快照像素——自绘（dst == src）因此安全。返回 false 表示
+ * 规范 no-op（退化/全出界），JS 侧据此不 bump rev。
+ */
+export declare function canvasDrawImage(dst: number, src: number, sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number): boolean
+
+/** `toDataURL('image/png')`：全 bitmap → PNG 字节（unpremul RGBA8）。 */
+export declare function canvasEncodePng(id: number): Buffer
+
+export declare function canvasFill(id: number, rule: string): void
+
+export declare function canvasFillRect(id: number, x: number, y: number, w: number, h: number): void
+
+export declare function canvasFillText(id: number, text: string, x: number, y: number): void
+
+/** `getImageData`：unpremultiplied RGBA8，越界区域为 transparent black。 */
+export declare function canvasGetImageData(id: number, x: number, y: number, w: number, h: number): Buffer
+
+export declare function canvasLineTo(id: number, x: number, y: number): void
+
+export declare function canvasMeasureText(id: number, text: string): CanvasTextMetrics
+
+export declare function canvasMoveTo(id: number, x: number, y: number): void
+
+/** `putImageData`：data 为 unpremultiplied RGBA8，长度必须 >= w*h*4。 */
+export declare function canvasPutImageData(id: number, x: number, y: number, w: number, h: number, data: Buffer): void
+
+export declare function canvasQuadraticTo(id: number, cx: number, cy: number, x: number, y: number): void
+
+export declare function canvasRect(id: number, x: number, y: number, w: number, h: number): void
+
+/** `ctx.reset()`：清空 bitmap 并重置全部状态（规范语义）。 */
+export declare function canvasReset(id: number): void
+
+export declare function canvasResetTransform(id: number): void
+
+/** 重设 backing 尺寸。规范语义：清空 bitmap 并重置全部 context 状态。 */
+export declare function canvasResize(id: number, width: number, height: number): void
+
+export declare function canvasRestore(id: number): void
+
+/** 当前像素修订号：挂载元素据此判断是否重传纹理。 */
+export declare function canvasRevision(id: number): number
+
+export declare function canvasRoundRect(id: number, x: number, y: number, w: number, h: number, radius: number): void
+
+export declare function canvasSave(id: number): void
+
+export declare function canvasSetCompositeOp(id: number, op: string): void
+
+/**
+ * `fillStyle`/`strokeStyle` = CanvasPattern：像素为 unpremultiplied RGBA8
+ * （createPattern 时刻的快照，JS 经 getImageData 取得）。
+ */
+export declare function canvasSetFillPattern(id: number, pixels: Buffer, width: number, height: number, repetition: string): void
+
+/**
+ * `fillStyle`/`strokeStyle`：CSS 颜色字符串，或 CanvasGradient 序列化出的
+ * 渐变描述对象（{"kind":"linear"|"radial"|"conic", ...}）。非法值返回
+ * 错误——浏览器语义是静默忽略，由 JS 侧自行决定。
+ */
+export declare function canvasSetFillStyle(id: number, value: any): void
+
+/** 结构化字体规格（canvas `font` shorthand 由 JS 解析后分字段传入）。 */
+export declare function canvasSetFont(id: number, family: string, size: number, weight: number, italic: boolean): void
+
+export declare function canvasSetGlobalAlpha(id: number, alpha: number): void
+
+/** `imageSmoothingEnabled`：drawImage/pattern 采样质量（双线性 vs 最近邻）。 */
+export declare function canvasSetImageSmoothing(id: number, enabled: boolean): void
+
+export declare function canvasSetLineCap(id: number, cap: string): void
+
+export declare function canvasSetLineDash(id: number, dashes: Array<number>, offset: number): void
+
+export declare function canvasSetLineJoin(id: number, join: string): void
+
+export declare function canvasSetLineWidth(id: number, width: number): void
+
+export declare function canvasSetMiterLimit(id: number, limit: number): void
+
+export declare function canvasSetStrokePattern(id: number, pixels: Buffer, width: number, height: number, repetition: string): void
+
+export declare function canvasSetStrokeStyle(id: number, value: any): void
+
+export declare function canvasSetTextAlign(id: number, align: string): void
+
+export declare function canvasSetTextBaseline(id: number, baseline: string): void
+
+export declare function canvasSetTransform(id: number, a: number, b: number, c: number, d: number, e: number, f: number): void
+
+export declare function canvasStroke(id: number): void
+
+export declare function canvasStrokeRect(id: number, x: number, y: number, w: number, h: number): void
+
+export declare function canvasStrokeText(id: number, text: string, x: number, y: number): void
+
+/** `measureText` 最小子集：width + font bounding box（首行 metrics）。 */
+export interface CanvasTextMetrics {
+  width: number
+  fontBoundingBoxAscent: number
+  fontBoundingBoxDescent: number
+}
+
+export declare function canvasTransform(id: number, a: number, b: number, c: number, d: number, e: number, f: number): void
+
 /** monitor 结束原因（TSF payload；reason: 'dumped' | 'error'）。 */
 export interface CrashMonitorDone {
   reason: string
@@ -768,6 +898,14 @@ export declare function debugTriggerCrash(kind: string): void
  * Unknown id → throw with code ERR_TERMINAL_SESSION_NOT_FOUND.
  */
 export declare function destroyTerminalSession(sessionId: number): void
+
+/**
+ * Register the `<canvas>` element factory (Canvas 2D bitmap-first 路线；
+ * see canvas.rs). Surfaces are created via `canvasCreate`; the element
+ * paints them through `surface` prop. Same startup contract as
+ * `install_terminal_element`.
+ */
+export declare function installCanvasElement(): void
 
 /**
  * Register the `<git-graph-row>` element factory (canvas-drawn row text;

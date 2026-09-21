@@ -15,6 +15,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import {
+  installCanvasElement,
   installGitGraphRowElement,
   installNativePanicHook,
   installTerminalElement,
@@ -26,6 +27,7 @@ import {
 
 import { inputFocus, PLATFORM } from '@jagent/ui'
 import { appWindow } from './appWindow'
+import { installCanvasNative } from './canvas/native'
 import { watchFrameOverlay } from './diagnostics/frameOverlay'
 import { createPerfSource } from './diagnostics/perfSource'
 import { enterCrashSidecarIfRequested, setupCrashReportingForApp } from './errors/crashReport'
@@ -94,6 +96,8 @@ async function mountApp(): Promise<void> {
   // ── seam 装配（顺序敏感：先注册元素，再开窗）──────────────────────────
   installTerminalElement()
   installGitGraphRowElement()
+  installCanvasElement()
+  installCanvasNative(await import('@jagent/native'))
 
   // ── SettingsStore（~/.j-agent/settings.json；S3 事实源）──
   // 装配期读盘 await 后再建 ThreadStore（T2.5：nativeDeps 读设置面）。

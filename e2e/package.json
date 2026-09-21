@@ -10,6 +10,7 @@
     "@jagent/app": "workspace:*",
     "@jagent/native": "workspace:*",
     "@jagent/ui": "workspace:*",
-    "react": "19.2.8"
+    "react": "19.2.8",
+    "roughjs": "4.6.6"
   }
 }

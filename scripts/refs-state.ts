@@ -9,9 +9,12 @@ export interface PatchSuite {
 }
 
 /** Windows CI checkout (core.autocrlf=true) may rewrite patch files to CRLF
- * while `git diff` stays LF; compare on normalized newlines only. */
+ * while `git diff` stays LF; compare on normalized newlines only.
+ * `index` line blob hashes are also normalized away: git abbreviates them by
+ * repo object count, so a shallow zed clone emits 7 chars where the exporting
+ * clone emitted 8 — the diff body already pins content. */
 export function normalizePatchText(text: string): string {
-  return text.replace(/\r\n/g, '\n')
+  return text.replace(/\r\n/g, '\n').replace(/^index [0-9a-f]+\.\.[0-9a-f]+/gm, 'index')
 }
 
 /** Read-only inspection shared by setup and export. Never repairs a checkout:

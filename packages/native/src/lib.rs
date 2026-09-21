@@ -3,6 +3,8 @@
 //! Exports napi commands (changes here require a seam-protocol reason):
 //! - `installTerminalElement()` — register the `<terminal>` element factory
 //!   with GPUIX (must run before the renderer is initialized)
+//! - `installCanvasElement()` + `canvas*` — Canvas 2D surface 注册表与
+//!   `<canvas>` 元素（bitmap-first，见 canvas.rs 模块文档）
 //! - `applyWindowAppearance()` — force native chrome to the dark theme
 //! - `createTerminalSession(opts) → sessionId`
 //! - `destroyTerminalSession(sessionId)`
@@ -18,6 +20,7 @@
 //! through the process-global UI command channel (see gpuix `run_on_gpuix`).
 
 mod appearance;
+mod canvas;
 mod crash;
 mod element;
 mod git_graph;
@@ -39,9 +42,9 @@ use gpui::BorrowAppContext;
 use element::TerminalElementFactory;
 use git_graph::GitGraphRowFactory;
 use gpuix_native::custom_elements::register_global_factory;
-use jagent_terminal::pool::{set_session_event_fn, SessionEvent as RustSessionEvent};
+use jagent_terminal::pool::{SessionEvent as RustSessionEvent, set_session_event_fn};
 use jagent_terminal::terminal_error_code;
-use jagent_terminal::{perf, HostPanic, SpawnOptions, TerminalError, TerminalPool};
+use jagent_terminal::{HostPanic, SpawnOptions, TerminalError, TerminalPool, perf};
 
 /// Register the `<terminal>` element factory with GPUIX. Must run before the
 /// renderer is initialized (`main.tsx` calls it at startup, before
@@ -58,6 +61,15 @@ pub fn install_terminal_element() {
 #[napi]
 pub fn install_git_graph_row_element() {
     register_global_factory(Box::new(GitGraphRowFactory));
+}
+
+/// Register the `<canvas>` element factory (Canvas 2D bitmap-first 路线；
+/// see canvas.rs). Surfaces are created via `canvasCreate`; the element
+/// paints them through `surface` prop. Same startup contract as
+/// `install_terminal_element`.
+#[napi]
+pub fn install_canvas_element() {
+    register_global_factory(Box::new(canvas::CanvasElementFactory));
 }
 
 /// Match native window chrome to the dark UI (Zed `init_app_appearance`).

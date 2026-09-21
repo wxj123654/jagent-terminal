@@ -76,11 +76,11 @@ mod imp {
 #[cfg(windows)]
 mod imp {
     use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
+        CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
     };
     use windows::Win32::UI::Shell::{
-        FileOpenDialog, IFileOpenDialog, FILEOPENDIALOGOPTIONS, FOS_FORCEFILESYSTEM,
-        FOS_PICKFOLDERS, SIGDN_FILESYSPATH,
+        FILEOPENDIALOGOPTIONS, FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS, FileOpenDialog,
+        IFileOpenDialog, SIGDN_FILESYSPATH,
     };
 
     use super::PickCallback;

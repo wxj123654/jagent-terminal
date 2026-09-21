@@ -37,6 +37,16 @@ anyhow = "1"
 crash-handler = "0.8.0"
 minidumper = "0.11.0"
 
+# Canvas 2D bitmap-first 路线（docs/canvas-rust-raster-research.md §8）：
+# vello_cpu 光栅 → 持久 Pixmap → window.paint_image。cosmic-text 提供
+# shaping/layout（GPUI Linux 文本同款栈，锁文件已有）；peniko feature 让
+# Font::as_peniko() 产出与 vello glyph_run 相同的 FontData 类型。image 的
+# Frame 是 gpui RenderImage 的包装类型，版本必须与 gpui 依赖统一（锁
+# 0.25.10）。版本经 crates.io 联网核实（2026-09-20）。
+vello_cpu = "0.2.0"
+cosmic-text = { version = "0.19.0", features = ["peniko"] }
+image = "0.25.10"
+
 # Match the pinned zed fork so we can set NSApplication.appearance before
 # the first window exists (gpui App is not live yet).
 [target.'cfg(target_os = "macos")'.dependencies]
