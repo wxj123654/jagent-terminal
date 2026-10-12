@@ -21,7 +21,7 @@
 
 | 词 | 含义 | 代码锚点 |
 |---|---|---|
-| **SettingsStore** | 设置事实源；SETTING_DEFS 声明式清单驱动分区/搜索/行渲染；合并写 + 失败回滚 | `settings/store.rs` |
+| **SettingsStore** | 设置事实源；schema 逐字段结构体（字段级容错、未知键保留）驱动分区/搜索/行渲染；合并写 + 失败回滚 | `settings/store.rs` + `settings/schema.rs` |
 | **FsAdapter** | 设置读写 seam（真盘原子写） | `settings/file.rs` |
 
 ## 视图域（jagent-app::views）

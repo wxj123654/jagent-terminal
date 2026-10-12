@@ -61,9 +61,8 @@ pub struct PaintPerfSnapshot {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
-    pub use super::{PaintGuard, PaintPerfSnapshot, record_paint, take_paint_perf};
+    pub use super::{record_paint, take_paint_perf};
 
     #[test]
     fn snapshot_accumulates_and_max_resets() {

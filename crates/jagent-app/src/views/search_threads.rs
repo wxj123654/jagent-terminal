@@ -75,6 +75,13 @@ fn title_matches(title: &str, query: &str) -> bool {
     query.is_empty() || title.to_lowercase().contains(&query.to_lowercase())
 }
 
+pub fn open(state: Entity<AppState>, window: &mut Window, cx: &mut App) {
+    let view = cx.new(|cx| SearchThreadsView::new(state, window, cx));
+    window.open_dialog(cx, move |dialog, _, _| {
+        dialog.title("搜索会话").w(px(520.0)).child(view.clone())
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::title_matches;
@@ -85,11 +92,4 @@ mod tests {
         assert!(title_matches("Alpha Session", "SESSION"));
         assert!(!title_matches("Alpha Session", "beta"));
     }
-}
-
-pub fn open(state: Entity<AppState>, window: &mut Window, cx: &mut App) {
-    let view = cx.new(|cx| SearchThreadsView::new(state, window, cx));
-    window.open_dialog(cx, move |dialog, _, _| {
-        dialog.title("搜索会话").w(px(520.0)).child(view.clone())
-    });
 }

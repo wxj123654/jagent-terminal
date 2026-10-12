@@ -68,3 +68,15 @@ Git 图贝塞尔弯线、桌面通知真实弹出（Effects::notify 目前只记
   语境；.gitignore/Cargo.toml（去 exclude）/jagent-core lib.rs 注释同步 ·
   gate：cargo check/build/test --workspace 全绿（core 270 + terminal 41 +
   app 75 + sidecar/watchdog/视觉 5）· 下一步：真机验证清单（见上）
+- 2026-10-12 · **全面校验轮**：clippy 首跑（0 error）——自动修 10 文件 +
+  修 `#[test]` 重复属性（input.rs：ctrl_tab 曾被 libtest 注册两次，41 里有
+  重复；救活从未运行的 test_ctrl_combinations，现在 41 个全唯一）+ doc 缩进
+  5 处；剩 9 条判断性警告（too many args ×3 / complex type ×5 / 测试断言
+  风格 ×1）有意保留 · fmt 归一 clippy 分歧 · 文档-代码一致性：13 个 Action、
+  全部模块/类型/函数锚点、README/TODOLIST 路径逐一命中；修正 SETTING_DEFS
+  幽灵引用（旧 TS 名，Rust 是 schema.rs 结构体 + parse/serialize）· 残留
+  引用全扫：只剩历史陈述（指向 aadecd4）· 发布链冒烟全过：release 构建、
+  --version、--watchdog-smoke（crash-loop 截止）、--watchdog-normal-smoke
+  （exit 0）、package-macos-app.sh（codesign+plutil+新图标路径）· CI 引用的
+  两个脚本在位 · gate：clippy 0 error、fmt clean、test --workspace 全绿
+  （75/1/2 + 视觉 3 OK + 270 + 41 唯一）

@@ -325,6 +325,7 @@ impl TerminalView {
     /// - 应用开启 bracketed paste（BRACKETED_PASTE）时包 \x1b[200~ … \x1b[201~，
     ///   并剥掉文本内的 \x1b 防止提前闭合转义序列；
     /// - 否则把 \r\n / \n 归一成 \r（回车），多行文本逐行执行。
+    ///
     /// 剪贴板无文本（图片等）时退化为转发原始 0x16，让能读 OS 剪贴板的
     /// TUI agent 走自己的粘贴路径。
     fn paste_clipboard(&mut self, cx: &mut Context<Self>) {
@@ -578,10 +579,10 @@ impl TerminalView {
     fn fade_scrollbar(&mut self, to: ScrollbarVisibility, duration: Duration) {
         let mut fx = self.scrollbar_fx.get();
         // Animating.to 存的是目标不透明度（f32），与目标态换算后比较。
-        if let ScrollbarVisibility::Animating { to: t, .. } = fx.visibility {
-            if (t - scrollbar_opacity(to)).abs() < f32::EPSILON {
-                return;
-            }
+        if let ScrollbarVisibility::Animating { to: t, .. } = fx.visibility
+            && (t - scrollbar_opacity(to)).abs() < f32::EPSILON
+        {
+            return;
         }
         let from = scrollbar_opacity(fx.visibility);
         if (from - scrollbar_opacity(to)).abs() < f32::EPSILON {
@@ -998,6 +999,7 @@ impl Render for TerminalView {
 /// 终端 IME / 文本输入桥。注册后平台的文本输入不再走 key_down，而是：
 /// - macOS：`insertText:`（确认文本）与 `setMarkedText:`（组合中）
 /// - Windows：`WM_CHAR` 与 `WM_IME_COMPOSITION`（GCS_COMPSTR/GCS_RESULTSTR）
+///
 /// 两平台都落到这里，再写入 PTY。可打印字符必须走这条路径而不是
 /// key_down 直写，否则 IME（中文拼音等）无法工作。
 /// 接口语义与 Zed terminal_view 的 TerminalInputHandler 一致。

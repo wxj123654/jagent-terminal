@@ -32,7 +32,7 @@ crates/jagent-app      二进制 j-agent：Entity/Render 视图、Action、主�
 | `threads/store.rs` | 会话域唯一事实源：spawn/activate/close/rename/cycle/会话视图/通知/工作区操作的全部规则 | `ThreadStore<E: Effects>` |
 | `threads/workspaces.rs` | state.json 读写、默认工作区、归属派生 | `Workspace` |
 | `threads/conversation.rs` | chat/acp 共享消息规则、EchoAgent 回复 | `Conversation` |
-| `settings/` | schema（字段级容错、未知键保留）、store（合并写+回滚）、file（原子写） | `SettingsStore`、`SETTING_DEFS` |
+| `settings/` | schema（字段级容错、未知键保留）、store（合并写+回滚）、file（原子写） | `SettingsStore`、`Settings`（schema.rs 逐字段结构体 + `parse_settings`/`serialize_settings`） |
 | `presets.rs` | 内置/自定义预设 CRUD 规则 | — |
 | `git/` | cli（进程边界）/ parse / graph（lane 状态机）/ store（图状态+流式加载 ticket）/ geometry（行高 lane 宽列宽）/ actions（argv 规则）/ format | `GitGraphStore`、`Ticket` |
 | `acp.rs` | ACP 协议层：行分隔 JSON-RPC 编解码 + turn 状态机。进程 IO 在 app | — |

@@ -390,7 +390,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn ctrl_tab_not_swallowed_by_terminal() {
         // W5：Ctrl(+Shift)+Tab 是应用层 cycle 键——终端聚焦时必须透传到
         // root 键位层（None = 不写 PTY、不 stop_propagation）
@@ -409,6 +408,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn test_ctrl_combinations() {
         let mode = TermMode::empty();
 

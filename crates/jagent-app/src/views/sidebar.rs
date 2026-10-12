@@ -103,7 +103,7 @@ pub fn build_groups(
                 .map(|t| RowModel {
                     id: t.id().to_owned(),
                     title: t.title().into(),
-                    dot: RowDot::of(&t),
+                    dot: RowDot::of(t),
                     active: active_thread == Some(t.id()),
                     pinned: t.common().pin,
                 })

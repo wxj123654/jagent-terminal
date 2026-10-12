@@ -951,11 +951,11 @@ impl<E: Effects> ThreadStore<E> {
                 text: text.to_owned(),
                 at: self.effects.now(),
             };
-            if let Some((messages, pending)) = self.messages_mut(thread_id, kind) {
-                if *pending {
-                    messages.push(msg);
-                    self.streaming_replies.insert(key);
-                }
+            if let Some((messages, pending)) = self.messages_mut(thread_id, kind)
+                && *pending
+            {
+                messages.push(msg);
+                self.streaming_replies.insert(key);
             }
         } else if let Some((messages, _)) = self.messages_mut(thread_id, kind)
             && let Some(last) = messages.last_mut()

@@ -100,11 +100,11 @@ impl TerminalPool {
 
         // Type the init command after registration so `exit`/`title` events
         // observe a registered session.
-        if let Some(init) = opts.init_command.as_deref().filter(|s| !s.is_empty()) {
-            if let Some(model) = self.sessions.get(&id) {
-                model.read(cx).write_to_pty(init.as_bytes());
-                model.read(cx).write_to_pty(b"\x0d");
-            }
+        if let Some(init) = opts.init_command.as_deref().filter(|s| !s.is_empty())
+            && let Some(model) = self.sessions.get(&id)
+        {
+            model.read(cx).write_to_pty(init.as_bytes());
+            model.read(cx).write_to_pty(b"\x0d");
         }
 
         Ok(id)

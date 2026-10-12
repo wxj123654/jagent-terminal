@@ -249,11 +249,11 @@ pub fn run_watchdog_normal_smoke() -> io::Result<()> {
 
 /// Stop the sidecar child; normal app shutdown need not wait for a report.
 pub fn shutdown_sidecar() {
-    if let Some(child) = SIDECAR_CHILD.get() {
-        if let Ok(mut child) = child.lock() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
+    if let Some(child) = SIDECAR_CHILD.get()
+        && let Ok(mut child) = child.lock()
+    {
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }
 

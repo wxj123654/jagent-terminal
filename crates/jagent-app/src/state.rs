@@ -206,7 +206,7 @@ impl AppState {
         self.settings.flush();
         self.effects
             .set_close_on_exit(self.settings.get().terminal.close_on_exit);
-        apply_terminal_settings(cx, &self.settings.get());
+        apply_terminal_settings(cx, self.settings.get());
     }
 
     /// 两步 spawn 的第二步在这里合并：begin_spawn → 创建 PTY → finish_spawn。
@@ -329,7 +329,7 @@ impl AppState {
                     )
                     .await;
                 if let Some(state) = state.upgrade() {
-                    let _ = cx.update(|cx| {
+                    cx.update(|cx| {
                         state.update(cx, |s, cx| {
                             if let Ok(branches) = branches {
                                 s.git_graph.on_branches(ticket, branches);
@@ -627,7 +627,7 @@ pub fn bridge_terminal_events(state: &Entity<AppState>, cx: &mut App) {
         use futures::StreamExt as _;
         while let Some(e) = rx.next().await {
             let Some(state) = state.upgrade() else { break };
-            let _ = cx.update(|cx| {
+            cx.update(|cx| {
                 state.update(cx, |s, cx| {
                     s.on_terminal_event(&e, cx);
                 });
@@ -674,7 +674,7 @@ pub fn send_chat(state: &Entity<AppState>, thread_id: &str, text: &str, cx: &mut
         cx.background_executor().timer(CHAT_REPLY_DELAY).await;
         let Some(state) = state.upgrade() else { return };
         let reply = echo_reply(&req.text);
-        let _ = cx.update(|cx| {
+        cx.update(|cx| {
             state.update(cx, |s, cx| {
                 s.threads.finish_send(&req.thread_id, req.kind, Ok(reply));
                 s.flush(cx);

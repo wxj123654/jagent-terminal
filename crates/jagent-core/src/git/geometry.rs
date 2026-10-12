@@ -56,7 +56,7 @@ pub fn enter_column(line: &CommitLine, row: usize) -> usize {
             } if *on_row < row => Some(*to_column),
             _ => None,
         })
-        .last()
+        .next_back()
         .unwrap_or(line.child_column)
 }
 
