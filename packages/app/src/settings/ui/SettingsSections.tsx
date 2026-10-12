@@ -47,7 +47,7 @@ export function DefsSection({ settings, query, defs }: SectionProps): ReactEleme
 
   return (
     <div>
-      {rows.map((def) => (
+      {rows.map((def, i) => (
         <div key={def.path}>
           <SettingRow
             def={def}
@@ -56,6 +56,7 @@ export function DefsSection({ settings, query, defs }: SectionProps): ReactEleme
             onChange={(v) => settings.patch(def.path, v)}
             onReset={() => settings.reset(def.path)}
             highlightQuery={query}
+            last={i === rows.length - 1}
           />
           {err?.path === def.path ? <WriteErrorBar message={err.message} /> : null}
         </div>
@@ -341,13 +342,14 @@ export function KeybindingsSection({
   const highlight = query ? { query, color: 'rgba(229, 192, 123, 0.28)' } : null
   return (
     <div>
-      {editable.map(({ action, label, requireCtrl }) => {
+      {editable.map(({ action, label, requireCtrl }, i) => {
         // 冲突：其它动作已绑同一串（运行时按声明序取首中；此处仅警示）
         const conflict = KEY_ACTIONS.find((o) => o.action !== action && s[o.action] === s[action])
         const modified = settings.isModified(`keybindings.${action}` as SettingsPath)
         return (
           <div key={action}>
-            {/* .kb-row：gap 12 / pad 9 16（st-card 行内边距）/ subtle 底边 */}
+            {/* .kb-row：gap 12 / pad 9 16（st-card 行内边距）/ subtle 底边；
+                末行去底边（原型 :last-child——fixed 段在后时 editable 均非末行） */}
             <div
               style={{
                 display: 'flex',
@@ -358,7 +360,7 @@ export function KeybindingsSection({
                 paddingBottom: 9,
                 paddingLeft: 16,
                 paddingRight: 16,
-                borderBottomWidth: 1,
+                borderBottomWidth: fixed.length === 0 && i === editable.length - 1 ? 0 : 1,
                 borderColor: COLORS.borderSubtle,
               }}
             >
@@ -422,7 +424,7 @@ export function KeybindingsSection({
           </div>
         )
       })}
-      {fixed.map(([label, key]) => (
+      {fixed.map(([label, key], i) => (
         <div
           key={label}
           style={{
@@ -434,7 +436,7 @@ export function KeybindingsSection({
             paddingBottom: 9,
             paddingLeft: 16,
             paddingRight: 16,
-            borderBottomWidth: 1,
+            borderBottomWidth: i === fixed.length - 1 ? 0 : 1,
             borderColor: COLORS.borderSubtle,
           }}
         >

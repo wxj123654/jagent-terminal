@@ -306,7 +306,7 @@ impl CustomElement for TerminalElement {
 | R3 | `status: idle\|running\|needs-you\|exited` | `status: running\|exited` + `hasBell: boolean` | needs-you 与 hasBell 是同一事实的两种表达；展示层（§4 行为）只用 hasBell + exited，语义不变 |
 | R4 | thread id 未定义 | `t{sessionId}` / `c{uuid}` / `a{uuid}` | 混排列表 id 唯一；terminal id 可从事件直接定位 |
 | R5 | `POOL: OnceLock<Mutex<TerminalPool>>`（§2.2） | 会话表改 gpui `Global`（`cx.set_global`/`update_global`）；事件转发拆独立 `static OnceLock<SessionEventFn>` | gpui `Entity`/`Subscription` 非 `Send`，static Mutex 编译不过；SessionEventFn 本身 Send+Sync。语义不变（2026-09-02 Phase 0 实测定稿） |
-| R6 | view.rs「首选依赖 gpui-terminal」（§8.1） | **已拍板 vendoring**（render/input/colors/box_drawing 四文件 + TerminalView 重写为绑 model） | fork 与 crates.io 同号 0.2.2 不同 API，依赖也需 patch；且 D2 要求 view 不持 PTY，结构性改动不可避免（Phase 0 结论，TODOLIST 结论区） |
+| R6 | view.rs「首选依赖 gpui-terminal」（§8.1） | **已拍板 vendoring**（render/input/colors/box_drawing 四文件 + TerminalView 重写为绑 model） | fork 与 crates.io 同号 0.2.2 不同 API，依赖也需 patch；且 D2 要求 view 不持 PTY，结构性改动不可避免（Phase 0 结论，docs/todo-archive.md 结论区） |
 
 R1/R2 已回写 `agent-plane-layout.md`（§2 所有权 / §9 组件树与 TerminalThread / §11 文档表）；`gpuix-zed-terminal-fusion.md` §3 L2 已加指针注记。
 
@@ -836,7 +836,7 @@ feature adapter 增长——薄壳契约的对象是 lib.rs 协议面，不是�
 
 ### 8.3 examples/window.rs（Phase 0，已完成）
 
-纯 gpui 窗口（不经 GPUIX/React）：`gpui_platform::application()` + pool create + `TerminalView` 渲染 model，默认 shell（Windows = PowerShell）。**已验证**：ConPTY ✓ · BEL → `[session] BELL` ✓ · OSC 0/2 title ✓ · exit 单次 Exit 事件 ✓（真彩色/应用光标随窗口人工验收）。完整结论与踩坑记录见 TODOLIST.md Phase 0 结论区（fork 同号不同 API、跨 workspace 继承需 exclude、vendoring 四文件清单）。
+纯 gpui 窗口（不经 GPUIX/React）：`gpui_platform::application()` + pool create + `TerminalView` 渲染 model，默认 shell（Windows = PowerShell）。**已验证**：ConPTY ✓ · BEL → `[session] BELL` ✓ · OSC 0/2 title ✓ · exit 单次 Exit 事件 ✓（真彩色/应用光标随窗口人工验收）。完整结论与踩坑记录见 docs/todo-archive.md Phase 0 结论区（fork 同号不同 API、跨 workspace 继承需 exclude、vendoring 四文件清单）。
 
 ---
 

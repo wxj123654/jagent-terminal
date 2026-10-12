@@ -1,0 +1,16 @@
+[package]
+name = "jagent-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pure logic for j-agent (settings, workspaces, thread rules, git, ACP): no gpui, plain #[test]"
+
+[dependencies]
+# 版本与 gpui 依赖树里已锁定的一致（Cargo.lock：serde 1.0.229 / serde_json 1.0.151），不引入第二份。
+serde = { version = "1", features = ["derive"] }
+# preserve_order：settings.json 往返保持键序，未知键原样保留（旧 zod looseObject 语义）。
+serde_json = { version = "1", features = ["preserve_order"] }
+thiserror = "2.0.21"
+
+[dev-dependencies]
+tempfile = "3"

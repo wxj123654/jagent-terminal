@@ -25,7 +25,7 @@ use anyhow::Result;
 use gpui::{App, Entity, Global};
 
 use crate::error::TerminalError;
-use crate::model::TerminalModel;
+use crate::model::{TerminalModel, TerminalStyle};
 use crate::pty::SpawnOptions;
 
 /// Cross-session events forwarded to the host (JS in Phase 1).
@@ -124,6 +124,14 @@ impl TerminalPool {
     /// Look up a session (views bind by id).
     pub fn get(&self, id: u64) -> Option<Entity<TerminalModel>> {
         self.sessions.get(&id).cloned()
+    }
+
+    /// Apply terminal appearance settings to live sessions without recreating their PTYs.
+    pub fn set_style_all(&self, style: TerminalStyle, cx: &mut App) {
+        for model in self.sessions.values() {
+            let style = style.clone();
+            model.update(cx, |model, cx| model.set_style(style, cx));
+        }
     }
 
     pub fn len(&self) -> usize {

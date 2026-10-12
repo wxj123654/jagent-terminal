@@ -18,12 +18,17 @@ export type ContextMenuItem = { id: string; label: string; danger?: boolean } | 
 
 export function ContextMenu({
   position,
+  side,
+  align,
   items,
   onPick,
   onClose,
 }: {
-  /** 菜单左上角窗口坐标（点击点） */
-  position: { x: number; y: number }
+  /** 坐标模式：菜单左上角窗口坐标（点击点）；与 side/align 二选一 */
+  position?: { x: number; y: number }
+  /** 触发器模式（须渲染在触发钮/行内部）：贴父元素哪边、哪种对齐 */
+  side?: 'top' | 'right' | 'bottom' | 'left'
+  align?: 'start' | 'center' | 'end'
   items: ContextMenuItem[]
   onPick: (id: string) => void
   onClose: () => void
@@ -32,6 +37,8 @@ export function ContextMenu({
     <Popover
       testId="context-menu"
       position={position}
+      side={side}
+      align={align}
       onClose={onClose}
       minWidth={180}
       autoFocus

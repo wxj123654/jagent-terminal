@@ -20,9 +20,9 @@ use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::Term;
 use alacritty_terminal::tty::{self, Options as TtyOptions};
 
-use crate::model::{SessionListener, TermLock};
+use crate::model::{SessionListener, TermLock, TerminalStyle};
 
-/// Options for spawning a terminal session (mirrors the napi `SpawnOptions`).
+/// Options for spawning a terminal session (shared by the app and tests).
 #[derive(Debug, Default, Clone)]
 pub struct SpawnOptions {
     /// Working directory; defaults to the process CWD/home.
@@ -39,6 +39,8 @@ pub struct SpawnOptions {
     pub init_command: Option<String>,
     /// Scrollback history lines (session property, fixed at creation).
     pub scrollback_lines: Option<usize>,
+    /// Initial visual style snapshot from SettingsStore.
+    pub style: Option<TerminalStyle>,
 }
 
 /// Window size in terminal cells (alacritty's units).

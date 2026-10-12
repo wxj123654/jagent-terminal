@@ -10,6 +10,7 @@ import { createTestRoot, type TestRoot } from '@gpuix/react/testing'
 import { createElement } from 'react'
 
 import { installGitGraphRowElement } from '@jagent/native'
+import { keyConsumed } from '@jagent/ui'
 import { memoryAdapter } from '../../settings/file'
 import { createSettingsStore, type SettingsStore } from '../../settings/store'
 import { WorkspacePage } from '../../sidebar/WorkspacePage'
@@ -291,5 +292,52 @@ describe('GitGraphView 渲染与选中', () => {
     const off = t.renderer.getScrollOffset(files!.id)!
     expect(off[0]! + 0).toBe(0)
     expect(off[1]! + 0).toBe(0)
+  })
+})
+
+describe('GitGraphView 分支浮层贴触发钮下缘', () => {
+  test('点分支钮 → 浮层贴其下缘左对齐（内嵌定位，不依赖点击坐标）', async () => {
+    const gitStore = renderPage()
+    store.setWorkspacePaneTab(store.getState().workspaces[0]!.id, 'git')
+    await until(10)
+    pushChunk?.([c('c1', [])])
+    finishLog?.(true)
+    await until(10)
+    void gitStore
+
+    const btn = t.renderer.findByTestId('git-branch')!
+    const bb = t.renderer.getElementBounds(btn.id)!
+    t.renderer.nativeSimulateClick(bb.x + bb.width / 2, bb.y + bb.height / 2, 0)
+    await until(10)
+    const pop = t.renderer.findByTestId('git-branch-pop')
+    expect(pop).toBeDefined()
+    const pb = t.renderer.getElementBounds(pop!.id)!
+    const b2 = t.renderer.getElementBounds(btn.id)!
+    expect(pb.y).toBeGreaterThanOrEqual(b2.y + b2.height - 1)
+    expect(Math.abs(pb.x - b2.x)).toBeLessThanOrEqual(6)
+  })
+})
+
+describe('GitGraphView 分支浮层键盘', () => {
+  test('浮层开着时 ↑↓ 不穿透到图（keyConsumed 标记；与菜单同语义）', async () => {
+    renderPage()
+    store.setWorkspacePaneTab(store.getState().workspaces[0]!.id, 'git')
+    await until(10)
+    pushChunk?.([c('c2', ['c1']), c('c1', [])])
+    finishLog?.(true)
+    await until(10)
+    const btn = t.renderer.findByTestId('git-branch')!
+    const bb = t.renderer.getElementBounds(btn.id)!
+    t.renderer.nativeSimulateClick(bb.x + bb.width / 2, bb.y + bb.height / 2, 0)
+    await until(10)
+    const pop = t.renderer.findByTestId('git-branch-pop')!
+    t.renderer.focusElement(pop.id)
+    await until(10)
+    // 键盘经根 onKeyDown → keyConsumed.mark()；root 键位层（graphKeys）读到即跳过
+    keyConsumed.take() // 清残留
+    t.renderer.nativeSimulateKeyDown(pop.id, 'down')
+    await until(10)
+    expect(keyConsumed.peek()).toBe(true)
+    keyConsumed.take()
   })
 })

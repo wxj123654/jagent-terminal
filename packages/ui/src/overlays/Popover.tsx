@@ -8,8 +8,12 @@
  * 与 Modal 的差别：无半透明遮罩、不居中、不挡底下滚动命中——只在浮层外
  * mousedown 时关。调用方控制挂载（渲染 = 打开；onClose 里卸载）。
  *
- * 定位：本期只做 `position={{ x, y }}`（Git 右键 / 绝对坐标场景）。相对
- * 触发器的 side/align 留给后续。
+ * 定位两种模式（二选一）：
+ * - `position={{ x, y }}`：坐标锚定（右键 / 绝对坐标场景）。
+ * - 省略 `position`，用 `side` / `align` / `gap`：贴「父元素」的边缘。gpuix
+ *   `<anchored>` 无 position 时由 wrap_at_trigger 包一层绝对定位的 0 尺寸盒
+ *   （anchored.rs:179），即相对 Popover 所在父节点的盒子定位。故触发器与
+ *   Popover 须是父子关系（Popover 渲染在触发器内部）。此路径未经真窗口验证。
  */
 
 import type { StyleDesc } from '@gpuix/react'
@@ -31,16 +35,29 @@ export type PopoverAnchor =
 
 export function Popover({
   position,
+  side,
+  align,
+  gap,
+  fit,
   onClose,
   children,
   style,
   minWidth = 220,
   testId = 'popover',
-  anchor = 'topLeft',
+  anchor,
   autoFocus = false,
 }: {
-  /** 浮层左上角（或 `anchor` 指定角）的窗口坐标 */
-  position: { x: number; y: number }
+  /** 浮层左上角（或 `anchor` 指定角）的窗口坐标；与 side/align 二选一 */
+  position?: { x: number; y: number }
+  /** 无 position 时：贴父元素哪一边（默认 bottom） */
+  side?: 'top' | 'right' | 'bottom' | 'left'
+  /** 无 position 时：沿该边的对齐（默认 start） */
+  align?: 'start' | 'center' | 'end'
+  /** 无 position 时：与父元素边缘的间距 */
+  gap?: number
+  /** 无 position 时：放不下时的处理。默认 'switch'＝翻到对侧（Web 端 flip 语义）；
+   *  'snap'＝整体夹回窗口内（会压住触发钮，仅在明确需要时用）。position 模式恒为 snap */
+  fit?: 'switch' | 'snap'
   /** 点外部 / Esc → 关闭（调用方通常 setOpen(false)） */
   onClose: () => void
   children: ReactNode
@@ -49,7 +66,8 @@ export function Popover({
   /** 默认最小宽（anchored 宽 = 内容宽，需钳制） */
   minWidth?: number
   testId?: string
-  /** position 锚在浮层哪一角；默认 topLeft = 坐标即左上角 */
+  /** position 锚在浮层哪一角；省略时 position 模式默认 topLeft（坐标即左上角），
+   *  side 模式由 side/align 推导（gpuix resolved_anchor：显式 anchor 优先） */
   anchor?: PopoverAnchor
   /** 挂载即聚焦内容盒（上下文菜单等需要 Esc/键盘命中的场景） */
   autoFocus?: boolean
@@ -71,7 +89,17 @@ export function Popover({
   closeRef.current = onClose
   useEffect(() => overlayEsc.push(() => closeRef.current()), [])
   return (
-    <anchored position={position} anchor={anchor} deferred occlude style={surface}>
+    <anchored
+      position={position}
+      side={position ? undefined : (side ?? 'bottom')}
+      align={position ? undefined : (align ?? 'start')}
+      gap={position ? undefined : gap}
+      fit={position ? 'snap' : (fit ?? 'switch')}
+      anchor={position ? (anchor ?? 'topLeft') : anchor}
+      deferred
+      occlude
+      style={surface}
+    >
       {/*
         onMouseDownOutside 挂内层内容盒（对齐 gpuix events.test anchored
         dialog）：外点命中以内容 bounds 为准，不挂在 <anchored> 自定义元

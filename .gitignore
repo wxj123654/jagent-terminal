@@ -1,5 +1,7 @@
 # Rust
 /target/
+# P0 spike 独立 workspace 的构建产物（docs/p0-spike.md）
+/spikes/*/target/
 
 # 参考仓库浅克隆（可重建；本地补丁经 patches/ 目录版本化，见 bun run setup-refs）
 .refs/

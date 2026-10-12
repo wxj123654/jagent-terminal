@@ -118,6 +118,10 @@ export function Modal({
           testId="modal-card"
           onKeyDown={(e) => {
             if (e.key === 'escape') {
+              // 嵌套浮层先行（R12）：卡内 Select/Combobox 弹层、搜索框清空
+              // 等更深的 handler 已消费本键时只关弹层——不连坐关弹窗
+              // （原型 Radix 分层：Esc 只关最上层）
+              if (keyConsumed.peek()) return
               // 消费标记（R11）：root 键位层是同一按键的后一跳——不置位
               // 会连坐触发抽屉/设置面 Esc（原型 dialog 层「return」语义）
               keyConsumed.mark()

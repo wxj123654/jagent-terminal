@@ -26,6 +26,7 @@ mod view;
 
 pub use error::{HostPanic, TerminalError, terminal_error_code};
 pub use model::{Event, TerminalModel, TerminalStyle};
+pub use gpui::Pixels;
 pub use perf::{PaintPerfSnapshot, take_paint_perf};
 pub use pool::{SessionEvent, SessionEventFn, TerminalPool, set_session_event_fn};
 pub use pty::SpawnOptions;

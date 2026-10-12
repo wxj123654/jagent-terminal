@@ -156,8 +156,13 @@ afterAll(() => {
   t?.unmount()
 })
 
-beforeEach(() => {
+beforeEach(async () => {
   void router.navigate({ to: '/' })
+  // 前用例（如 Rename 弹窗）残留的 modal 会挡住后续用例的点击——统一清场
+  if (t.renderer.findByTestId('modal-card')) {
+    clickScrim()
+    await until('leftover dialog closed', () => t.renderer.findByTestId('modal-card') == null)
+  }
 })
 
 describe('WorkspaceList：分组树', () => {
@@ -640,6 +645,34 @@ describe('WorkspaceList：原型结构（R4）', () => {
     t.renderer.flush()
   })
 
+  test('会话行「…」菜单贴钮下缘右对齐；右键菜单贴行下缘左对齐', async () => {
+    await store.spawnFromPreset('shell', wsA)
+    const tid = store.getState().threads.at(-1)!.id
+    renderHarness()
+    t.renderer.flush()
+    await until('row visible', () => t.renderer.findByTestId(`row-${tid}`) != null)
+    const bOf = (id: string) => t.renderer.getElementBounds(t.renderer.findByTestId(id)!.id)!
+
+    clickCenter(`menu-thread-${tid}`)
+    await until('menu open', () => t.renderer.findByTestId('context-menu') != null)
+    const btn = bOf(`menu-thread-${tid}`)
+    const menu = bOf('context-menu')
+    expect(menu.y).toBeGreaterThanOrEqual(btn.y + btn.height - 1)
+    expect(Math.abs(menu.x + menu.width - (btn.x + btn.width))).toBeLessThanOrEqual(6)
+    t.renderer.nativeSimulateKeyDown(t.renderer.findByTestId('context-menu')!.id, 'escape')
+    t.renderer.flush()
+
+    const row = bOf(`row-${tid}`)
+    t.renderer.nativeSimulateClick(row.x + row.width / 2, row.y + row.height / 2, 2)
+    t.renderer.flush()
+    await until('row menu open', () => t.renderer.findByTestId('context-menu') != null)
+    const rowMenu = bOf('context-menu')
+    expect(rowMenu.y).toBeGreaterThanOrEqual(row.y + row.height - 1)
+    expect(Math.abs(rowMenu.x - row.x)).toBeLessThanOrEqual(6)
+    store.close(tid)
+    t.renderer.flush()
+  })
+
   test('会话行右键（auxClick）→ 同一面菜单；Remove 关闭会话', async () => {
     await store.spawnFromPreset('shell', wsA)
     const tid = store.getState().threads.at(-1)!.id
@@ -669,6 +702,24 @@ describe('WorkspaceList：原型结构（R4）', () => {
     clickCenter('ctx-rename')
     await until('rename dialog opened', () => dialogState.kind === 'rename')
     expect(dialogState.target).toEqual({ type: 'workspace', id: wsB })
+  })
+
+  test('工作区「…」菜单打开后鼠标移入菜单，菜单与钮保持可见（不随 ws-head 离开而隐藏）', async () => {
+    renderHarness()
+    t.renderer.flush()
+    await until('ws row visible', () => t.renderer.findByTestId(`workspace-${wsB}`) != null)
+    hoverCenter(`workspace-${wsB}`)
+    clickCenter(`menu-workspace-${wsB}`)
+    await until('ws menu open', () => t.renderer.findByTestId('context-menu') != null)
+    // 鼠标移到菜单项上（菜单在 ws-head 之外的 deferred 层）
+    const item = t.renderer.findByTestId('ctx-pin')!
+    const ib = t.renderer.getElementBounds(item.id)!
+    t.renderer.nativeSimulateMouseMove(ib.x + ib.width / 2, ib.y + ib.height / 2)
+    t.renderer.flush()
+    expect(t.renderer.findByTestId('context-menu')).toBeDefined()
+    expect(t.renderer.findByTestId('ctx-pin')).toBeDefined()
+    t.renderer.nativeSimulateKeyDown(t.renderer.findByTestId('context-menu')!.id, 'escape')
+    t.renderer.flush()
   })
 
   test('工作区 pin：排序提前（pin 的工作区排最前）', async () => {

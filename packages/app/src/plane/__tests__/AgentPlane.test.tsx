@@ -143,6 +143,28 @@ describe('AgentPlane：分支 chip 菜单（原型 chip-branch → ctx 菜单）
   })
 })
 
+describe('AgentPlane：分支 chip 菜单贴 chip 下缘（内嵌定位，右对齐）', () => {
+  test('chip-branch 菜单：贴 chip 下缘、右缘对齐 chip 右缘，不越界', async () => {
+    const { store } = setup(800, { branch: 'main' })
+    store.activate({ type: 'workspace', id: store.getState().workspaces[0]!.id })
+    await until2(() => t.renderer.findByTestId('chip-branch') != null)
+    click('chip-branch')
+    t.renderer.flush()
+    const chip = t.renderer.getElementBounds(t.renderer.findByTestId('chip-branch')!.id)!
+    const menu = t.renderer.getElementBounds(t.renderer.findByTestId('context-menu')!.id)!
+    // 非退化：两个盒子都有真实尺寸
+    expect(chip.width).toBeGreaterThan(0)
+    expect(menu.height).toBeGreaterThan(0)
+    // 贴下缘
+    expect(menu.y).toBeGreaterThanOrEqual(chip.y + chip.height - 1)
+    // 右对齐（align=end）：菜单右缘 ≈ chip 右缘
+    expect(Math.abs(menu.x + menu.width - (chip.x + chip.width))).toBeLessThanOrEqual(6)
+    // 不越界
+    expect(menu.x).toBeGreaterThanOrEqual(0)
+    expect(menu.x + menu.width).toBeLessThanOrEqual(800)
+  })
+})
+
 describe('AgentPlane：窄窗口抽屉（W4）', () => {
   test('宽窗口（800px）：无汉堡钮，sidebar 常驻（open-settings 在树中）', () => {
     setup(800)

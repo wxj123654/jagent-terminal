@@ -28,7 +28,6 @@ import type { WorktreeStore } from '../git/worktree'
 import { useActiveTarget } from '../router'
 import type { SettingsStore } from '../settings/store'
 import { useSettingsValue } from '../settings/useSettings'
-import { ContextMenu } from '../sidebar/ContextMenu'
 import { Sidebar } from '../sidebar/Sidebar'
 import type { DirectoryPicker } from '../sidebar/WorkspaceList'
 import type { ThreadStore } from '../threads/store'
@@ -133,7 +132,6 @@ export function App({
   }, [narrow])
 
   // 分支 chip 菜单（原型 chip-branch → ctx 菜单：打开 Git 图 / 查看变更）
-  const [branchMenu, setBranchMenu] = useState<{ x: number; y: number } | null>(null)
 
   // 工作面板（D5）：开关 / tab / 宽（本地态——原型同款非持久 UI 态）
   const [panelOpen, setPanelOpen] = useState(false)
@@ -304,9 +302,15 @@ export function App({
           contextLabel={context.label}
           cwd={contextCwd}
           branch={branch}
-          // 原型 chip-branch → DropMenu（side=bottom align=start）：
-          // TitleBar 回调给的是「按钮左下 +4」锚点，直接用
-          onBranchClick={(pos) => setBranchMenu(pos)}
+          // 原型 chip-branch → DropMenu（side=bottom align=start）：菜单内嵌于分支钮
+          branchItems={[
+            { id: 'graph', label: '打开 Git 图（Ctrl-Shift-G）' },
+            { id: 'changes', label: '查看变更（工作面板）' },
+          ]}
+          onBranchPick={(id) => {
+            if (id === 'graph') store.openGitGraph()
+            else if (id === 'changes') openPanel('changes')
+          }}
           onSearch={() => dialogOpener.openSearch()}
           panelOpen={panelOpen}
           onTogglePanel={() => (panelOpen ? closePanel() : openPanel())}
@@ -361,6 +365,14 @@ export function App({
               width: sidebarWidth,
               display: 'flex',
               flexDirection: 'column',
+              // 原型 #drawer-panel：8px 0 32px rgba(0,0,0,.4) 右缘投影
+              boxShadow: {
+                offsetX: 8,
+                offsetY: 0,
+                blurRadius: 32,
+                spreadRadius: 0,
+                color: 'rgba(0,0,0,0.4)',
+              },
             }}
           >
             {sidebar}
@@ -378,21 +390,6 @@ export function App({
         pickDirectory={pickDirectory}
       />
 
-      {/* 分支 chip 菜单（原型 tbgit ctx 菜单：打开 Git 图 / 查看变更） */}
-      {branchMenu ? (
-        <ContextMenu
-          position={branchMenu}
-          items={[
-            { id: 'graph', label: '打开 Git 图（Ctrl-Shift-G）' },
-            { id: 'changes', label: '查看变更（工作面板）' },
-          ]}
-          onPick={(id) => {
-            if (id === 'graph') store.openGitGraph()
-            else if (id === 'changes') openPanel('changes')
-          }}
-          onClose={() => setBranchMenu(null)}
-        />
-      ) : null}
       <ToastHost />
     </div>
   )

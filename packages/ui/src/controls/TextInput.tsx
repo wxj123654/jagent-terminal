@@ -11,6 +11,7 @@
  * 28px 盒顶 → 文字贴顶；壳外置 + alignItems:'center' 才能垂直居中。
  */
 
+import type { EventPayload } from '@gpuix/react'
 import { useState } from 'react'
 import type { ReactElement } from 'react'
 
@@ -36,8 +37,8 @@ export function TextInput({
   mono?: boolean
   disabled?: boolean
   onChange: (next: string) => void
-  /** enter 提交（命令类输入） */
-  onSubmit?: (next: string) => void
+  /** enter 提交（命令类输入）；e 供调用方区分 ⇧Enter（如查找反向步进） */
+  onSubmit?: (next: string, e: EventPayload) => void
   testId: string
   /** 宽度：数字 = 固定 px；'fill' = 撑满容器（弹窗表单） */
   width?: number | 'fill'
@@ -78,7 +79,7 @@ export function TextInput({
         readOnly={disabled}
         onChange={(e) => onChange(e.value ?? '')}
         onKeyDown={(e) => {
-          if (e.key === 'enter') onSubmit?.(value)
+          if (e.key === 'enter') onSubmit?.(value, e)
         }}
         onFocus={() => {
           setFocused(true)

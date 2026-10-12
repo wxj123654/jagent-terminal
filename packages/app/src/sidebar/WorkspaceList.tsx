@@ -24,7 +24,8 @@
  * ws-row 折叠（原型 .acts opacity 0 + pointer-events:none 同款）。
  */
 
-import { useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { useState } from 'react'
 
 import { Icon, COLORS, FONT } from '@jagent/ui'
 import type { DialogOpener } from '../dialogs/DialogHost'
@@ -43,9 +44,15 @@ export type DirectoryPicker = () => Promise<string | null>
 const GROUP_LIMIT = 4
 
 /** 上下文菜单目标（会话行 / 工作区行；未归属虚拟组无菜单） */
-type MenuState =
-  | { kind: 'thread'; id: string; x: number; y: number }
-  | { kind: 'workspace'; id: string; x: number; y: number }
+/** 工作区行菜单项（Pin / Rename / Remove）。标签随 pin 状态现算。 */
+function workspaceMenuItems(pinned: boolean): ContextMenuItem[] {
+  return [
+    { id: 'pin', label: pinned ? '取消置顶' : '置顶工作区' },
+    { id: 'rename', label: '重命名…' },
+    'sep',
+    { id: 'remove', label: '移除工作区', danger: true },
+  ]
+}
 
 export function WorkspaceList({
   store,
@@ -65,7 +72,6 @@ export function WorkspaceList({
       .map((t) => t.id)
       .join(','),
   )
-  const [menu, setMenu] = useState<MenuState | null>(null)
   /** 聚焦行 id（截断豁免：focus 行不被 Show more 截断） */
   const [focusTid, setFocusTid] = useState<string | null>(null)
   const active = useActiveTarget()
@@ -73,45 +79,22 @@ export function WorkspaceList({
 
   const unassignedIds = unassigned === '' ? [] : unassigned.split(',')
 
-  const menuItems = (m: MenuState): ContextMenuItem[] => {
-    if (m.kind === 'thread') {
-      const t = store.getState().threads.find((x) => x.id === m.id)
-      if (!t) return []
-      return [
-        { id: 'pin', label: t.pin ? '取消置顶' : '置顶' },
-        { id: 'rename', label: '重命名…' },
-        { id: 'unread', label: t.unread ? '标记为已读' : '标记为未读' },
-        'sep',
-        { id: 'remove', label: '移除', danger: true },
-      ]
-    }
-    const ws = store.getState().workspaces.find((w) => w.id === m.id)
-    if (!ws) return []
-    return [
-      { id: 'pin', label: ws.pin ? '取消置顶' : '置顶工作区' },
-      { id: 'rename', label: '重命名…' },
-      'sep',
-      { id: 'remove', label: '移除工作区', danger: true },
-    ]
+  /** 会话行菜单项执行（菜单挂在行内，行自持开关；这里只做动作） */
+  const pickThread = (tid: string, itemId: string) => {
+    const t = store.getState().threads.find((x) => x.id === tid)
+    if (itemId === 'pin' && t) store.setThreadPinned(tid, !t.pin)
+    else if (itemId === 'unread' && t) store.setThreadUnread(tid, !t.unread)
+    else if (itemId === 'rename') dialog.openRename({ type: 'thread', id: tid })
+    else if (itemId === 'remove') store.close(tid)
   }
 
-  const runMenu = (m: MenuState, id: string) => {
-    if (m.kind === 'thread') {
-      if (id === 'pin') {
-        const t = store.getState().threads.find((x) => x.id === m.id)
-        if (t) store.setThreadPinned(m.id, !t.pin)
-      } else if (id === 'unread') {
-        const t = store.getState().threads.find((x) => x.id === m.id)
-        if (t) store.setThreadUnread(m.id, !t.unread)
-      } else if (id === 'rename') dialog.openRename({ type: 'thread', id: m.id })
-      else if (id === 'remove') store.close(m.id)
-      return
-    }
-    if (id === 'pin') {
-      const ws = store.getState().workspaces.find((w) => w.id === m.id)
-      if (ws) store.setWorkspacePinned(m.id, !ws.pin)
-    } else if (id === 'rename') dialog.openRename({ type: 'workspace', id: m.id })
-    else if (id === 'remove') store.removeWorkspace(m.id)
+  /** 工作区行菜单项执行（菜单挂在 ws-head 内，ws-head 自持开关；这里只做动作） */
+  const pickWorkspace = (wsId: string, itemId: string) => {
+    if (itemId === 'pin') {
+      const ws = store.getState().workspaces.find((w) => w.id === wsId)
+      if (ws) store.setWorkspacePinned(wsId, !ws.pin)
+    } else if (itemId === 'rename') dialog.openRename({ type: 'workspace', id: wsId })
+    else if (itemId === 'remove') store.removeWorkspace(wsId)
   }
 
   return (
@@ -178,8 +161,8 @@ export function WorkspaceList({
             dialog={dialog}
             keepId={keepId}
             onFocusRow={setFocusTid}
-            onMenu={(pos) => setMenu({ kind: 'workspace', id: ws.id, ...pos })}
-            onThreadMenu={(tid, pos) => setMenu({ kind: 'thread', id: tid, ...pos })}
+            onWorkspacePick={pickWorkspace}
+            onThreadPick={pickThread}
           />
         ))}
         {unassignedIds.length > 0 ? (
@@ -187,20 +170,10 @@ export function WorkspaceList({
             store={store}
             keepId={keepId}
             onFocusRow={setFocusTid}
-            onThreadMenu={(tid, pos) => setMenu({ kind: 'thread', id: tid, ...pos })}
+            onThreadPick={pickThread}
           />
         ) : null}
       </div>
-
-      {/* 上下文菜单（行内 「…」与右键同一面；anchored 到点击点） */}
-      {menu ? (
-        <ContextMenu
-          position={{ x: menu.x, y: menu.y }}
-          items={menuItems(menu)}
-          onPick={(id) => runMenu(menu, id)}
-          onClose={() => setMenu(null)}
-        />
-      ) : null}
     </div>
   )
 }
@@ -331,6 +304,7 @@ function GhostButton({
   restingOpacity = 0,
   visible = true,
   onClick,
+  children,
 }: {
   testId: string
   label: string
@@ -340,6 +314,8 @@ function GhostButton({
   /** 父行 hover/focus 时 true → opacity 1 */
   visible?: boolean
   onClick: () => void
+  /** 内嵌浮层（菜单）：挂在钮内部以贴钮下缘；gpuix 无冒泡阻断，键盘由调用方守卫 */
+  children?: ReactNode
 }) {
   // GPUIX SVG tint 只读元素自身 style.color——hover 提亮要本地态换色
   const [hovered, setHovered] = useState(false)
@@ -351,6 +327,8 @@ function GhostButton({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onKeyDown={(e) => {
+        // 内嵌菜单开着时，菜单内按键冒泡上来不得再触发本钮
+        if (children) return
         if (e.key === 'enter' || e.key === 'space') onClick()
       }}
       style={{
@@ -366,6 +344,7 @@ function GhostButton({
       }}
     >
       <Icon name={icon} size={12} color={hovered ? COLORS.textBright : COLORS.muted} />
+      {children}
     </div>
   )
 }
@@ -379,7 +358,7 @@ function SessionRows({
   onToggleShowAll,
   keepId,
   onFocusRow,
-  onThreadMenu,
+  onThreadPick,
   moreTestId,
 }: {
   store: ThreadStore
@@ -390,7 +369,7 @@ function SessionRows({
   /** active/focus 行 id（不被截断——lim 自动扩展包含它） */
   keepId: string | null
   onFocusRow: (threadId: string) => void
-  onThreadMenu: (threadId: string, pos: { x: number; y: number }) => void
+  onThreadPick: (threadId: string, itemId: string) => void
   moreTestId: string
 }) {
   // uSES 纪律：selector 必须返回稳定引用——订整个 threads（immer 结构共享），
@@ -415,7 +394,7 @@ function SessionRows({
           key={t.id}
           id={t.id}
           store={store}
-          onMenu={onThreadMenu}
+          onPick={onThreadPick}
           onFocusRow={onFocusRow}
         />
       ))}
@@ -497,12 +476,12 @@ function UnassignedGroup({
   store,
   keepId,
   onFocusRow,
-  onThreadMenu,
+  onThreadPick,
 }: {
   store: ThreadStore
   keepId: string | null
   onFocusRow: (threadId: string) => void
-  onThreadMenu: (threadId: string, pos: { x: number; y: number }) => void
+  onThreadPick: (threadId: string, itemId: string) => void
 }) {
   const sessionIds = useThreadStore(store, (s) =>
     s.threads
@@ -593,7 +572,7 @@ function UnassignedGroup({
           onToggleShowAll={() => setShowAll((v) => !v)}
           keepId={keepId}
           onFocusRow={onFocusRow}
-          onThreadMenu={onThreadMenu}
+          onThreadPick={onThreadPick}
           moreTestId="load-more-unassigned"
         />
       </div>
@@ -609,17 +588,17 @@ function WorkspaceGroup({
   dialog,
   keepId,
   onFocusRow,
-  onMenu,
-  onThreadMenu,
+  onWorkspacePick,
+  onThreadPick,
 }: {
   store: ThreadStore
   workspaceId: string
   dialog: DialogOpener
   keepId: string | null
   onFocusRow: (threadId: string) => void
-  /** 「…」/ 右键 → 项目菜单（Pin/Rename/Remove） */
-  onMenu: (pos: { x: number; y: number }) => void
-  onThreadMenu: (threadId: string, pos: { x: number; y: number }) => void
+  /** 「…」/ 右键 → 项目菜单项执行（Pin/Rename/Remove） */
+  onWorkspacePick: (wsId: string, itemId: string) => void
+  onThreadPick: (threadId: string, itemId: string) => void
 }) {
   const ws = useThreadStore(store, (s) => s.workspaces.find((w) => w.id === workspaceId))
   // 会话 id 串（顺序/增删粒度）；行内容 ThreadRow 自订
@@ -630,10 +609,14 @@ function WorkspaceGroup({
       .join(','),
   )
   const [hovered, setHovered] = useState(false)
-  /** 行上最后一次指针位置（键盘打开菜单的定位兜底） */
-  const lastPointer = useRef({ x: 0, y: 0 })
+  /** 菜单来源：button=「…」钮下缘右对齐；row=右键 ws-head 下缘左对齐；null=关 */
+  const [menuSource, setMenuSource] = useState<'button' | 'row' | null>(null)
+  const menuOpen = menuSource !== null
 
   if (!ws) return null
+  const wsMenuItems = workspaceMenuItems(!!ws.pin)
+  const pick = (itemId: string) => onWorkspacePick(ws.id, itemId)
+  const closeMenu = () => setMenuSource(null)
   const sessions = sessionIds === '' ? [] : sessionIds.split(',')
 
   return (
@@ -643,14 +626,17 @@ function WorkspaceGroup({
           项目菜单；hover/focus-within 亮 ghost（.ghost 0→1 + pe 恢复） */}
       <div
         onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        onMouseMove={(e) => {
-          lastPointer.current = { x: e.x ?? 0, y: e.y ?? 0 }
+        // 菜单开着时鼠标移入 deferred 菜单层会触发本容器 leave——保持 hovered，
+        // 否则「…」钮 opacity 回 0 连带隐藏菜单
+        onMouseLeave={() => {
+          if (!menuOpen) setHovered(false)
         }}
         onFocus={() => setHovered(true)}
-        onBlur={() => setHovered(false)}
+        onBlur={() => {
+          if (!menuOpen) setHovered(false)
+        }}
         onAuxClick={(e) => {
-          if (e.isRightClick) onMenu({ x: e.x ?? 0, y: e.y ?? 0 })
+          if (e.isRightClick) setMenuSource('row')
         }}
         style={{
           position: 'relative',
@@ -668,7 +654,11 @@ function WorkspaceGroup({
         <div
           testId={`workspace-${ws.id}`}
           tabIndex={0}
-          onClick={() => store.toggleWorkspaceExpanded(ws.id)}
+          // 原型 e.detail>1 守卫：双击只折/展一次（净零 toggle 闪烁）
+          onClick={(e) => {
+            if ((e.clickCount ?? 0) > 1) return
+            store.toggleWorkspaceExpanded(ws.id)
+          }}
           onKeyDown={(e) => {
             if (e.key === 'enter' || e.key === 'space') store.toggleWorkspaceExpanded(ws.id)
             else if ((e.key === 'right' || e.key === 'arrowright') && !ws.expanded)
@@ -744,8 +734,19 @@ function WorkspaceGroup({
             testId={`menu-workspace-${ws.id}`}
             label="工作区菜单"
             icon="more"
-            onClick={() => onMenu(lastPointer.current)}
-          />
+            visible={hovered || menuOpen}
+            onClick={() => setMenuSource('button')}
+          >
+            {menuSource === 'button' ? (
+              <ContextMenu
+                side="bottom"
+                align="end"
+                items={wsMenuItems}
+                onPick={pick}
+                onClose={closeMenu}
+              />
+            ) : null}
+          </GhostButton>
           <GhostButton
             testId={`new-menu-${ws.id}`}
             label="新建会话"
@@ -813,7 +814,7 @@ function WorkspaceGroup({
               onToggleShowAll={() => store.setWorkspaceShowAll(ws.id, !(ws.showAll ?? false))}
               keepId={keepId}
               onFocusRow={onFocusRow}
-              onThreadMenu={onThreadMenu}
+              onThreadPick={onThreadPick}
               moreTestId={`load-more-${ws.id}`}
             />
           )}

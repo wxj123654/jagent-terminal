@@ -47,6 +47,12 @@ export const keyConsumed = {
   mark(): void {
     consumedFlag = true
   },
+  /** 派发链中间层读取（不复位——置位仍留给 root 层 take）。用途：
+      祖先容器在自己消费前先确认更深的元素级 handler 是否已吃掉本键
+      （如 Modal 卡内的 Select 弹层 Esc——弹层先消费，Modal 不得连坐关）。 */
+  peek(): boolean {
+    return consumedFlag
+  },
   /** root 键位层读取（读取即复位，一次性） */
   take(): boolean {
     const v = consumedFlag

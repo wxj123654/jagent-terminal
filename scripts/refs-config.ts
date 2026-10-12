@@ -52,6 +52,7 @@ export const MANIFEST = {
       'packages/native/src/custom_elements/input.rs',
       'packages/native/src/theme.rs',
     ],
+    '0005-floating-layer-surface.patch': ['packages/react/src/components/floating.tsx'],
   },
   'gpuix-zed': {
     '0001-gpui-workspace-root.patch': ['crates/gpui/Cargo.toml'],

@@ -59,10 +59,14 @@ const MD_THEME: GpuixTheme = {
   bg: '#15181d',
   border: COLORS.borderSubtle,
   codeWash: COLORS.inputBg,
+  // 原型 .msg .body code 承正文色（Comet 默认 code_text 是紫 #c4b5fd）
+  codeText: COLORS.text,
   metrics: {
     mdTextSize: 14,
     mdLineHeight: 23.1, // 1.65 × 14
-    mdBlockGap: 12, // p/ul margin 6+6 合并
+    // 原型 p/ul margin 6px 相邻 collapse→6、pre m8→8；gap 是统一值取 8
+    //（pre 边界精确，p↔p 比原型宽 2px——比 12 的 ~2× 更贴）
+    mdBlockGap: 8,
     mdCodePaddingX: 14,
     mdCodePaddingY: 13,
     mdCodeRadius: 8,

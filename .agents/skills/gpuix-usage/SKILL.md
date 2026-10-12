@@ -58,6 +58,38 @@ GPUIX/gpui 的鼠标事件**不冒泡**——命中链上 deepest **带 handler*
   命中盒（ThreadRow 注释 §20-21 同款纪律）；不带 handler 的叶子本身
   会被跳过、不影响父级命中。
 
+**例外：键盘事件会冒泡。** 浮层（菜单）内的 Enter/按键会沿祖先链冒泡到
+触发钮/行的 `onKeyDown`，`keyConsumed.mark()` 挡不住它（它是 root 层标记，不
+是元素层拦截）。因此把菜单内嵌进触发钮时，钮/行的 `onKeyDown` 必须先判断
+「菜单开着则直接 return」。已验证：鼠标点菜单项不冒泡到钮的 `onClick`；
+键盘 Enter 会冒泡到行的 `onKeyDown`（测试：`PopoverSideEvents.test.tsx`）。
+
+## 触发钮内嵌浮层（Popover side/align）
+
+省略 `position`、用 `side`/`align` 时，gpuix `wrap_at_trigger` 相对**父节点盒**
+定位，不是兄弟节点。所以菜单必须渲染在触发钮内部才会贴其下缘。三条连带约束：
+
+1. **定位**：触发钮与浮层是父子关系（浮层写在钮的 JSX 里）。
+2. **透明度**：gpui `opacity` 乘积继承。钮 `opacity:0`（非 hover 隐藏）时，
+   内嵌菜单一并隐形——菜单打开期间钮必须强制可见（`visible = hovered || open`）。
+   钮的 `onMouseLeave` 也要守卫「菜单开着不置 hovered=false」，否则鼠标移入
+   菜单（deferred 层）时钮隐藏。
+3. **键盘**：见上节（钮的 `onKeyDown` 守卫）。
+
+**对齐选型（实测坑）**：`<anchored>` 默认 `fit="snap"`，越界时把**整个盒子**
+夹回窗口内（边距 `snapMargin`=8），而不是只切越界的那一边。所以触发钮若靠窗口
+右缘，`align="start"` 的菜单必然越界，被整体夹回——结果既不左对齐也不右对齐，
+偏移随菜单宽度变化（实测 800/1200 宽窗口都偏 61px）。靠右的钮应选 `align="end"`
+（右缘对齐钮右缘，天然不越界）。判断方法：`钮.x + 菜单宽 > 窗口宽` 即会越界。
+本轮分支 chip 因此改为右对齐（与原型 align=start 有意偏离，已与用户确认）。
+
+**锚点不需要 relative**：实测钮加 `position:'relative'` 与否，偏移结果完全一致；
+`anchored` 的直接父就是触发钮本身（祖先链：menu → anchored → 钮）。给钮加
+`position:'relative'` 无害，但不是定位前提。
+
+显式 `anchor` 会覆盖 side/align 的推导（gpuix `resolved_anchor` 显式优先），
+所以 Popover 不能无条件透传默认 `anchor`——只在 position 模式下给默认值。
+
 `getElementBounds` 返回的是 **content-box**（不含元素自身 border）：
 定高 40 + borderBottomWidth 1 的元素 bounds.h = 39。换算窗口 chrome
 总高时用 border-box（定高值 + 根元素自身 border）。

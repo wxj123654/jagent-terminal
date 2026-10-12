@@ -134,6 +134,20 @@ describe('SessionTabs（原型 #tb-tabs：主面 + git/file/shell 视图）', ()
     expect(has('tab-context')).toBe(false)
   })
 
+  test('「+」浮层贴钮下缘、左缘对齐（原型 Pop side=bottom align=start）', async () => {
+    const { store } = setup()
+    await spawnChat(store)
+    await until(() => has('session-add'))
+    click('session-add')
+    const btn = t.renderer.getElementBounds(t.renderer.findByTestId('session-add')!.id)!
+    const pop = t.renderer.getElementBounds(t.renderer.findByTestId('session-add-pop')!.id)!
+    // 非退化
+    expect(btn.width).toBeGreaterThan(0)
+    expect(pop.height).toBeGreaterThan(0)
+    expect(pop.y).toBeGreaterThanOrEqual(btn.y + btn.height - 1)
+    expect(Math.abs(pop.x - btn.x)).toBeLessThanOrEqual(6)
+  })
+
   test('「+」浮层：打开 Git 图 / 打开文件；激活/回主面/×关闭闭环', async () => {
     const { store } = setup()
     await spawnChat(store)

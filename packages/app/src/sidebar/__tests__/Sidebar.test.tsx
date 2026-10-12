@@ -112,6 +112,27 @@ describe('通知中心（D8）', () => {
     expect(t.renderer.findByTestId('notif-unread-dot')).toBeUndefined()
   })
 
+  test('通知浮层贴铃铛上缘（原型 side=top align=start）：浮层底在铃铛顶之上、左缘对齐', async () => {
+    await store.spawnFromPreset('shell')
+    await store.spawnFromPreset('shell')
+    store.onSessionEvent({ type: 'bell', sessionId: 1 })
+    await flush()
+    t.renderer.flush()
+
+    clickCenter('open-notifications')
+    const bellEl = t.renderer.findByTestId('open-notifications')!
+    const bell = t.renderer.getElementBounds(bellEl.id)!
+    const pop = t.renderer.getElementBounds(t.renderer.findByTestId('notif-popover')!.id)!
+    // 浮层在铃铛上方：浮层底边 ≤ 铃铛顶边（允许 gap 10 之内的误差由 ≤ 即可）
+    // 非退化：两个盒子都有真实尺寸与位置（防 0/0 恰好满足不等式）
+    expect(bell.width).toBeGreaterThan(0)
+    expect(pop.height).toBeGreaterThan(0)
+    expect(bell.y).toBeGreaterThan(pop.y)
+    expect(pop.y + pop.height).toBeLessThanOrEqual(bell.y)
+    // 左缘贴铃铛左缘（铃铛钮 hitSize 28，视觉左缘 = 钮左缘）
+    expect(Math.abs(pop.x - bell.x)).toBeLessThanOrEqual(6)
+  })
+
   test('「全部已读」清红点、条目保留', async () => {
     await store.spawnFromPreset('shell')
     await store.spawnFromPreset('shell')

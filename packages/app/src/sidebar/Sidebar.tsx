@@ -17,7 +17,6 @@
 
 import { useState } from 'react'
 
-import { useWindowSize } from '@gpuix/react'
 import type { AppPlatform } from '@jagent/ui'
 import { Icon, IconButton, Popover, TRAFFIC_LIGHT_WIDTH, COLORS, FONT } from '@jagent/ui'
 import type { DialogOpener } from '../dialogs/DialogHost'
@@ -86,7 +85,6 @@ export function SidebarHeader({
           testId="sidebar-collapse"
           size={16}
           hitSize={28}
-          radius={8}
           tooltip={false}
           onClick={() => onCollapse?.()}
         />
@@ -96,22 +94,17 @@ export function SidebarHeader({
 }
 
 /** 通知中心浮层（D8；原型 .notif-pop side=top align=start sideOffset=10） */
-function NotifPopover({
-  store,
-  position,
-  onClose,
-}: {
-  store: ThreadStore
-  position: { x: number; y: number }
-  onClose: () => void
-}) {
+function NotifPopover({ store, onClose }: { store: ThreadStore; onClose: () => void }) {
   const notices = useThreadStore(store, (s) => s.notices)
   const TONE = { ok: COLORS.statusDone, warn: COLORS.statusRunning, err: COLORS.statusError }
   return (
     <Popover
       testId="notif-popover"
-      position={position}
-      anchor="bottomLeft"
+      // 内嵌于铃铛 wrapper（position:relative）：贴其上缘、左对齐（原型 Pop side=top
+      // align=start sideOffset=10）。gap 10 即原 winH−47 里的 sideOffset
+      side="top"
+      align="start"
+      gap={10}
       onClose={onClose}
       minWidth={300}
       // 第二段浮层 chrome：r12 + 0 14 38 阴影（.notif-pop 同 ctx-menu 系）
@@ -297,14 +290,9 @@ export function Sidebar({
   const [notifOpen, setNotifOpen] = useState(false)
   const [resizing, setResizing] = useState(false)
   const [resizeHover, setResizeHover] = useState(false)
-  const { height: winH } = useWindowSize()
   // 宽度单值订阅：设置页拖滑块时只重渲染侧栏（不碰会话树）
   const width = useSettingsValue(settings, (s) => s.appearance.sidebarWidth)
   const unread = useThreadStore(store, (s) => s.notices.reduce((n, x) => n + (x.read ? 0 : 1), 0))
-  // 浮层锚定铃铛上方（原型 Pop side=top align=start sideOffset=10：
-  // 左缘贴铃铛左缘 = 8 脚 padding + 28 齿轮 + 2 间距 = 38；底缘 =
-  // 铃铛顶（脚高 45 − padding 8 = winH−37）− 10 = winH−47）
-  const notifPos = { x: 38, y: winH - 47 }
 
   return (
     <div
@@ -383,7 +371,6 @@ export function Sidebar({
           testId="open-settings"
           size={16}
           hitSize={28}
-          radius={8}
           tooltip={false}
           onClick={() => store.activate({ type: 'settings' })}
         />
@@ -394,22 +381,22 @@ export function Sidebar({
             testId="open-notifications"
             size={16}
             hitSize={28}
-            radius={8}
             tooltip={false}
             onClick={() => setNotifOpen((v) => !v)}
           />
+          {notifOpen ? <NotifPopover store={store} onClose={() => setNotifOpen(false)} /> : null}
           {unread > 0 ? (
             <div
               testId="notif-unread-dot"
               style={{
-                // 原型 .badge-dot：7px 点 + 1.5px 描边（CSS border 在盒外）。
-                // gpuix 把 border 算进盒内 → 盒 10px 才等效 7px 点 + 描边；
-                // 位置回退 1.5px 保持点中心不变
+                // 原型 .badge-dot：7px 点 + 1.5px 描边，right/top 4。
+                // 原型是 border-box（7 = 总宽），GPUIX 定高盒 border 也计
+                // 盒内——盒写 7 即视觉一致（此前误按「盒外描边」放大到 10）
                 position: 'absolute',
-                right: 2.5,
-                top: 2.5,
-                width: 10,
-                height: 10,
+                right: 4,
+                top: 4,
+                width: 7,
+                height: 7,
                 borderRadius: 9999,
                 backgroundColor: COLORS.bell,
                 borderWidth: 1.5,
@@ -454,10 +441,6 @@ export function Sidebar({
           pointerEvents: 'none',
         }}
       />
-
-      {notifOpen ? (
-        <NotifPopover store={store} position={notifPos} onClose={() => setNotifOpen(false)} />
-      ) : null}
     </div>
   )
 }

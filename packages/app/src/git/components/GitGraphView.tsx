@@ -25,6 +25,7 @@ import {
   TextInput,
   toast,
   Toggle,
+  keyConsumed,
   COLORS,
   FONT,
 } from '@jagent/ui'
@@ -73,8 +74,6 @@ const CDV_H = 218
 const CDV_SLOT_H = CDV_H + 8 + 10 // margin 8 上 + 10 下（原型 .git-cdv margin:8px 10px 10px）
 /** 原型 .cdv-meta .k = 82px */
 const CDV_LABEL_W = 82
-/** 会话内视图标签条高（pane 内容区在 topChrome 之下，列表高需扣除） */
-const TAB_H = 30
 /** 原型 .git-toolbar 底色（sidebar 42% 透明压 pane） */
 const TOOLBAR_BG = 'rgba(32, 36, 43, 0.42)'
 /** 原型 .git-header 底色（第二段字面量 #1a1d22，非 token 变量） */
@@ -144,7 +143,9 @@ function RefBadges({
             key={`${d.kind}-${d.label}-${i}`}
             testId={`git-ref-${d.kind}`}
             onClick={onSelect}
-            onAuxClick={(e) => onAux(d, e)}
+            onAuxClick={(e) => {
+              if (e.isRightClick) onAux(d, e)
+            }}
             style={{
               display: 'flex',
               flexDirection: 'row',
@@ -448,7 +449,6 @@ function GraphRowView({
   onSelect: () => void
   onMenu: (e: { x?: number; y?: number }, kind: 'commit' | RefDecor) => void
 }) {
-  const suppressRowMenu = useRef(false)
   const width = graphColumnWidth(maxLanes)
   const pieces = buildRowGraphics({
     row: index,
@@ -477,10 +477,8 @@ function GraphRowView({
       testId={`git-row-${index}`}
       onClick={onSelect}
       onAuxClick={(e) => {
-        if (suppressRowMenu.current) {
-          suppressRowMenu.current = false
-          return
-        }
+        // 鼠标事件不冒泡：ref chip 的右键不会到达这里，无需抑制标记
+        if (!e.isRightClick) return
         onMenu(e, 'commit')
       }}
       style={{
@@ -559,10 +557,7 @@ function GraphRowView({
           decors={decors}
           showRemote={showRemote}
           onSelect={onSelect}
-          onAux={(d, e) => {
-            suppressRowMenu.current = true
-            onMenu(e, d)
-          }}
+          onAux={(d, e) => onMenu(e, d)}
         />
         {/* 行文本 4 列：canvas 自绘（见 rowColumns.ts 头注）。pe:none——
             custom element 是绘制元素，不挡行点击/右键 */}
@@ -634,6 +629,7 @@ function MenuLayer({
       onClose={onClose}
       testId="git-menu"
       minWidth={180}
+      autoFocus
       style={{
         backgroundColor: COLORS.overlay,
         borderWidth: 1,
@@ -724,10 +720,12 @@ export function GitGraphView({
   const rootRef = useRef<PublicInstance | null>(null)
   const { renderer } = useGpuix()
   const { width: winW, height: winH } = useWindowSize()
+  // 列表高 = 窗口 − 顶栏条（83 已含会话 tab 条）− 工具条 − 表头 − 错误条。
+  // 会话内 git 视图的 view tab 在 SessionTabs（38px，topChrome 内）里，
+  // Pane/WorkspacePage 之上无额外标签条——此前误扣 TAB_H=30 留底部死区。
   const listHeight =
     winH -
     SIZES.topChrome -
-    TAB_H -
     TOOLBAR_H -
     HEADER_H -
     (s.status === 'error' || s.actionError ? ERROR_H : 0)
@@ -758,9 +756,7 @@ export function GitGraphView({
   const [prompt, setPrompt] = useState<PromptState | null>(null)
   const [promptVal, setPromptVal] = useState('')
   const [branchOpen, setBranchOpen] = useState(false)
-  const branchBtnRef = useRef<PublicInstance | null>(null)
   /** 分支浮层左上角：开层时取按钮 bounds + sideOffset 6（原型 Pop sideOffset） */
-  const [branchPos, setBranchPos] = useState({ x: 0, y: 0 })
   const findActive = s.findQuery.trim() !== ''
   const matchSet = useMemo(() => new Set(s.findMatches), [s.findMatches])
 
@@ -810,6 +806,16 @@ export function GitGraphView({
     <div
       testId="git-graph-view"
       ref={rootRef}
+      onKeyDown={(e) => {
+        // 菜单/分支浮层开着时 ↑↓ 不得穿透到 graphKeys 改选中行（原型 Radix
+        // 菜单层语义）；浮层 autoFocus 使按键沿祖先链必经此节点
+        if (
+          (menu || branchOpen) &&
+          (e.key === 'up' || e.key === 'down' || e.key === 'arrowup' || e.key === 'arrowdown')
+        ) {
+          keyConsumed.mark()
+        }
+      }}
       style={{
         flexGrow: 1,
         display: 'flex',
@@ -848,11 +854,8 @@ export function GitGraphView({
             pad 0 8 / gap5 / 12px mono / gitBranch+chev 12 muted */}
         <div
           testId="git-branch"
-          ref={branchBtnRef}
           onClick={() => {
-            const el = branchBtnRef.current
-            const b = el ? renderer?.getElementBounds?.(el.id) : null
-            if (b) setBranchPos({ x: b.x, y: b.y + b.height + 6 })
+            // 浮层开着时菜单内点击冒泡不在此（鼠标不冒泡）；这里只做开合
             setBranchOpen((v) => !v)
           }}
           style={{
@@ -884,6 +887,71 @@ export function GitGraphView({
             {currentBranch}
           </text>
           <Icon name="chevronDown" size={12} color={COLORS.muted} />
+          {branchOpen ? (
+            <Popover
+              side="bottom"
+              align="start"
+              onClose={() => setBranchOpen(false)}
+              testId="git-branch-pop"
+              minWidth={180}
+              autoFocus
+              style={{
+                backgroundColor: COLORS.overlay,
+                borderWidth: 1,
+                borderColor: COLORS.borderSubtle,
+                borderRadius: 12,
+                padding: 4,
+                boxShadow: POP_SHADOW,
+              }}
+            >
+              {s.branches.map((b) => (
+                <div
+                  key={b.name}
+                  testId={`git-branch-${b.name}`}
+                  onClick={() => {
+                    setBranchOpen(false)
+                    if (!b.current) commands.runGit(['checkout', b.name])
+                  }}
+                  style={{
+                    height: 26,
+                    paddingLeft: 8,
+                    paddingRight: 8,
+                    borderRadius: 4,
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    cursor: 'pointer',
+                    hover: { backgroundColor: COLORS.surface },
+                  }}
+                >
+                  <text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: FONT.ui,
+                      color: COLORS.terminalKind,
+                      width: 14,
+                      flexShrink: 0,
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    {b.current ? '✓' : ''}
+                  </text>
+                  <Icon name="gitBranch" size={12} color={COLORS.muted} />
+                  <text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: FONT.ui,
+                      color: COLORS.text,
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    {b.name}
+                  </text>
+                </div>
+              ))}
+            </Popover>
+          ) : null}
         </div>
         <div
           style={{
@@ -925,18 +993,21 @@ export function GitGraphView({
               flexShrink: 0,
             }}
           >
-            {/* .git-find input：w180 h24 */}
+            {/* .git-find input：w180 h24 r4，autoFocus（原型 input autoFocus）；
+                Enter=下一个、⇧Enter=上一个（原型 gitFindStep ±1 同款） */}
             <TextInput
               value={findDraft}
               placeholder="查找提交"
               testId="git-find-input"
               width={180}
               height={24}
+              radius={4}
+              autoFocus
               onChange={(v) => {
                 setFindDraft(v)
                 store.find(v)
               }}
-              onSubmit={() => store.findNext(1)}
+              onSubmit={(_v, e) => store.findNext(e.modifiers?.shift ? -1 : 1)}
             />
             <text
               style={{
@@ -955,6 +1026,7 @@ export function GitGraphView({
               testId="git-find-prev"
               hitSize={22}
               size={12}
+              hoverColor={COLORS.muted}
               onClick={() => store.findNext(-1)}
             />
             <IconButton
@@ -963,6 +1035,7 @@ export function GitGraphView({
               testId="git-find-next"
               hitSize={22}
               size={12}
+              hoverColor={COLORS.muted}
               onClick={() => store.findNext(1)}
             />
             <IconButton
@@ -971,6 +1044,7 @@ export function GitGraphView({
               testId="git-find-close"
               hitSize={22}
               size={12}
+              hoverColor={COLORS.muted}
               onClick={() => {
                 setFindOpen(false)
                 setFindDraft('')
@@ -1184,72 +1258,6 @@ export function GitGraphView({
         </>
       )}
       {menu ? <MenuLayer menu={menu} onClose={() => setMenu(null)} onPick={pickMenu} /> : null}
-      {/* 原型 .branch-pop（Pop sideOffset=6，锚在 branch-btn 下缘）：
-          overlay 底 / borderSubtle / r12 / pad4 / 阴影；.brow h26 r4
-          pad 0 8 gap6 hover=surface，ck w14 terminalKind */}
-      {branchOpen ? (
-        <Popover
-          position={branchPos}
-          onClose={() => setBranchOpen(false)}
-          testId="git-branch-pop"
-          minWidth={180}
-          style={{
-            backgroundColor: COLORS.overlay,
-            borderWidth: 1,
-            borderColor: COLORS.borderSubtle,
-            borderRadius: 12,
-            padding: 4,
-            boxShadow: POP_SHADOW,
-          }}
-        >
-          {s.branches.map((b) => (
-            <div
-              key={b.name}
-              testId={`git-branch-${b.name}`}
-              onClick={() => {
-                setBranchOpen(false)
-                if (!b.current) commands.runGit(['checkout', b.name])
-              }}
-              style={{
-                height: 26,
-                paddingLeft: 8,
-                paddingRight: 8,
-                borderRadius: 4,
-                display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 6,
-                cursor: 'pointer',
-                hover: { backgroundColor: COLORS.surface },
-              }}
-            >
-              <text
-                style={{
-                  fontSize: 12,
-                  fontFamily: FONT.ui,
-                  color: COLORS.terminalKind,
-                  width: 14,
-                  flexShrink: 0,
-                  pointerEvents: 'none',
-                }}
-              >
-                {b.current ? '✓' : ''}
-              </text>
-              <Icon name="gitBranch" size={12} color={COLORS.muted} />
-              <text
-                style={{
-                  fontSize: 12,
-                  fontFamily: FONT.ui,
-                  color: COLORS.text,
-                  pointerEvents: 'none',
-                }}
-              >
-                {b.name}
-              </text>
-            </div>
-          ))}
-        </Popover>
-      ) : null}
       {confirm ? (
         <Modal width={380} onClose={() => setConfirm(null)}>
           <ModalHeading title="确认操作" onClose={() => setConfirm(null)} />

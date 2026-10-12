@@ -42,8 +42,9 @@ import { COLORS, FONT } from '../theme/tokens'
 
 /** 弹层宽度（原型 .font-pop 280） */
 const POP_WIDTH = 280
-/** 行高（虚拟列表 estimatedItemHeight 与滚动跟随计算共用；原型 .font-row 26） */
-const ROW_H = 26
+/** 行高（虚拟列表 estimatedItemHeight 与滚动跟随计算共用；原型 .font-row
+    第二段生效值 min-height 30——虚拟列表定高取 30） */
+const ROW_H = 30
 /** 列表最大高（超出滚动） */
 const LIST_MAX_H = 264
 
@@ -255,7 +256,8 @@ export function SearchSelect({
         flexShrink: 0,
         paddingLeft: 8,
         paddingRight: 8,
-        borderRadius: 4,
+        // 原型 .font-row 第二段生效值：r6
+        borderRadius: 6,
         backgroundColor: highlighted ? COLORS.surfaceHover : 'transparent',
       })}
     >
@@ -363,8 +365,11 @@ export function SearchSelect({
         testId={`${testId}-menu`}
         style={{
           width: POP_WIDTH,
+          // 原型 .font-pop padding:4 四边（搜索行/选项行的 8px 内距叠其上）
           paddingTop: 4,
           paddingBottom: 4,
+          paddingLeft: 4,
+          paddingRight: 4,
           borderRadius: 12,
           borderWidth: 1,
           borderColor: COLORS.borderSubtle,

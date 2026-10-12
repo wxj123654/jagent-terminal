@@ -7,9 +7,9 @@
  * 自理 Esc 清空时 onKeyDown 放行到 Modal 卡片 → 关闭，原型同款层级）。
  */
 
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 
-import { Icon, inputFocus, Modal, COLORS, FONT } from '@jagent/ui'
+import { Icon, inputFocus, keyConsumed, Modal, COLORS, FONT } from '@jagent/ui'
 import type { SettingsStore } from '../settings/store'
 import { useSettings } from '../settings/useSettings'
 import { rowTitle } from '../sidebar/ThreadRow'
@@ -50,9 +50,6 @@ export function SearchDialog({
   // 光标钳制到结果集（结果随 query 收缩时 cursor 状态可能越界——原型
   // cur = min(cursor, len-1) 同款）
   const cur = Math.min(cursor, Math.max(results.length - 1, 0))
-  // Esc 两段式：输入框有内容时 Esc 只清空不关闭（GPUIX keydown 沿焦点链
-  // 冒泡到 modal-card，JS 无 stopPropagation 面——用标志位吃掉同次冒泡）
-  const escCleared = useRef(false)
 
   const moveCursor = (delta: number) => {
     if (results.length === 0) return
@@ -70,17 +67,7 @@ export function SearchDialog({
   return (
     // 原型 #search-dialog：min(92vw,560) + .modal.r20（第二段 r=14）；
     // 命令面板形态——顶部 .search-in 输入行（无标题栏），下接 .sr-list 结果区
-    <Modal
-      width={560}
-      radius={14}
-      onClose={() => {
-        if (escCleared.current) {
-          escCleared.current = false
-          return
-        }
-        onClose()
-      }}
-    >
+    <Modal width={560} radius={14} onClose={onClose}>
       {/* 搜索行（原型 .search-in 第二段：icon 16 + input 14px，padding 14 16，borderSubtle 底线） */}
       <div
         style={{
@@ -114,8 +101,10 @@ export function SearchDialog({
             else if (e.key === 'arrowup') moveCursor(-1)
             else if (e.key === 'enter') activateAt(cur)
             else if (e.key === 'escape' && query) {
+              // Esc 有内容时只清空不关闭：消费标记挡 modal-card/root 两层
+              // 连坐（原型 Radix 输入框 Esc 不透传 dialog 层）
+              keyConsumed.mark()
               setQuery('')
-              escCleared.current = true
             }
           }}
           style={{

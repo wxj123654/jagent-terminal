@@ -11,10 +11,7 @@
  * 同款模型）：× 钮的 onClick 不会到父 tab，装饰子元素一律 pe:none。
  */
 
-import { useRef, useState } from 'react'
-
-import { useGpuix } from '@gpuix/react'
-import type { PublicInstance } from '@gpuix/react'
+import { useState } from 'react'
 
 import { Icon, Popover, COLORS, FONT } from '@jagent/ui'
 import type { IconName } from '@jagent/ui'
@@ -175,17 +172,8 @@ export function SessionTabs({
   const dot = dot0 === 'idle' || dot0 === 'idle-on' || dot0 === 'exited' ? undefined : dot0
   const exited = thread.kind === 'terminal' && thread.status === 'exited'
   const title = thread.kind === 'terminal' ? displayTitle(thread) : thread.title
-  const [addAt, setAddAt] = useState<{ x: number; y: number } | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
   const [addHovered, setAddHovered] = useState(false)
-  const addBtnRef = useRef<PublicInstance | null>(null)
-  const { renderer } = useGpuix()
-  const lastPointer = useRef({ x: 0, y: 0 })
-  // 原型 Pop（Radix side=bottom align=start sideOffset=4）：
-  // 浮层左上角 = 按钮左下 +4；bounds 读不到时兜底点击点
-  const addAnchor = (fallback: { x: number; y: number }) => {
-    const b = addBtnRef.current ? renderer?.getElementBounds?.(addBtnRef.current.id) : null
-    return b ? { x: b.x, y: b.y + b.height + 4 } : fallback
-  }
 
   return (
     <>
@@ -216,16 +204,15 @@ export function SessionTabs({
       ))}
       {/* 「+」添加到当前 Session（原型 .tb-cell.tb-add-btn → session-add-pop） */}
       <div
-        ref={addBtnRef}
         testId="session-add"
         tabIndex={0}
-        onClick={(e) => setAddAt(addAnchor({ x: e.x ?? 0, y: (e.y ?? 0) + 10 }))}
-        onMouseMove={(e) => {
-          lastPointer.current = { x: e.x ?? 0, y: e.y ?? 0 }
+        onClick={() => {
+          if (!addOpen) setAddOpen(true)
         }}
         onKeyDown={(e) => {
-          if (e.key === 'enter' || e.key === 'space')
-            setAddAt(addAnchor({ x: lastPointer.current.x, y: lastPointer.current.y + 10 }))
+          // 浮层开着：浮层内按键冒泡上来，不得再开
+          if (addOpen) return
+          if (e.key === 'enter' || e.key === 'space') setAddOpen(true)
         }}
         onMouseEnter={() => setAddHovered(true)}
         onMouseLeave={() => setAddHovered(false)}
@@ -246,16 +233,16 @@ export function SessionTabs({
       >
         {/* svg 不继承父级 color——悬停提亮显式给 */}
         <Icon name="plus" size={15} color={addHovered ? COLORS.textBright : COLORS.muted} />
+        {/* 原型 Pop side=bottom align=start sideOffset=4：内嵌于钮，贴钮下缘左对齐 */}
+        {addOpen ? (
+          <AddPopover
+            store={store}
+            thread={thread}
+            worktree={worktree}
+            onClose={() => setAddOpen(false)}
+          />
+        ) : null}
       </div>
-      {addAt ? (
-        <AddPopover
-          store={store}
-          thread={thread}
-          worktree={worktree}
-          position={addAt}
-          onClose={() => setAddAt(null)}
-        />
-      ) : null}
     </>
   )
 }
@@ -266,13 +253,11 @@ function AddPopover({
   store,
   thread,
   worktree,
-  position,
   onClose,
 }: {
   store: ThreadStore
   thread: Thread
   worktree: WorktreeStore
-  position: { x: number; y: number }
   onClose: () => void
 }) {
   const files = useWorktree(worktree, (s) => s.files)
@@ -283,7 +268,10 @@ function AddPopover({
   return (
     <Popover
       testId="session-add-pop"
-      position={position}
+      // 内嵌于「+」钮：贴钮下缘左对齐（side/align 模式，无 position）
+      side="bottom"
+      align="start"
+      gap={4}
       onClose={onClose}
       minWidth={280}
       autoFocus

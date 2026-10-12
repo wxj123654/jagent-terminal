@@ -184,7 +184,7 @@ impl TerminalModel {
                             SessionListener { tx: events_tx },
                         ))),
                         pty: None,
-                        style: TerminalStyle::default(),
+                        style: opts.style.clone().unwrap_or_default(),
                         scrollback_lines: scrollback,
                         exited: true,
                     })
@@ -256,7 +256,7 @@ impl TerminalModel {
                 id: 0,
                 term,
                 pty: Some(pty),
-                style: TerminalStyle::default(),
+                style: opts.style.clone().unwrap_or_default(),
                 scrollback_lines: scrollback,
                 exited: false,
             }

@@ -45,6 +45,7 @@ export function SettingRow({
   onChange,
   onReset,
   highlightQuery,
+  last = false,
 }: {
   def: SettingDef
   value: SettingValue
@@ -54,6 +55,9 @@ export function SettingRow({
   /** 搜索子串：label/description 高亮（settings-ui.md §9；GPUIX 无 <mark>，
    * 用 highlight wash，原型 amber 底） */
   highlightQuery?: string | null
+  /** 卡内末行（原型 .st-card>.srow:last-child{border-bottom:0}）——
+      impl 的 srow 被 wrapper 包了一层，:last-child 语义由父级显式传 */
+  last?: boolean
 }): ReactElement {
   const disabled = def.phase !== undefined
   const c = def.control
@@ -101,6 +105,7 @@ export function SettingRow({
             disabled={disabled}
             onChange={onChange}
             testId={`setting-${def.path}`}
+            format={(v) => `${v}px`}
           />
         )
       case 'text':
@@ -149,7 +154,7 @@ export function SettingRow({
         paddingBottom: 13,
         paddingLeft: 16,
         paddingRight: 16,
-        borderBottomWidth: 1,
+        borderBottomWidth: last ? 0 : 1,
         borderColor: COLORS.borderSubtle,
         opacity: disabled ? 0.5 : 1,
       }}
@@ -203,6 +208,8 @@ export function SettingRow({
                 name="reset"
                 size={12}
                 hitSize={18}
+                radius={4}
+                hoverColor={COLORS.text}
                 label={`恢复默认：${def.label}`}
                 disabled={!modified}
                 onClick={onReset}

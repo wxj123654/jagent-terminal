@@ -13,7 +13,8 @@
  *   （exited tile 转 transparent + 图标同色灰）；active 提亮
  * - pin：标题后右缘 12px 图钉（faint）；排序在 workspaces.sortThreads
  * - 「…」菜单槽固定 22px（不占位→位移；r8，hover 底 closeHover + 图标提
- *   亮）；「…」与右键（onAuxClick）开同一面上下文菜单（onMenu 回调定位）
+ *   亮）；「…」与右键（onAuxClick）开同一面上下文菜单：「…」钮下缘右对齐、
+ *   右键行下缘左对齐（菜单挂在触发器内部，不走全局坐标）；菜单项执行经 onPick 回调
  * - 状态点（D12，诚实语义）：chat/acp pendingReply = 橙（running）；hasBell
  *   = 紫（need）；error = 红；done 绿预留；unread = muted 点；exited/idle
  *   无点。terminal「存活」不显示 running——PTY 活着 ≠ agent 在工作。
@@ -23,7 +24,7 @@
  * 行内装饰一律 pointerEvents 'none' 穿透到行容器；「…」钮命中自身。
  */
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 
 import { Icon, COLORS, FONT } from '@jagent/ui'
 import { useActiveTarget } from '../router'
@@ -31,6 +32,7 @@ import type { ThreadStore, Thread } from '../threads/store'
 import { displayTitle } from '../threads/terminal'
 import { useThreadStore } from '../threads/useThreadStore'
 import { SIZES } from '../tokens'
+import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 
 /** 行标题：terminal 走 displayTitle 四级兜底；chat/acp 用 title */
 export function rowTitle(thread: Thread): string {
@@ -76,7 +78,8 @@ const KIND_ICON = { terminal: 'terminal', chat: 'chat', acp: 'acp' } as const
 
 /** tile 右下角状态角标（原型 .t-row .thread-kind .dot：6px 点 + 1.5px
  *  sidebar 色描边，半出 tile 右下外缘；idle-on = 7px surfaceActive +
- *  g300 描边。exited/idle 无点）。GPUIX border 计盒内 → 盒 9/10px。 */
+ *  g300 描边。exited/idle 无点）。原型 border-box 盒 6/7 = 视觉总宽；
+ *  GPUIX 定高盒 border 同样计盒内——直接写 6/7。 */
 function TileDot({ state }: { state: DotState }) {
   if (state === 'exited' || state === 'idle') return null
   const idleOn = state === 'idle-on'
@@ -98,8 +101,8 @@ function TileDot({ state }: { state: DotState }) {
         position: 'absolute',
         right: -2,
         bottom: -2,
-        width: idleOn ? 10 : 9,
-        height: idleOn ? 10 : 9,
+        width: idleOn ? 7 : 6,
+        height: idleOn ? 7 : 6,
         borderRadius: 9999,
         backgroundColor: bg,
         borderWidth: 1.5,
@@ -172,16 +175,27 @@ export function Dot({ state }: { state: DotState }) {
   )
 }
 
+/** 会话行菜单项（置顶 / 重命名 / 已读未读 / 移除）。标签随 thread 状态现算。 */
+export function threadMenuItems(t: Thread): ContextMenuItem[] {
+  return [
+    { id: 'pin', label: t.pin ? '取消置顶' : '置顶' },
+    { id: 'rename', label: '重命名…' },
+    { id: 'unread', label: t.unread ? '标记为已读' : '标记为未读' },
+    'sep',
+    { id: 'remove', label: '移除', danger: true },
+  ]
+}
+
 export function ThreadRow({
   id,
   store,
-  onMenu,
+  onPick,
   onFocusRow,
 }: {
   id: string
   store: ThreadStore
-  /** 「…」/ 右键 → 上下文菜单（方案 C；坐标 = 点击点窗口坐标） */
-  onMenu?: (threadId: string, pos: { x: number; y: number }) => void
+  /** 菜单项执行回调（pin/unread/rename/remove；由列表层持有 dialog 与 store 动作） */
+  onPick?: (threadId: string, itemId: string) => void
   /** 行聚焦上报（截断豁免：focus 行不被 Show more 截断） */
   onFocusRow?: (threadId: string) => void
 }) {
@@ -189,8 +203,9 @@ export function ThreadRow({
   const active = useActiveTarget()
   const [hovered, setHovered] = useState(false)
   const [menuHovered, setMenuHover] = useState(false)
-  /** 行上最后一次指针位置（键盘打开菜单的定位兜底——GPUIX 无元素 bounds 读面） */
-  const lastPointer = useRef({ x: 0, y: 0 })
+  /** 菜单来源：button=「…」钮下缘；row=右键行下缘；null=关 */
+  const [menuSource, setMenuSource] = useState<'button' | 'row' | null>(null)
+  const menuOpen = menuSource !== null
 
   if (!thread) return null
   const isActive = active?.type === 'thread' && active.id === id
@@ -198,7 +213,8 @@ export function ThreadRow({
   const unread = !exited && !!thread.unread
   const rawDot = statusDot(thread)
   const dot: DotState = rawDot === 'idle' && isActive ? 'idle-on' : rawDot
-  const showMenu = hovered || menuHovered || isActive
+  // 菜单开着时钮必须可见：opacity 乘积继承，钮 opacity:0 会连带隐去内嵌菜单
+  const showMenu = hovered || menuHovered || isActive || menuOpen
 
   // 原型 .thread-kind：tile 面色按 kind（terminal 绿 / chat accent / acp 紫）；
   // exited 图标同色压灰 + tile 透明
@@ -212,8 +228,9 @@ export function ThreadRow({
   // unread：标题加粗提亮（原型 .ttl.unread：600 + textBright）；exited 压灰优先
   const titleColor = exited ? COLORS.exited : isActive || unread ? COLORS.textBright : COLORS.text
 
-  const openMenu = (pos?: { x?: number; y?: number }) =>
-    onMenu?.(id, { x: pos?.x ?? lastPointer.current.x, y: pos?.y ?? lastPointer.current.y })
+  const closeMenu = () => setMenuSource(null)
+  const menuItems = threadMenuItems(thread)
+  const pick = (itemId: string) => onPick?.(id, itemId)
 
   return (
     <div
@@ -221,9 +238,6 @@ export function ThreadRow({
       tabIndex={0}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onMouseMove={(e) => {
-        lastPointer.current = { x: e.x ?? 0, y: e.y ?? 0 }
-      }}
       onFocus={() => {
         setHovered(true)
         onFocusRow?.(id)
@@ -233,10 +247,12 @@ export function ThreadRow({
         store.activate({ type: 'thread', id })
       }}
       onAuxClick={(e) => {
-        // 右键 = 「…」同一面菜单（方案 C：同一面，不分两套）
-        if (e.isRightClick) openMenu(e)
+        // 右键 = 「…」同一面菜单（方案 C：同一面，不分两套）；锚定行下缘
+        if (e.isRightClick) setMenuSource('row')
       }}
       onKeyDown={(e) => {
+        // 菜单开着时按键冒泡上来（gpuix 不阻断冒泡）——交给菜单，行不处理
+        if (menuOpen) return
         // Delete/Backspace（行聚焦）→ 关闭；Enter → 激活（契约 §4 交互表）
         if (e.key === 'delete' || e.key === 'backspace') store.close(id)
         else if (e.key === 'enter') store.activate({ type: 'thread', id })
@@ -308,13 +324,15 @@ export function ThreadRow({
 
       {/* 「…」菜单槽固定 22px（不占位→位移；图标 hover/active/focus 显；
           原型 .menu-btn r8，hover 底 closeHover + 图标提亮）。
-          点击开上下文菜单（坐标 = 点击点）；键盘 enter/space 用 lastPointer 兜底 */}
+          点击开上下文菜单：菜单挂在钮内部，贴钮下缘右对齐 */}
       <div
         testId={`menu-thread-${id}`}
         tabIndex={0}
-        onClick={(e) => openMenu(e)}
+        onClick={() => setMenuSource('button')}
         onKeyDown={(e) => {
-          if (e.key === 'enter' || e.key === 'space') openMenu()
+          // 菜单开着时钮的键盘事件是菜单冒泡上来的，不得再开菜单
+          if (menuOpen) return
+          if (e.key === 'enter' || e.key === 'space') setMenuSource('button')
         }}
         onMouseEnter={() => setMenuHover(true)}
         onMouseLeave={() => setMenuHover(false)}
@@ -331,7 +349,25 @@ export function ThreadRow({
         }}
       >
         <Icon name="more" size={12} color={menuHovered ? COLORS.textBright : COLORS.muted} />
+        {menuSource === 'button' ? (
+          <ContextMenu
+            side="bottom"
+            align="end"
+            items={menuItems}
+            onPick={pick}
+            onClose={closeMenu}
+          />
+        ) : null}
       </div>
+      {menuSource === 'row' ? (
+        <ContextMenu
+          side="bottom"
+          align="start"
+          items={menuItems}
+          onPick={pick}
+          onClose={closeMenu}
+        />
+      ) : null}
     </div>
   )
 }

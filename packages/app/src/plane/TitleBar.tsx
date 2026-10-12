@@ -24,14 +24,14 @@
  * 本组件零 store 依赖，测试直接传字符串。
  */
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 
-import { useGpuix } from '@gpuix/react'
 import type { PublicInstance } from '@gpuix/react'
 
 import type { AppPlatform } from '@jagent/ui'
 import { Icon, TRAFFIC_LIGHT_WIDTH, COLORS, FONT, focusRing } from '@jagent/ui'
+import { ContextMenu, type ContextMenuItem } from '../sidebar/ContextMenu'
 import { SIZES } from '../tokens'
 
 /** 窗口控制 seam（main.tsx 装配：闭包 renderer；测试注入 spy） */
@@ -260,34 +260,29 @@ function ContextBlock({
 }
 
 /** 分支钮（原型 .tb-cell.tb-branch-btn：tile 底 + border + mono 分支名
- *  + caret；点击 → Git 菜单，回调给「按钮左下 +4」锚点（Radix
- *  side=bottom/align=start/sideOffset=4 同位），键盘/无 bounds 时兜底点击点） */
+ *  + caret；点击 → Git 菜单，内嵌于钮内、side=bottom align=end 贴钮下缘右对齐）。
+ *  菜单开关自持；菜单内按键冒泡到本钮（gpuix 键盘不阻断），菜单开着时钮 return。 */
 function BranchButton({
   branch,
-  onClick,
+  items,
+  onPick,
 }: {
   branch: string
-  onClick?: (pos: { x: number; y: number }) => void
+  items: ContextMenuItem[]
+  onPick: (itemId: string) => void
 }) {
-  const elRef = useRef<PublicInstance | null>(null)
-  const { renderer } = useGpuix()
-  const lastPointer = useRef({ x: 0, y: 0 })
-  const anchor = (fallback: { x: number; y: number }) => {
-    const b = elRef.current ? renderer?.getElementBounds?.(elRef.current.id) : null
-    return b ? { x: b.x, y: b.y + b.height + 4 } : fallback
-  }
+  const [open, setOpen] = useState(false)
   return (
     <div
-      ref={elRef}
       tabIndex={0}
       testId="chip-branch"
-      onClick={(e) => onClick?.(anchor({ x: e.x ?? 0, y: (e.y ?? 0) + 10 }))}
-      onMouseMove={(e) => {
-        lastPointer.current = { x: e.x ?? 0, y: e.y ?? 0 }
+      onClick={() => {
+        if (!open) setOpen(true)
       }}
       onKeyDown={(e) => {
-        if (e.key === 'enter' || e.key === 'space')
-          onClick?.(anchor({ x: lastPointer.current.x, y: lastPointer.current.y + 10 }))
+        // 菜单开着：菜单内按键冒泡上来，不得再开/切换
+        if (open) return
+        if (e.key === 'enter' || e.key === 'space') setOpen(true)
       }}
       style={{
         display: 'flex',
@@ -330,6 +325,20 @@ function BranchButton({
         {branch}
       </text>
       <Icon name="chevronDown" size={12} color={COLORS.muted} />
+      {open ? (
+        <ContextMenu
+          side="bottom"
+          // 右对齐：分支 chip 靠窗口右缘，左对齐的菜单会越界被 snap 整体夹回，
+          // 偏移随菜单宽度变化（与原型 align=start 有意偏离，已与用户确认）
+          align="end"
+          items={items}
+          onPick={(id) => {
+            setOpen(false)
+            onPick(id)
+          }}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
     </div>
   )
 }
@@ -418,7 +427,8 @@ export function TitleBar({
   contextLabel,
   cwd,
   branch,
-  onBranchClick,
+  branchItems,
+  onBranchPick,
   onSearch,
   panelOpen,
   onTogglePanel,
@@ -444,7 +454,9 @@ export function TitleBar({
   /** 当前分支（null → 不渲染；窄屏隐藏。点击 → Git 菜单，回调给
       「按钮左下 +4」锚点坐标，键盘触发时兜底最后指针位） */
   branch?: string | null
-  onBranchClick?: (pos: { x: number; y: number }) => void
+  /** 分支菜单项（内嵌于分支钮，贴钮下缘）；菜单项执行经 onBranchPick */
+  branchItems?: ContextMenuItem[]
+  onBranchPick?: (itemId: string) => void
   /** 搜索钮（原型 #btn-search：侧栏隐藏或窄屏时显） */
   onSearch?: () => void
   /** 工作面板开关（panelRight；on 态抬亮） */
@@ -538,7 +550,13 @@ export function TitleBar({
 
         {/* 分支钮（原型 .tb-branch-btn：border 方角 + mono + caret；
             点击 → Git 菜单（打开图 / 查看变更）；窄屏隐藏） */}
-        {!narrow && branch ? <BranchButton branch={branch} onClick={onBranchClick} /> : null}
+        {!narrow && branch ? (
+          <BranchButton
+            branch={branch}
+            items={branchItems ?? []}
+            onPick={(id) => onBranchPick?.(id)}
+          />
+        ) : null}
 
         {/* 搜索入口（原型 #btn-search：仅侧栏隐藏/窄屏显——其余在侧栏头） */}
         {showSearch ? (

@@ -1,2 +1,4 @@
 [toolchain]
-channel = "stable"
+# P0 本机验证 rustc 1.97.1 可构建 gpui-pre 0.3.8；低版本未验证。
+# 固定此精确版本，避免本机和 CI 随 stable 更新产生差异。
+channel = "1.97.1"

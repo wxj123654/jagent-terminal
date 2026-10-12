@@ -1,0 +1,31 @@
+diff --git a/packages/react/src/components/floating.tsx b/packages/react/src/components/floating.tsx
+index 96201c0..c1a5dca 100644
+--- a/packages/react/src/components/floating.tsx
++++ b/packages/react/src/components/floating.tsx
+@@ -177,6 +177,18 @@ export const FloatingLayer = forwardRef<PublicInstance, FloatingContentProps>(
+         ? { x: alignOffset, y: 0 }
+         : { x: 0, y: alignOffset }
+ 
++    // The anchored wrapper forces a #1A1A1A fallback fill when its own style
++    // has no opaque background — that color would show through the content
++    // card's transparent rounded corners. Mirror the content surface
++    // (background + radius) onto the anchored element so the fallback area
++    // paints the same shape and color as the card.
++    const contentStyle = props.style
++    const surface: StyleDesc = {
++      backgroundColor: contentStyle?.backgroundColor,
++      background: contentStyle?.background,
++      borderRadius: contentStyle?.borderRadius,
++    }
++
+     return (
+       <anchored
+         side={side}
+@@ -188,6 +200,7 @@ export const FloatingLayer = forwardRef<PublicInstance, FloatingContentProps>(
+         deferred
+         priority={1}
+         occlude
++        style={surface}
+       >
+         <div
+           {...props}

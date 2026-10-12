@@ -35,7 +35,7 @@ export function ToolDialog({
   const snap = useSettings(settings)
   // 空串 = 未归属临时会话（会话区＋入口）；select 首项为「（未归属 · 临时会话）」
   // ——不再回退 workspaces[0]，否则临时入口误归属首个工作区（D06）。
-  // Chat/ACP 是应用内非终端表面，无工作区上下文时禁用（cwd 无意义）。
+  // New Chat 需归属（原型 ws 条件）；ACP 行未归属也列（原型不 gate）。
   const [workspaceId, setWorkspaceId] = useState(initialWorkspaceId)
   const [filter, setFilter] = useState('')
   const includeTemp = initialWorkspaceId === ''
@@ -193,8 +193,8 @@ export function ToolDialog({
             />
           ))}
 
-          {/* 「对话」组（原型：New Chat + ACP agents）。未归属（无 workspace）
-              时不渲染 New Chat/ACP——应用内表面没有可继承的 cwd 上下文 */}
+          {/* 「对话」组（原型：New Chat 需归属 workspace；ACP 行不受归属
+              约束——原型 agentsV.map 无 ws 条件，未归属时 ACP 仍列行） */}
           {showChatGroup ? <GroupLabel label="对话" /> : null}
           {workspace ? (
             <ToolRow
@@ -205,19 +205,17 @@ export function ToolDialog({
               onPick={pick(() => store.createChat(workspace.id))}
             />
           ) : null}
-          {workspace
-            ? acpAgents.map((a) => (
-                <ToolRow
-                  key={a.id}
-                  testId={`new-acp-${a.id}`}
-                  icon="acp"
-                  name={a.label}
-                  description="ACP agent"
-                  command={acpAgentCommandSummary(a)}
-                  onPick={pick(() => store.createAcpThread(a.id, a.label, workspace.id))}
-                />
-              ))
-            : null}
+          {acpAgents.map((a) => (
+            <ToolRow
+              key={a.id}
+              testId={`new-acp-${a.id}`}
+              icon="acp"
+              name={a.label}
+              description="ACP agent"
+              command={acpAgentCommandSummary(a)}
+              onPick={pick(() => store.createAcpThread(a.id, a.label, workspace?.id))}
+            />
+          ))}
 
           {empty ? (
             <text

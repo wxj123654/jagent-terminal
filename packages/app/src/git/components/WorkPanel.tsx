@@ -520,7 +520,7 @@ export function WorkPanel({
           testId="work-panel-refresh"
           size={16}
           hitSize={28}
-          radius={8}
+          hoverColor={COLORS.muted}
           onClick={() => {
             worktree.refresh()
             toast('已刷新工作区状态')
@@ -532,7 +532,7 @@ export function WorkPanel({
           testId="work-panel-close"
           size={16}
           hitSize={28}
-          radius={8}
+          hoverColor={COLORS.muted}
           onClick={onClose}
         />
       </div>
