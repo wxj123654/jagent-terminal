@@ -67,16 +67,43 @@ fn main() {
     // ③ 点击侧栏会话行。排序规则（core）：同优先级按创建时间新→旧，所以第 1 行是较新的 t2，第 2 行是 t1。
     //    测试开头激活的是 t1（截图里第 2 行高亮）——要验证"点击切换"就必须点**第 1 行**。
     //    （上一版点了第 2 行 = 点中了已激活的 t1，所以"没变化"，是测试自己的坐标假设错了，不是点击失效。）
-    assert_eq!(cx.read(|app| state.read(app).threads.active().clone()), ActiveTarget::Thread(t1.clone()));
+    assert_eq!(
+        cx.read(|app| state.read(app).threads.active().clone()),
+        ActiveTarget::Thread(t1.clone())
+    );
     // 行位置：标题栏 34 + 工作区头 28 + 组内上边距 4；行高 32。第 1 行中线 = 34+4+28+16。
     let row_y = 34.0 + 4.0 + 28.0 + 16.0;
-    cx.simulate_event(window.into(), gpui::MouseDownEvent { position: point(px(100.0), px(row_y)), modifiers: Modifiers::default(), button: MouseButton::Left, click_count: 1, first_mouse: false });
-    cx.simulate_event(window.into(), gpui::MouseUpEvent { position: point(px(100.0), px(row_y)), modifiers: Modifiers::default(), button: MouseButton::Left, click_count: 1 });
+    cx.simulate_event(
+        window.into(),
+        gpui::MouseDownEvent {
+            position: point(px(100.0), px(row_y)),
+            modifiers: Modifiers::default(),
+            button: MouseButton::Left,
+            click_count: 1,
+            first_mouse: false,
+        },
+    );
+    cx.simulate_event(
+        window.into(),
+        gpui::MouseUpEvent {
+            position: point(px(100.0), px(row_y)),
+            modifiers: Modifiers::default(),
+            button: MouseButton::Left,
+            click_count: 1,
+        },
+    );
     draw(&mut cx);
     let active = cx.read(|app| state.read(app).threads.active().clone());
     println!("after click on row 1: active = {active:?} (t1={t1}, t2={t2})");
     shot(&mut cx, "app_shell_after_click.png");
-    assert!(matches!(active, ActiveTarget::Thread(_)), "点击后应仍停留在某个会话");
-    assert_eq!(active, ActiveTarget::Thread(t2.clone()), "点击第 1 行（较新的 t2）应切换到 t2");
+    assert!(
+        matches!(active, ActiveTarget::Thread(_)),
+        "点击后应仍停留在某个会话"
+    );
+    assert_eq!(
+        active,
+        ActiveTarget::Thread(t2.clone()),
+        "点击第 1 行（较新的 t2）应切换到 t2"
+    );
     println!("SHELL OK");
 }

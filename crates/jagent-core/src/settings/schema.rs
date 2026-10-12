@@ -24,7 +24,12 @@ pub fn default_terminal_font() -> &'static str {
 }
 
 fn platform_key(mac: &str, other: &str) -> String {
-    if cfg!(target_os = "macos") { mac } else { other }.to_owned()
+    if cfg!(target_os = "macos") {
+        mac
+    } else {
+        other
+    }
+    .to_owned()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -146,8 +151,14 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            presets: Presets { plus_default: None, items: builtin_presets() },
-            notifications: Notifications { desktop: true, sound: false },
+            presets: Presets {
+                plus_default: None,
+                items: builtin_presets(),
+            },
+            notifications: Notifications {
+                desktop: true,
+                sound: false,
+            },
             terminal: Terminal {
                 font_family: default_terminal_font().into(),
                 font_size: 13,
@@ -156,7 +167,10 @@ impl Default for Settings {
                 palette: "one-dark".into(),
                 close_on_exit: false,
             },
-            appearance: Appearance { theme: "one-dark".into(), sidebar_width: DEFAULT_SIDEBAR_WIDTH },
+            appearance: Appearance {
+                theme: "one-dark".into(),
+                sidebar_width: DEFAULT_SIDEBAR_WIDTH,
+            },
             acp_agents: default_acp_agents(),
             keybindings: Keybindings {
                 cycle_next: "ctrl-tab".into(),
@@ -167,7 +181,11 @@ impl Default for Settings {
                 toggle_sidebar: platform_key("cmd-b", "ctrl-b"),
                 new_session: platform_key("cmd-n", "ctrl-shift-n"),
             },
-            advanced: Advanced { gpu_backend: GpuBackend::Auto, perf_hud: false, frame_overlay: false },
+            advanced: Advanced {
+                gpu_backend: GpuBackend::Auto,
+                perf_hud: false,
+                frame_overlay: false,
+            },
             extra: Map::new(),
         }
     }
@@ -176,7 +194,9 @@ impl Default for Settings {
 // ── 逐叶容错读取（对应 zod `.catch(default)`）──────────────────────
 
 fn leaf_bool(sec: Option<&Map<String, Value>>, key: &str, default: bool) -> bool {
-    sec.and_then(|m| m.get(key)).and_then(Value::as_bool).unwrap_or(default)
+    sec.and_then(|m| m.get(key))
+        .and_then(Value::as_bool)
+        .unwrap_or(default)
 }
 
 fn leaf_string(sec: Option<&Map<String, Value>>, key: &str, default: &str) -> String {
@@ -194,7 +214,10 @@ fn leaf_int(sec: Option<&Map<String, Value>>, key: &str, min: i64, max: i64, def
 }
 
 /// 整节：缺失 → 空对象（叶子各自回默认）；存在但不是对象 → `Err`（由顶层整体回默认）。
-fn section<'a>(root: &'a Map<String, Value>, key: &str) -> Result<Option<&'a Map<String, Value>>, ()> {
+fn section<'a>(
+    root: &'a Map<String, Value>,
+    key: &str,
+) -> Result<Option<&'a Map<String, Value>>, ()> {
     match root.get(key) {
         None => Ok(None),
         Some(Value::Object(m)) => Ok(Some(m)),
@@ -211,10 +234,14 @@ fn parse_presets_items(sec: Option<&Map<String, Value>>) -> Vec<TerminalPreset> 
 
 fn parse_acp_agents(v: Option<&Value>) -> Vec<AcpAgent> {
     // 元素里 args 坏 → 该元素 args 回 []（zod 叶子 catch）；其余字段缺失 → 整个数组回默认。
-    let Some(Value::Array(items)) = v else { return default_acp_agents() };
+    let Some(Value::Array(items)) = v else {
+        return default_acp_agents();
+    };
     let mut out = Vec::with_capacity(items.len());
     for it in items {
-        let Some(o) = it.as_object() else { return default_acp_agents() };
+        let Some(o) = it.as_object() else {
+            return default_acp_agents();
+        };
         let (Some(id), Some(label), Some(command)) = (
             o.get("id").and_then(Value::as_str),
             o.get("label").and_then(Value::as_str),
@@ -223,12 +250,19 @@ fn parse_acp_agents(v: Option<&Value>) -> Vec<AcpAgent> {
             return default_acp_agents();
         };
         let args = match o.get("args") {
-            Some(Value::Array(a)) if a.iter().all(Value::is_string) => {
-                a.iter().filter_map(Value::as_str).map(str::to_owned).collect()
-            }
+            Some(Value::Array(a)) if a.iter().all(Value::is_string) => a
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect(),
             _ => vec![],
         };
-        out.push(AcpAgent { id: id.into(), label: label.into(), command: command.into(), args });
+        out.push(AcpAgent {
+            id: id.into(),
+            label: label.into(),
+            command: command.into(),
+            args,
+        });
     }
     out
 }
@@ -277,19 +311,36 @@ fn parse_root(root: &Map<String, Value>) -> Result<Settings, ()> {
         _ => None, // 缺失 / null / 类型错 → null
     };
 
-    let gpu_backend = match advanced.and_then(|m| m.get("gpuBackend")).and_then(Value::as_str) {
+    let gpu_backend = match advanced
+        .and_then(|m| m.get("gpuBackend"))
+        .and_then(Value::as_str)
+    {
         Some("metal") => GpuBackend::Metal,
         Some("dx12") => GpuBackend::Dx12,
         Some("vulkan") => GpuBackend::Vulkan,
         _ => GpuBackend::Auto,
     };
 
-    const KNOWN: [&str; 7] =
-        ["presets", "notifications", "terminal", "appearance", "acpAgents", "keybindings", "advanced"];
-    let extra = root.iter().filter(|(k, _)| !KNOWN.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect();
+    const KNOWN: [&str; 7] = [
+        "presets",
+        "notifications",
+        "terminal",
+        "appearance",
+        "acpAgents",
+        "keybindings",
+        "advanced",
+    ];
+    let extra = root
+        .iter()
+        .filter(|(k, _)| !KNOWN.contains(&k.as_str()))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
 
     Ok(Settings {
-        presets: Presets { plus_default, items: parse_presets_items(presets) },
+        presets: Presets {
+            plus_default,
+            items: parse_presets_items(presets),
+        },
         notifications: Notifications {
             desktop: leaf_bool(notifications, "desktop", d.notifications.desktop),
             sound: leaf_bool(notifications, "sound", d.notifications.sound),
@@ -298,22 +349,46 @@ fn parse_root(root: &Map<String, Value>) -> Result<Settings, ()> {
             font_family: leaf_string(terminal, "fontFamily", &d.terminal.font_family),
             font_size: leaf_int(terminal, "fontSize", 10, 22, d.terminal.font_size),
             cursor_blink: leaf_bool(terminal, "cursorBlink", d.terminal.cursor_blink),
-            scrollback_lines: leaf_int(terminal, "scrollbackLines", 1000, 100_000, d.terminal.scrollback_lines),
+            scrollback_lines: leaf_int(
+                terminal,
+                "scrollbackLines",
+                1000,
+                100_000,
+                d.terminal.scrollback_lines,
+            ),
             palette: leaf_string(terminal, "palette", &d.terminal.palette),
             close_on_exit: leaf_bool(terminal, "closeOnExit", d.terminal.close_on_exit),
         },
         appearance: Appearance {
             theme: leaf_string(appearance, "theme", &d.appearance.theme),
-            sidebar_width: leaf_int(appearance, "sidebarWidth", 200, 400, d.appearance.sidebar_width),
+            sidebar_width: leaf_int(
+                appearance,
+                "sidebarWidth",
+                200,
+                400,
+                d.appearance.sidebar_width,
+            ),
         },
         acp_agents: parse_acp_agents(root.get("acpAgents")),
         keybindings: Keybindings {
             cycle_next: leaf_string(keybindings, "cycleNext", &d.keybindings.cycle_next),
             cycle_prev: leaf_string(keybindings, "cyclePrev", &d.keybindings.cycle_prev),
-            toggle_settings: leaf_string(keybindings, "toggleSettings", &d.keybindings.toggle_settings),
+            toggle_settings: leaf_string(
+                keybindings,
+                "toggleSettings",
+                &d.keybindings.toggle_settings,
+            ),
             focus_search: leaf_string(keybindings, "focusSearch", &d.keybindings.focus_search),
-            search_threads: leaf_string(keybindings, "searchThreads", &d.keybindings.search_threads),
-            toggle_sidebar: leaf_string(keybindings, "toggleSidebar", &d.keybindings.toggle_sidebar),
+            search_threads: leaf_string(
+                keybindings,
+                "searchThreads",
+                &d.keybindings.search_threads,
+            ),
+            toggle_sidebar: leaf_string(
+                keybindings,
+                "toggleSidebar",
+                &d.keybindings.toggle_sidebar,
+            ),
             new_session: leaf_string(keybindings, "newSession", &d.keybindings.new_session),
         },
         advanced: Advanced {
@@ -392,7 +467,13 @@ mod tests {
         let d = Settings::default();
         assert_eq!(d.presets.plus_default, None);
         assert_eq!(d.presets.items.len(), 5);
-        assert_eq!(d.notifications, Notifications { desktop: true, sound: false });
+        assert_eq!(
+            d.notifications,
+            Notifications {
+                desktop: true,
+                sound: false
+            }
+        );
         assert_eq!(
             d.terminal,
             Terminal {
@@ -404,11 +485,21 @@ mod tests {
                 close_on_exit: false,
             }
         );
-        assert_eq!(d.appearance, Appearance { theme: "one-dark".into(), sidebar_width: 264 });
+        assert_eq!(
+            d.appearance,
+            Appearance {
+                theme: "one-dark".into(),
+                sidebar_width: 264
+            }
+        );
         assert_eq!(d.acp_agents.len(), 2);
         assert_eq!(
             d.advanced,
-            Advanced { gpu_backend: GpuBackend::Auto, perf_hud: false, frame_overlay: false }
+            Advanced {
+                gpu_backend: GpuBackend::Auto,
+                perf_hud: false,
+                frame_overlay: false
+            }
         );
     }
 
@@ -444,7 +535,11 @@ mod tests {
     #[test]
     fn section_with_wrong_type_resets_everything() {
         let s = parse(json!({ "terminal": 123, "notifications": { "desktop": false } }));
-        assert_eq!(s, Settings::default(), "整节类型错 → 整体回默认，notifications 的好值也丢");
+        assert_eq!(
+            s,
+            Settings::default(),
+            "整节类型错 → 整体回默认，notifications 的好值也丢"
+        );
     }
 
     #[test]
@@ -471,17 +566,41 @@ mod tests {
 
     #[test]
     fn gpu_backend_enum_and_unknown_value() {
-        assert_eq!(parse(json!({ "advanced": { "gpuBackend": "metal" } })).advanced.gpu_backend, GpuBackend::Metal);
-        assert_eq!(parse(json!({ "advanced": { "gpuBackend": "opengl" } })).advanced.gpu_backend, GpuBackend::Auto);
+        assert_eq!(
+            parse(json!({ "advanced": { "gpuBackend": "metal" } }))
+                .advanced
+                .gpu_backend,
+            GpuBackend::Metal
+        );
+        assert_eq!(
+            parse(json!({ "advanced": { "gpuBackend": "opengl" } }))
+                .advanced
+                .gpu_backend,
+            GpuBackend::Auto
+        );
     }
 
     #[test]
     fn acp_agents_args_leaf_falls_back_but_missing_required_resets_array() {
-        let s = parse(json!({ "acpAgents": [{ "id": "a", "label": "A", "command": "c", "args": "oops" }] }));
-        assert_eq!(s.acp_agents, vec![AcpAgent { id: "a".into(), label: "A".into(), command: "c".into(), args: vec![] }]);
+        let s = parse(
+            json!({ "acpAgents": [{ "id": "a", "label": "A", "command": "c", "args": "oops" }] }),
+        );
+        assert_eq!(
+            s.acp_agents,
+            vec![AcpAgent {
+                id: "a".into(),
+                label: "A".into(),
+                command: "c".into(),
+                args: vec![]
+            }]
+        );
         let s = parse(json!({ "acpAgents": [{ "id": "a" }] }));
         assert_eq!(s.acp_agents, default_acp_agents());
-        assert_eq!(parse(json!({ "acpAgents": [] })).acp_agents, vec![], "显式空数组保留");
+        assert_eq!(
+            parse(json!({ "acpAgents": [] })).acp_agents,
+            vec![],
+            "显式空数组保留"
+        );
     }
 
     #[test]
@@ -508,7 +627,10 @@ mod tests {
         assert_eq!(t.terminal.font_size, 15);
         let t = s.with_path("terminal.fontSize", json!(99)).unwrap();
         assert_eq!(t.terminal.font_size, 13, "越界立即回默认");
-        assert!(s.with_path("terminal.nope", json!(1)).is_none(), "不存在的叶子不可写");
+        assert!(
+            s.with_path("terminal.nope", json!(1)).is_none(),
+            "不存在的叶子不可写"
+        );
         let t = s.with_path("presets.plusDefault", json!("claude")).unwrap();
         assert_eq!(t.presets.plus_default.as_deref(), Some("claude"));
         let t = s.with_path("acpAgents", json!([])).unwrap();

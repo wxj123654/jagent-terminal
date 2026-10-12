@@ -1,6 +1,6 @@
 ---
 name: j-agent Workspace Prototype
-description: 工作区侧栏与多种 TUI 会话的深色桌面原型
+description: 工作区侧栏与多种 TUI 会话的深色桌面原型（历史设计记录；对应 HTML/React 原型已删，见 git 历史 aadecd4。正式实现的视觉映射在 crates/jagent-app/src/theme.rs）
 colors:
   sidebar: "#21252b"
   terminal: "#1a1d23"

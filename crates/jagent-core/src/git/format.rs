@@ -30,7 +30,10 @@ pub fn parse_ref_names(raw: &str) -> Vec<RefDecor> {
     raw.split(", ")
         .filter(|s| !s.is_empty())
         .flat_map(|part| {
-            let d = |kind, label: &str| RefDecor { kind, label: label.to_owned() };
+            let d = |kind, label: &str| RefDecor {
+                kind,
+                label: label.to_owned(),
+            };
             if let Some(branch) = part.strip_prefix("HEAD -> ") {
                 vec![d(RefKind::Head, "HEAD"), d(RefKind::Branch, branch)]
             } else if part == "HEAD" {
@@ -77,7 +80,11 @@ pub fn relative_time(unix_sec: i64, now_ms: i64, utc_offset_secs: i64) -> String
         return format!("{days} 天前");
     }
     let mo = days / 30;
-    if mo < 12 { format!("{mo} 个月前") } else { format!("{} 年前", mo / 12) }
+    if mo < 12 {
+        format!("{mo} 个月前")
+    } else {
+        format!("{} 年前", mo / 12)
+    }
 }
 
 // ── 变更文件树（vscode-git-graph 式单子目录折叠）────────────────────
@@ -123,13 +130,19 @@ mod tests {
     use RefKind::*;
 
     fn r(kind: RefKind, label: &str) -> RefDecor {
-        RefDecor { kind, label: label.into() }
+        RefDecor {
+            kind,
+            label: label.into(),
+        }
     }
 
     #[test]
     fn ref_names_empty_and_head_forms() {
         assert!(parse_ref_names("").is_empty());
-        assert_eq!(parse_ref_names("HEAD -> main"), [r(Head, "HEAD"), r(Branch, "main")]);
+        assert_eq!(
+            parse_ref_names("HEAD -> main"),
+            [r(Head, "HEAD"), r(Branch, "main")]
+        );
         assert_eq!(parse_ref_names("HEAD"), [r(Head, "HEAD")], "detached HEAD");
     }
 
@@ -150,7 +163,13 @@ mod tests {
     fn ref_names_mixed_decorations_keep_their_order() {
         assert_eq!(
             parse_ref_names("HEAD -> dev, origin/dev, tag: v0.9.0, main"),
-            [r(Head, "HEAD"), r(Branch, "dev"), r(Remote, "origin/dev"), r(Tag, "v0.9.0"), r(Branch, "main")]
+            [
+                r(Head, "HEAD"),
+                r(Branch, "dev"),
+                r(Remote, "origin/dev"),
+                r(Tag, "v0.9.0"),
+                r(Branch, "main")
+            ]
         );
     }
 
@@ -181,9 +200,15 @@ mod tests {
         // now 本地 = 16:00。昨天 23:59 只是 ~16 小时前，昨天 00:01 是 ~40 小时前——都应是「昨天」
         let local_midnight = (NOW_MS / 1000 + TZ).div_euclid(86_400) * 86_400 - TZ; // 今天本地 00:00 的 unix 秒
         assert_eq!(relative_time(local_midnight - 60, NOW_MS, TZ), "昨天 23:59");
-        assert_eq!(relative_time(local_midnight - 86_400 + 60, NOW_MS, TZ), "昨天 00:01");
+        assert_eq!(
+            relative_time(local_midnight - 86_400 + 60, NOW_MS, TZ),
+            "昨天 00:01"
+        );
         // 再早一秒就是前天 23:59 → 「2 天前」
-        assert_eq!(relative_time(local_midnight - 86_400 - 60, NOW_MS, TZ), "2 天前");
+        assert_eq!(
+            relative_time(local_midnight - 86_400 - 60, NOW_MS, TZ),
+            "2 天前"
+        );
     }
 
     #[test]
@@ -204,13 +229,23 @@ mod tests {
     }
 
     fn f(path: &str) -> ChangedFile {
-        ChangedFile { path: path.into(), added: Some(1), deleted: Some(0) }
+        ChangedFile {
+            path: path.into(),
+            added: Some(1),
+            deleted: Some(0),
+        }
     }
 
     #[test]
     fn nest_splits_by_path_segments() {
         let root = nest_changed_files(&[f("a.ts"), f("src/b.ts")]);
-        assert_eq!(root.files.iter().map(|x| x.path.as_str()).collect::<Vec<_>>(), ["a.ts"]);
+        assert_eq!(
+            root.files
+                .iter()
+                .map(|x| x.path.as_str())
+                .collect::<Vec<_>>(),
+            ["a.ts"]
+        );
         assert_eq!(root.dirs.keys().collect::<Vec<_>>(), ["src"]);
         assert_eq!(root.dirs["src"].files[0].path, "src/b.ts");
     }

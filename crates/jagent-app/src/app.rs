@@ -18,13 +18,19 @@ pub fn setup(cx: &mut App, dir: std::path::PathBuf, default_cwd: String) -> Enti
     let rejected = actions::install(cx, &settings);
     for r in rejected {
         // 坏键位不阻塞启动；P3 起在设置页的键位表里红字展示
-        eprintln!("[keybindings] 忽略无效键位 {} = {:?}", r.action, r.keystroke);
+        eprintln!(
+            "[keybindings] 忽略无效键位 {} = {:?}",
+            r.action, r.keystroke
+        );
     }
     state
 }
 
 /// 开主窗口。`TitleBar::window_options()` 让标题栏自己处理拖拽 / 双击缩放（macOS 红绿灯位置也在其中）。
-pub fn open_main_window(cx: &mut App, state: Entity<AppState>) -> gpui::Result<gpui::WindowHandle<Root>> {
+pub fn open_main_window(
+    cx: &mut App,
+    state: Entity<AppState>,
+) -> gpui::Result<gpui::WindowHandle<Root>> {
     let options = WindowOptions {
         window_min_size: Some(size(px(480.0), px(320.0))),
         ..TitleBar::window_options()
@@ -38,7 +44,8 @@ pub fn open_main_window(cx: &mut App, state: Entity<AppState>) -> gpui::Result<g
 /// 启动：装配 + 事件桥 + 开窗 + 若无会话则起一个默认 shell。
 pub fn run() {
     gpui_platform::application().run(|cx: &mut App| {
-        let cwd = std::env::current_dir().map_or_else(|_| ".".into(), |p| p.to_string_lossy().into_owned());
+        let cwd = std::env::current_dir()
+            .map_or_else(|_| ".".into(), |p| p.to_string_lossy().into_owned());
         let state = setup(cx, data_dir(), cwd);
         bridge_terminal_events(&state, cx);
         let _ = state.update(cx, |s, cx| {

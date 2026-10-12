@@ -12,7 +12,9 @@ use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use super::parse::{LineBuffer, parse_branches, parse_changed_files, parse_log_line, parse_status_entries};
+use super::parse::{
+    LineBuffer, parse_branches, parse_changed_files, parse_log_line, parse_status_entries,
+};
 use super::types::{ChangedFile, GitBranch, GraphCommit, WorktreeFile, WorktreeStatus};
 
 /// Zed 三字段 + 行内详情元数据（email / committer 单行字段；body 含换行，选中时另拉）。
@@ -26,7 +28,10 @@ pub enum GitError {
     /// git 不可用 / 目录不存在等 spawn 失败
     Spawn(String),
     /// 非 0 退出；携带 stderr 尾部
-    Failed { code: Option<i32>, stderr: String },
+    Failed {
+        code: Option<i32>,
+        stderr: String,
+    },
     Cancelled,
 }
 
@@ -34,7 +39,9 @@ impl std::fmt::Display for GitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Spawn(m) => write!(f, "{m}"),
-            Self::Failed { code, stderr } if stderr.is_empty() => write!(f, "git exited with {code:?}"),
+            Self::Failed { code, stderr } if stderr.is_empty() => {
+                write!(f, "git exited with {code:?}")
+            }
             Self::Failed { stderr, .. } => write!(f, "{stderr}"),
             Self::Cancelled => write!(f, "cancelled"),
         }
@@ -45,7 +52,11 @@ impl std::error::Error for GitError {}
 
 fn command(args: &[&str], cwd: &Path) -> Command {
     let mut c = Command::new("git");
-    c.args(args).current_dir(cwd).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    c.args(args)
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -56,11 +67,16 @@ fn command(args: &[&str], cwd: &Path) -> Command {
 
 /// 一次性 git 子进程（非流式）。stdout 全文返回；非 0 返回 stderr。
 pub fn run_git(cwd: &Path, args: &[&str]) -> Result<String, GitError> {
-    let out = command(args, cwd).output().map_err(|e| GitError::Spawn(e.to_string()))?;
+    let out = command(args, cwd)
+        .output()
+        .map_err(|e| GitError::Spawn(e.to_string()))?;
     if out.status.success() {
         return Ok(String::from_utf8_lossy(&out.stdout).into_owned());
     }
-    Err(GitError::Failed { code: out.status.code(), stderr: String::from_utf8_lossy(&out.stderr).trim().to_owned() })
+    Err(GitError::Failed {
+        code: out.status.code(),
+        stderr: String::from_utf8_lossy(&out.stderr).trim().to_owned(),
+    })
 }
 
 /// repo root 检测（`git rev-parse --show-toplevel`）；非 repo / 无 git → `None`。
@@ -91,7 +107,9 @@ pub fn stream_git_log(
     cancel: &CancelToken,
     mut on_chunk: impl FnMut(Vec<GraphCommit>),
 ) -> Result<(), GitError> {
-    let mut child = command(&["log", LOG_FORMAT, "--date-order"], cwd).spawn().map_err(|e| GitError::Spawn(e.to_string()))?;
+    let mut child = command(&["log", LOG_FORMAT, "--date-order"], cwd)
+        .spawn()
+        .map_err(|e| GitError::Spawn(e.to_string()))?;
     let mut stderr = child.stderr.take().expect("piped");
     let stderr_thread = std::thread::spawn(move || {
         let mut s = String::new();
@@ -143,7 +161,14 @@ pub fn stream_git_log(
 
     let status = child.wait().map_err(|e| GitError::Spawn(e.to_string()))?;
     let tail = stderr_thread.join().unwrap_or_default();
-    if status.success() { Ok(()) } else { Err(GitError::Failed { code: status.code(), stderr: tail }) }
+    if status.success() {
+        Ok(())
+    } else {
+        Err(GitError::Failed {
+            code: status.code(),
+            stderr: tail,
+        })
+    }
 }
 
 /// 单提交 patch（选中看 diff 用）。空串 = 无变更（空提交 / 根提交的极端）。
@@ -159,12 +184,22 @@ pub fn show_commit_body(cwd: &Path, sha: &str) -> Result<String, GitError> {
 
 /// 单提交变更文件（行内详情文件树）。
 pub fn list_changed_files(cwd: &Path, sha: &str) -> Result<Vec<ChangedFile>, GitError> {
-    Ok(parse_changed_files(&run_git(cwd, &["show", "--format=", "--numstat", "--no-color", sha])?))
+    Ok(parse_changed_files(&run_git(
+        cwd,
+        &["show", "--format=", "--numstat", "--no-color", sha],
+    )?))
 }
 
 /// 本地分支列表（控件条下拉）。
 pub fn list_branches(cwd: &Path) -> Result<Vec<GitBranch>, GitError> {
-    Ok(parse_branches(&run_git(cwd, &["for-each-ref", "--format=%(refname:short)%00%(HEAD)", "refs/heads"])?))
+    Ok(parse_branches(&run_git(
+        cwd,
+        &[
+            "for-each-ref",
+            "--format=%(refname:short)%00%(HEAD)",
+            "refs/heads",
+        ],
+    )?))
 }
 
 /// 工作区快照：porcelain 状态表 + `git diff HEAD --numstat` 行数合并 + 当前分支。非 repo → `None`。
@@ -177,13 +212,20 @@ pub fn list_worktree_status(cwd: &Path) -> Option<WorktreeStatus> {
     let numstat_raw = safe(&["diff", "--numstat", "--no-color", "HEAD", "--"]);
     let branch_raw = safe(&["rev-parse", "--abbrev-ref", "HEAD"]);
 
-    let counts: std::collections::HashMap<String, ChangedFile> =
-        parse_changed_files(&numstat_raw).into_iter().map(|f| (f.path.clone(), f)).collect();
+    let counts: std::collections::HashMap<String, ChangedFile> = parse_changed_files(&numstat_raw)
+        .into_iter()
+        .map(|f| (f.path.clone(), f))
+        .collect();
     let files = parse_status_entries(&status_raw)
         .into_iter()
         .map(|(path, status)| {
             let c = counts.get(&path);
-            WorktreeFile { added: c.and_then(|c| c.added), deleted: c.and_then(|c| c.deleted), path, status }
+            WorktreeFile {
+                added: c.and_then(|c| c.added),
+                deleted: c.and_then(|c| c.deleted),
+                path,
+                status,
+            }
         })
         .collect();
     let branch = branch_raw.trim();
@@ -211,11 +253,19 @@ mod tests {
             let out = Command::new("git")
                 .args(args)
                 .current_dir(p)
-                .env("GIT_AUTHOR_NAME", "wxj").env("GIT_AUTHOR_EMAIL", "wxj@jagent.dev")
-                .env("GIT_COMMITTER_NAME", "wxj").env("GIT_COMMITTER_EMAIL", "wxj@jagent.dev")
-                .env("GIT_CONFIG_GLOBAL", "/dev/null").env("GIT_CONFIG_SYSTEM", "/dev/null")
-                .output().expect("git 必须可用");
-            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+                .env("GIT_AUTHOR_NAME", "wxj")
+                .env("GIT_AUTHOR_EMAIL", "wxj@jagent.dev")
+                .env("GIT_COMMITTER_NAME", "wxj")
+                .env("GIT_COMMITTER_EMAIL", "wxj@jagent.dev")
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_SYSTEM", "/dev/null")
+                .output()
+                .expect("git 必须可用");
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
         };
         git(&["init", "-q", "-b", "main"]);
         std::fs::write(p.join("a.txt"), "one\n").unwrap();
@@ -237,7 +287,10 @@ mod tests {
         let d = fixture();
         std::fs::create_dir(d.path().join("sub")).unwrap();
         let root = find_repo_root(&d.path().join("sub")).unwrap();
-        assert_eq!(std::fs::canonicalize(root).unwrap(), std::fs::canonicalize(d.path()).unwrap());
+        assert_eq!(
+            std::fs::canonicalize(root).unwrap(),
+            std::fs::canonicalize(d.path()).unwrap()
+        );
         let outside = tempfile::tempdir().unwrap();
         assert_eq!(find_repo_root(outside.path()), None);
         assert_eq!(find_repo_root(Path::new("/definitely/not/a/path")), None);
@@ -258,10 +311,16 @@ mod tests {
         assert_eq!(chunks.iter().sum::<usize>(), all.len());
         assert_eq!(all[0].subject, "merge feat", "新 → 旧");
         assert_eq!(all[0].parents.len(), 2, "merge 提交双 parent");
-        assert_eq!((all[0].author_name.as_str(), all[0].author_email.as_str()), ("wxj", "wxj@jagent.dev"));
+        assert_eq!(
+            (all[0].author_name.as_str(), all[0].author_email.as_str()),
+            ("wxj", "wxj@jagent.dev")
+        );
         assert_eq!(all[0].sha.len(), 40);
         assert!(all[0].short_sha.len() >= 7 && all[0].ref_names.iter().any(|r| r.contains("main")));
-        assert!(all.iter().any(|c| c.subject == "init: first, with comma"), "subject 含逗号不被切");
+        assert!(
+            all.iter().any(|c| c.subject == "init: first, with comma"),
+            "subject 含逗号不被切"
+        );
         assert!(all.last().unwrap().parents.is_empty(), "根提交无 parent");
         // 顺序不变量：每个 parent 都出现在子提交之后
         let pos = |sha: &str| all.iter().position(|c| c.sha == sha).unwrap();
@@ -286,7 +345,12 @@ mod tests {
         let err = stream_git_log(d.path(), &CancelToken::default(), |_| {}).unwrap_err();
         assert!(matches!(err, GitError::Failed { .. }));
         assert!(!err.to_string().is_empty());
-        let err = stream_git_log(Path::new("/definitely/not/a/path"), &CancelToken::default(), |_| {}).unwrap_err();
+        let err = stream_git_log(
+            Path::new("/definitely/not/a/path"),
+            &CancelToken::default(),
+            |_| {},
+        )
+        .unwrap_err();
         assert!(matches!(err, GitError::Spawn(_)));
     }
 
@@ -304,20 +368,53 @@ mod tests {
     #[test]
     fn commit_body_excludes_the_subject_and_may_be_empty() {
         let d = fixture();
-        let log = |n: &str| run_git(d.path(), &["log", "-1", "--format=%H", n]).unwrap().trim().to_owned();
+        let log = |n: &str| {
+            run_git(d.path(), &["log", "-1", "--format=%H", n])
+                .unwrap()
+                .trim()
+                .to_owned()
+        };
         let main_commit = run_git(d.path(), &["log", "--format=%H %s", "--all"]).unwrap();
-        let sha = main_commit.lines().find(|l| l.contains("main: a")).unwrap().split(' ').next().unwrap().to_owned();
-        assert_eq!(show_commit_body(d.path(), &sha).unwrap(), "body line 1\nbody line 2");
-        assert_eq!(show_commit_body(d.path(), &log("feat")).unwrap(), "", "无正文 → 空串");
+        let sha = main_commit
+            .lines()
+            .find(|l| l.contains("main: a"))
+            .unwrap()
+            .split(' ')
+            .next()
+            .unwrap()
+            .to_owned();
+        assert_eq!(
+            show_commit_body(d.path(), &sha).unwrap(),
+            "body line 1\nbody line 2"
+        );
+        assert_eq!(
+            show_commit_body(d.path(), &log("feat")).unwrap(),
+            "",
+            "无正文 → 空串"
+        );
     }
 
     #[test]
     fn changed_files_and_patch_for_a_commit() {
         let d = fixture();
         let sha = run_git(d.path(), &["log", "--format=%H %s", "--all"]).unwrap();
-        let sha = sha.lines().find(|l| l.contains("feat: b")).unwrap().split(' ').next().unwrap().to_owned();
+        let sha = sha
+            .lines()
+            .find(|l| l.contains("feat: b"))
+            .unwrap()
+            .split(' ')
+            .next()
+            .unwrap()
+            .to_owned();
         let files = list_changed_files(d.path(), &sha).unwrap();
-        assert_eq!(files, [ChangedFile { path: "b.txt".into(), added: Some(1), deleted: Some(0) }]);
+        assert_eq!(
+            files,
+            [ChangedFile {
+                path: "b.txt".into(),
+                added: Some(1),
+                deleted: Some(0)
+            }]
+        );
         let patch = show_patch(d.path(), &sha).unwrap();
         assert!(patch.contains("+++ b/b.txt") && patch.contains("+feat"));
     }
@@ -326,8 +423,14 @@ mod tests {
     fn branches_list_marks_the_current_one() {
         let d = fixture();
         let b = list_branches(d.path()).unwrap();
-        assert!(b.contains(&GitBranch { name: "main".into(), current: true }));
-        assert!(b.contains(&GitBranch { name: "feat".into(), current: false }));
+        assert!(b.contains(&GitBranch {
+            name: "main".into(),
+            current: true
+        }));
+        assert!(b.contains(&GitBranch {
+            name: "feat".into(),
+            current: false
+        }));
     }
 
     #[test]
@@ -341,9 +444,21 @@ mod tests {
         let a = st.files.iter().find(|f| f.path == "a.txt").unwrap();
         assert_eq!((a.status, a.added, a.deleted), (M, Some(1), Some(0)));
         let n = st.files.iter().find(|f| f.path == "new.txt").unwrap();
-        assert_eq!((n.status, n.added), (A, None), "未跟踪文件不在 diff HEAD 里 → 无行数");
-        assert!(diff_worktree_file(Path::new(&st.root), "a.txt").unwrap().contains("+three"));
-        assert_eq!(diff_worktree_file(Path::new(&st.root), "new.txt").unwrap(), "", "未跟踪文件 → 空串");
+        assert_eq!(
+            (n.status, n.added),
+            (A, None),
+            "未跟踪文件不在 diff HEAD 里 → 无行数"
+        );
+        assert!(
+            diff_worktree_file(Path::new(&st.root), "a.txt")
+                .unwrap()
+                .contains("+three")
+        );
+        assert_eq!(
+            diff_worktree_file(Path::new(&st.root), "new.txt").unwrap(),
+            "",
+            "未跟踪文件 → 空串"
+        );
     }
 
     #[test]
@@ -351,7 +466,11 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         assert!(list_worktree_status(outside.path()).is_none());
         let empty = tempfile::tempdir().unwrap();
-        Command::new("git").args(["init", "-q"]).current_dir(empty.path()).output().unwrap();
+        Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(empty.path())
+            .output()
+            .unwrap();
         std::fs::write(empty.path().join("f"), "x").unwrap();
         let st = list_worktree_status(empty.path()).expect("空 repo 也能给出状态");
         assert_eq!(st.branch, None, "无 HEAD → 无分支");

@@ -73,7 +73,9 @@ fn spawn(s: &mut Store, preset_id: &str, ws: Option<&str>, session_id: u64) -> S
 }
 
 fn term<'a>(s: &'a Store, id: &str) -> &'a TerminalThread {
-    s.thread(id).and_then(Thread::as_terminal).unwrap_or_else(|| panic!("no terminal {id}"))
+    s.thread(id)
+        .and_then(Thread::as_terminal)
+        .unwrap_or_else(|| panic!("no terminal {id}"))
 }
 
 fn chat<'a>(s: &'a Store, id: &str) -> &'a ChatThread {
@@ -186,14 +188,23 @@ fn activate_settings_and_home_leave_threads_untouched() {
 fn osc_title_updates_and_custom_title_freezes() {
     let (mut s, _) = store();
     spawn(&mut s, "shell", None, 1);
-    s.on_session_event(SessionEvent::Title { session_id: 1, title: Some("vim".into()) });
+    s.on_session_event(SessionEvent::Title {
+        session_id: 1,
+        title: Some("vim".into()),
+    });
     assert_eq!(term(&s, "t1").osc_title.as_deref(), Some("vim"));
 
-    s.on_session_event(SessionEvent::Title { session_id: 1, title: Some(String::new()) }); // 空串忽略
+    s.on_session_event(SessionEvent::Title {
+        session_id: 1,
+        title: Some(String::new()),
+    }); // 空串忽略
     assert_eq!(term(&s, "t1").osc_title.as_deref(), Some("vim"));
 
     s.rename("t1", "我的会话");
-    s.on_session_event(SessionEvent::Title { session_id: 1, title: Some("osc-after-rename".into()) });
+    s.on_session_event(SessionEvent::Title {
+        session_id: 1,
+        title: Some("osc-after-rename".into()),
+    });
     assert_eq!(term(&s, "t1").custom_title.as_deref(), Some("我的会话"));
     assert_eq!(term(&s, "t1").osc_title.as_deref(), Some("vim"), "未被覆盖");
 }
@@ -210,7 +221,10 @@ fn rename_blank_is_ignored() {
 fn exit_without_close_on_exit_keeps_a_grey_row() {
     let (mut s, _) = store();
     spawn(&mut s, "shell", None, 1);
-    s.on_session_event(SessionEvent::Exit { session_id: 1, code: None });
+    s.on_session_event(SessionEvent::Exit {
+        session_id: 1,
+        code: None,
+    });
     assert_eq!(term(&s, "t1").status, RunStatus::Exited);
     assert_eq!(s.threads.len(), 1, "不变量 3：exited 会话仍在池中");
 }
@@ -220,8 +234,14 @@ fn exit_code_flows_through_and_missing_code_is_none() {
     let (mut s, _) = store();
     spawn(&mut s, "shell", None, 1);
     spawn(&mut s, "shell", None, 2);
-    s.on_session_event(SessionEvent::Exit { session_id: 1, code: Some(0) });
-    s.on_session_event(SessionEvent::Exit { session_id: 2, code: None });
+    s.on_session_event(SessionEvent::Exit {
+        session_id: 1,
+        code: Some(0),
+    });
+    s.on_session_event(SessionEvent::Exit {
+        session_id: 2,
+        code: None,
+    });
     assert_eq!(term(&s, "t1").exit_code, Some(0));
     assert_eq!(term(&s, "t2").exit_code, None);
 }
@@ -231,7 +251,10 @@ fn exit_with_close_on_exit_removes_the_row_and_navigates_away_first() {
     let (mut s, f) = store();
     f.log.borrow_mut().close_on_exit = true;
     spawn(&mut s, "shell", None, 1);
-    s.on_session_event(SessionEvent::Exit { session_id: 1, code: None });
+    s.on_session_event(SessionEvent::Exit {
+        session_id: 1,
+        code: None,
+    });
     assert!(s.threads.is_empty());
     assert_eq!(f.log.borrow().destroyed, [1]);
     assert_eq!(s.active(), &ActiveTarget::Home, "先导航离开");
@@ -310,7 +333,10 @@ fn create_chat_pushes_an_empty_default_titled_thread_and_activates() {
     let (mut s, _) = store();
     let id = s.create_chat(None).unwrap();
     let c = chat(&s, &id);
-    assert_eq!((c.title.as_str(), c.messages.len(), c.pending_reply), ("Chat", 0, false));
+    assert_eq!(
+        (c.title.as_str(), c.messages.len(), c.pending_reply),
+        ("Chat", 0, false)
+    );
     assert_eq!(s.active(), &thread_target(&id));
     assert!(id.starts_with('c'));
 }
@@ -359,9 +385,15 @@ fn chat_ignores_blank_pending_and_unknown_ids() {
     assert!(s.begin_send(&id, "   ", ConversationKind::Chat).is_none());
     assert!(chat(&s, &id).messages.is_empty());
     assert!(s.begin_send(&id, "x", ConversationKind::Chat).is_some());
-    assert!(s.begin_send(&id, "y", ConversationKind::Chat).is_none(), "pending 中再发忽略");
+    assert!(
+        s.begin_send(&id, "y", ConversationKind::Chat).is_none(),
+        "pending 中再发忽略"
+    );
     assert_eq!(chat(&s, &id).messages.len(), 1);
-    assert!(s.begin_send("t999", "z", ConversationKind::Chat).is_none(), "不存在的 thread");
+    assert!(
+        s.begin_send("t999", "z", ConversationKind::Chat).is_none(),
+        "不存在的 thread"
+    );
 }
 
 #[test]
@@ -411,7 +443,11 @@ fn close_chat_navigates_away_only_when_it_is_the_active_row() {
     assert_eq!(s.active(), &thread_target(&b), "关非 active 行：路由不动");
     assert_eq!(s.threads.len(), 1);
     s.close(&b);
-    assert_eq!(s.active(), &ActiveTarget::Home, "关 active 行：先导航离开再移除");
+    assert_eq!(
+        s.active(),
+        &ActiveTarget::Home,
+        "关 active 行：先导航离开再移除"
+    );
     assert!(s.threads.is_empty());
 }
 
@@ -420,7 +456,8 @@ fn chat_rename_edits_title_and_freezes_against_the_first_message() {
     let (mut s, _, id, _) = two_chats();
     s.rename(&id, "我的会话");
     assert_eq!(chat(&s, &id).title, "我的会话");
-    s.begin_send(&id, "首条消息", ConversationKind::Chat).unwrap();
+    s.begin_send(&id, "首条消息", ConversationKind::Chat)
+        .unwrap();
     assert_eq!(chat(&s, &id).title, "我的会话", "不被首条消息覆盖");
     s.rename(&id, "  ");
     assert_eq!(chat(&s, &id).title, "我的会话");
@@ -431,18 +468,37 @@ fn chat_rename_edits_title_and_freezes_against_the_first_message() {
 #[test]
 fn create_acp_thread_uses_the_given_label_with_auto_title() {
     let (mut s, _) = store();
-    let id = s.create_acp_thread("acp-codex", "Codex (ACP)", None).unwrap();
+    let id = s
+        .create_acp_thread("acp-codex", "Codex (ACP)", None)
+        .unwrap();
     let a = acp(&s, &id);
-    assert_eq!((a.agent_id.as_str(), a.title.as_str(), a.messages.len(), a.pending_reply, a.auto_title), ("acp-codex", "Codex (ACP)", 0, false, true));
+    assert_eq!(
+        (
+            a.agent_id.as_str(),
+            a.title.as_str(),
+            a.messages.len(),
+            a.pending_reply,
+            a.auto_title
+        ),
+        ("acp-codex", "Codex (ACP)", 0, false, true)
+    );
     assert_eq!(s.active(), &thread_target(&id));
 }
 
 #[test]
 fn acp_send_reports_the_agent_id_for_lazy_connection_and_runs_the_chat_state_machine() {
     let (mut s, _) = store();
-    let id = s.create_acp_thread("acp-codex", "Codex (ACP)", None).unwrap();
-    let req = s.begin_send(&id, "看下这个 bug", ConversationKind::Acp).unwrap();
-    assert_eq!(req.agent_id.as_deref(), Some("acp-codex"), "调用方据此惰性建连");
+    let id = s
+        .create_acp_thread("acp-codex", "Codex (ACP)", None)
+        .unwrap();
+    let req = s
+        .begin_send(&id, "看下这个 bug", ConversationKind::Acp)
+        .unwrap();
+    assert_eq!(
+        req.agent_id.as_deref(),
+        Some("acp-codex"),
+        "调用方据此惰性建连"
+    );
     let a = acp(&s, &id);
     assert!(a.messages[0].is_user() && a.pending_reply);
     assert_eq!(a.title, "看下这个 bug", "首条消息改写 title");
@@ -460,7 +516,9 @@ fn acp_send_reports_the_agent_id_for_lazy_connection_and_runs_the_chat_state_mac
 #[test]
 fn acp_rename_freezes_the_title_and_blank_is_ignored() {
     let (mut s, _) = store();
-    let id = s.create_acp_thread("acp-codex", "Codex (ACP)", None).unwrap();
+    let id = s
+        .create_acp_thread("acp-codex", "Codex (ACP)", None)
+        .unwrap();
     s.rename(&id, "调参专用");
     assert_eq!(acp(&s, &id).title, "调参专用");
     assert!(!acp(&s, &id).auto_title);
@@ -478,7 +536,13 @@ fn acp_connect_failure_leaves_an_error_row_and_does_not_stay_pending() {
     s.fail_acp_connect(&id, "unknown agent");
     let a = acp(&s, &id);
     assert!(a.messages.last().unwrap().is_error());
-    assert!(a.messages.last().unwrap().text.contains("无法建立 ACP 连接"));
+    assert!(
+        a.messages
+            .last()
+            .unwrap()
+            .text
+            .contains("无法建立 ACP 连接")
+    );
     assert!(!a.pending_reply, "不置 pending");
 }
 
@@ -487,13 +551,18 @@ fn closing_an_acp_thread_disposes_the_connection_only_if_one_was_made() {
     let (mut s, f) = store();
     let connected = s.create_acp_thread("acp-codex", "A", None).unwrap();
     let never = s.create_acp_thread("acp-codex", "B", None).unwrap();
-    s.begin_send(&connected, "hi", ConversationKind::Acp).unwrap();
+    s.begin_send(&connected, "hi", ConversationKind::Acp)
+        .unwrap();
     s.mark_acp_connected(&connected);
 
     s.close(&connected);
     assert_eq!(f.log.borrow().disposed, std::slice::from_ref(&connected));
     s.close(&never);
-    assert_eq!(f.log.borrow().disposed, std::slice::from_ref(&connected), "建连前 close 无 dispose");
+    assert_eq!(
+        f.log.borrow().disposed,
+        std::slice::from_ref(&connected),
+        "建连前 close 无 dispose"
+    );
     assert_eq!(s.active(), &ActiveTarget::Home);
 }
 
@@ -582,7 +651,10 @@ fn spawn_inherits_workspace_path_attaches_the_thread_and_records_last_session() 
     let t = term(&s, "t1");
     assert_eq!(t.cwd, "/work/proj");
     assert_eq!(t.common.workspace_id.as_deref(), Some("w1"));
-    assert_eq!(s.workspace("w1").unwrap().last_session.as_deref(), Some("t1"));
+    assert_eq!(
+        s.workspace("w1").unwrap().last_session.as_deref(),
+        Some("t1")
+    );
     assert!(s.take_workspaces_dirty(), "last_session 变化 → persist");
 }
 
@@ -591,17 +663,31 @@ fn preset_cwd_wins_over_workspace_dir_and_no_workspace_falls_back_to_process_cwd
     let (s, _) = store_with(vec![ws("w1", "/work/proj", 1)]);
     let mut p = builtin_preset("shell").unwrap();
     p.cwd = Some("/preset/dir".into());
-    assert_eq!(s.begin_spawn(Some(&p), "shell", Some("w1")).unwrap().cwd, "/preset/dir", "用户配置意图优先");
+    assert_eq!(
+        s.begin_spawn(Some(&p), "shell", Some("w1")).unwrap().cwd,
+        "/preset/dir",
+        "用户配置意图优先"
+    );
     p.cwd = None;
-    assert_eq!(s.begin_spawn(Some(&p), "shell", Some("w1")).unwrap().cwd, "/work/proj");
-    assert_eq!(s.begin_spawn(Some(&p), "shell", None).unwrap().cwd, "/proc/cwd");
+    assert_eq!(
+        s.begin_spawn(Some(&p), "shell", Some("w1")).unwrap().cwd,
+        "/work/proj"
+    );
+    assert_eq!(
+        s.begin_spawn(Some(&p), "shell", None).unwrap().cwd,
+        "/proc/cwd"
+    );
 }
 
 #[test]
 fn unknown_workspace_id_errors_for_spawn_chat_and_acp() {
     let (mut s, _) = store();
     let p = builtin_preset("shell");
-    assert_eq!(s.begin_spawn(p.as_ref(), "shell", Some("w-nope")).unwrap_err(), StoreError::UnknownWorkspace("w-nope".into()));
+    assert_eq!(
+        s.begin_spawn(p.as_ref(), "shell", Some("w-nope"))
+            .unwrap_err(),
+        StoreError::UnknownWorkspace("w-nope".into())
+    );
     assert!(s.create_chat(Some("w-nope")).is_err());
     assert!(s.create_acp_thread("a", "A", Some("w-nope")).is_err());
     assert!(s.threads.is_empty());
@@ -612,9 +698,15 @@ fn chat_and_acp_created_inside_a_workspace_record_it_and_update_last_session() {
     let (mut s, _) = store_with(vec![ws("w1", "/a", 1)]);
     let c = s.create_chat(Some("w1")).unwrap();
     assert_eq!(chat(&s, &c).common.workspace_id.as_deref(), Some("w1"));
-    assert_eq!(s.workspace("w1").unwrap().last_session.as_deref(), Some(c.as_str()));
+    assert_eq!(
+        s.workspace("w1").unwrap().last_session.as_deref(),
+        Some(c.as_str())
+    );
     let a = s.create_acp_thread("acp-x", "X", Some("w1")).unwrap();
-    assert_eq!(s.workspace("w1").unwrap().last_session.as_deref(), Some(a.as_str()));
+    assert_eq!(
+        s.workspace("w1").unwrap().last_session.as_deref(),
+        Some(a.as_str())
+    );
 }
 
 #[test]
@@ -625,14 +717,20 @@ fn activating_a_member_session_updates_last_session_and_repeats_do_not_re_persis
     s.take_workspaces_dirty();
 
     s.activate(thread_target("t1"));
-    assert_eq!(s.workspace("w1").unwrap().last_session.as_deref(), Some("t1"));
+    assert_eq!(
+        s.workspace("w1").unwrap().last_session.as_deref(),
+        Some("t1")
+    );
     assert!(s.take_workspaces_dirty());
 
     s.activate(thread_target("t1")); // 重复 activate
     assert!(!s.take_workspaces_dirty(), "同值不重复 persist");
 
     s.cycle(1); // t1 → t2（cycle 路径同样跟随）
-    assert_eq!(s.workspace("w1").unwrap().last_session.as_deref(), Some("t2"));
+    assert_eq!(
+        s.workspace("w1").unwrap().last_session.as_deref(),
+        Some("t2")
+    );
 }
 
 // ═════════════════════ activateWorkspace / close / removeWorkspace ═════════════════════
@@ -668,11 +766,18 @@ fn activate_workspace_restores_last_session_else_the_workspace_start_page() {
 fn closing_the_last_session_clears_last_session_and_lands_on_the_workspace_start_page() {
     let (mut s, _) = store_with(vec![ws("w1", "/a", 1)]);
     spawn(&mut s, "shell", Some("w1"), 1);
-    assert_eq!(s.workspace("w1").unwrap().last_session.as_deref(), Some("t1"));
+    assert_eq!(
+        s.workspace("w1").unwrap().last_session.as_deref(),
+        Some("t1")
+    );
     s.take_workspaces_dirty();
     s.close("t1");
     assert_eq!(s.workspace("w1").unwrap().last_session, None);
-    assert_eq!(s.active(), &ActiveTarget::Workspace("w1".into()), "回工作区起始页");
+    assert_eq!(
+        s.active(),
+        &ActiveTarget::Workspace("w1".into()),
+        "回工作区起始页"
+    );
     assert!(s.take_workspaces_dirty());
 }
 
@@ -688,8 +793,18 @@ fn remove_workspace_closes_its_sessions_destroys_ptys_navigates_and_drops_the_ro
     s.remove_workspace("w1");
     assert_eq!(ids(&s), ["t3"], "只剩 w2 的会话");
     assert_eq!(f.log.borrow().destroyed, [1, 2]);
-    assert_eq!(s.workspaces.iter().map(|w| w.id.as_str()).collect::<Vec<_>>(), ["w2"]);
-    assert_eq!(s.active(), &ActiveTarget::Home, "路由不得停在已删工作区的起始页");
+    assert_eq!(
+        s.workspaces
+            .iter()
+            .map(|w| w.id.as_str())
+            .collect::<Vec<_>>(),
+        ["w2"]
+    );
+    assert_eq!(
+        s.active(),
+        &ActiveTarget::Home,
+        "路由不得停在已删工作区的起始页"
+    );
     assert!(s.take_workspaces_dirty());
 }
 
@@ -708,7 +823,11 @@ fn open_git_graph_without_a_session_switches_the_workspace_pane_tab_and_activate
     let (mut s, _) = store_with(vec![ws("w1", "/a", 1), ws("w2", "/b", 2)]);
     s.activate(ActiveTarget::Workspace("w2".into()));
     s.open_git_graph();
-    assert_eq!(s.workspace("w2").unwrap().pane_tab, PaneTab::Git, "当前工作区");
+    assert_eq!(
+        s.workspace("w2").unwrap().pane_tab,
+        PaneTab::Git,
+        "当前工作区"
+    );
     assert_eq!(s.active(), &ActiveTarget::Workspace("w2".into()));
 
     let (mut s, _) = store_with(vec![ws("w1", "/a", 1)]);
@@ -729,7 +848,13 @@ fn with_session() -> (Store, Fake) {
 }
 
 fn views(s: &Store, id: &str) -> Vec<String> {
-    s.thread(id).unwrap().common().views.iter().map(|v| v.id().to_owned()).collect()
+    s.thread(id)
+        .unwrap()
+        .common()
+        .views
+        .iter()
+        .map(|v| v.id().to_owned())
+        .collect()
 }
 
 fn active_view(s: &Store, id: &str) -> Option<String> {
@@ -737,10 +862,16 @@ fn active_view(s: &Store, id: &str) -> Option<String> {
 }
 
 fn shell_view<'a>(s: &'a Store, tid: &str, vid: &str) -> &'a ShellView {
-    s.thread(tid).unwrap().common().views.iter().find_map(|v| match v {
-        SessionView::Shell(x) if x.id == vid => Some(x),
-        _ => None,
-    }).unwrap()
+    s.thread(tid)
+        .unwrap()
+        .common()
+        .views
+        .iter()
+        .find_map(|v| match v {
+            SessionView::Shell(x) if x.id == vid => Some(x),
+            _ => None,
+        })
+        .unwrap()
 }
 
 fn add_shell(s: &mut Store, tid: &str, session_id: u64) {
@@ -768,7 +899,10 @@ fn open_session_file_dedupes_by_path_and_activate_session_view_returns_to_main()
         SessionView::File { label, .. } => assert_eq!(label, "readme.md"),
         v => panic!("{v:?}"),
     }
-    assert_eq!(active_view(&s, "t1").as_deref(), Some("file:/a/b/readme.md"));
+    assert_eq!(
+        active_view(&s, "t1").as_deref(),
+        Some("file:/a/b/readme.md")
+    );
     s.activate_session_view("t1", MAIN_VIEW_ID);
     assert_eq!(active_view(&s, "t1").as_deref(), Some(MAIN_VIEW_ID));
     s.activate_session_view("t1", "nope"); // 不存在 id 忽略
@@ -778,7 +912,11 @@ fn open_session_file_dedupes_by_path_and_activate_session_view_returns_to_main()
 #[test]
 fn add_session_shell_uses_the_session_cwd_numbers_views_and_activates() {
     let (mut s, _) = with_session();
-    assert_eq!(s.begin_add_session_shell("t1").as_deref(), Some("/work"), "会话 cwd");
+    assert_eq!(
+        s.begin_add_session_shell("t1").as_deref(),
+        Some("/work"),
+        "会话 cwd"
+    );
     add_shell(&mut s, "t1", 10);
     add_shell(&mut s, "t1", 11);
     assert_eq!(views(&s, "t1"), ["shell:1", "shell:2"]);
@@ -804,9 +942,17 @@ fn close_session_view_destroys_the_shell_pty_and_falls_back_to_left_neighbour_or
     add_shell(&mut s, "t1", 11); // shell:2（当前）
     s.close_session_view("t1", "shell:2");
     assert_eq!(f.log.borrow().destroyed, [11]);
-    assert_eq!(active_view(&s, "t1").as_deref(), Some("shell:1"), "当前视图被关 → 左邻");
+    assert_eq!(
+        active_view(&s, "t1").as_deref(),
+        Some("shell:1"),
+        "当前视图被关 → 左邻"
+    );
     s.close_session_view("t1", "shell:1");
-    assert_eq!(active_view(&s, "t1").as_deref(), Some(MAIN_VIEW_ID), "无左邻 → 主面");
+    assert_eq!(
+        active_view(&s, "t1").as_deref(),
+        Some(MAIN_VIEW_ID),
+        "无左邻 → 主面"
+    );
     s.close_session_view("t1", MAIN_VIEW_ID); // 主面不可关
     assert!(views(&s, "t1").is_empty());
 }
@@ -845,11 +991,24 @@ fn a_session_closed_while_the_shell_spawn_was_in_flight_recycles_the_orphan_pty(
 fn view_pty_title_event_routes_to_the_view_ignores_blank_and_does_not_touch_the_main_session() {
     let (mut s, _) = with_session();
     add_shell(&mut s, "t1", 10);
-    s.on_session_event(SessionEvent::Title { session_id: 10, title: Some("htop".into()) });
-    assert_eq!(shell_view(&s, "t1", "shell:1").osc_title.as_deref(), Some("htop"));
+    s.on_session_event(SessionEvent::Title {
+        session_id: 10,
+        title: Some("htop".into()),
+    });
+    assert_eq!(
+        shell_view(&s, "t1", "shell:1").osc_title.as_deref(),
+        Some("htop")
+    );
     assert_eq!(term(&s, "t1").osc_title, None, "不误伤主会话");
-    s.on_session_event(SessionEvent::Title { session_id: 10, title: Some(String::new()) });
-    assert_eq!(shell_view(&s, "t1", "shell:1").osc_title.as_deref(), Some("htop"), "空串忽略");
+    s.on_session_event(SessionEvent::Title {
+        session_id: 10,
+        title: Some(String::new()),
+    });
+    assert_eq!(
+        shell_view(&s, "t1", "shell:1").osc_title.as_deref(),
+        Some("htop"),
+        "空串忽略"
+    );
 }
 
 #[test]
@@ -897,7 +1056,10 @@ fn view_has_bell_clears_via_activate_session_view_and_via_activate_landing_on_th
     s.on_session_event(SessionEvent::Bell { session_id: 10 });
     s.activate(ActiveTarget::Settings);
     s.activate_session_view("t1", "shell:1");
-    assert!(shell_view(&s, "t1", "shell:1").has_bell, "后台程序化调用不清");
+    assert!(
+        shell_view(&s, "t1", "shell:1").has_bell,
+        "后台程序化调用不清"
+    );
 
     s.activate(thread_target("t1")); // 落在该视图 → 同清
     assert!(!shell_view(&s, "t1", "shell:1").has_bell);
@@ -907,11 +1069,17 @@ fn view_has_bell_clears_via_activate_session_view_and_via_activate_landing_on_th
 fn view_exit_without_close_on_exit_marks_exited_with_code_and_pushes_a_notice() {
     let (mut s, _) = with_session();
     add_shell(&mut s, "t1", 10);
-    s.on_session_event(SessionEvent::Exit { session_id: 10, code: Some(2) });
+    s.on_session_event(SessionEvent::Exit {
+        session_id: 10,
+        code: Some(2),
+    });
     let v = shell_view(&s, "t1", "shell:1");
     assert_eq!((v.status, v.exit_code), (RunStatus::Exited, Some(2)));
     let n = s.notices.last().unwrap();
-    assert_eq!((n.tone, n.view_id.as_deref()), (NoticeTone::Err, Some("shell:1")));
+    assert_eq!(
+        (n.tone, n.view_id.as_deref()),
+        (NoticeTone::Err, Some("shell:1"))
+    );
     assert!(n.text.contains("已退出"));
 }
 
@@ -920,7 +1088,10 @@ fn view_exit_with_close_on_exit_removes_the_view_and_falls_back() {
     let (mut s, f) = with_session();
     f.log.borrow_mut().close_on_exit = true;
     add_shell(&mut s, "t1", 10);
-    s.on_session_event(SessionEvent::Exit { session_id: 10, code: Some(0) });
+    s.on_session_event(SessionEvent::Exit {
+        session_id: 10,
+        code: Some(0),
+    });
     assert!(views(&s, "t1").is_empty());
     assert_eq!(active_view(&s, "t1").as_deref(), Some(MAIN_VIEW_ID));
     assert_eq!(s.notices.last().unwrap().tone, NoticeTone::Ok);
@@ -933,7 +1104,10 @@ fn a_shell_view_bell_on_a_background_chat_session_sets_unread_a_notice_and_notif
     add_shell(&mut s, &c, 10);
     s.activate(ActiveTarget::Settings);
     s.on_session_event(SessionEvent::Bell { session_id: 10 });
-    assert!(s.thread(&c).unwrap().common().unread, "非 terminal 父级 → unread");
+    assert!(
+        s.thread(&c).unwrap().common().unread,
+        "非 terminal 父级 → unread"
+    );
     assert_eq!(f.log.borrow().notified, std::slice::from_ref(&c));
     assert_eq!(s.notices.last().unwrap().thread_id, c);
 }
@@ -942,7 +1116,10 @@ fn a_shell_view_bell_on_a_background_chat_session_sets_unread_a_notice_and_notif
 fn events_for_unknown_sessions_are_ignored() {
     let (mut s, f) = store();
     s.on_session_event(SessionEvent::Bell { session_id: 404 });
-    s.on_session_event(SessionEvent::Exit { session_id: 404, code: None });
+    s.on_session_event(SessionEvent::Exit {
+        session_id: 404,
+        code: None,
+    });
     assert!(s.notices.is_empty() && f.log.borrow().notified.is_empty());
 }
 
@@ -987,7 +1164,10 @@ fn workspace_pin_flips_marks_dirty_and_unknown_is_a_no_op() {
 // ═════════════════════ 通知中心 ═════════════════════
 
 fn two_terminals_in_a_workspace() -> Store {
-    let (mut s, _) = store_with(vec![Workspace { name: "dotfiles".into(), ..ws("w1", "/a", 1) }]);
+    let (mut s, _) = store_with(vec![Workspace {
+        name: "dotfiles".into(),
+        ..ws("w1", "/a", 1)
+    }]);
     spawn(&mut s, "shell", Some("w1"), 1);
     spawn(&mut s, "shell", Some("w1"), 2);
     s.activate(ActiveTarget::Settings); // 两个都在后台
@@ -998,16 +1178,32 @@ fn two_terminals_in_a_workspace() -> Store {
 fn bell_and_exit_push_notices_with_thread_id_unread_and_activate_marks_that_sessions_read() {
     let mut s = two_terminals_in_a_workspace();
     s.on_session_event(SessionEvent::Bell { session_id: 1 });
-    s.on_session_event(SessionEvent::Exit { session_id: 2, code: Some(1) });
+    s.on_session_event(SessionEvent::Exit {
+        session_id: 2,
+        code: Some(1),
+    });
     assert_eq!(s.notices.len(), 2);
-    assert_eq!((s.notices[0].thread_id.as_str(), s.notices[0].read, s.notices[0].tone), ("t1", false, NoticeTone::Warn));
+    assert_eq!(
+        (
+            s.notices[0].thread_id.as_str(),
+            s.notices[0].read,
+            s.notices[0].tone
+        ),
+        ("t1", false, NoticeTone::Warn)
+    );
     assert_eq!(s.notices[0].sub, "dotfiles · BEL");
-    assert_eq!((s.notices[1].tone, s.notices[1].sub.as_str()), (NoticeTone::Err, "dotfiles"));
+    assert_eq!(
+        (s.notices[1].tone, s.notices[1].sub.as_str()),
+        (NoticeTone::Err, "dotfiles")
+    );
     assert_eq!(s.unread_notice_count(), 2);
 
     s.activate(thread_target("t1"));
     assert!(s.notices[0].read);
-    assert!(!s.notices[1].read, "只清目标会话的 notice，其他会话未读保留");
+    assert!(
+        !s.notices[1].read,
+        "只清目标会话的 notice，其他会话未读保留"
+    );
     assert_eq!(s.unread_notice_count(), 1);
 }
 
@@ -1048,7 +1244,11 @@ fn open_notice_marks_read_and_jumps_to_the_source_session_closed_sessions_only_m
     s.activate(ActiveTarget::Settings);
     s.open_notice(&n2); // 来源已关闭
     assert!(s.notices[1].read);
-    assert_eq!(s.active(), &ActiveTarget::Settings, "路由不得指向不存在的行");
+    assert_eq!(
+        s.active(),
+        &ActiveTarget::Settings,
+        "路由不得指向不存在的行"
+    );
 }
 
 #[test]
@@ -1061,7 +1261,11 @@ fn open_notice_with_a_view_id_activates_that_view_too() {
     let id = s.notices.last().unwrap().id.clone();
     s.open_notice(&id);
     assert_eq!(s.active(), &thread_target("t1"));
-    assert_eq!(active_view(&s, "t1").as_deref(), Some("shell:1"), "直达现场");
+    assert_eq!(
+        active_view(&s, "t1").as_deref(),
+        Some("shell:1"),
+        "直达现场"
+    );
     assert!(!shell_view(&s, "t1", "shell:1").has_bell, "到达即已看到");
 }
 

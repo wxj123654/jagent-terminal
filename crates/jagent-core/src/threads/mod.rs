@@ -5,11 +5,11 @@ mod model;
 mod store;
 mod workspaces;
 
+pub use conversation::{Conversation, echo_reply};
 pub use model::*;
 pub use store::{
     ConversationKind, Effects, SendRequest, SessionEvent, SpawnRequest, StoreError, ThreadStore,
 };
-pub use conversation::{Conversation, echo_reply};
 pub use workspaces::{
     SearchHit, WorkspaceFormError, clear_last_session, default_workspace, parse_workspace_state,
     record_last_session, rel_time, search_threads, serialize_workspace_state, sort_threads,

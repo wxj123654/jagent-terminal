@@ -1,8 +1,7 @@
 fn main() {
-    println!("cargo:rerun-if-changed=../../packages/app/assets/icons/app.ico");
+    println!("cargo:rerun-if-changed=assets/icons/app.ico");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
-        let icon = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../packages/app/assets/icons/app.ico");
+        let icon = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/icons/app.ico");
         if !icon.is_file() {
             panic!("Windows icon asset missing: {}", icon.display());
         }

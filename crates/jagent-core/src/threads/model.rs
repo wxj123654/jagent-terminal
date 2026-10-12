@@ -48,8 +48,15 @@ pub struct ShellView {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionView {
-    Git { id: String, label: String },
-    File { id: String, label: String, path: String },
+    Git {
+        id: String,
+        label: String,
+    },
+    File {
+        id: String,
+        label: String,
+        path: String,
+    },
     Shell(ShellView),
 }
 
@@ -76,7 +83,9 @@ impl SessionView {
 pub enum MessageRole {
     User,
     /// `error = true`：agent 回复失败行
-    Assistant { error: bool },
+    Assistant {
+        error: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -211,7 +220,11 @@ impl Thread {
         }
     }
     pub fn as_terminal(&self) -> Option<&TerminalThread> {
-        if let Self::Terminal(t) = self { Some(t) } else { None }
+        if let Self::Terminal(t) = self {
+            Some(t)
+        } else {
+            None
+        }
     }
 }
 
@@ -291,7 +304,9 @@ pub struct Workspace {
 
 /// 目录显示名（basename 兜底：空 / 根路径原样返回）。
 pub fn workspace_display_name(path: &str) -> String {
-    path.split(['/', '\\']).rfind(|s| !s.is_empty()).map_or_else(|| path.to_owned(), str::to_owned)
+    path.split(['/', '\\'])
+        .rfind(|s| !s.is_empty())
+        .map_or_else(|| path.to_owned(), str::to_owned)
 }
 
 #[cfg(test)]
@@ -346,6 +361,13 @@ mod tests {
         assert_eq!(SessionView::Shell(v.clone()).title(), "Shell 1");
         v.osc_title = Some("vim".into());
         assert_eq!(SessionView::Shell(v).title(), "vim");
-        assert_eq!(SessionView::Git { id: "git".into(), label: "Git 图".into() }.title(), "Git 图");
+        assert_eq!(
+            SessionView::Git {
+                id: "git".into(),
+                label: "Git 图".into()
+            }
+            .title(),
+            "Git 图"
+        );
     }
 }

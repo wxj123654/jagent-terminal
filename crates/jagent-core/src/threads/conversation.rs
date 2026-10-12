@@ -18,8 +18,16 @@ impl<'a> Conversation<'a> {
     /// 终端会话没有对话，返回 `None`。
     pub fn of(thread: &'a Thread) -> Option<Self> {
         match thread {
-            Thread::Chat(t) => Some(Self { kind: ConversationKind::Chat, messages: &t.messages, pending: t.pending_reply }),
-            Thread::Acp(t) => Some(Self { kind: ConversationKind::Acp, messages: &t.messages, pending: t.pending_reply }),
+            Thread::Chat(t) => Some(Self {
+                kind: ConversationKind::Chat,
+                messages: &t.messages,
+                pending: t.pending_reply,
+            }),
+            Thread::Acp(t) => Some(Self {
+                kind: ConversationKind::Acp,
+                messages: &t.messages,
+                pending: t.pending_reply,
+            }),
             Thread::Terminal(_) => None,
         }
     }
@@ -28,7 +36,9 @@ impl<'a> Conversation<'a> {
 /// chat 后端的本地回声（文案与旧 `createEchoAgent` 一致；引用前 200 个字符）。
 pub fn echo_reply(text: &str) -> String {
     let head: String = text.chars().take(200).collect();
-    format!("（echo stub）收到：{head}\n\nchat 后端尚未接线 —— Phase 3+ 换 ACP / LLM adapter，此处只是回声。")
+    format!(
+        "（echo stub）收到：{head}\n\nchat 后端尚未接线 —— Phase 3+ 换 ACP / LLM adapter，此处只是回声。"
+    )
 }
 
 #[cfg(test)]

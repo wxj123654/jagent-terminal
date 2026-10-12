@@ -1,8 +1,9 @@
 # j-agent 重构方案：纯 Rust gpui（方案 A）
 
-> 状态：**P0 完成；P1 骨架完成；P2 纯逻辑核心完成；P3 起视图重写进行中**。进度见 §10。（P0 结果见 `docs/p0-results.md`。）本文是重构的唯一权威入口；`docs/architecture.md`
-> 等旧文档在 P8 之前仅作为**行为规格**使用（见 §8），不再代表目标架构。
-> 依赖版本已于 2026-10-10 经 crates.io 核实（`docs/p0-results.md` §0）；其余未核实项仍标注"未核实"。
+> 状态：**P0–P8 全部完成（2026-10-12 收官）**。本文转为历史记录；当前架构的
+> 权威描述是 `docs/architecture.md`，待办看板在 `TODOLIST.md`。
+> （P0 结果见 `docs/p0-results.md`。）
+> 依赖版本已于 2026-10-10 经 crates.io 核实（`docs/p0-results.md` §0）。
 
 ## 1. 目标与非目标
 
@@ -117,6 +118,11 @@ Zed gpui 快照，包名带 `pre`，且 gpui 本体 0.x 无稳定承诺。建议
 
 ## 7. 资产处置台账
 
+> **P8 执行注记（2026-10-12）**：§7.3 清单已全部执行；§7.2 的过渡期规格（旧 TS 源码、
+> architecture 旧 §3、settings-ui/git-graph/agent-plane-layout/error-management、
+> nested-scroll-research、perf-analysis、ui-detail-audit、todo-archive）一并删除，
+> 需要时从 git 历史 `aadecd4` 取。`docs/p0-*.md` 与本文作为重构历史记录保留。
+
 ### 7.1 本次已删除（均为 git 跟踪文件，可从历史恢复）
 
 | 文件 | 理由 |
@@ -220,7 +226,7 @@ E3–E8 每项只验证了一条代表性路径，现在给数字只是换一种
 | P5 Git 视图 | ✅（1 万提交帧耗时除外） | `views/git_graph.rs`：可变高 `gpui::list`（commit 行 + 同列表内联详情）、普通 GPUI 元素树（明确不使用 canvas）、共享 `git::geometry` 的行高 / lane 宽 / 列宽、ref 标签、选中/查找淡化、搜索、分支 chip、上下键/按钮导航、刷新/清除、GitGraph KeyContext；选中提交异步加载 body + numstat + unified patch，搜索命中间循环移动。`views/work_panel.rs`：真实 git status/numstat、变更/文件 tab、文件选择、tracked 文件 unified diff、添加/删除/hunk 行分类、刷新、非 repo/加载/干净状态。测试：图视图 geometry/展开 Entry、WorkPanel 真实 repo status→diff/切换文件时清除旧 diff、commit body/files/patch 请求代际、同路径 ABA stale patch 等；Git 图显式刷新即使 cwd 相同也重新跑 git log，真实仓库新增提交后刷新可见；最终全 workspace check/build/test 通过（app 75 unit + sidecar 1 + watchdog 2、core 270、terminal 41；harness=false 测试输出 `NESTED_SCROLL OK`、`SHELL OK`、`TERMINAL_SETTINGS OK`）。**明确不做 / 偏差**：①真实 lane 三次贝塞尔弯线未画（只画普通元素竖线/节点，避免 canvas；几何计算仍由 core `line_strokes` 提供）；②commit/ref 右键操作菜单及危险操作确认未迁（core argv 规则保留）；③分支目前只显示 chip，不做下拉/checkout；④WorkPanel 不做未跟踪文件内容预览、拖宽/overlay；⑤1 万提交真窗口滚动帧耗时尚未测，登记为未验证，按目标不阻塞。 |
 | P6 设置页 | ✅（明确偏差见证据） | `views/settings.rs`：7 分区 nav + schema 路径搜索（分区与字段行过滤）、即时写回与单项 reset、modified 蓝点；TerminalStyle 每次 flush 应用到池内活跃终端，字号/闪烁/字体可在线生效；Preset 内置重置时同步所有已缓存字段编辑器；args 与 ACP argv 使用逐行 Textarea，参数含空格不拆分；Advanced GPU backend 选择、perf HUD/frameOverlay 开关、settings.json 序列化实时快照、写失败错误提示。入口为 `Ctrl-,` 与侧栏齿轮；设置不创建 thread，设置时保留 Sidebar；Esc 关闭，切 thread 关闭设置；设置表面不显示会话 tab。证据：settings 覆盖 7 分区、搜索、patch/reset 写盘、旧 `settings.json` 未知字段往返保真、preset 写盘失败回滚后编辑值一致；最终全 workspace check/build/test 通过（app 75 unit + sidecar 1 + watchdog 2、core 270、terminal 41；terminal_settings 输出 `TERMINAL_SETTINGS OK`），含 settings 写盘失败后 preset store rollback 和 editor-value 恢复测试。**偏差**：①打开时未自动聚焦搜索（GPUI InputState::focus 需要其自身 Context，构造器只有 SettingsView Context）；②焦点环/aria 与 reset 固定槽未逐行符合原型；③字体输入为自由文本而非系统字体选择；④搜索没有 label mark 高亮/命中计数，预设/ACP 空态有过滤但搜索分区 nav 无计数；⑤ACP args 与预设 args/env 使用逐行 Textarea（每行一个 argv / KEY=VALUE），含空格 argv 往返有测试；⑥配置文件“在编辑器打开”未接；GPU backend 是构建时选择，设置页仅保存偏好并明确标记为不切换运行中 GPU；⑦高级 perf HUD/frameOverlay 设置写盘，绘制集成待后续/平台侧。**未验证（真机）**：中文 IME 输入搜索/字体字段，详见 P4 未验证清单。 |
 | P7 发布 | ✅（Developer ID 公证与三端真实启动除外） | 新增 `.github/workflows/rust-release.yml`（macOS/Linux/Windows 独立 Rust 构建/全 workspace tests/release artifact；签名 secrets 未提供，按用户选择只 ad-hoc）、macOS `scripts/package-macos-app.sh`、Windows `winresource` `build.rs` 图标/版本资源与 PE RT_GROUP_ICON #1 校验脚本；`j-agent --version` / `--crash-sidecar` / `--watchdog` 发布入口；panic hook 把结构化报告交给 sidecar，sidecar READY 握手、落盘 fsync ACK、64 条保留；watchdog 60 秒 5 次 crash-loop 截止；普通启动默认进入 watchdog，内部 `--app-child` 才绕过；app 子进程正常退出时显式 kill/wait 回收 sidecar。集成测试：sidecar panic→JSON 持久化、真实 watchdog 子进程重启/截止。验证（先前 Rust 1.97.1 成功结果，当前复跑说明见任务记录）：发布入口默认 watchdog，release smoke 覆盖 fail-loop 与 child 正常退出；macOS `.app` 由本机 Release binary 打包，`plutil -lint`、`codesign --verify --deep --strict` 成功；`j-agent --version` 输出 0.1.0；shell_shot `SHELL OK`。**明确未验证**：CI 远程 workflow 未实际运行；Windows/Linux 交叉编译与真机启动、Windows PE 图标校验脚本（仅 Windows runner 能跑）；正式 Developer ID 签名/公证（用户选择继续 ad-hoc）；macOS Finder 启动、三端产物真实启动。**边界/偏差**：sidecar 仅 Rust panic JSON 元数据，不捕获 SIGSEGV/abort/OOM，也不产 minidump/崩溃 UI；`j-agent` 默认即由 watchdog 启动，`--watchdog` 为显式等价入口、内部 `--app-child` 绕过。CI 远端矩阵仍未实际运行。 |
-| P8 清理 | ⬜ | **刻意未做**：删除旧 TS 之前，视图层还没有全部重写完，旧代码仍是规格 |
+| P8 清理 | ✅（2026-10-12） | 先以 `044bd9f` 提交 P0–P7 全量成果（含旧 TS 链与 `.scratch` 备份）作安全点，再删除 `packages/`、`e2e/`、`patches/`、scripts/ 的 bun/PE/refs 脚本（留 `package-macos-app.sh` + `check-windows-icon.ps1`）、`package.json`/`bun.lock`、旧 CI `build.yml`、design/ 原型（留 `DESIGN.md`/`PRODUCT.md`）、八个旧契约文档（settings-ui / git-graph / agent-plane-layout / error-management / nested-scroll-research / perf-analysis / todo-archive / ui-detail-audit）、oxlint/oxfmt 配置、gpuix-usage skill；本地清 `.refs/`（299M）/`node_modules`/`dist`/`.shots`/`spikes`。重写 README / TODOLIST / `docs/architecture.md` / CONTEXT.md 为 Rust 工作区语境。`cargo check/build/test --workspace` 全绿。旧 React 版与全部行为规格在 git 历史 `aadecd4` 可查 |
 
 ### 10.1 视图层的真实体量（用于判断剩余工作）
 
@@ -243,14 +249,15 @@ P3–P7 已各有对应实现、未验证项或明确不做决定（详见各阶
 
 Sonnet 6.1 复验 findings 已逐项修复：Action/分组展开；WorkPanel 嵌套滚动真实 wheel handoff；ListState 增量 anchor；ACP register-before-spawn cancellation + blocked initialize 子进程测试；Git detail ticket 同时门控 patch；TerminalStyle 传播至已存在/新建 PTY；设置失败 rollback 后将全部编辑器同步到最终 store snapshot；逐行 argv 保留空格；watchdog 默认启动与文档一致；Rust/CI pin 1.97.1。最终 6.1sol 独立验收正在进行。
 
-### 10.3 本阶段已知偏差与遗留
+### 10.3 已知偏差与遗留（P8 后更新）
 
-1. **P8 没有做**：旧 TS / e2e / patches / scripts / `.refs/` / `design/` 仍在仓库。删除它们会让 4,782 行组件测试
-   与全部视图的行为规格一起消失，而新视图还没写完。只有当 P3–P6 的视图都有了对应的新实现（并且 §2.3 的未验证项
-   完成了真机验证）才能删。
-2. **`docs/architecture.md` / README / TODOLIST 仍是旧架构描述**，会误导读者；P8 一并重写，在那之前以本文为准。
-3. **`.scratch/uncommitted-ts-before-rewrite.patch`** 是旧 TS 17 个未提交文件的备份（1722 行），P8 删除旧代码前请先确认这些改动是否要落进新实现。
-4. **未验证（仍需真机）**：三平台中文输入法、Windows/Linux 编译与运行、标题栏真实拖动/红绿灯、真窗口帧耗时。
-   本机验证覆盖面 = macOS 屏幕外窗口 + 真实 PTY。
-5. `jagent-core::acp` 只有**协议层**；子进程 IO（spawn / 管道 / 惰性握手 / dispose）在 P4 的 `jagent-app` 里写。
-6. 桌面通知（`Effects::notify`）目前只记账，不真正弹系统通知（旧 `notify.rs` 的 Windows toast 还没迁）。
+1. ~~P8 没有做~~ → **已完成（2026-10-12）**，见 §10 P8 行。旧 TS / e2e / patches / `.refs/` / design 原型
+   已删除；行为规格与 4,782 行组件测试在 git 历史 `aadecd4` 可查。
+2. ~~architecture.md / README / TODOLIST 仍是旧架构描述~~ → 已重写；当前架构以
+   `docs/architecture.md` 为准。
+3. `.scratch/uncommitted-ts-before-rewrite.patch`（旧 TS 17 个未提交文件，1722 行）已随 `044bd9f`
+   入库归档；P3 前未提出落入新实现的需求，按 §7.3 决定不落。
+4. **未验证（仍需真机）**：三平台中文输入法、Windows/Linux 编译与运行、标题栏真实拖动/红绿灯、
+   真窗口帧耗时、CI 远端矩阵。清单与可选重开项转至 `TODOLIST.md`。
+5. `jagent-core::acp` 只有**协议层**；子进程 IO（spawn / 管道 / 惰性握手 / dispose）在 `jagent-app::acp_io`。
+6. 桌面通知（`Effects::notify`）目前只记账，不真正弹系统通知（旧 `notify.rs` 的 Windows toast 未迁）。

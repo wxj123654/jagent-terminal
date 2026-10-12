@@ -60,15 +60,25 @@ impl std::error::Error for StoreError {}
 /// 终端会话事件（旧 `TerminalSessionEvent` 判别联合）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionEvent {
-    Title { session_id: u64, title: Option<String> },
-    Bell { session_id: u64 },
-    Exit { session_id: u64, code: Option<i32> },
+    Title {
+        session_id: u64,
+        title: Option<String>,
+    },
+    Bell {
+        session_id: u64,
+    },
+    Exit {
+        session_id: u64,
+        code: Option<i32>,
+    },
 }
 
 impl SessionEvent {
     pub fn session_id(&self) -> u64 {
         match self {
-            Self::Title { session_id, .. } | Self::Bell { session_id } | Self::Exit { session_id, .. } => *session_id,
+            Self::Title { session_id, .. }
+            | Self::Bell { session_id }
+            | Self::Exit { session_id, .. } => *session_id,
         }
     }
 }
@@ -139,11 +149,19 @@ impl<E: Effects> ThreadStore<E> {
 
     /// 路由读侧：当前指向的 thread id。
     pub fn active_thread_id(&self) -> Option<&str> {
-        if let ActiveTarget::Thread(id) = &self.active { Some(id) } else { None }
+        if let ActiveTarget::Thread(id) = &self.active {
+            Some(id)
+        } else {
+            None
+        }
     }
 
     fn active_workspace_id(&self) -> Option<&str> {
-        if let ActiveTarget::Workspace(id) = &self.active { Some(id) } else { None }
+        if let ActiveTarget::Workspace(id) = &self.active {
+            Some(id)
+        } else {
+            None
+        }
     }
 
     pub fn thread(&self, id: &str) -> Option<&Thread> {
@@ -181,7 +199,10 @@ impl<E: Effects> ThreadStore<E> {
     ) -> Result<SpawnRequest, StoreError> {
         let preset = preset.ok_or_else(|| StoreError::UnknownPreset(preset_id.to_owned()))?;
         let ws = match workspace_id {
-            Some(id) => Some(self.workspace(id).ok_or_else(|| StoreError::UnknownWorkspace(id.to_owned()))?),
+            Some(id) => Some(
+                self.workspace(id)
+                    .ok_or_else(|| StoreError::UnknownWorkspace(id.to_owned()))?,
+            ),
             None => None,
         };
         let cwd = preset
@@ -189,7 +210,11 @@ impl<E: Effects> ThreadStore<E> {
             .clone()
             .or_else(|| ws.map(|w| w.path.clone()))
             .unwrap_or_else(|| self.effects.default_cwd());
-        Ok(SpawnRequest { preset: preset.clone(), cwd, workspace_id: ws.map(|w| w.id.clone()) })
+        Ok(SpawnRequest {
+            preset: preset.clone(),
+            cwd,
+            workspace_id: ws.map(|w| w.id.clone()),
+        })
     }
 
     /// 第二步：PTY 已创建 → push thread + `last_used_preset` + activate。返回 thread id。
@@ -206,7 +231,10 @@ impl<E: Effects> ThreadStore<E> {
             exit_code: None,
             has_bell: false,
             created_at: self.effects.now(),
-            common: ThreadCommon { workspace_id: req.workspace_id.clone(), ..Default::default() },
+            common: ThreadCommon {
+                workspace_id: req.workspace_id.clone(),
+                ..Default::default()
+            },
         };
         let id = thread.id.clone();
         self.threads.push(Thread::Terminal(thread));
@@ -245,9 +273,13 @@ impl<E: Effects> ThreadStore<E> {
     /// 会话移除单点：先导航离开（不变量 1）→ 销毁 PTY / dispose / 视图 PTY 连带销毁 →
     /// 移除行 + last_session 兜底 + persist。
     pub fn close(&mut self, id: &str) {
-        let Some(thread) = self.thread(id).cloned() else { return };
+        let Some(thread) = self.thread(id).cloned() else {
+            return;
+        };
         if self.active_thread_id() == Some(id) {
-            let to = thread.workspace_id().map_or(ActiveTarget::Home, |w| ActiveTarget::Workspace(w.to_owned()));
+            let to = thread.workspace_id().map_or(ActiveTarget::Home, |w| {
+                ActiveTarget::Workspace(w.to_owned())
+            });
             self.activate(to);
         }
         if let Thread::Terminal(t) = &thread {
@@ -291,9 +323,18 @@ impl<E: Effects> ThreadStore<E> {
         if n == 0 {
             return;
         }
-        let idx = self.threads.iter().position(|t| Some(t.id()) == self.active_thread_id());
+        let idx = self
+            .threads
+            .iter()
+            .position(|t| Some(t.id()) == self.active_thread_id());
         let next = match idx {
-            None => if dir >= 0 { 0 } else { n - 1 },
+            None => {
+                if dir >= 0 {
+                    0
+                } else {
+                    n - 1
+                }
+            }
             Some(i) => (i as i32 + dir).rem_euclid(n),
         };
         let id = self.threads[next as usize].id().to_owned();
@@ -315,7 +356,8 @@ impl<E: Effects> ThreadStore<E> {
         match e {
             SessionEvent::Title { title, .. } => {
                 // custom_title 存在则忽略（冻结）；空串忽略
-                if let (Some(Thread::Terminal(t)), Some(title)) = (self.thread_mut(&id), title.filter(|s| !s.is_empty()))
+                if let (Some(Thread::Terminal(t)), Some(title)) =
+                    (self.thread_mut(&id), title.filter(|s| !s.is_empty()))
                     && t.custom_title.is_none()
                 {
                     t.osc_title = Some(title);
@@ -324,7 +366,9 @@ impl<E: Effects> ThreadStore<E> {
             SessionEvent::Bell { .. } => {
                 // 非 active 时红点 + 通知
                 if self.active_thread_id() != Some(&id) {
-                    let Some(Thread::Terminal(t)) = self.thread_mut(&id) else { return };
+                    let Some(Thread::Terminal(t)) = self.thread_mut(&id) else {
+                        return;
+                    };
                     t.has_bell = true;
                     let snapshot = Thread::Terminal(t.clone());
                     let text = format!("「{}」等待注意", snapshot.title());
@@ -333,11 +377,19 @@ impl<E: Effects> ThreadStore<E> {
                 }
             }
             SessionEvent::Exit { code, .. } => {
-                let Some(Thread::Terminal(t)) = self.thread(&id) else { return };
+                let Some(Thread::Terminal(t)) = self.thread(&id) else {
+                    return;
+                };
                 let title = Thread::Terminal(t.clone()).title();
                 let snapshot = Thread::Terminal(t.clone());
                 // 退出是真实会话事件——非零码 err、正常退出 ok
-                self.push_notice(&snapshot, exit_tone(code), format!("「{title}」已退出"), None, None);
+                self.push_notice(
+                    &snapshot,
+                    exit_tone(code),
+                    format!("「{title}」已退出"),
+                    None,
+                    None,
+                );
                 if self.effects.close_on_exit() {
                     self.close(&id);
                 } else if let Some(Thread::Terminal(row)) = self.thread_mut(&id) {
@@ -352,7 +404,14 @@ impl<E: Effects> ThreadStore<E> {
     // ── 通知中心 ─────────────────────────────────────────────────
 
     /// 通知落列：sub = 归属工作区名 / 「未归属」+ 可选原因（「dotfiles · BEL」格式）。容量 50 丢最旧。
-    fn push_notice(&mut self, t: &Thread, tone: NoticeTone, text: String, reason: Option<&str>, view_id: Option<&str>) {
+    fn push_notice(
+        &mut self,
+        t: &Thread,
+        tone: NoticeTone,
+        text: String,
+        reason: Option<&str>,
+        view_id: Option<&str>,
+    ) {
         let ws_name = t
             .workspace_id()
             .and_then(|id| self.workspace(id))
@@ -387,7 +446,9 @@ impl<E: Effects> ThreadStore<E> {
     /// 条目点击：标已读 + 来源会话仍在则 activate 跳转（已关闭仅标已读——路由不得指向不存在的行）；
     /// 带 view_id 时一并激活该视图直达现场。
     pub fn open_notice(&mut self, notice_id: &str) {
-        let Some(n) = self.notices.iter_mut().find(|n| n.id == notice_id) else { return };
+        let Some(n) = self.notices.iter_mut().find(|n| n.id == notice_id) else {
+            return;
+        };
         n.read = true;
         let (thread_id, view_id) = (n.thread_id.clone(), n.view_id.clone());
         if self.thread(&thread_id).is_some() {
@@ -403,7 +464,11 @@ impl<E: Effects> ThreadStore<E> {
     /// 新建工作区（name 空串回退 basename(path)）；返回 id。
     pub fn add_workspace(&mut self, name: &str, path: &str) -> String {
         let id = format!("w{}", self.effects.new_id());
-        let name = if name.trim().is_empty() { workspace_display_name(path) } else { name.trim().to_owned() };
+        let name = if name.trim().is_empty() {
+            workspace_display_name(path)
+        } else {
+            name.trim().to_owned()
+        };
         let created_at = self.effects.now();
         self.workspaces.push(Workspace {
             id: id.clone(),
@@ -436,8 +501,12 @@ impl<E: Effects> ThreadStore<E> {
         if self.workspace(id).is_none() {
             return;
         }
-        let victims: Vec<String> =
-            self.threads.iter().filter(|t| t.workspace_id() == Some(id)).map(|t| t.id().to_owned()).collect();
+        let victims: Vec<String> = self
+            .threads
+            .iter()
+            .filter(|t| t.workspace_id() == Some(id))
+            .map(|t| t.id().to_owned())
+            .collect();
         for v in victims {
             self.close(&v);
         }
@@ -452,7 +521,11 @@ impl<E: Effects> ThreadStore<E> {
     /// 切换工作区（点行）：恢复 last_session（存在则 activate，否则回工作区起始页）。不改 expanded。
     pub fn activate_workspace(&mut self, id: &str) {
         let Some(ws) = self.workspace(id) else { return };
-        let target = ws.last_session.as_ref().filter(|s| self.thread(s).is_some()).cloned();
+        let target = ws
+            .last_session
+            .as_ref()
+            .filter(|s| self.thread(s).is_some())
+            .cloned();
         self.activate(match target {
             Some(t) => ActiveTarget::Thread(t),
             None => ActiveTarget::Workspace(id.to_owned()),
@@ -496,7 +569,9 @@ impl<E: Effects> ThreadStore<E> {
     fn find_shell_view_owner(&self, session_id: u64) -> Option<(String, String)> {
         self.threads.iter().find_map(|t| {
             t.common().views.iter().find_map(|v| match v {
-                SessionView::Shell(s) if s.session_id == session_id => Some((t.id().to_owned(), s.id.clone())),
+                SessionView::Shell(s) if s.session_id == session_id => {
+                    Some((t.id().to_owned(), s.id.clone()))
+                }
                 _ => None,
             })
         })
@@ -506,7 +581,9 @@ impl<E: Effects> ThreadStore<E> {
     /// 后台会话的程序化调用不清标记。
     pub fn activate_session_view(&mut self, thread_id: &str, view_id: &str) {
         let active = self.active_thread_id() == Some(thread_id);
-        let Some(t) = self.thread_mut(thread_id) else { return };
+        let Some(t) = self.thread_mut(thread_id) else {
+            return;
+        };
         if view_id != MAIN_VIEW_ID && !t.common().views.iter().any(|v| v.id() == view_id) {
             return;
         }
@@ -518,8 +595,12 @@ impl<E: Effects> ThreadStore<E> {
 
     /// 视图移除单点：shell 视图连带销毁 PTY；关的是当前视图 → 回退左邻或主面。
     fn remove_session_view(&mut self, thread_id: &str, view_id: &str) {
-        let Some(t) = self.thread(thread_id) else { return };
-        let Some(i) = t.common().views.iter().position(|v| v.id() == view_id) else { return };
+        let Some(t) = self.thread(thread_id) else {
+            return;
+        };
+        let Some(i) = t.common().views.iter().position(|v| v.id() == view_id) else {
+            return;
+        };
         if let SessionView::Shell(s) = &t.common().views[i] {
             self.effects.destroy_session(s.session_id);
         }
@@ -527,8 +608,10 @@ impl<E: Effects> ThreadStore<E> {
         let c = t.common_mut();
         c.views.remove(i);
         if c.active_view_id.as_deref() == Some(view_id) {
-            c.active_view_id =
-                Some(i.checked_sub(1).map_or_else(|| MAIN_VIEW_ID.to_owned(), |j| c.views[j].id().to_owned()));
+            c.active_view_id = Some(
+                i.checked_sub(1)
+                    .map_or_else(|| MAIN_VIEW_ID.to_owned(), |j| c.views[j].id().to_owned()),
+            );
         }
     }
 
@@ -541,12 +624,23 @@ impl<E: Effects> ThreadStore<E> {
 
     /// 打开文件视图（`file:<path>` 去重复用）。
     pub fn open_session_file(&mut self, thread_id: &str, path: &str) {
-        let Some(t) = self.thread_mut(thread_id) else { return };
+        let Some(t) = self.thread_mut(thread_id) else {
+            return;
+        };
         let id = format!("file:{path}");
         let c = t.common_mut();
         if !c.views.iter().any(|v| v.id() == id) {
-            let label = path.rsplit(['/', '\\']).next().filter(|s| !s.is_empty()).unwrap_or(path).to_owned();
-            c.views.push(SessionView::File { id: id.clone(), label, path: path.to_owned() });
+            let label = path
+                .rsplit(['/', '\\'])
+                .next()
+                .filter(|s| !s.is_empty())
+                .unwrap_or(path)
+                .to_owned();
+            c.views.push(SessionView::File {
+                id: id.clone(),
+                label,
+                path: path.to_owned(),
+            });
         }
         c.active_view_id = Some(id);
     }
@@ -557,7 +651,11 @@ impl<E: Effects> ThreadStore<E> {
         Some(
             t.as_terminal()
                 .map(|t| t.cwd.clone())
-                .or_else(|| t.workspace_id().and_then(|id| self.workspace(id)).map(|w| w.path.clone()))
+                .or_else(|| {
+                    t.workspace_id()
+                        .and_then(|id| self.workspace(id))
+                        .map(|w| w.path.clone())
+                })
                 .unwrap_or_else(|| self.effects.default_cwd()),
         )
     }
@@ -597,13 +695,20 @@ impl<E: Effects> ThreadStore<E> {
         {
             let c = t.common_mut();
             if !c.views.iter().any(|v| v.id() == "git") {
-                c.views.push(SessionView::Git { id: "git".into(), label: "Git 图".into() });
+                c.views.push(SessionView::Git {
+                    id: "git".into(),
+                    label: "Git 图".into(),
+                });
             }
             c.active_view_id = Some("git".into());
             return;
         }
         // 非会话上下文（工作区页 / 未归属会话 / 起始页）→ 工作区 pane_tab 路径
-        let Some(id) = self.active_workspace_id().map(str::to_owned).or_else(|| self.workspaces.first().map(|w| w.id.clone())) else {
+        let Some(id) = self
+            .active_workspace_id()
+            .map(str::to_owned)
+            .or_else(|| self.workspaces.first().map(|w| w.id.clone()))
+        else {
             return;
         };
         if let Some(w) = self.workspaces.iter_mut().find(|w| w.id == id) {
@@ -615,7 +720,9 @@ impl<E: Effects> ThreadStore<E> {
 
     /// 视图 PTY 事件：title / bell / exit 归属到所属 shell 视图。
     fn handle_shell_view_event(&mut self, thread_id: &str, view_id: &str, e: &SessionEvent) {
-        let Some(thread) = self.thread(thread_id).cloned() else { return };
+        let Some(thread) = self.thread(thread_id).cloned() else {
+            return;
+        };
         let thread_active = self.active_thread_id() == Some(thread_id);
         let view_title = |s: &Self| -> String {
             s.thread(thread_id)
@@ -625,14 +732,21 @@ impl<E: Effects> ThreadStore<E> {
         };
         match e {
             SessionEvent::Title { title, .. } => {
-                let Some(title) = title.as_ref().filter(|s| !s.is_empty()) else { return };
+                let Some(title) = title.as_ref().filter(|s| !s.is_empty()) else {
+                    return;
+                };
                 if let Some(v) = self.shell_view_mut(thread_id, view_id) {
                     v.osc_title = Some(title.clone());
                 }
             }
             SessionEvent::Bell { .. } => {
                 // 视图正在显示（会话 active 且它是活动视图）→ 同主面规则：不落标记
-                let shown = thread.common().active_view_id.as_deref().unwrap_or(MAIN_VIEW_ID) == view_id;
+                let shown = thread
+                    .common()
+                    .active_view_id
+                    .as_deref()
+                    .unwrap_or(MAIN_VIEW_ID)
+                    == view_id;
                 if thread_active && shown {
                     return;
                 }
@@ -667,17 +781,23 @@ impl<E: Effects> ThreadStore<E> {
     }
 
     fn shell_view_mut(&mut self, thread_id: &str, view_id: &str) -> Option<&mut ShellView> {
-        self.thread_mut(thread_id)?.common_mut().views.iter_mut().find_map(|v| match v {
-            SessionView::Shell(s) if s.id == view_id => Some(s),
-            _ => None,
-        })
+        self.thread_mut(thread_id)?
+            .common_mut()
+            .views
+            .iter_mut()
+            .find_map(|v| match v {
+                SessionView::Shell(s) if s.id == view_id => Some(s),
+                _ => None,
+            })
     }
 
     // ── chat / acp ───────────────────────────────────────────────
 
     fn assert_workspace(&self, id: Option<&str>) -> Result<(), StoreError> {
         match id {
-            Some(id) if self.workspace(id).is_none() => Err(StoreError::UnknownWorkspace(id.to_owned())),
+            Some(id) if self.workspace(id).is_none() => {
+                Err(StoreError::UnknownWorkspace(id.to_owned()))
+            }
             _ => Ok(()),
         }
     }
@@ -693,14 +813,22 @@ impl<E: Effects> ThreadStore<E> {
             created_at,
             messages: vec![],
             pending_reply: false,
-            common: ThreadCommon { workspace_id: workspace_id.map(Into::into), ..Default::default() },
+            common: ThreadCommon {
+                workspace_id: workspace_id.map(Into::into),
+                ..Default::default()
+            },
         }));
         self.activate(ActiveTarget::Thread(id.clone()));
         Ok(id)
     }
 
     /// 新建 ACP thread + activate。label 来自调用方的 settings 快照——store 不读 settings。
-    pub fn create_acp_thread(&mut self, agent_id: &str, label: &str, workspace_id: Option<&str>) -> Result<String, StoreError> {
+    pub fn create_acp_thread(
+        &mut self,
+        agent_id: &str,
+        label: &str,
+        workspace_id: Option<&str>,
+    ) -> Result<String, StoreError> {
         self.assert_workspace(workspace_id)?;
         let id = format!("a{}", self.effects.new_id());
         let created_at = self.effects.now();
@@ -712,7 +840,10 @@ impl<E: Effects> ThreadStore<E> {
             messages: vec![],
             pending_reply: false,
             auto_title: true,
-            common: ThreadCommon { workspace_id: workspace_id.map(Into::into), ..Default::default() },
+            common: ThreadCommon {
+                workspace_id: workspace_id.map(Into::into),
+                ..Default::default()
+            },
         }));
         self.activate(ActiveTarget::Thread(id.clone()));
         Ok(id)
@@ -723,10 +854,18 @@ impl<E: Effects> ThreadStore<E> {
         format!("m{}", self.msg_seq)
     }
 
-    fn messages_mut(&mut self, id: &str, kind: ConversationKind) -> Option<(&mut Vec<ChatMessage>, &mut bool)> {
+    fn messages_mut(
+        &mut self,
+        id: &str,
+        kind: ConversationKind,
+    ) -> Option<(&mut Vec<ChatMessage>, &mut bool)> {
         match (self.thread_mut(id)?, kind) {
-            (Thread::Chat(t), ConversationKind::Chat) => Some((&mut t.messages, &mut t.pending_reply)),
-            (Thread::Acp(t), ConversationKind::Acp) => Some((&mut t.messages, &mut t.pending_reply)),
+            (Thread::Chat(t), ConversationKind::Chat) => {
+                Some((&mut t.messages, &mut t.pending_reply))
+            }
+            (Thread::Acp(t), ConversationKind::Acp) => {
+                Some((&mut t.messages, &mut t.pending_reply))
+            }
             _ => None,
         }
     }
@@ -734,12 +873,22 @@ impl<E: Effects> ThreadStore<E> {
     /// 会话消息状态机第一步（chat / acp 同构）：空串 / pending 中忽略；user 落列 + pending_reply=true；
     /// 首条 user 消息截断改写 title（仅哨兵期间；手改后冻结）。
     /// 返回 `None` = 被忽略；`Some` = 调用方把 `text` 交给 agent，结果回调 [`Self::finish_send`]。
-    pub fn begin_send(&mut self, thread_id: &str, raw: &str, kind: ConversationKind) -> Option<SendRequest> {
+    pub fn begin_send(
+        &mut self,
+        thread_id: &str,
+        raw: &str,
+        kind: ConversationKind,
+    ) -> Option<SendRequest> {
         let text = raw.trim();
         if text.is_empty() {
             return None; // 空串忽略（同 rename）
         }
-        let msg = ChatMessage { id: self.next_msg_id(), role: MessageRole::User, text: text.to_owned(), at: self.effects.now() };
+        let msg = ChatMessage {
+            id: self.next_msg_id(),
+            role: MessageRole::User,
+            text: text.to_owned(),
+            at: self.effects.now(),
+        };
         let msg_id = msg.id.clone();
         let (msgs, pending) = self.messages_mut(thread_id, kind)?;
         if *pending {
@@ -749,7 +898,11 @@ impl<E: Effects> ThreadStore<E> {
         msgs.push(msg);
         *pending = true;
         let is_first_user = msgs.iter().all(|m| !m.is_user() || m.id == msg_id);
-        let truncated = if text.chars().count() > 32 { format!("{}…", text.chars().take(32).collect::<String>()) } else { text.to_owned() };
+        let truncated = if text.chars().count() > 32 {
+            format!("{}…", text.chars().take(32).collect::<String>())
+        } else {
+            text.to_owned()
+        };
         let agent_id = match self.thread_mut(thread_id) {
             Some(Thread::Chat(t)) => {
                 // 首条 user 消息定标题（title === 默认值哨兵；手改后冻结）
@@ -767,7 +920,12 @@ impl<E: Effects> ThreadStore<E> {
             }
             _ => None,
         };
-        Some(SendRequest { thread_id: thread_id.to_owned(), kind, text: text.to_owned(), agent_id })
+        Some(SendRequest {
+            thread_id: thread_id.to_owned(),
+            kind,
+            text: text.to_owned(),
+            agent_id,
+        })
     }
 
     /// 会话消息的只读投影（chat / acp）；终端会话返回 `None`。
@@ -809,7 +967,12 @@ impl<E: Effects> ThreadStore<E> {
 
     /// 第二步：回复落列。若有 streaming 行则定稿替换它；否则新建 assistant 行。
     /// thread 已 close → 丢弃回复（不复活已删行）。
-    pub fn finish_send(&mut self, thread_id: &str, kind: ConversationKind, reply: Result<String, String>) {
+    pub fn finish_send(
+        &mut self,
+        thread_id: &str,
+        kind: ConversationKind,
+        reply: Result<String, String>,
+    ) {
         let (text, error) = match reply {
             Ok(t) => (t, false),
             Err(e) => (format!("发送失败：{e}"), true),
@@ -832,7 +995,12 @@ impl<E: Effects> ThreadStore<E> {
 
     /// ACP 连接建立失败（如配置被删）：落 error 行并复位 pending。注意此时 begin_send 已落了 user 消息。
     pub fn fail_acp_connect(&mut self, thread_id: &str, message: &str) {
-        self.push_reply(thread_id, ConversationKind::Acp, format!("无法建立 ACP 连接：{message}"), true);
+        self.push_reply(
+            thread_id,
+            ConversationKind::Acp,
+            format!("无法建立 ACP 连接：{message}"),
+            true,
+        );
     }
 
     fn push_reply(&mut self, thread_id: &str, kind: ConversationKind, text: String, error: bool) {
@@ -865,5 +1033,9 @@ fn clear_view_bell(t: &mut Thread) {
 
 /// exit 事件 → notice 语气（0 / 无码 = 正常退出 ok；非零 err）。
 fn exit_tone(code: Option<i32>) -> NoticeTone {
-    if matches!(code, Some(c) if c != 0) { NoticeTone::Err } else { NoticeTone::Ok }
+    if matches!(code, Some(c) if c != 0) {
+        NoticeTone::Err
+    } else {
+        NoticeTone::Ok
+    }
 }

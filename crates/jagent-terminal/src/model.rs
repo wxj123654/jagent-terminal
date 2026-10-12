@@ -9,7 +9,7 @@
 //!   aggregates the rest (`Wakeup` flagged separately, cap 100 events)
 //! - re-emits `Event::{Title, Bell, Exit, Wakeup}` on the gpui event bus
 //!   (views subscribe for repaints) and forwards session-level events to the
-//!   global sink in [`crate::pool`] (napi ThreadsafeFunction in Phase 1).
+//!   global sink in [`crate::pool`]（app 侧 `bridge_terminal_events` 订阅）.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -340,7 +340,7 @@ impl TerminalModel {
         cx.emit(Event::Wakeup);
     }
 
-    // ---- public API (pool / view / napi shell) ----
+    // ---- public API (pool / view / embedding app) ----
 
     /// Write raw bytes to the PTY (keyboard input, init command).
     pub fn write_to_pty(&self, bytes: &[u8]) {

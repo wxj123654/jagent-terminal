@@ -16,6 +16,10 @@ pub mod store;
 pub mod types;
 
 pub use graph::{CommitLine, GitGraphData, GraphRow, LaneSegment, UNSET};
+pub use parse::{
+    LineBuffer, parse_branches, parse_changed_files, parse_log_line, parse_status_entries,
+};
 pub use store::{DetailRequest, GitGraphStatus, GitGraphStore, MountPlan, RootPlan, Ticket};
-pub use parse::{LineBuffer, parse_branches, parse_changed_files, parse_log_line, parse_status_entries};
-pub use types::{ChangedFile, GitBranch, GraphCommit, WorktreeFile, WorktreeFileKind, WorktreeStatus};
+pub use types::{
+    ChangedFile, GitBranch, GraphCommit, WorktreeFile, WorktreeFileKind, WorktreeStatus,
+};

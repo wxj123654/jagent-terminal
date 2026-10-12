@@ -16,14 +16,27 @@ use serde_json::{Value, json};
 /// 十六进制 `#rrggbb` / `#rrggbbaa` → [`Hsla`]。`rgba(r, g, b, a)` 用 [`rgba_css`]。
 pub fn hex(s: &str) -> Hsla {
     let h = s.trim_start_matches('#');
-    let byte = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).expect("合法十六进制") as f32 / 255.0;
+    let byte =
+        |i: usize| u8::from_str_radix(&h[i..i + 2], 16).expect("合法十六进制") as f32 / 255.0;
     let a = if h.len() == 8 { byte(6) } else { 1.0 };
-    Rgba { r: byte(0), g: byte(2), b: byte(4), a }.into()
+    Rgba {
+        r: byte(0),
+        g: byte(2),
+        b: byte(4),
+        a,
+    }
+    .into()
 }
 
 /// `rgba(97, 175, 239, 0.15)` → [`Hsla`]。
 pub fn rgba_css(r: u8, g: u8, b: u8, a: f32) -> Hsla {
-    Rgba { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0, a }.into()
+    Rgba {
+        r: r as f32 / 255.0,
+        g: g as f32 / 255.0,
+        b: b as f32 / 255.0,
+        a,
+    }
+    .into()
 }
 
 /// 暗色色板（字面值与旧 tokens.ts 的 COLORS 逐项一致）。
@@ -66,8 +79,9 @@ pub mod colors {
 }
 
 /// git graph lane 色板：8 色轮转，冷色调和（旧 `GRAPH_LANE_COLORS`）。
-pub const GRAPH_LANE_COLORS: [&str; 8] =
-    ["#61afef", "#98c379", "#c678dd", "#e5c07b", "#56b6c2", "#e06c75", "#d19a66", "#be5046"];
+pub const GRAPH_LANE_COLORS: [&str; 8] = [
+    "#61afef", "#98c379", "#c678dd", "#e5c07b", "#56b6c2", "#e06c75", "#d19a66", "#be5046",
+];
 
 /// 布局尺寸（旧 `SIZES`；原型 CSS 定稿值）。单位 px。
 pub mod sizes {
@@ -190,7 +204,10 @@ pub fn theme_config_json(name: &str) -> Value {
         ("title_bar.background", TITLEBAR),
         ("title_bar.border", BORDER),
     ];
-    let colors: serde_json::Map<String, Value> = pairs.iter().map(|(k, v)| ((*k).to_owned(), json!(v))).collect();
+    let colors: serde_json::Map<String, Value> = pairs
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), json!(v)))
+        .collect();
     json!({
         "name": name,
         "themes": [{ "name": name, "mode": "dark", "is_default": true, "colors": colors }],
@@ -205,7 +222,9 @@ mod tests {
     fn hex_parses_rgb_and_rgba() {
         let c = hex("#61afef");
         let r: Rgba = c.into();
-        assert!((r.r - 0x61 as f32 / 255.0).abs() < 1e-3 && (r.b - 0xef as f32 / 255.0).abs() < 1e-3);
+        assert!(
+            (r.r - 0x61 as f32 / 255.0).abs() < 1e-3 && (r.b - 0xef as f32 / 255.0).abs() < 1e-3
+        );
         assert!((r.a - 1.0).abs() < 1e-6);
         let a: Rgba = hex("#61afef40").into();
         assert!((a.a - 0x40 as f32 / 255.0).abs() < 1e-3);
@@ -222,7 +241,42 @@ mod tests {
     #[test]
     fn every_palette_value_is_a_valid_hex_colour() {
         use colors::*;
-        for v in [APP, PANE, SIDEBAR, TITLEBAR, TERMINAL, SURFACE, SURFACE_HOVER, SURFACE_ACTIVE, TILE, TILE_HOVER, OVERLAY, INPUT_BG, CLOSE_HOVER, TEXT, TEXT_BRIGHT, MUTED, FAINT, ACCENT, ACCENT_HOVER, FOCUS_BORDER, CYAN, AMBER, TERMINAL_KIND, ACP_KIND, BELL, BORDER, BORDER_SUBTLE, EXITED, G300, STATUS_RUNNING, STATUS_NEED, STATUS_DONE, STATUS_ERROR, TAB_STRIP] {
+        for v in [
+            APP,
+            PANE,
+            SIDEBAR,
+            TITLEBAR,
+            TERMINAL,
+            SURFACE,
+            SURFACE_HOVER,
+            SURFACE_ACTIVE,
+            TILE,
+            TILE_HOVER,
+            OVERLAY,
+            INPUT_BG,
+            CLOSE_HOVER,
+            TEXT,
+            TEXT_BRIGHT,
+            MUTED,
+            FAINT,
+            ACCENT,
+            ACCENT_HOVER,
+            FOCUS_BORDER,
+            CYAN,
+            AMBER,
+            TERMINAL_KIND,
+            ACP_KIND,
+            BELL,
+            BORDER,
+            BORDER_SUBTLE,
+            EXITED,
+            G300,
+            STATUS_RUNNING,
+            STATUS_NEED,
+            STATUS_DONE,
+            STATUS_ERROR,
+            TAB_STRIP,
+        ] {
             assert!(v.starts_with('#') && (v.len() == 7 || v.len() == 9), "{v}");
             let _ = hex(v); // 不 panic
         }
@@ -235,17 +289,38 @@ mod tests {
         assert_eq!(colors::ACCENT, "#61afef");
         assert_eq!(colors::BELL, "#e06c75");
         assert_eq!(colors::BORDER_SUBTLE, "#363e49");
-        assert_eq!(GRAPH_LANE_COLORS[0], colors::ACCENT, "lane 0 与 accent 同色");
-        assert_eq!(GRAPH_LANE_COLORS.len(), 8, "与 GitGraphData 的默认色板长度一致");
+        assert_eq!(
+            GRAPH_LANE_COLORS[0],
+            colors::ACCENT,
+            "lane 0 与 accent 同色"
+        );
+        assert_eq!(
+            GRAPH_LANE_COLORS.len(),
+            8,
+            "与 GitGraphData 的默认色板长度一致"
+        );
     }
 
     #[test]
     fn theme_json_is_a_single_dark_default_theme_with_the_core_keys() {
         let v = theme_config_json("j-agent");
         let t = &v["themes"][0];
-        assert_eq!((t["mode"].as_str(), t["is_default"].as_bool()), (Some("dark"), Some(true)));
+        assert_eq!(
+            (t["mode"].as_str(), t["is_default"].as_bool()),
+            (Some("dark"), Some(true))
+        );
         let c = t["colors"].as_object().unwrap();
-        for k in ["background", "foreground", "border", "primary.background", "sidebar.background", "title_bar.background", "list.active.background", "tab_bar.background", "danger.background"] {
+        for k in [
+            "background",
+            "foreground",
+            "border",
+            "primary.background",
+            "sidebar.background",
+            "title_bar.background",
+            "list.active.background",
+            "tab_bar.background",
+            "danger.background",
+        ] {
             assert!(c.contains_key(k), "缺 {k}");
         }
         assert_eq!(c["background"], colors::APP);
@@ -268,9 +343,12 @@ pub fn install(cx: &mut gpui::App) -> Result<(), String> {
     use gpui_component::{Theme, ThemeConfig, ThemeMode, ThemeRegistry, ThemeSet};
     let json = theme_config_json("j-agent").to_string();
     // 先校验再注册：解析失败要在这里炸出明确原因，而不是静默回退默认主题。
-    let set: ThemeSet = serde_json::from_str(&json).map_err(|e| format!("主题 JSON 不合法：{e}"))?;
+    let set: ThemeSet =
+        serde_json::from_str(&json).map_err(|e| format!("主题 JSON 不合法：{e}"))?;
     let cfg: ThemeConfig = set.themes.into_iter().next().ok_or("主题集为空")?;
-    ThemeRegistry::global_mut(cx).load_themes_from_str(&json).map_err(|e| e.to_string())?;
+    ThemeRegistry::global_mut(cx)
+        .load_themes_from_str(&json)
+        .map_err(|e| e.to_string())?;
     Theme::global_mut(cx).apply_config(&std::rc::Rc::new(cfg));
     Theme::change(ThemeMode::Dark, None, cx);
     cx.set_global(Tokens::dark());

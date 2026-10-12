@@ -1,894 +1,124 @@
-# j-agent 代码架构
+# j-agent 架构契约（纯 Rust gpui）
 
-状态：**已拍板**（2026-09-02；D7 声明式清单、R1/R2 契约回写经用户确认；落地前最后人工审读中）  
-依据：`docs/agent-plane-layout.md` · `docs/gpuix-zed-terminal-fusion.md` · `docs/settings-ui.md`（三份已拍板契约）  
-参考：GPUIX（CustomElement 体系源码）· Zed `crates/terminal` / `terminal_view` / `agent_ui` · muxel / Paneflow（单 crate 按 feature 组织）  
-定位：**本文是代码实现契约**——模块划分、接口签名、依赖方向、测试面。落地时对齐本文，而不是重新发明结构。
+> 本文是当前架构的权威描述（2026-10 P8 起生效）。重构过程与决策见 `docs/gpui-rewrite.md`；
+> 迁移前的 React/GPUIX 架构与行为规格保留在 git 历史（commit `aadecd4` 及之前的
+> `packages/`、`docs/` 旧文档），需要对照旧行为时去历史里查，不在工作树维护两份。
+>
+> 领域词汇表见 `CONTEXT.md`；改代码先读对应章节，签名级契约以本文为准。
 
----
+## 1. 分层与依赖方向
 
-## 0. 设计原则（本项目版）
+```
+crates/jagent-app      二进制 j-agent：Entity/Render 视图、Action、主题、窗口、
+   │                   crash sidecar、watchdog、ACP 进程 IO
+   ├──> crates/jagent-core     纯逻辑：settings/threads/workspaces/git/acp 协议。
+   │                           不依赖 gpui，普通 #[test] 即可覆盖
+   └──> crates/jagent-terminal 终端栈：TerminalPool / TerminalModel / PTY /
+                               vendored gpui-terminal 绘制（alacritty_terminal）
+```
 
-| 原则 | 本项目的表达 |
+- **core 与 terminal 互不依赖**；app 是唯一聚合点。
+- **规则在 core，视图在 app**：app 只做「把 core 状态画出来、把输入事件翻译成
+  core 方法调用」。视图层不放业务规则；core 不 import gpui。
+- 版本与依赖治理：gpui 系列 = 精确锁定快照（`gpui-pre =0.3.8`、
+  `gpui-component/gpui-base =0.7.1`），升级整体进行，见 AGENTS.md 规则 5 与
+  `docs/p0-results.md` §0 的核实记录。
+
+## 2. jagent-core（纯逻辑）
+
+| 模块 | 职责 | 关键类型 |
+|---|---|---|
+| `threads/model.rs` | 会话域数据模型 | `Thread`（terminal/chat/acp 判别联合）、`SessionView`、`SessionNotice`、`Workspace`、`ActiveTarget`、`PaneTab` |
+| `threads/store.rs` | 会话域唯一事实源：spawn/activate/close/rename/cycle/会话视图/通知/工作区操作的全部规则 | `ThreadStore<E: Effects>` |
+| `threads/workspaces.rs` | state.json 读写、默认工作区、归属派生 | `Workspace` |
+| `threads/conversation.rs` | chat/acp 共享消息规则、EchoAgent 回复 | `Conversation` |
+| `settings/` | schema（字段级容错、未知键保留）、store（合并写+回滚）、file（原子写） | `SettingsStore`、`SETTING_DEFS` |
+| `presets.rs` | 内置/自定义预设 CRUD 规则 | — |
+| `git/` | cli（进程边界）/ parse / graph（lane 状态机）/ store（图状态+流式加载 ticket）/ geometry（行高 lane 宽列宽）/ actions（argv 规则）/ format | `GitGraphStore`、`Ticket` |
+| `acp.rs` | ACP 协议层：行分隔 JSON-RPC 编解码 + turn 状态机。进程 IO 在 app | — |
+| `new_session.rs` | 新建会话弹窗数据模型（分组/筛选/归属约束） | — |
+
+**Effects 注入是 core 的测试面**：`ThreadStore<E: Effects>` 的副作用（spawn PTY、
+notify、写盘）全部经 `Effects` trait 发出；生产实现在 app（`state.rs::GuiEffects`，
+notify 目前只记账），测试注入 fake 断言调用序列。新增副作用必须走 Effects，
+不得在 core 直接碰进程/时钟/文件。
+
+配置文件兼容性：`settings.json` / `state.json` 与旧 TS 实现互读（serde_json
+preserve_order + 未知键原样往返），有回归测试锁定。
+
+## 3. jagent-terminal（终端栈）
+
+结构自 Phase 0 起未变（vendored gpui-terminal + pool/model/pty），P1 迁到
+`gpui-pre` 时源码零改动。对外只有根部 re-export 单面；六 pub mod 收私有。
+`TerminalPool` 是 gpui Global：会话按 sessionId 持有，**retain 语义**——会话比
+视图活得久，切走后 PTY 照跑，BEL/OSC/Exit 事件照发。
+
+## 4. jagent-app（视图与装配）
+
+| 模块 | 职责 |
 |---|---|
-| 深模块：小接口后面大量行为 | `<terminal>` 元素 9 个名字的接口 ≈ 一个完整终端仿真器；ThreadStore 6 个方法吃掉全部会话规则 |
-| seam 放在真有变化的地方 | Rust/JS 之间（语言变化）、surface 之间（5 种表面）、file adapter 之间（真盘 vs 内存测试） |
-| 一个 adapter = 假设性 seam；两个才拆 | 首期 crate 上限 2、包上限 2；shared types 包缓建 |
-| interface 即测试面 | ThreadStore / SettingsStore 纯 TS 可测；TerminalPool 经 napi seam 用 TestGpuixRenderer + 真 PTY 测 |
-| 删除测试 | 删 ThreadStore → 冻结/清红点/retain 规则在 N 个组件里重现 → 它在挣钱；删 native 壳 → 装配代码散进 app → 同 |
-
-**目录纪律：按 feature 组织，不按实现角色组织。**（muxel / Paneflow / Rust GUI 社区共识，亦即 2025–2026 的通用最佳实践）
-
----
-
-## 1. 总览
-
-```
-┌────────────────────────────────────────────────────────────────────┐
-│ packages/app（React 壳，JS 拥有会话）                                │
-│                                                                    │
-│   plane/          surfaces/           threads/         settings/   │
-│   AgentPlane      registry + 5 surface ThreadStore     SettingsStore│
-│   Sidebar/Pane    （Pane 整块替换）    （唯一事实源）    （json 事实源）│
-│        │               │                  │                │       │
-│        └─────── useSyncExternalStore ─────┴────────────────┘       │
-│                        main.tsx 装配 + 全局键位                       │
-└──────────────────────────┬─────────────────────────────────────────┘
-                           │ napi（唯一的跨语言 seam）
-┌──────────────────────────┴─────────────────────────────────────────┐
-│ Rust                                                               │
-│   packages/native（薄壳：createRenderer + registry 装配 + 3 个命令）  │
-│        │                                                           │
-│   crates/jagent-terminal（深库）                                    │
-│     TerminalPool ── pty.rs / view.rs(TerminalModel)                │
-│     examples/window.rs（Phase 0 验证载体）                           │
-└────────────────────────────────────────────────────────────────────┘
-```
-
-### 1.1 目录树（首期全量）
-
-```
-j-agent/
-├── docs/                              # 契约（已有）
-├── design/                            # 原型（已有）
-├── package.json                       # bun workspace：packages/*
-├── Cargo.toml                         # cargo workspace：packages/native + crates/*
-│
-├── crates/
-│   └── jagent-terminal/               # Rust 库：终端会话池 + 元素（无 napi 依赖）
-│       ├── src/
-│       │   ├── lib.rs                 #   mod 声明 + pub use
-│       │   ├── pool.rs                #   TerminalPool：会话表 + 事件转发
-│       │   ├── pty.rs                 #   PTY 生命周期（Zed tty/alacritty 模式；TERM/COLORTERM 默认在此）
-│       │   ├── model.rs               #   TerminalModel：Term + 设置 + 向上事件
-│       │   └── view.rs                #   终端绘制（依赖 gpui-terminal 或 vendored）
-│       ├── examples/
-│       │   └── window.rs              #   ★ Phase 0：独立 gpui 窗口验证
-│       └── Cargo.toml
-│
-├── packages/
-│   ├── native/                        # @jagent/native：napi 壳（<150 行目标）
-│   │   ├── src/lib.rs                 #   createRenderer / 3 个会话命令 / 事件注册
-│   │   ├── index.d.ts                 #   napi 生成（勿手改）
-│   │   ├── Cargo.toml                 #   依赖 jagent-terminal + gpuix Rust 源
-│   │   └── package.json
-│   │
-│   └── app/                           # React 应用（唯一前端包）
-│       ├── src/
-│       │   ├── main.tsx               #   装配 + 全局键位 + renderer 事件桥（纯装配：
-│       │   │                          #   域逻辑已出——采样/git 键位/持久化各归其域）
-│       │   ├── router.tsx             #   路由树（/ · /thread/$id · /settings）+
-│       │   │                          #   memory history + useActiveTarget + 手动桥（R-V1）
-│       │   ├── keybindings.ts         #   全局键位层 + Keybindings 类型派生
-│       │   │                          #   （schema 单源）+ createKeyboardSlot
-│       │   ├── plane/                 #   壳：AgentPlane / Pane（唯一表面调度）/
-│       │   │                          #   TitleBar / SessionTabs / planeKeyboard
-│       │   ├── sidebar/               #   侧栏族：Sidebar / WorkspaceList /
-│       │   │                          #   ThreadRow / ContextMenu / WorkspaceEmpty /
-│       │   │                          #   WorkspacePage（plane/ 拆分出，2026-09-18）
-│       │   ├── dialogs/               #   弹窗族：DialogHost + Crash/Error/Rename/
-│       │   │                          #   Search/Tool/Workspace 六弹窗 + dialogKeyboard
-│       │   ├── threads/               #   store.ts（类型契约 + interface + 装配；
-│       │   │                          #   唯一会话事实源）+ internal/（实现按簇：
-│       │   │                          #   ctx/sessionViews/notices/workspaceOps/
-│       │   │                          #   conversations——internal seam，接口不变）+
-│       │   │                          #   terminal.ts + presets.ts +
-│       │   │                          #   events.ts（SessionEvent 窄化）+ chat.ts
-│       │   │                          #   （ChatAgent seam + EchoAgent，T3.2）+
-│       │   │                          #   acp.ts（ACP v1 JSON-RPC 子进程客户端，
-│       │   │                          #   ChatAgent adapter，T3+.1）+
-│       │   │                          #   nativeDeps.ts（装配工厂）+
-│       │   │                          #   statePersistence.ts（state.json 写回）+
-│       │   │                          #   workspaces.ts（工作区模型 + state.json
-│       │   │                          #   schema/序列化，Phase W）
-│       │   ├── git/                   #   store.ts（GitGraphStore）+ worktree.ts +
-│       │   │                          #   useWorktree.ts（worktree 工作面 hook）+
-│       │   │                          #   cli.ts（进程边界）+ types.ts（域类型）+
-│       │   │                          #   deps.ts（真适配器装配）+ generation.ts
-│       │   │                          #   （代际判废）+ commands.ts（菜单动作派发）+
-│       │   │                          #   graphKeys.ts（git 域键位）+
-│       │   │                          #   graph.ts/graphSvg.ts/fileTree.ts/format.ts/
-│       │   │                          #   rowColumns.ts + components/GitGraphView +
-│       │   │                          #   components/WorkPanel（worktree 工作面）
-│       │   ├── fs/                    #   readTextFile.ts——文件读取共享 adapter
-│       │   │                          #   （git/FileSurface 两个消费方 → seam 坐实）
-│       │   ├── surfaces/              #   registry + Terminal/Chat/Acp/File/Empty +
-│       │   │                          #   ConversationView（chat/acp 共享消息面）
-│       │   │                          #   ——surface 按 thread.kind 注册，设置面
-│       │   │                          #   不在此（settings 是路由表面，非 surface）
-│       │   ├── diagnostics/           #   PerfHud + perfSource（采样数学，native
-│       │   │                          #   打点注入）+ frameOverlay（设置→overlay 同步）
-│       │   ├── settings/              #   schema.ts（含 acpAgentCommandSummary）/
-│       │   │                          #   store.ts / file.ts / ui/（SettingsView +
-│       │   │                          #   SettingsSections + SettingRow +
-│       │   │                          #   PresetsSection + AcpAgentsSection +
-│       │   │                          #   listEditorParts + settingsKeyboard +
-│       │   │                          #   PhaseBadge——surfaces/ 归域，2026-09-18）
-│       │   └── errors/                #   bus/guards/native/crashReport/log/toastWire
-│       │                              #   + ErrorBoundary；测试统一收各 feature 的
-│       │                              #   __tests__/（src/ui/ 已删——业务件归域）
-│       └── package.json               #   依赖 @gpuix/react + @jagent/native
-│
-└── e2e/                               # GPUIX TestGpuixRenderer 测试（bun test）
-```
-
-### 1.2 依赖方向（JS 侧，禁止反向）
-
-```
-main.tsx ──> router.ts（路由树装配，不依赖任何业务模块）
-    ├──> plane · sidebar · dialogs ──> threads（读类型+调方法）· router（useActiveTarget）
-    │      └───> surfaces ──> threads（读类型）
-    │              └────────> settings（读值）        [仅 TerminalSurface]
-    │      └───> git ──> threads（读类型）            [WorkPanel/GitGraphView]
-    ├──> settings（构造 SettingsStore；ui/ 件读 store 接口）
-    └──> native（仅 main.tsx 与 threads/store.ts 的注入参数可见）
-```
-
-规则：
-- `threads` **不依赖** `surfaces`、`plane`、`sidebar`、`dialogs`（store 不知道谁在渲染它）；导航经注入的 `deps.navigate`（§3.2）
-- `router.ts` 只描述 URL 形状，不 import threads / surfaces / settings
-- `settings` 不依赖 `threads`（两个 store 平行；装配层桥接 `closeOnExit` 等）
-- `native` 的导入只允许出现在 `main.tsx`、`threads/nativeDeps.ts`（装配工厂，main 与 e2e 共用）与 `threads/store.ts` 的依赖注入参数类型里，及 `e2e/`（TestGpuixRenderer 环境）——跨语言 seam 的 JS 侧收口
-- `ui` 被所有人依赖，不依赖任何人
-
-**组件扩展方向**：见 [UI 组件扩展架构](./ui-extensions.md)。已确认以“补充 GPUIX，而非重新实现 GPUIX”为原则：React 包负责包装与组合，仅有实际原生缺口时新增可独立用于纯 GPUI 的 Rust 组件，通过宿主适配接入；两侧不要求一一对应。React 包 `@jagent/ui` 已落地（通用控件层已迁入；app `src/ui/` 已删除——SettingRow/PhaseBadge 归 surfaces，PerfHud 归 diagnostics，业务件一律随域），原生扩展尚未实施；唯一 native 宿主约束不变。
-
----
-
-## 2. 跨语言 seam（本文核心增量）
-
-契约草图（agent-plane-layout.md §9）把 `cwd/initCommand` 直接写在 `<terminal>` props 上。落地推演发现该草图**无法同时满足两条已拍板规则**：
-
-> GPUIX 生命周期：`React unmount → CustomElement::destroy()`，且每帧 `prune_missing` 清理不在 retained tree 的实例。  
-> 拍板规则 6：切 thread = 卸掉整块 body；后台 PTY **retain**。
-
-→ 若元素持有 PTY，「卸载 body」就是「销毁 PTY」，矛盾。且后台 BEL 发生时元素不存在，`onBell` 无处触发。
-
-**解法（Zed 同构：`terminals: HashMap` 持有实体，`BaseView::Terminal{terminal_id}` 只是引用）：Rust 侧全局 TerminalPool 持有会话；`<terminal>` 是按 sessionId 绑定的视图代理；会话事件走全局通道。**
-
-### 2.1 seam 全景
-
-```
-JS ──命令──────────────────────> Rust
-     createTerminalSession(opts) → sessionId     （spawn：PTY + initCommand 键入）
-     destroyTerminalSession(sessionId)           （关闭：杀进程 + 出池）
-     onSessionEvent(cb)                          （注册全局回调，init 时一次）
-
-JS ──元素 props（每帧 diff）──> Rust
-     <terminal sessionId font* cursorBlink palette onFocus>
-
-Rust ──会话事件（全局通道）────> JS
-     {type:'title'|'bell'|'exit', sessionId, ...}  （后台也送达）
-
-Rust ──元素事件（按 elementId）> JS
-     focus / blur                                （视图概念，仅前台有意义）
-```
-
-字节流不过 napi（fusion.md §4 硬约束 6 维持）。事件仍然只有 4 种，只是路由分两条。
-
-### 2.2 Rust 侧：TerminalPool
-
-```rust
-// crates/jagent-terminal/src/pool.rs
-pub struct TerminalPool {
-    sessions: HashMap<u64, Entity<TerminalModel>>,
-    next_id: AtomicU64,
-}
-// Mutex：OnceLock 只给共享引用；create/destroy 需要可变访问。
-// Phase 3 多窗口可直接共享同一池。
-pub static POOL: OnceLock<Mutex<TerminalPool>> = OnceLock::new();  // ← 已修订为 gpui Global，见 R5
-impl TerminalPool {
-    pub fn create(&mut self, opts: SpawnOptions, window, cx) -> Result<u64>;
-    pub fn destroy(&mut self, id: u64, cx) -> Result<()>;
-    pub fn get(&self, id: u64) -> Option<Entity<TerminalModel>>;
-}
-```
-
-- `create`：spawn PTY（opts.program 空 = 系统默认 shell）→ 建 `TerminalModel` → **initCommand 作为键入写入**：`write_to_pty(cmd)` + `write_to_pty(b"\x0d")`（Zed activation_script 先例；PowerShell 必须 `\r` 不能 `\r\n`，否则进续行模式）→ 订阅 model 事件转发到全局 `SessionEventFn`（napi ThreadsafeFunction）→ 返回 sessionId
-- `destroy`：kill 进程、drop entity、出池
-- 会话在池中存续与元素无关——**retain 由池保证，不 paint 由元素不存在保证**（GPUI immediate mode：不 render 就不画）
-
-```rust
-// 上行事件（pool 转发，model 的 gpui Event 订阅）
-pub enum SessionEvent {          // → JS payload
-    Title { id: u64, title: String },   // {type:'title', sessionId, title}
-    Bell  { id: u64 },                  // {type:'bell',  sessionId}
-    Exit  { id: u64, code: Option<i32> }// {type:'exit',  sessionId, code}
-}
-```
-
-（`code` 已贯通：alacritty `ChildExit(ExitStatus)` 携带退出码，model 区分
-`ChildExit`（带码）与裸 `Exit`（无码）两分支、先到先转发，2026-09-04 审查后实现。）
-
-### 2.3 napi 命令面（packages/native/src/lib.rs）
-
-```ts
-// 全部对 JS 暴露的跨语言面（index.d.ts 自动生成）
-type SpawnOptions = {
-  cwd?: string                       // 默认项目根/家目录
-  program?: string                   // 空 = 系统默认 shell
-  args?: string[]
-  env?: Record<string, string>       // 如 AMP_FORCE_BEL=1
-  initCommand?: string               // 键入，不是 exec（Rust create 内完成）
-  scrollbackLines?: number           // 会话属性，创建时定
-}
-function createTerminalSession(opts: SpawnOptions): Promise<number>   // → sessionId
-function destroyTerminalSession(sessionId: number): Promise<void>
-function onSessionEvent(cb: (e: SessionEvent) => void): void
-function pickDirectory(cb: (err: null, path: string | null) => void): void
-// Phase W3：原生目录选择（添加工作区「浏览…」）。macOS NSOpenPanel 在
-// JS/主线程跑模态（gpuix 在调用线程跑 GPUI，panel 自泵 AppKit）；Windows
-// IFileOpenDialog 走 detached STA 线程（notify.rs 同款）。TSF 两参契约同
-// onSessionEvent；JS 侧由 main.tsx 包装成 Promise<string|null> 并以 prop
-// 注入 App → Sidebar → WorkspaceList → AddWorkspaceForm（windowControls
-// 同款 seam；未注入则「浏览…」不渲染——测试面零注入）
-
-// createRenderer：包装 gpuix 构造 + registry.register(TerminalFactory)
-//                + init_zed_subsystems（theme/settings，一次性）
-```
-
-外观类参数（fontFamily/fontSize/cursorBlink/palette）**不进 SpawnOptions**——它们是即时生效的显示设置，走元素 props，改字号不重开会话。
-
-### 2.4 `<terminal>` 元素
-
-```tsx
-// TerminalSurface.tsx —— 全项目唯一写 <terminal> 的地方
-declare module 'react' {
-  namespace JSX {
-    interface IntrinsicElements {
-      terminal: TerminalElementProps
-    }
-  }
-}
-interface TerminalElementProps {
-  sessionId: number                    // 绑定池中会话（必需）
-  fontFamily?: string                  // 外观 props：设置变化 → 重渲染 → setCustomProp
-  fontSize?: number
-  cursorBlink?: boolean
-  palette?: string
-  focused?: boolean                    // activate 后请求焦点（Phase 1 验证 GPUIX 焦点模型后定稿）
-  onFocus?: (e: { sessionId: number }) => void
-  onBlur?: (e: { sessionId: number }) => void
-}
-```
-
-Rust 侧 element 职责：
-
-```rust
-// packages/native/src/elements/terminal.rs（元素实现的唯一住所——见 §8.2；
-// 曾在 crates/jagent-terminal 留有占位，2026-09-04 审查后删除）
-pub struct TerminalFactory;                    // element_type() = "terminal"
-pub struct TerminalElement {
-    session_id: Option<u64>,                   // set_prop("sessionId") 绑定
-    font: FontSettings,                        // set_prop 外观 → 转发 model
-    subscription: Option<Subscription>,        // 绑定时订阅 model 的 Wakeup → cx.notify()
-}
-impl CustomElement for TerminalElement {
-    fn render(ctx, window, cx) -> AnyElement {
-        // POOL.get(session_id) → view.rs 渲染 TerminalModel
-        // 无绑定/会话不存在 → 占位 div（灰底 "session ended"）
-    }
-    fn supported_props(&self) -> &'static [&'static str] { &["sessionId","fontFamily","fontSize","cursorBlink","palette","focused"] }
-    fn supported_events(&self) -> &'static [&'static str] { &["focus","blur"] }
-    fn destroy(&mut self) { /* 只解绑订阅。不动会话——retain 语义 */ }
-}
-```
-
-- **resize**：元素 render 时对比 model 的 `terminal_bounds` 与视口尺寸，变化则 `model.resize()`——不经 JS
-- **焦点**：优先把键盘交给 view 内部的 FocusHandle（硬约束 2）；`focused` prop 的取舍（GPUIX onKeyDown 抢键风险）是 Phase 1 的验证项之一，接口先留位
-
-### 2.5 对契约的修订声明（6 条）
-
-| # | 契约草图 | 本文修订 | 理由 |
-|---|---|---|---|
-| R1 | `<terminal cwd initCommand env …>` | props = `sessionId` + 外观；spawn 走 `createTerminalSession` | retain vs destroy 冲突（本节开头） |
-| R2 | `onTitle/onBell/onExit` 元素事件 | 走全局 `onSessionEvent`；元素只留 `onFocus/onBlur` | 后台 BEL 时元素不存在 |
-| R3 | `status: idle\|running\|needs-you\|exited` | `status: running\|exited` + `hasBell: boolean` | needs-you 与 hasBell 是同一事实的两种表达；展示层（§4 行为）只用 hasBell + exited，语义不变 |
-| R4 | thread id 未定义 | `t{sessionId}` / `c{uuid}` / `a{uuid}` | 混排列表 id 唯一；terminal id 可从事件直接定位 |
-| R5 | `POOL: OnceLock<Mutex<TerminalPool>>`（§2.2） | 会话表改 gpui `Global`（`cx.set_global`/`update_global`）；事件转发拆独立 `static OnceLock<SessionEventFn>` | gpui `Entity`/`Subscription` 非 `Send`，static Mutex 编译不过；SessionEventFn 本身 Send+Sync。语义不变（2026-09-02 Phase 0 实测定稿） |
-| R6 | view.rs「首选依赖 gpui-terminal」（§8.1） | **已拍板 vendoring**（render/input/colors/box_drawing 四文件 + TerminalView 重写为绑 model） | fork 与 crates.io 同号 0.2.2 不同 API，依赖也需 patch；且 D2 要求 view 不持 PTY，结构性改动不可避免（Phase 0 结论，docs/todo-archive.md 结论区） |
-
-R1/R2 已回写 `agent-plane-layout.md`（§2 所有权 / §9 组件树与 TerminalThread / §11 文档表）；`gpuix-zed-terminal-fusion.md` §3 L2 已加指针注记。
-
----
-
-## 3. threads/ —— ThreadStore
-
-### 3.1 类型
-
-```ts
-// threads/store.ts
-export type TerminalThread = {
-  kind: 'terminal'
-  id: string                        // `t${sessionId}`
-  sessionId: number
-  preset?: string                   // 对应 TerminalPreset.id（内置或自定义）
-  cwd: string
-  initCommand?: string              // 兜底标题用
-  oscTitle?: string                 // 来自 SessionEvent.title
-  customTitle?: string              // 手改后冻结（不再被 OSC 覆盖）
-  status: 'running' | 'exited'      // R3
-  exitCode?: number | null
-  hasBell: boolean                  // activate 该 thread 时清除
-  createdAt: number
-}
-export type ChatThread  = {   // T3.2 实装（消息 + pending 状态机在 store 一处）
-  kind:'chat'
-  id:string                    // `c${uuid}`（R4）
-  title:string                 // 默认 'Chat'；首条 user 消息截断改写，手改后冻结
-  createdAt:number
-  messages:ChatMessage[]       // threads/chat.ts 判别联合
-  pendingReply:boolean         // composer 禁发 + thinking 占位
-}
-export type AcpThread   = { kind:'acp';  id:string; title:string; createdAt:number;
-                         agentId:string; messages:ChatMessage[]; pendingReply:boolean;
-                         autoTitle:boolean }   // T3+.1 实装：消息面同 chat；
-                         //  agentId → settings.acpAgents；autoTitle = 首条消息
-                         //  自动改写 title 的哨兵（rename 置 false）
-export type Thread = TerminalThread | ChatThread | AcpThread
-
-// 会话内视图（原型 SessionView；Phase R）：三类 thread 均携带
-//   views?: SessionView[]        // git/file/shell 副页签（创建序）
-//   activeViewId?: string        // 'main' 虚拟 id = 主面
-export type SessionView =
-  | { id:string; kind:'git';  label:string }
-  | { id:string; kind:'file'; label:string; path:string }
-  | { id:string; kind:'shell'; label:string; sessionId:number; cwd:string;
-      oscTitle?:string; hasBell?:boolean;
-      status:'running'|'exited'; exitCode?:number|null }
-// shell 视图 = 独立真 PTY（spawnSession；sessionId ≠ thread.sessionId）：
-// closeSessionView/close 连带销毁；其 SessionEvent 按 view.sessionId 归属到
-// 所属视图（oscTitle/hasBell/status——语义与主会话对称，§3.3 表）
-
-export type ActiveTarget =             // 派生视图类型：从路由状态算出（§3.5）
-  | { type: 'thread'; id: string }    // 路由 /thread/$id
-  | { type: 'settings' }              // 路由 /settings（S1：特殊表面，非 thread）
-  | null                              // 路由 / → EmptyPresets
-
-export type ThreadState = {
-  threads: Thread[]                 // 混排，创建序
-  workspaces: Workspace[]           // 工作区列表（Phase W；持久化经 deps.persistWorkspaces
-                                    //  → 装配层写 ~/.j-agent/state.json）
-  lastUsedPreset: string | null     // 运行时态，不写 settings.json
-  notices: SessionNotice[]          // 通知中心事件流（D8；容量 50 丢最旧；不持久化）
-}                                   // active 不在此——导航唯一事实源是 router（§3.5）
-
-// 通知中心条目（D8）：bell/exit 等真实会话事件落列；点条目 → openNotice 跳转
-export type SessionNotice = {
-  id: string                        // `n${seq}`
-  tone: 'ok' | 'warn' | 'err'       // 图标色（原型三档）
-  text: string                      // 主文案（「X 等待注意」/「X 已退出」；视图 = oscTitle ?? label）
-  sub: string                       // 副文案（工作区名 · 原因，UI 层补相对时间）
-  at: number
-  threadId: string                  // 来源会话（已关闭则 openNotice 仅标已读）
-  read: boolean                     // activate 来源会话时自动标读
-  viewId?: string                   // 来源会话内视图（shell PTY 事件）→ openNotice 直达
-}
-
-// threads/workspaces.ts（Phase W；交互契约 design/workspace-plane.md）
-export type Workspace = {
-  id: string                        // `w${uuid}`
-  name: string                      // 默认 = basename(path)
-  path: string                      // 项目目录（会话 cwd 继承源）
-  expanded: boolean                 // 侧栏展开态（点箭头仅切换，不激活）
-  lastSession: string | null        // 上次打开的 thread id（activate 归属会话时更新）
-  createdAt: number
-}
-// Thread 三类均含可选 workspaceId?: string（归属；平铺不嵌套——cycle 环形语义
-//  与事件定位 R4 不变，分组是派生视图 workspaceSessions(threads, wsId)）、
-//  unread?: boolean（待办标记，activate 清除/行菜单可标回）与 pin?: boolean
-//  （置顶，组内排序首位）——后两者均不持久化
-// 持久化：独立 state.json（含运行时态 expanded/lastSession——语义是「应用状态」
-//  非「用户设置」，与 settings.json 分文件）；threads 不持久化（PTY 重启即死）；
-//  parse 逐行容错（坏行剔除不炸全局）；首启空 → 装配层建默认工作区(process.cwd())
-```
-
-`displayTitle(t)`（纯函数，threads/terminal.ts）：
-`customTitle ?? oscTitle ?? initCommand ?? "Terminal"`——契约 §4，一字不改。
-
-### 3.2 接口
-
-```ts
-// 依赖注入——store 本体零 native / 零 router 导入，纯 TS 可测
-type ThreadDeps = {
-  spawnSession: (o: SpawnOptions) => Promise<number>
-  destroySession: (id: number) => Promise<void>
-  navigate: (t: ActiveTarget) => void          // 路由跳转薄包装（装配层 = router.navigate）
-  notify: (t: Thread) => void                  // 桌面通知（读 settings.desktop 的逻辑在装配层；
-                                               //  Phase 2 定 = Rust win32 toast；入参放宽到
-                                               //  Thread——shell 视图 PTY 的 bell 也可能属于
-                                               //  chat/acp 会话）
-  closeOnExit: () => boolean                   // 读 settings 终端区（装配层桥接）
-  presetOf: (id: string) => TerminalPreset | undefined
-  chatAgent: ChatAgent                          // chat 后端 seam（T3.2；默认 EchoAgent，
-                                                //  ACP/LLM 接入时换 adapter，UI 不动）
-  createAcpAgent: (agentId: string) => ChatAgent // ACP 后端工厂（T3+.1）：每 acp thread
-                                                //  首次发送时调一次；默认实现 =
-                                                //  threads/acp.ts JSON-RPC 子进程连接
-                                                //  （读 settings.acpAgents；dispose 归
-                                                //  store close 调）
-  persistWorkspaces?: (ws: Workspace[]) => void // 工作区持久化（Phase W）：workspaces
-                                                //  任何变化后 fire（fire-and-forget；
-                                                //  装配层 = FileAdapter 写 state.json，
-                                                //  失败仅 warn）。不注入则跳过（测试面）
-}
-```
-
-实现底座：**zustand/vanilla**（`createStore`，不绑 React）+ **immer**（不可变更新）。接口是唯一契约——
-`getState/subscribe` 直通 zustand store，方法内部 `setState(produce(s => { … }))`
-可变写法（immer 负责不可变化与结构共享）；React 侧用 `useStore(store, selector)`
-按粒度订阅（ThreadRow 订阅自己那行，引用不变即跳过渲染）。不使用 zustand 的
-persist middleware（写盘逻辑不合身，见 §6.2 file adapter）。
-
-```ts
-function createThreadStore(deps: ThreadDeps, opts?: ThreadStoreOptions): ThreadStore
-// ThreadStoreOptions = { initialWorkspaces?: Workspace[] }（装配层读盘后的初值；
-// 缺省空列表——W1 阶段旧 UI 调用点无工作区上下文，全部向后兼容）
-
-interface ThreadStore {
-  getState(): ThreadState                      // 快照（不可变；zustand vanilla）
-  subscribe(fn: () => void): () => void
-  spawnFromPreset(presetId: string): Promise<void>
-  createChat(): void                             // 新建空 chat thread + activate（T3.2）
-  sendChatMessage(threadId: string, text: string): void  // chat 状态机（T3.2）：
-                                                 // 空串/pending 忽略；user 落列 → chatAgent.send
-                                                 // → assistant/error 落列；thread 已删则弃回复
-  activate(target: ActiveTarget): void         // 内部 = deps.navigate（§3.5）
-  close(id: string): void
-  rename(id: string, title: string): void      // 写 customTitle → 冻结
-  cycle(dir: 1 | -1): void                     // Ctrl-Tab 混排循环
-  // ── 工作区（Phase W）─────────────────────────────────────────────
-  addWorkspace(name: string, path: string): string  // 新建（空名回退 basename(path)）；返回 id
-  renameWorkspace(id: string, name: string): void  // 空串忽略（同 rename 纪律）
-  removeWorkspace(id: string): void                // 连带 close 归属会话（复用 close 单点）
-  activateWorkspace(id: string): void              // 恢复 lastSession（死 id/无 → 回起始页）；
-                                                   //  不改 expanded（点箭头仅展开/收起，分离）
-  toggleWorkspaceExpanded(id: string): void        // 展开/收起（持久化，不导航）
-  // ── 会话内视图（Phase R；原型 SessionTabs）────────────────────────
-  openGitGraph(): void                           // 活跃会话已归属工作区 → 会话内
-                                                 //  'git' 视图（不切路由）；否则工作区
-                                                 //  paneTab=git + activate(workspace)
-  activateSessionView(threadId: string, viewId: string): void
-                                                 // 'main' = 回主面；不存在 id 忽略；
-                                                 //  会话 active 且该视图被展示 →
-                                                 //  清其 hasBell（后台调用不算「已看到」）
-  closeSessionView(threadId: string, viewId: string): void
-                                                 // 'main' 不可关；shell 视图连带销毁 PTY；
-                                                 //  关当前视图 → 回退左邻/'main'
-  openSessionFile(threadId: string, path: string): void
-                                                 // `file:${path}` 去重 + 激活；label=basename
-  addSessionShell(threadId: string): Promise<void> // 真 PTY（spawnSession）；
-                                                 // `shell:${n}` 递增；cwd=会话 cwd →
-                                                 //  工作区 path → 进程 CWD；
-                                                 //  spawn 期间会话被关 → 孤儿 PTY 回收
-  onSessionEvent(e: SessionEvent): void        // 装配层专用：native → store
-}
-```
-
-### 3.3 内部规则表（全部在 store 一处，locality 的兑现）
-
-> **internal seam（2026-09-18）**：实现按簇拆进 `threads/internal/`——
-> `sessionViews`（视图 CRUD + 视图 PTY 事件归属）· `notices`（通知落列/标读/
-> openNotice）· `workspaceOps`（工作区 CRUD + pin/showAll/paneTab + persist）·
-> `conversations`（chat/acp 创建 + 消息状态机），共享 `internal/ctx.ts` 上下文。
-> `store.ts` 留类型契约 + interface + 装配表 + 核心会话方法（spawn/activate/
-> close/rename/cycle/onSessionEvent）。**不拆 store**：`removeWorkspace→close`、
-> `openNotice→activate` 这类跨簇规则的 locality 必须留在同一闭环；跨簇调用
-> 单向 import（sessionViews→notices），会成环的两条边（workspaceOps→close、
-> notices→activateSessionView）经 ctx 接线点装配。interface 即测试面不变。
-
-
-
-| 事件/方法 | 规则 |
-|---|---|
-| `spawnFromPreset` | 查 preset → `spawnSession({cwd, program, args, env, initCommand, scrollbackLines})` → push thread → `lastUsedPreset = presetId` → `activate`。cwd 继承链（W1）：`preset.cwd ?? workspace.path ?? process.cwd()`（preset 显式 cwd = 用户配置意图优先；显式 workspaceId 不存在 → throw） |
-| `activate(thread)`（W1 增补） | 会话带 workspaceId → 该工作区 `lastSession = thread.id`（实际变化才 fire persist） |
-| `addWorkspace` / `renameWorkspace` / `toggleWorkspaceExpanded` | CRUD 单点：改 workspaces → fire persistWorkspaces；rename 空串忽略；add 空名回退 basename(path) |
-| `removeWorkspace` | 连带 close 全部归属会话（destroySession/dispose/导航兑底复用 close 单点）→ 移除工作区行 → persist |
-| `activateWorkspace` | lastSession 的 thread 存在 → `activate(thread)`；死 id / 无 → `activate(null)`（工作区起始页；空态 UI 是 W2）；expanded 不动 |
-| `close`（W1 增补） | 移除行后：若是所属工作区 lastSession → 置 null + persist（「最后一个会话被移除回工作区起始页」的数据面） |
-| `activate(thread)` | `deps.navigate` 路由跳转（表面整块替换）；清该 thread `hasBell`（契约 §7：聚焦即清） |
-| `activate(settings)` / `null` | `deps.navigate(...)` 表面切换，threads 不动（后台 PTY 照跑、BEL 照落红点） |
-| `onSessionEvent(title)` | `customTitle` 存在则忽略（冻结）；否则写 `oscTitle` |
-| `onSessionEvent(bell)` | 该 thread 非 active 时 `hasBell = true` + `deps.notify(t)` |
-| `onSessionEvent(exit)` | `status='exited'` + exitCode；若 `deps.closeOnExit()` → 同 `close` |
-| `onSessionEvent` 视图 PTY 归属（Phase R） | 主会话 `t${sessionId}` 定位落空 → 按 `view.sessionId` 路由到所属 shell 视图（sessionId 与主会话 disjoint）。title → `view.oscTitle`（空串忽略）；bell → 视图正显示（会话 active 且为活动视图）则丢弃，否则 `view.hasBell`，且会话在后台时走会话级提醒（terminal=`hasBell` / chat·acp=`unread`）+ notice(viewId) + `deps.notify`；exit → notice + `view.status='exited'`+exitCode，closeOnExit → 移除视图（共享 removeSessionView 单点：splice + 回退左邻/'main'） |
-| `activateSessionView` | 设 `activeViewId`（'main'/存在校验）；会话 active 时被展示的视图清 `hasBell`（后台调用不清——不算「已看到」；`activate(thread)` 落在该视图同清，共用 `clearViewBell` 单点） |
-| `openSessionFile` / `addSessionShell` | `file:${path}` 去重激活；`shell:${n}` 递增 + 真 PTY（cwd=会话 cwd → 工作区 path → 进程 CWD；spawn 期间会话被关 → 孤儿 PTY 回收不落视图） |
-| `openNotice`（R1 增补） | 标已读 + activate 来源会话；notice 带 `viewId` 时一并 `activateSessionView` 直达视图 |
-| `createChat` | push 空 ChatThread（title='Chat'）+ activate（T3.2；入口：+ 菜单固定项） |
-| `createAcpThread` | push AcpThread（title=label，autoTitle=true）+ activate（T3+.1；入口：+ 菜单 agent 项；label 由调用方从 settings 快照传入——store 不读 settings） |
-| `sendChatMessage` / `sendAcpMessage` | 同构状态机单点（sendConversationMessage）：空串/pendingReply 忽略；user 落列 + pendingReply=true → agent.send → 回复 assistant 落列（reject → error 行）+ 复位；thread 已 close → 弃回复。首条 user 消息截断改写 title（chat：title===默认值哨兵；acp：autoTitle 哨兵；手改后冻结）。acp 连接情建（每 thread 一次；createAcpAgent 同步 throw → error 行） |
-| `close` | terminal → `destroySession` + 移除行；当前路由指向它 → 先 `deps.navigate(null)` 再移除；acp → 连接 dispose（子进程 kill）+ 移除；chat → 仅移除（归档待后续） |
-| `rename` | 空串忽略；写 `customTitle` |
-| `cycle` | threads 数组环形移动 → `activate`（路由跳转覆盖 settings 表面，契约 §4 生命周期） |
-
-不变量：
-1. 路由为 `/thread/$id` ⇒ 对应 id 必在 threads（close 前先导航离开）
-2. `customTitle != null` ⇒ oscTitle 永不覆盖
-3. exited 会话仍在池中（除非 closeOnExit / 手动 close）——重激活显示残留
-
-### 3.4 测试面（bun test，零 GPU 零 PTY）
-
-fake deps 注入即可覆盖全部规则（`navigate` 用真 router 实例，memory history）：spawn 序列（lastUsedPreset 更新）· bell→红点→activate 清除 · 冻结 · exit 灰行 vs closeOnExit 移除 · cycle 环形 · close 先导航离开再移除 · displayTitle 四级兜底。
-
-### 3.5 路由：TanStack Router（memory 模式）—— 导航唯一事实源
-
-`agent-plane-layout.md` §8 的 `activate()` 语义由路由承载；Pane 表面 = 路由树的直接映射：
-
-```
-/                       → EmptyPresets
-/thread/$id             → 查 ThreadStore 得 kind → Chat | Acp | Terminal surface
-/settings?section=$s    → SettingsView（section 为类型化 search param，分区深链免费获得）
-```
-
-```ts
-// app/src/router.ts —— 只描述 URL 形状，不 import 业务模块
-const router = createRouter({
-  routeTree: rootRoute.addChildren([indexRoute, threadRoute, settingsRoute]),
-  history: createMemoryHistory({ initialEntries: ['/'] }),
-})
-export function useActiveTarget(): ActiveTarget   // useRouterState → ActiveTarget 派生
-```
-
-规则：
-
-- **ThreadState 不含 active**（§3.1）——导航状态只活在 router 一处，消费方拿派生视图
-- ThreadStore 的 `activate / cycle` 内部调注入的 `deps.navigate`；装配层把它接成
-  `router.navigate({ to, params, search })` 的薄包装
-- 不用 `<Link>`（GPUIX 无 DOM `<a>`）——一律按钮 `onClick → navigate`
-- **R-V1（Phase 1 第一验证项）**：`RouterProvider`（依赖 React context）在 GPUIX
-  reconciler 下是否正常工作；保底方案：绕开 React 绑定，`router.subscribe` +
-  `useStore` / `useSyncExternalStore` 手动桥——`ActiveTarget` / `navigate` 接口与路由树定义不变
-
----
-
-## 4. surfaces/ —— Pane 表面与注册表
-
-```ts
-// surfaces/registry.ts
-// T2.5 契约扩展：SurfaceProps 增 settings（SettingsStore 订阅面——terminal
-// 外观真值 + 后续 chat/acp 需要读设置）
-type SurfaceProps = { thread: Thread; store: ThreadStore; settings: SettingsStore }
-type Surface = ComponentType<SurfaceProps>
-const SURFACES: Record<Thread['kind'], Surface> = {
-  terminal: TerminalSurface,
-  chat: ChatSurface,          // T3.2 实装：ConversationView 共享消息面 + composer；
-                              //  后端经 ThreadDeps.chatAgent
-  acp: AcpSurface,            // T3+.1 实装：ConversationView + ACP pill；后端经
-                              //  ThreadDeps.createAcpAgent（threads/acp.ts JSON-RPC）
-}
-export const getSurface = (kind) => SURFACES[kind]
-```
-
-```tsx
-// plane/Pane.tsx —— 全项目唯一的表面调度
-function Pane({ store, settingsStore }) {
-  const active = useActiveTarget()                 // §3.5：路由派生
-  const thread = useThreadStore(s =>              // zustand selector：只订一行
-    active?.type === 'thread' ? s.threads.find(t => t.id === active.id) : undefined)
-  if (active?.type === 'settings') return <SettingsView store={settingsStore} />
-  if (!thread) return <EmptyPresets onPick={store.spawnFromPreset} />
-  const S = getSurface(thread.kind)
-  return <S thread={thread} store={store} settings={settingsStore} />
-}
-```
-
-「整块替换」= 条件渲染（旧 surface 卸载、新 surface 挂载，无 display:none）。retain 由两层保证：thread 记录在 ThreadStore、会话在 TerminalPool。
-
-### TerminalSurface（唯一 `<terminal>` 绑定点）
-
-```tsx
-function TerminalSurface({ thread, settings }: SurfaceProps) {
-  const term = useSettings(settings).terminal
-  return (
-    <terminal
-      sessionId={thread.sessionId}
-      fontFamily={term.fontFamily}
-      fontSize={term.fontSize}
-      cursorBlink={term.cursorBlink}
-      palette={term.palette}
-      focused
-      onFocus={() => /* store 侧清 bell（activate 已清，此为补充） */}
-    />
-  )
-}
-```
-
-外层 div：padding 0、无 overflow 包裹、背景不设色（terminal 自己的 palette）。焦点、选区、滚轮全归 TerminalView。T2.5 起四项外观真值随设置实时调和（setCustomProp 幂等，不重建会话）；scrollbackLines 属 spawn 参数（nativeDeps 兑底，不在此处）。
-
-### 全局键位层（T2.6 提取：src/keybindings.ts；T3+.2 键位参数化；R11 分层链对齐原型）
-
-```ts
-// createGlobalKeydown(opts)：main.tsx 与 e2e 挂点共用的依赖注入形态
-// （布线差异注入，nativeDeps 同款纪律）。R11 起分层链逐层对齐原型
-// useGlobalKeys（GPUIX 无 stopPropagation，元素→root 逐跳派发）：
-// L0 keyConsumed 元素级消费标记（原型 kbCapturing；捕获格全键/Modal·
-//   浮层 Esc/设置搜索框 Esc 置位，ui/keyboard.ts 一次性标记）
-// L1 弹窗层（原型 dialog.kind!=='none' → return）：dialogKeyboard.isOpen
-//   判活 → 全局动作全让位 + Esc 兜底 close（焦点不在卡内时；卡内 Esc
-//   已被 L0 挡）
-// L2 浮层 Esc 栈（原型 notifOpen/fontPicker 层）：overlayEsc——Popover
-//   挂载登记，未聚焦浮层也能关
-// L3 设置面生命周期键（无修饰键，仅 inSettings() 时吃）：Esc（query
-//   非空 → settingsKeyboard.clearQuery 清空不退出；空 → 关设置）/
-//   focusSearch（默认 '/'，inputFocus 守卫 + renderer.focusElement）
-// L4 searchThreads/newSession/toggleSidebar（仅设置面外；皆修饰键组合）
-// L5 窄窗抽屉 Esc（planeKeyboard.escape）
-// L6 git 面 r/Esc/↑↓/Enter（git/graphKeys.ts，激活判定随域）
-// L7 修饰键组合：cycleNext/cyclePrev（默认 ctrl-tab/-shift-tab）→ cycle；
-//   toggleSettings（默认 ctrl-,）→ 设置路由开关；ctrl-shift-g → git 图；
-//   其余透传（硬约束 2：不吃 vim/claude 按键）
-// T3+.2：键位从 settings.keybindings 读（opts.keys getter 注入，
-// 每次 keyDown 查快照——修改即时生效）；keystrokeMatches(ks, key, ctrl,
-// shift) 匹配器导出。语义约束在编辑面（KeybindingsSection）：cycle 系/
-// toggleSettings/searchThreads/toggleSidebar/newSession 必含主修饰
-// （硬约束 2 不吃裸键）、focusSearch 必无修饰。
-// Esc 与 +/Shift+ 菜单是平台语义，不参与配置。
-// 关闭设置 = activate(lastNonSettings())（router 桥订阅回调维护）
-```
-
-### SettingsView（settings-ui.md §12 的对齐）
-
-结构照契约：`SettingsNav`（7 分区 + 搜索）+ `SettingsContent`。分区组件消费 `SETTING_DEFS`（见 §6）渲染 `SettingRow`；Presets 已实装（T3.1，PresetsSection 列表 CRUD）；ACP 分区已实装（T3+.1，AcpAgentsSection 列表 CRUD——无 builtin/modified 概念，默认 2 项也是可删改示例）；Keybindings 已解锁可编辑（T3+.2，捕获格：点击/enter 进入 → 按组合即时写入 → 无效拒绝提示；Esc 取消走消费标记；冲突双方警示行；modified 蓝点 + reset；七动作外的 Esc/+ 菜单为平台语义只读行）；Advanced 已实装（T3+.2，gpuBackend defs + 诊断卡只读[版本/GPUIX pin/平台] + settings.json 实时视图[markdown code block，订阅快照即时反映] + 「在编辑器中打开」[仅真盘 adapter 有 path——file.ts openInSystemApp；memory 测试面不渲染]）。当前分区 = `/settings` 的类型化 search param `section`（分区深链免费；Esc / Ctrl-, 退出即返回）。生命周期（Ctrl-, / Esc / 切 thread 关闭）由路由与 `cycle` 天然实现，SettingsView 自身只管表单。设置面键盘态（query/searchInputId/clearQuery 回调）在 surfaces/settingsKeyboard.ts 模块单例（T3+.2 从 SettingsView 提取——KeybindingsSection 捕获格同面消费）；「按键已被元素消费」标记 R11 起泛化为 ui/keyboard 的 keyConsumed（escConsumed 退役——任意键消费同面：捕获格全键 / Modal·浮层 Esc / 搜索框 Esc 清空）。
-
----
-
-## 5. plane/ + sidebar/ + dialogs/ —— 组件树与状态流
-
-> 目录拆分（2026-09-18）：组件树逻辑不变——`AgentPlane`/`Pane`/`TitleBar`/
-> `SessionTabs`/`planeKeyboard` 留 `plane/`（壳）；`Sidebar` 族六件迁
-> `sidebar/`；`DialogHost` + 六弹窗 + `dialogKeyboard` 迁 `dialogs/`。
-> 下文组件名与文件一一对应，目录归属见 §1.1。
-
-```
-App（useSyncExternalStore(threadStore) + useSettings()）
-└── AgentPlane                        // flex：sidebar 248px + pane 剩余
-    ├── Sidebar
-    │   ├── SidebarHeader             // 52px 头：红绿灯让位 + 收起钮（⌘B 同效）
-    │   ├── WorkspaceList             // nav 行组（新建会话/搜索）+ 工作区分组
-    │   │   ├── WorkspaceGroup × N    //   （pin 排序；「未归属」虚拟组殿后）
-    │   │   │   └── ThreadRow × N     //   组内 priority 排序 + 前 4 条截断
-    │   │   │                         //   状态点 / unread 加粗 / pin 图标
-    │   │   │                         //   「…」+ 右键同一面 ContextMenu
-    │   │   │                         //   双击标题 → 行内 rename
-    │   │   └── ContextMenu           //   Pin / Rename… / Mark as unread / Remove
-    │   └── SidebarFooter             // 齿轮 → activate({type:'settings'}) + 通知铃 + 版本号
-    └── Pane（§4）
-```
-
-状态流约定：
-- **zustand selector 按粒度订阅**：ThreadRow 订阅 `s.threads` 中自己的行（引用不变 → 不重渲染）；WorkspaceGroup 订阅 `s.workspaces` 自己那行 + 归属会话 id 串；搜索结果订阅 `s.threads`/`s.workspaces` 稳定引用、命中列表渲染期现算（uSES 的 getSnapshot 必须返回稳定引用——新数组会炸，W2 实测）；导航用 `useActiveTarget()`（§3.5）；两个 store 的写入只经 store 方法
-- ThreadRow 的局部态：hover、rename 编辑框——useState，不上 store
-- 图标/颜色 tokens 全部从 agent-plane-layout.md §3 引（CSS 变量或 TS 常量，Phase 1 定）
-
-**全局键位层（src/keybindings.ts，T2.6 从 main.tsx 提取；T3+.2 键位参数化；R11 分层链对齐原型 useGlobalKeys；main/e2e 同一 createGlobalKeydown）**：键位真值 = settings.keybindings（getter 注入，修改即时生效）；默认 `ctrl-tab` / `ctrl-shift-tab` → `cycle`、`ctrl-,` → 设置路由开/关、`⌘K/Ctrl-K` → 搜索弹窗、`⌘N/Ctrl-Shift-N` → 新建会话弹窗、`⌘B/Ctrl-B` → 侧栏/抽屉。修饰键组合外只吃设置面生命周期键（Esc/`focusSearch` 默认 `/`，仅 inSettings() 时；terminal 表面时透传给 PTY——硬约束 2）。焦点模型已验（T1.6）：TerminalView 聚焦时窗口级 keyDown 仍到达，无需降级。`Keybindings`/`KeybindingAction`/`DEFAULT_KEYBINDINGS` 自 schema `DEFAULTS.keybindings` 派生（叶子 catch 是真值单点，平台分支只写一次）；`createKeyboardSlot` 是 planeKeyboard/dialogKeyboard 的模块单例脚手架；git 域键位（↑↓/enter/esc/r）在 git/graphKeys.ts——激活判定（工作区路由 + paneTab）随域代码走，装配层只注读侧。
-
----
-
-## 6. settings/ —— SettingsStore
-
-### 6.1 schema.ts —— 设置项唯一清单
-
-```ts
-// settings-ui.md §6 全表 + §9 键位表的代码形态。
-// 纪律：新增设置先改这里（= 先上契约表），再出现于 UI。
-// 底座：zod——类型从 schema 推导（z.infer，一套维护），字段级 .catch(default)
-// 让坏值/越界自动回默认，z.looseObject 保留未知 key（往返保真）。
-const SettingsSchema = z.looseObject({
-  presets: z.object({
-    plusDefault: z.string().nullable().catch(null),
-    items: z.array(TerminalPresetSchema).catch(BUILTIN_PRESETS),
-  }),
-  terminal: z.object({
-    fontFamily: z.string().catch("JetBrains Mono"),
-    fontSize: z.number().int().min(10).max(22).catch(13),
-    // …照 §6 分表逐字段
-  }),
-  // …notifications / appearance / acpAgents / advanced
-})
-export type Settings = z.infer<typeof SettingsSchema>   // TS 类型由此推导
-// 读盘：const parsed = SettingsSchema.parse(rawJson)    // 坏 JSON/坏值 → 字段级回默认，UI 不炸
-
-export type SettingControl =
-  | { type:'toggle' }
-  | { type:'select'; options: {value:string; label:string}[] }
-  | { type:'number'; min:number; max:number; step?:number }
-  | { type:'range';  min:number; max:number; step?:number }
-  | { type:'text'; mono?:boolean }
-  | { type:'textarea'; rows?:number }
-
-export type SettingDef = {
-  path: string                      // 'terminal.fontSize'
-  section: 'presets'|'notifications'|'terminal'|'appearance'|'keybindings'|'acp'|'advanced'
-  label: string
-  description?: string
-  control: SettingControl
-  phase?: 2 | 3                     // → disabled + Phase 徽章（settings-ui.md §5.3）
-}
-
-export const SETTING_DEFS: SettingDef[] = [ /* §6 分表的每行一个 def */ ]
-export const SECTIONS = [ {id:'presets', label:'Presets'}, /* 7 分区 */ ]
-```
-
-消费方：分区导航（groupBy section）、搜索过滤（label/description/path 命中 + 高亮 + 计数）、SettingRow 声明式渲染。Presets / ACP Agents 分区为结构性数据（列表 CRUD），不走 SETTING_DEFS，直接吃 `get().presets` / `get().acpAgents`。
-
-### 6.2 store.ts / file.ts
-
-```ts
-// file.ts —— seam（两个 adapter：真盘 / 内存 fake）
-type FileAdapter = { read(): Promise<string|null>; write(s:string): Promise<void> }
-export const fsAdapter = (p: string): FileAdapter        // ~/.j-agent/settings.json；
-                                                        //  write = tmp + rename 原子写（防写一半损坏）
-export const memoryAdapter = (): FileAdapter             // 测试
-
-// store.ts —— zustand/vanilla + immer + zod（同 §3.2 纪律），接口不变
-function createSettingsStore(file: FileAdapter): SettingsStore
-interface SettingsStore {
-  get(): Settings                       // SettingsSchema.parse(read) 后的快照（字段级容错）
-  patch(path: Path, value: unknown): void  // 内存即时 + 异步写盘
-  reset(path: Path): void               // = patch(path, DEFAULTS 值)
-  isModified(path: Path): boolean       // !dequal(get(cur), get(DEFAULTS)) → 蓝点
-  subscribe(fn): () => void
-  writeError(): { path: string; message: string } | null  // 行内红条；下次成功清除
-  init(): Promise<void>                 // 装配期读盘 + 首帧 set
-  // ── 预设 CRUD（settings-ui.md §7 规则单点，T3.1；同一写链/回滚面）──
-  addPreset(input: PresetInput): string       // builtin:false + 唯一 id（custom-*），返回 id
-  updatePreset(id, patch: PresetPatch): void  // id/builtin 不可改（类型面）；空字段归一 undefined；args 空串行过滤
-  deletePreset(id: string): void             // 仅自定义；plusDefault 指向它 → 回退 null（lastUsedPreset 是运行时态，消费侧兑底）
-  duplicatePreset(id: string): string        // 副本 builtin:false + label 副本后缀 + id -copy 后缀，返回新 id
-  resetPreset(id: string): void              // 仅内置，回 BUILTIN 出厂值
-  // ── ACP agent CRUD（T3+.1；同一写链/回滚面；无 builtin/modified 概念——
-  //    默认 2 项也只是可删改的示例）──
-  addAcpAgent(input: AcpAgentInput): string       // 唯一 id（acp-*），command 缺省 ''，返回 id
-  updateAcpAgent(id, patch: AcpAgentPatch): void  // id 不可改（类型面）；args 空串行过滤
-  deleteAcpAgent(id: string): void               // 直接删（存量 acp thread 连接不受影响：
-                                                 //  store 情建已兑底 unknown agentId）
-}
-```
-
-写失败时序：patch → 内存更新 + notify → 写盘 reject → **回滚内存 + 置 writeError + notify**（settings-ui.md §5.3「回滚显示值」）。
-
-运行时态（lastUsedPreset / hasBell；激活表面由路由承载）物理上不出现在 settings/ 任何文件——由目录结构保证「机器记忆不进 JSON」。
-
-### 6.3 测试面
-
-内存 adapter：patch/isModified/reset · 坏 JSON / 越界值字段级回默认（zod catch）· 未知 key 往返保真 · 写失败回滚 + writeError · 合并写 · SETTING_DEFS 的 path 全部真实存在于 Settings（schema 一致性测试）。预设 CRUD（T3.1）：add 唯一 id+builtin:false · update 空字段归一+args 空行过滤 · delete plusDefault 回退 · duplicate 副本语义 · reset 出厂值 · CRUD 写失败同一回滚面。ACP agent CRUD（T3+.1）：add 缺省/唯一 id · update args 空行过滤 · delete 落盘 + 写失败回滚（path=acpAgents）。keybindings section（T3+.2；R11 补齐 newSession）：七动作叶子 string catch 默认（'ctrl-tab'/'ctrl-shift-tab'/'ctrl-,'/'/'/'cmd-k'/'cmd-b'/'cmd-n'——mac 值；win·linux 见 schema 平台分支）；filePath() 暴露真盘路径（fsAdapter.path；memory 无）+ serializeSettings 导出（写盘与 Advanced JSON 视图同源）。threads/__tests__/acp.test.ts：真子进程 JSON-RPC 链（__tests__/__fixtures__/fake-acp-agent.ts，FAKE_ACP_MODE 选行为：echo/tools/permission/refusal/crash/badline/version2）。
-
----
-
-## 7. ui/ —— 原子清单
-
-| 原子 | 用途 | 备注 |
+| `app.rs` | 装配：`gpui_component::init` **必须最先** → theme → state → actions；`open_main_window` 用 `TitleBar::window_options()`（自绘标题栏/拖拽/双击缩放/红绿灯让位） |
+| `state.rs` | `AppState`（聚合 threads/settings/git_graph/acp 连接表）+ 终端事件桥 `bridge_terminal_events` |
+| `actions.rs` | `actions!` 清单（CycleNext/Prev、ToggleSettings、SearchThreads、NewSession、ToggleSidebar、OpenGitGraph、FocusSettingsSearch、CloseSettings、GitSelect* 等）+ `install`（settings 键位生成 KeyBinding，坏键位不阻塞启动） |
+| `theme.rs` | One Dark token → gpui-component 主题映射 |
+| `terminal_style.rs` | 设置 → TerminalStyle，flush 到池内活跃终端（字号/色板/闪烁在线生效） |
+| `acp_io.rs` | ACP 子进程 IO：spawn/管道/惰性握手/dispose；`AcpCancellation` 在 spawn 前注册处理关闭竞态 |
+| `crash.rs` | panic hook → sidecar（`--crash-sidecar`）→ watchdog（默认启动路径，`--app-child` 内部绕过） |
+| `views/` | root（壳）/ sidebar / session_tabs / terminal_pane / conversation / git_graph / work_panel / settings / new_session / rename / search_threads / workspace_dialog / nested_scroll |
+
+**视图范式约定**（写新视图必守）：
+
+- 状态 = `Entity<T>` + `cx.notify()`；跨实体用 `cx.subscribe`/`cx.observe`。
+- 虚拟列表：定高行 `uniform_list`，变高（对话流、Git 图展开详情）`gpui::list` +
+  `ListState`，follow-tail 用原生 `FollowMode::Tail`。**不用 gpui-component
+  VirtualList**。
+- 定宽单行列必须同时 `overflow_hidden` + `whitespace_nowrap` + `text_ellipsis`。
+- 嵌套滚动：可滚容器内再套可滚区域（含 `list`）时用 `views/nested_scroll`
+  的封装（内层能滚就 `stop_propagation` 吃掉滚轮；到边界交给外层）。
+- 有两个 `Theme`：`gpui_component::Theme`（`cx.theme()`）与 `gpui_base::Theme`
+  （`TextViewStyle::from_theme` 要后者，用 `gpui_base::Theme::global(cx)`）。
+- markdown 用 `gpui_base::text::TextView`；多行输入用 `TextareaState`
+  （`submit_on_enter` + `auto_grow`），无样式需自加边框/聚焦环。
+- 测 Enter 语义用 `dispatch_action`，不能用 `simulate_keystrokes("enter")`
+  （测试驱动器会附带 `key_char="\n"` 造成多换行假象）。
+
+## 5. 键位
+
+- 动作清单在 `actions.rs` 的 `actions!`；绑定由 settings 键位表生成
+  （`actions::install`），用户重绑后重新生成。
+- 平台语义键（Esc 层级、菜单键）不进配置表。
+- `OpenGitGraph`（Ctrl-Shift-G）硬编码不进 settings。
+
+## 6. 崩溃与发布链
+
+- 进程形态：`j-agent` 默认由 watchdog 启动；`--crash-sidecar` 是 sidecar 入口；
+  `--app-child` 绕过 watchdog（内部用）。
+- panic hook 把结构化 JSON 报告交给 sidecar（READY 握手、落盘 fsync ACK、
+  64 条保留）；watchdog 60s/5 次 crash-loop 截止；app 正常退出时显式回收 sidecar。
+- **不产 minidump、不捕获 SIGSEGV/abort/OOM**（P7 边界，见 gpui-rewrite §10）。
+- 发布：`.github/workflows/rust-release.yml`（macOS/Linux/Windows）；
+  macOS 打包 `scripts/package-macos-app.sh`；Windows 图标资源校验
+  `scripts/check-windows-icon.ps1`。这两个脚本是 scripts/ 仅存的成员。
+- 工具链 pin 1.97.1（`rust-toolchain.toml` + CI），P0 实测可构建 gpui-pre 0.3.8。
+
+## 7. 测试面
+
+| 层 | 形态 | 当前规模 |
 |---|---|---|
-| `Icon` | SVG 图标（chat 圆环点 / terminal 竖条 / acp 折线 / 齿轮 / 关闭 ×） | 内联 SVG，禁 emoji |
-| `Tooltip` | 长标题、aria 补充 | anchored overlay |
-| `SettingRow` | label + description + 控件 + 蓝点 + reset | settings-ui.md §5.1 布局 |
-| `Toggle` / `Select` / `NumberInput` / `RangeInput` / `TextInput` / `Textarea` | §6 控件映射 | toggle 用真 checkbox；range 用 input[type=range] |
-| `Badge` / `PhaseBadge` | 内置/自定义、Phase 2/3 | |
-| `IconButton` | icon-only 按钮 | 强制 aria-label |
+| core | 普通 `#[test]`（含 store 规则、git 解析、settings 容错） | 270 |
+| app 单元 | `#[gpui::test]`（TestAppContext；视图行为、store 写回、Action） | 75 |
+| app 视觉/事件 | `harness = false` 自写 main（AppKit 主线程）：`shell_shot`（屏幕外窗口截图）、`nested_scroll`（真实滚轮）、`terminal_settings`（设置→PTY 在线生效） | 3 |
+| app 集成 | `crash_sidecar`、`watchdog`（真实子进程） | 1 + 2 |
+| terminal | 普通 `#[test]`（模型/输入/渲染逻辑） | 41 |
 
-全部原生可聚焦 + `:focus-visible` 环（契约 §10/§11）。
+视觉测试约束（p0-results E9）：沙箱内 SIGTRAP，须在用户终端或 CI 跑；
+`Window::draw` 才真实重绘（`refresh_windows + run_until_parked` 在屏幕外窗口
+不重绘）；`Window::resize` 不改 viewport，测窄屏要新开窗口。
 
----
+## 8. 已知的明确边界（不视为缺陷）
 
-## 8. Rust crates —— 模块职责
-
-### 8.1 crates/jagent-terminal（无 napi 依赖，可独立 cargo test）
-
-| 文件 | module | 接口（对 crate 外） | 实现要点 |
-|---|---|---|---|
-| `pool.rs` | TerminalPool | `create/destroy/get`（gpui Global 承载，R5）+ `set_session_event_fn` | 会话表 `HashMap<u64, Entity<TerminalModel>>`；事件转发走独立 `static OnceLock<SessionEventFn>`（model 消费 task 直调）；sessionId 分配；create 内键入 initCommand（D5） |
-| `model.rs` | TerminalModel | gpui `Event::{Title,Bell,Exit,Wakeup}` + `write_to_pty` / `resize` / `set_style` | Zed `Terminal` 同构：alacritty `Term`（FairMutex）+ `SessionListener` channel + 事件消费 task（4ms 批处理，首事件立即+Wakeup 单独+上限 100）；Exit/ChildExit 去重；外观设置存 model |
-| `pty.rs` | PTY 装配 | `open_pty` / `SpawnOptions` / `PtySender` | Zed `TerminalBuilder` 模式：`tty::new(options)` + `EventLoop::new(term, listener, pty).spawn()`；PtySender = Notifier 包装（write/resize/shutdown 走 Msg 通道）；alacritty_terminal 0.26（crates.io） |
-| `view.rs` + `view/` | 绘制 | `TerminalView::new(Entity<TerminalModel>)` | **已 vendoring（R6）**：view/render/input/colors/box_drawing 四文件来自 gpui-terminal（MIT/Apache 双证随拷）；view 重写为绑 model（订阅 Wakeup 重绘、resize 在 paint 检测、输入走 model）；fork API 适配仅两处（ShapedLine::paint 补参、focus 三参） |
-
-模块全部私有（`mod`，2026-09-18 收窄）：对外契约 = 根部 `pub use` re-export
-单面（`TerminalPool` / `TerminalModel` / `TerminalView` / `SpawnOptions` /
-`SessionEvent` / `set_session_event_fn` / `take_paint_perf` / `TerminalError` /
-`HostPanic` / `terminal_error_code` / `PaintPerfSnapshot` / `TerminalRenderer` /
-`ColorPalette` / `keystroke_to_bytes` / `Event` / `TerminalStyle` /
-`SessionEventFn`）。外部代码不得出现 `jagent_terminal::xxx::` 深路径。
-
-### 8.2 packages/native（napi 壳）
-
-文件按职责分两层（2026-09-18 整理；契约文本原为「三文件」，规模随
-feature adapter 增长——薄壳契约的对象是 lib.rs 协议面，不是文件数）：
-
-- `lib.rs` —— 纯协议镜像（SpawnOptionsJs / SessionEvent / PaintPerfJs /
-  NativePanicEvent）+ napi 命令（`install_terminal_element` /
-  `install_git_graph_row_element` / `create_terminal_session` /
-  `destroy_terminal_session` / `on_session_event` / `apply_window_appearance` /
-  `notify_desktop` / `pick_directory` / `list_system_fonts` / `take_paint_perf` /
-  `on_native_panic` / `install_native_panic_hook`）。**修改它的理由只允许是
-  seam 协议变化**。
-- `host.rs` —— host 分发 module：`run_host<T>(f) → Result<T>` 一个 interface，
-  两个 adapter（线程化通道 `run_on_gpuix` / 测试 `run_on_test_app`）；两条通道签名
-  被 gpuix 锁在 serde_json::Value，typed↔JSON 装箱只发生在这里一处。
-- `elements/` —— GPUIX `CustomElement` adapter 层（每文件一个元素）：
-  `terminal.rs`（`<terminal>`，§2.4；元素实现的唯一住所——crates 侧占位
-  2026-09-04 已删）+ `git_graph.rs`（`<git-graph-row>`，canvas 文本自绘，
-  perf 动机见文件头）。本层只做协议桥接，无业务规则。
-- `panic.rs` / `crash.rs` —— panic 边界（guarded catch_unwind → JS throw
-  ERR_NATIVE_PANIC）+ panic hook / crash 上报（方案 B，error-management.md）。
-- `appearance.rs` / `notify.rs` / `picker.rs` —— 单命令平台 adapter：
-  窗口外观 / Windows toast / 原生目录选择器（W3）。
-
-### 8.3 examples/window.rs（Phase 0，已完成）
-
-纯 gpui 窗口（不经 GPUIX/React）：`gpui_platform::application()` + pool create + `TerminalView` 渲染 model，默认 shell（Windows = PowerShell）。**已验证**：ConPTY ✓ · BEL → `[session] BELL` ✓ · OSC 0/2 title ✓ · exit 单次 Exit 事件 ✓（真彩色/应用光标随窗口人工验收）。完整结论与踩坑记录见 docs/todo-archive.md Phase 0 结论区（fork 同号不同 API、跨 workspace 继承需 exclude、vendoring 四文件清单）。
-
----
-
-## 9. 测试面总表
-
-| 模块 | 测试面 | 工具 |
-|---|---|---|
-| threads/store | 接口 + fake deps（navigate 用真 router 实例） | bun test（§3.4 用例集） |
-| router | 路由树 → ActiveTarget 派生、close 先导航离开、settings 分区深链 | bun test（memory history） |
-| threads/terminal | displayTitle 纯函数 | bun test |
-| settings/store | 接口 + memoryAdapter | bun test（§6.3 用例集） |
-| settings/schema | SETTING_DEFS ↔ Settings 一致性 | bun test |
-| surfaces/registry + Pane | kind → surface 映射、整块替换 | TestGpuixRenderer 截图（GPUIX img.test.tsx 模式） |
-| element/pool/model | 真 PTY e2e：echo '\a' → bell；printf '\e]2;x\007' → title | e2e/（TestGpuixRenderer + bun test） |
-| pty.rs / view.rs | cargo test（crate 内单测）+ window.rs 人工验收 | cargo |
-
----
-
-## 10. Phase 落地映射
-
-| Phase | 新增 | 交付锚点 |
-|---|---|---|
-| 0 | crates/jagent-terminal（model/pty/view 骨架）+ examples/window.rs | 调研 §5 Phase 0 清单；**结论回写 view.rs 策略与本文 §8.1** |
-| 1 | workspace 根 + packages/native + app 骨架（router / plane / registry / TerminalSurface / ThreadStore 最小集：spawn/activate/close） | 布局契约 §12：单 pane、无 chrome、两个 PTY sidebar 切换、焦点模型结论；**R-V1：RouterProvider@GPUIX（§3.5 保底手动桥）** |
-| 2 | ThreadStore 全规则（bell/冻结/exit/cycle）+ settings-core/controls/term-notify + SettingsView | 设置契约 §15 第 1–5、9–11 条；**桌面通知实现定型（node-notifier vs Rust win32 toast，见 §3.2 deps.notify）** |
-| 3 | settings-presets + chat 实装 | 设置契约 §15 第 7–8 条；fusion §5 Phase 3 |
-| 3+ | settings-acp-advanced + ACP + 键位编辑解锁 | 设置契约 §15 第 6 条；fusion §5 Phase 3+ |
-
-横切：§15 第 12 条（无障碍）随各切片验收。依赖关系允许的并行：Phase 0（Rust 窗口）与 ThreadStore/SettingsStore 的 bun test（纯 TS）零耦合并行——seam 分工的直接红利。
-
----
-
-## 11. 本轮设计决策清单
-
-| # | 决策 | 依据 |
-|---|---|---|
-| D1 | 双 workspace，crate/包上限 2+2 | muxel/Paneflow 先例 + 防过度拆分 |
-| D2 | TerminalPool 全局持会话，`<terminal>` 仅绑定视图 | GPUIX destroy 生命周期 vs retain 拍板（§2） |
-| D3 | 会话事件走全局通道，元素只留 focus/blur | 后台 BEL 送达（§2.1） |
-| D4 | spawn 参数走 napi 命令，外观走元素 props | 即时生效 vs 会话属性分离（§2.3） |
-| D5 | initCommand 在 Rust create 内键入（`\x0d` 回车） | Zed activation_script 先例 |
-| D6 | status 简化 running\|exited + hasBell | 单一事实源；展示语义不变（R3） |
-| D7 | SETTING_DEFS 声明式清单驱动分区/搜索/行渲染 | 「先上表再进 UI」纪律代码化（§6.1）；**已拍板** |
-| D8 | 全局键位层只处理修饰键组合，其余透传 | 硬约束 2；Phase 1 验证焦点模型（§5） |
-| D9 | store 依赖注入（spawn/destroy/navigate/notify/closeOnExit） | interface 即测试面（§3.2） |
-| D10 | **zustand/vanilla 为两 store 实现底座**；组件 selector 按粒度订阅 | 消样板 + 行级渲染粒度；接口/注入纪律不变（2026-09-02 拍板） |
-| D11 | **TanStack Router（memory 模式）承载 Pane 表面路由**；`active` 从 ThreadState 移除、改为路由派生 | 用户拍板（2026-09-02）；R-V1 保底路径见 §3.5 |
-| D12 | **zod 为 settings schema**：z.infer 类型推导 + 字段级 .catch 回默认 + loose 未知 key 保真；TanStack Router search param 校验复用 | 用户拍板（2026-09-02）；坏 JSON 防线（S3 外部事实源） |
-| D13 | **immer 为两 store 不可变更新**；dequal 为深比较 | zustand 官方 pattern；用户拍板（2026-09-02） |
-
-依赖白名单（packages/app）：`@gpuix/react` · `@jagent/native` · `zustand` · `@tanstack/react-router` · `zod` · `immer` · `dequal`——新增依赖须先进本表。
-
-已评估不引入：react-hook-form / conform（submit 模式，不合即时生效）· fuse.js（设置搜索是子串匹配）· lodash（get/set 手写类型安全版）· uuid（crypto.randomUUID 内置）· zustand persist（写盘逻辑不合身）· node-notifier（Phase 2 与 Rust toast 二选一再定）。
-
-下一步：搭骨架（§10 Phase 0）。文档交叉审读已完成（TerminalPreset / 验收锚点 / POOL Mutex / bun test 统一等已回写）。
+- FileSurface、原生目录选择器、Git 危险操作确认、独立全局错误面板、Git 图
+  贝塞尔弯线：**明确不做**（gpui-rewrite §10.1 各阶段记录了理由）。
+- 桌面通知（`Effects::notify`）只记账不弹系统通知。
+- 未真机验证项（三平台中文 IME、Windows/Linux 运行、真实拖动手感、真窗口
+  帧耗时）清单见 `docs/gpui-rewrite.md` §10 各阶段「未验证」条目。

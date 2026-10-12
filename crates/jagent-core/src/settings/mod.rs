@@ -15,4 +15,6 @@ pub use file::{FileAdapter, FsAdapter, MemoryAdapter};
 pub use schema::{
     AcpAgent, GpuBackend, Settings, default_terminal_font, parse_settings, serialize_settings,
 };
-pub use store::{AcpAgentInput, AcpAgentPatch, PresetInput, PresetPatch, SettingsStore, WriteError};
+pub use store::{
+    AcpAgentInput, AcpAgentPatch, PresetInput, PresetPatch, SettingsStore, WriteError,
+};

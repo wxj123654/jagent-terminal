@@ -33,7 +33,11 @@ pub struct TerminalPreset {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub env: Option<BTreeMap<String, String>>,
     /// 作为普通键入打进 shell，不是 exec
-    #[serde(default, rename = "initCommand", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "initCommand",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub init_command: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
@@ -85,8 +89,12 @@ pub fn builtin_presets() -> Vec<TerminalPreset> {
     use PresetCategory::{Agent, Tool};
     let mut pi = TerminalPreset::builtin("pi", "Pi", "在项目中对话、读写代码、调用工具", Agent);
     pi.init_command = Some("pi".into());
-    let mut claude =
-        TerminalPreset::builtin("claude", "Claude Code", "使用 Claude Code 的终端界面", Agent);
+    let mut claude = TerminalPreset::builtin(
+        "claude",
+        "Claude Code",
+        "使用 Claude Code 的终端界面",
+        Agent,
+    );
     claude.init_command = Some("claude".into());
     let mut codex = TerminalPreset::builtin("codex", "Codex", "使用 Codex CLI 的终端界面", Agent);
     codex.init_command = Some("codex".into());
@@ -146,7 +154,10 @@ mod tests {
         let amp = builtin_preset("amp").unwrap();
         assert_eq!(amp.program.as_deref(), Some("amp"));
         assert_eq!(amp.env.as_ref().unwrap()["AMP_FORCE_BEL"], "1");
-        assert_eq!(builtin_preset("shell").unwrap().category, Some(PresetCategory::Tool));
+        assert_eq!(
+            builtin_preset("shell").unwrap().category,
+            Some(PresetCategory::Tool)
+        );
     }
 
     #[test]
@@ -167,7 +178,10 @@ mod tests {
     fn matches_label_id_program_and_init_command_case_insensitively() {
         let amp = builtin_preset("amp").unwrap();
         assert!(preset_matches(&amp, "AMP"));
-        assert!(preset_matches(&builtin_preset("claude").unwrap(), "claude code"));
+        assert!(preset_matches(
+            &builtin_preset("claude").unwrap(),
+            "claude code"
+        ));
         assert!(preset_matches(&builtin_preset("codex").unwrap(), "COD")); // id/label/initCommand
         assert!(!preset_matches(&amp, "zzz"));
     }

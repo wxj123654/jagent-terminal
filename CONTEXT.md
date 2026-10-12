@@ -1,60 +1,50 @@
 # CONTEXT —— j-agent 领域词汇表
 
 架构评审与日常开发共用的领域语言。谈到模块时用这里的名字，不造同义词。
-架构词汇（module / interface / depth / seam / adapter / leverage / locality）
-见 `docs/architecture.md` 与 codebase-design 惯例，本表只管领域概念。
+架构分层与签名契约见 `docs/architecture.md`；本表只管领域概念。
 
-## 会话域（threads/）
-
-| 词 | 含义 | 代码锚点 |
-|---|---|---|
-| **Thread（会话）** | 一行可激活的工作单元，三类判别联合：`terminal` / `chat` / `acp`。id 前缀 `t`/`c`/`a` | `threads/store.ts` |
-| **ThreadStore** | 会话域唯一事实源与规则收口（§3.3 规则表全部在一处）。外部 interface 不变；实现按簇在 `threads/internal/` | `threads/store.ts` + `threads/internal/` |
-| **Workspace（工作区）** | 项目目录分组（path + name + expanded + lastSession）；会话经 `workspaceId` 平铺归属，分组是派生视图 | `threads/workspaces.ts` |
-| **SessionView（会话内视图）** | 会话标题栏副页签：`git` / `file` / `shell`；`'main'` 是虚拟 id = 主面。shell 视图绑独立真 PTY（`view.sessionId ≠ thread.sessionId`） | `threads/internal/sessionViews.ts` |
-| **SessionNotice（通知条目）** | 真实会话事件流（bell/exit）落通知中心；tone 三档 ok/warn/err；带 threadId/viewId 可直达 | `threads/internal/notices.ts` |
-| **TerminalPreset（预设）** | 可启动的程序配置（program/args/env/initCommand/cwd）；`spawnFromPreset` 消费 | `threads/presets.ts` |
-| **ChatAgent** | 会话后端 seam：chat 用 EchoAgent（默认）、acp 用 JSON-RPC 子进程连接，同一个 interface | `threads/chat.ts` + `threads/acp.ts` |
-| **ActiveTarget** | 导航目标（thread / settings / null），从路由派生——router 是导航唯一事实源，store 不存 active | `router.tsx` |
-
-## 设置域（settings/）
+## 会话域（jagent-core::threads）
 
 | 词 | 含义 | 代码锚点 |
 |---|---|---|
-| **SettingsStore** | 设置事实源；zod schema 单源（SETTING_DEFS 声明式清单驱动分区/搜索/行渲染） | `settings/store.ts` + `settings/schema.ts` |
-| **Settings UI** | 设置路由表面（`/settings`，非 thread surface）：SettingsView + 分区组件 + settingsKeyboard 模块单例 | `settings/ui/` |
-| **FileAdapter** | 设置读写 seam（真盘 / 内存两个 adapter——测试面） | `settings/file.ts` |
+| **Thread（会话）** | 一行可激活的工作单元，三类判别联合：`terminal` / `chat` / `acp` | `threads/model.rs::Thread` |
+| **ThreadStore** | 会话域唯一事实源与规则收口（spawn/activate/close/cycle/视图/通知全在一处）；泛型 `E: Effects` 注入副作用，测试注 fake | `threads/store.rs::ThreadStore<E>` |
+| **Effects** | core 的副作用出口（spawn PTY / notify / 写盘）；生产实现 `GuiEffects` 在 app | `threads/store.rs`（trait）+ `jagent-app/src/state.rs` |
+| **Workspace（工作区）** | 项目目录分组（path/name/expanded/lastSession）；会话经 workspaceId 平铺归属，分组是派生视图；state.json 持久化 | `threads/model.rs::Workspace` + `threads/workspaces.rs` |
+| **SessionView（会话内视图）** | 会话副页签：`git` / `file` / `shell`；`main` 是虚拟 id = 主面。shell 视图绑独立真 PTY | `threads/model.rs::SessionView` |
+| **SessionNotice（通知条目）** | 会话事件流（bell/exit）落通知中心；tone 三档；带 thread_id/view_id 可直达 | `threads/model.rs::SessionNotice` |
+| **TerminalPreset（预设）** | 可启动的程序配置（program/args/env/init_command/cwd） | `presets.rs` |
+| **ActiveTarget** | 导航目标（thread id / settings / home），ThreadStore 内的枚举字段（旧 TanStack Router 已不存在） | `threads/model.rs::ActiveTarget` |
+| **ACP** | agent 会话后端：stdio 行分隔 JSON-RPC（协议层在 core，进程 IO 在 app） | `acp.rs` + `jagent-app/src/acp_io.rs` |
 
-## 平面域（plane/ · sidebar/ · dialogs/）
-
-| 词 | 含义 | 代码锚点 |
-|---|---|---|
-| **AgentPlane（壳）** | 顶层布局：sidebar 248px + pane 剩余 | `plane/AgentPlane.tsx` |
-| **Pane** | 唯一表面调度：ActiveTarget → surface 整块替换（含 workspaces 订阅做 pane 内调度） | `plane/Pane.tsx` |
-| **Sidebar 族** | 侧栏组件群：Sidebar / WorkspaceList / ThreadRow / ContextMenu / WorkspaceEmpty / WorkspacePage | `sidebar/` |
-| **Dialog 族** | 弹窗组件群：DialogHost + Crash/Error/Rename/Search/Tool/Workspace 六弹窗 | `dialogs/` |
-| **Surface** | 按 `thread.kind` 注册的表面组件（Terminal/Chat/Acp/File/Empty），ConversationView 是 chat/acp 共享消息面 | `surfaces/registry.ts` |
-
-## git 域（git/）与 fs 域
+## 设置域（jagent-core::settings）
 
 | 词 | 含义 | 代码锚点 |
 |---|---|---|
-| **GitGraphStore** | git 图状态（与 ThreadStore 平行的第二个 store） | `git/store.ts` |
-| **Worktree（worktree 工作面）** | 工作区 paneTab='git' 时的主面：GitGraphView + WorkPanel；`useWorktree` 是数据 hook | `git/useWorktree.ts` + `git/components/` |
-| **readTextFile** | 文件读取共享 adapter（git 与 FileSurface 两个消费方——seam 因第二个 adapter 坐实） | `fs/readTextFile.ts` |
+| **SettingsStore** | 设置事实源；SETTING_DEFS 声明式清单驱动分区/搜索/行渲染；合并写 + 失败回滚 | `settings/store.rs` |
+| **FsAdapter** | 设置读写 seam（真盘原子写） | `settings/file.rs` |
 
-## native 域（Rust 侧）
-
-| 词 | 含义 | 代码锚点 |
-|---|---|---|
-| **TerminalPool** | 会话池（gpui Global）：PTY + TerminalModel 按 sessionId 持有；retain 语义——会话比视图活得久 | `crates/jagent-terminal/src/pool.rs` |
-| **TerminalModel** | 单个会话模型：alacritty Term + 事件消费 task + gpui EventEmitter | `crates/jagent-terminal/src/model.rs` |
-| **CustomElement 适配层** | GPUIX `CustomElement` 实现集合：`<terminal>` 与 `<git-graph-row>`；只做协议桥接 | `packages/native/src/elements/` |
-| **napi seam** | 唯一跨语言 seam：lib.rs 协议镜像 + napi 命令；修改理由只允许是 seam 协议变化 | `packages/native/src/lib.rs` |
-
-## 横切
+## 视图域（jagent-app::views）
 
 | 词 | 含义 | 代码锚点 |
 |---|---|---|
-| **装配层** | main.tsx + threads/nativeDeps.ts：唯一允许碰 native 与两侧 store 的 JS 代码 | `main.tsx` + `threads/nativeDeps.ts` |
-| **错误总线** | native/JS 错误统一收口（toast/报告）；Rust panic 经 guarded + hook 进总线 | `errors/` + `packages/native/src/panic.rs` |
+| **RootView（壳）** | 顶层布局：侧栏 + 主面 + 会话 tab 条 | `views/root.rs` |
+| **Sidebar** | 侧栏：工作区分组树、会话行、通知入口、折叠 | `views/sidebar.rs` |
+| **TerminalPane** | 终端表面（`TerminalView` 的宿主）；retain 语义由 TerminalPool 提供 | `views/terminal_pane.rs` |
+| **Conversation** | chat/acp 共享消息面：变高 list + follow-tail + composer | `views/conversation.rs` |
+| **GitGraph / WorkPanel** | Git 图视图（list + 展开详情）/ 工作面板（status/diff） | `views/git_graph.rs` + `views/work_panel.rs` |
+| **nested_scroll 封装** | 嵌套滚动统一封装（内层能滚吃掉滚轮，到边界交外层） | `views/nested_scroll.rs` |
+
+## 终端域（jagent-terminal）
+
+| 词 | 含义 | 代码锚点 |
+|---|---|---|
+| **TerminalPool** | 会话池（gpui Global）：PTY + TerminalModel 按 sessionId 持有；retain 语义——会话比视图活得久 | `pool.rs` |
+| **TerminalModel** | 单会话模型：alacritty Term + 事件消费 + EventEmitter | `model.rs` |
+
+## 崩溃域（jagent-app）
+
+| 词 | 含义 | 代码锚点 |
+|---|---|---|
+| **sidecar** | 崩溃报告进程（`--crash-sidecar`）：READY 握手、落盘 fsync、64 条保留 | `crash.rs` |
+| **watchdog** | 守护启动（默认路径）：重启退出进程、60s/5 次 crash-loop 截止 | `crash.rs` |

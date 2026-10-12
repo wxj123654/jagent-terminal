@@ -18,7 +18,11 @@ pub fn parse_log_line(line: &str) -> Option<GraphCommit> {
         ref_names: if parts[2].is_empty() {
             vec![]
         } else {
-            parts[2].split(", ").filter(|s| !s.is_empty()).map(str::to_owned).collect()
+            parts[2]
+                .split(", ")
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+                .collect()
         },
         short_sha: parts[3].to_owned(),
         author_name: parts[4].to_owned(),
@@ -66,8 +70,18 @@ pub fn parse_changed_files(raw: &str) -> Vec<ChangedFile> {
             if path.is_empty() {
                 return None;
             }
-            let num = |s: &str| if s == "-" { None } else { Some(s.parse().unwrap_or(0)) };
-            Some(ChangedFile { path: path.to_owned(), added: num(a), deleted: num(d) })
+            let num = |s: &str| {
+                if s == "-" {
+                    None
+                } else {
+                    Some(s.parse().unwrap_or(0))
+                }
+            };
+            Some(ChangedFile {
+                path: path.to_owned(),
+                added: num(a),
+                deleted: num(d),
+            })
         })
         .collect()
 }
@@ -78,7 +92,10 @@ pub fn parse_branches(raw: &str) -> Vec<GitBranch> {
         .filter_map(|line| {
             let mut it = line.split('\0');
             let name = it.next().filter(|n| !n.is_empty())?;
-            Some(GitBranch { name: name.to_owned(), current: it.next() == Some("*") })
+            Some(GitBranch {
+                name: name.to_owned(),
+                current: it.next() == Some("*"),
+            })
         })
         .collect()
 }
@@ -128,31 +145,77 @@ mod tests {
     #[test]
     fn parse_full_log_line() {
         let b = "b".repeat(40);
-        let c = parse_log_line(&line([SHA, &b, "HEAD -> main, tag: v1.0", "abcdef1", "wxj", "wxj@jagent.dev", "1800000000", "wxj", "wxj@jagent.dev", "fix: 解析崩溃"])).unwrap();
+        let c = parse_log_line(&line([
+            SHA,
+            &b,
+            "HEAD -> main, tag: v1.0",
+            "abcdef1",
+            "wxj",
+            "wxj@jagent.dev",
+            "1800000000",
+            "wxj",
+            "wxj@jagent.dev",
+            "fix: 解析崩溃",
+        ]))
+        .unwrap();
         assert_eq!(c.sha, SHA);
         assert_eq!(c.parents, [b]);
         assert_eq!(c.ref_names, ["HEAD -> main", "tag: v1.0"]);
-        assert_eq!((c.short_sha.as_str(), c.author_name.as_str(), c.author_email.as_str()), ("abcdef1", "wxj", "wxj@jagent.dev"));
+        assert_eq!(
+            (
+                c.short_sha.as_str(),
+                c.author_name.as_str(),
+                c.author_email.as_str()
+            ),
+            ("abcdef1", "wxj", "wxj@jagent.dev")
+        );
         assert_eq!(c.timestamp, 1_800_000_000);
         assert_eq!(c.subject, "fix: 解析崩溃");
     }
 
     #[test]
     fn empty_decoration_and_root_commit() {
-        let c = parse_log_line(&line([SHA, "", "", "abcdef1", "wxj", "a@b.c", "1800000000", "wxj", "a@b.c", "init"])).unwrap();
+        let c = parse_log_line(&line([
+            SHA,
+            "",
+            "",
+            "abcdef1",
+            "wxj",
+            "a@b.c",
+            "1800000000",
+            "wxj",
+            "a@b.c",
+            "init",
+        ]))
+        .unwrap();
         assert!(c.ref_names.is_empty() && c.parents.is_empty());
     }
 
     #[test]
     fn merge_commit_has_two_parents() {
         let (p1, p2) = ("1".repeat(40), "2".repeat(40));
-        let c = parse_log_line(&line([SHA, &format!("{p1} {p2}"), "", "abcdef1", "w", "w@x", "0", "w", "w@x", "m"])).unwrap();
+        let c = parse_log_line(&line([
+            SHA,
+            &format!("{p1} {p2}"),
+            "",
+            "abcdef1",
+            "w",
+            "w@x",
+            "0",
+            "w",
+            "w@x",
+            "m",
+        ]))
+        .unwrap();
         assert_eq!(c.parents, [p1, p2]);
     }
 
     #[test]
     fn commas_in_the_subject_are_not_split() {
-        let c = parse_log_line(&line([SHA, "", "", "abcdef1", "w", "w@x", "0", "w", "w@x", "a, b, c"])).unwrap();
+        let c = parse_log_line(&line([
+            SHA, "", "", "abcdef1", "w", "w@x", "0", "w", "w@x", "a, b, c",
+        ]))
+        .unwrap();
         assert_eq!(c.subject, "a, b, c");
     }
 
@@ -160,12 +223,28 @@ mod tests {
     fn bad_lines_are_dropped() {
         assert_eq!(parse_log_line(""), None);
         assert_eq!(parse_log_line("only-three\0fields\0here"), None);
-        assert_eq!(parse_log_line("\0p\0\0s\0a\0e\0t\0cn\0ce\0subj"), None, "空 sha");
+        assert_eq!(
+            parse_log_line("\0p\0\0s\0a\0e\0t\0cn\0ce\0subj"),
+            None,
+            "空 sha"
+        );
     }
 
     #[test]
     fn bad_timestamp_falls_back_to_zero() {
-        let c = parse_log_line(&line([SHA, "", "", "abcdef1", "w", "w@x", "not-a-number", "w", "w@x", "s"])).unwrap();
+        let c = parse_log_line(&line([
+            SHA,
+            "",
+            "",
+            "abcdef1",
+            "w",
+            "w@x",
+            "not-a-number",
+            "w",
+            "w@x",
+            "s",
+        ]))
+        .unwrap();
         assert_eq!(c.timestamp, 0);
     }
 
@@ -191,7 +270,10 @@ mod tests {
     fn line_buffer_survives_a_multibyte_char_split_mid_sequence() {
         let mut lb = LineBuffer::default();
         let raw = "中文提交\nnext".as_bytes();
-        assert!(lb.push(&raw[..3 + 1]).is_empty(), "切在第二个汉字的 UTF-8 序列中间");
+        assert!(
+            lb.push(&raw[..3 + 1]).is_empty(),
+            "切在第二个汉字的 UTF-8 序列中间"
+        );
         assert_eq!(lb.push(&raw[4..]), ["中文提交"], "拼回后不是乱码");
         assert_eq!(lb.flush(), ["next"]);
     }
@@ -199,19 +281,41 @@ mod tests {
     #[test]
     fn numstat_three_columns() {
         let f = parse_changed_files("12\t4\tsrc/a.ts\n0\t3\tdocs/x.md\n");
-        assert_eq!(f, [
-            ChangedFile { path: "src/a.ts".into(), added: Some(12), deleted: Some(4) },
-            ChangedFile { path: "docs/x.md".into(), added: Some(0), deleted: Some(3) },
-        ]);
+        assert_eq!(
+            f,
+            [
+                ChangedFile {
+                    path: "src/a.ts".into(),
+                    added: Some(12),
+                    deleted: Some(4)
+                },
+                ChangedFile {
+                    path: "docs/x.md".into(),
+                    added: Some(0),
+                    deleted: Some(3)
+                },
+            ]
+        );
     }
 
     #[test]
     fn numstat_binary_and_bad_lines() {
         let f = parse_changed_files("-\t-\ticon.png\nnot-a-numstat-line\n1\t1\tok.ts");
-        assert_eq!(f, [
-            ChangedFile { path: "icon.png".into(), added: None, deleted: None },
-            ChangedFile { path: "ok.ts".into(), added: Some(1), deleted: Some(1) },
-        ]);
+        assert_eq!(
+            f,
+            [
+                ChangedFile {
+                    path: "icon.png".into(),
+                    added: None,
+                    deleted: None
+                },
+                ChangedFile {
+                    path: "ok.ts".into(),
+                    added: Some(1),
+                    deleted: Some(1)
+                },
+            ]
+        );
     }
 
     #[test]
@@ -223,20 +327,38 @@ mod tests {
     #[test]
     fn branches_mark_head_and_skip_blank_lines() {
         let b = parse_branches("main\0*\nfeat/ime\0\n\nfix/titlebar\0");
-        assert_eq!(b, [
-            GitBranch { name: "main".into(), current: true },
-            GitBranch { name: "feat/ime".into(), current: false },
-            GitBranch { name: "fix/titlebar".into(), current: false },
-        ]);
+        assert_eq!(
+            b,
+            [
+                GitBranch {
+                    name: "main".into(),
+                    current: true
+                },
+                GitBranch {
+                    name: "feat/ime".into(),
+                    current: false
+                },
+                GitBranch {
+                    name: "fix/titlebar".into(),
+                    current: false
+                },
+            ]
+        );
     }
 
     #[test]
     fn status_entries_cover_modified_added_deleted_untracked() {
         use WorktreeFileKind::*;
         let raw = " M src/a.rs\0A  new.rs\0 D gone.rs\0?? untracked.rs\0";
-        assert_eq!(parse_status_entries(raw), [
-            ("src/a.rs".into(), M), ("new.rs".into(), A), ("gone.rs".into(), D), ("untracked.rs".into(), A),
-        ]);
+        assert_eq!(
+            parse_status_entries(raw),
+            [
+                ("src/a.rs".into(), M),
+                ("new.rs".into(), A),
+                ("gone.rs".into(), D),
+                ("untracked.rs".into(), A),
+            ]
+        );
     }
 
     #[test]
@@ -244,14 +366,25 @@ mod tests {
         use WorktreeFileKind::*;
         // -z 下重命名是 `R  new\0old\0`；old 不能被当成一个独立条目
         let raw = "R  new.rs\0old.rs\0 M other.rs\0";
-        assert_eq!(parse_status_entries(raw), [("new.rs".into(), M), ("other.rs".into(), M)]);
+        assert_eq!(
+            parse_status_entries(raw),
+            [("new.rs".into(), M), ("other.rs".into(), M)]
+        );
     }
 
     #[test]
     fn status_index_side_wins_over_worktree_side() {
         use WorktreeFileKind::*;
-        assert_eq!(parse_status_entries("AM both.rs\0")[0].1, A, "X=A 优先于 Y=M");
-        assert_eq!(parse_status_entries("MD both.rs\0")[0].1, M, "X=M 优先于 Y=D");
+        assert_eq!(
+            parse_status_entries("AM both.rs\0")[0].1,
+            A,
+            "X=A 优先于 Y=M"
+        );
+        assert_eq!(
+            parse_status_entries("MD both.rs\0")[0].1,
+            M,
+            "X=M 优先于 Y=D"
+        );
     }
 
     #[test]

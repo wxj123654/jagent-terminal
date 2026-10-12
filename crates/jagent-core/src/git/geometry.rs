@@ -37,7 +37,12 @@ pub struct Arc {
 pub fn arc(x0: f32, x1: f32) -> Arc {
     let mid = ROW_HEIGHT / 2.0;
     let quarter = ROW_HEIGHT / 4.0;
-    Arc { start: (x0, 0.0), control_a: (x0, quarter), control_b: (x1, quarter), end: (x1, mid) }
+    Arc {
+        start: (x0, 0.0),
+        control_a: (x0, quarter),
+        control_b: (x1, quarter),
+        end: (x1, mid),
+    }
 }
 
 /// 线在第 `row` 行的进入列：沿线段顺序，最后一个在 `row` 之前完成的弯曲决定列；没有则为起始列。
@@ -46,7 +51,9 @@ pub fn enter_column(line: &CommitLine, row: usize) -> usize {
     line.segments
         .iter()
         .filter_map(|s| match s {
-            LaneSegment::Curve { to_column, on_row, .. } if *on_row < row => Some(*to_column),
+            LaneSegment::Curve {
+                to_column, on_row, ..
+            } if *on_row < row => Some(*to_column),
             _ => None,
         })
         .last()
@@ -73,11 +80,17 @@ pub fn line_strokes(line: &CommitLine, row: usize) -> Vec<Stroke> {
     let (child_row, end_row) = line.row_span;
     let mid = ROW_HEIGHT / 2.0;
     if row == child_row {
-        return vec![Stroke::Vertical { x: lane_x(line.child_column), y0: mid, y1: ROW_HEIGHT }];
+        return vec![Stroke::Vertical {
+            x: lane_x(line.child_column),
+            y0: mid,
+            y1: ROW_HEIGHT,
+        }];
     }
     let enter = lane_x(enter_column(line, row));
     let active = line.segments.iter().find_map(|s| match s {
-        LaneSegment::Curve { to_column, on_row, .. } if *on_row == row => Some(*to_column),
+        LaneSegment::Curve {
+            to_column, on_row, ..
+        } if *on_row == row => Some(*to_column),
         _ => None,
     });
     match active {
@@ -85,13 +98,21 @@ pub fn line_strokes(line: &CommitLine, row: usize) -> Vec<Stroke> {
             let to = lane_x(to_column);
             let mut out = vec![Stroke::Arc(arc(enter, to))];
             if row != end_row {
-                out.push(Stroke::Vertical { x: to, y0: mid, y1: ROW_HEIGHT });
+                out.push(Stroke::Vertical {
+                    x: to,
+                    y0: mid,
+                    y1: ROW_HEIGHT,
+                });
             }
             out
         }
         None => {
             let y1 = if row == end_row { mid } else { ROW_HEIGHT };
-            vec![Stroke::Vertical { x: enter, y0: 0.0, y1 }]
+            vec![Stroke::Vertical {
+                x: enter,
+                y0: 0.0,
+                y1,
+            }]
         }
     }
 }
@@ -101,27 +122,61 @@ mod tests {
     use super::*;
 
     /// 构造一条连线：从 `child_column` 在 `row_span.0` 行出发，到 `row_span.1` 行结束。
-    fn line(child_column: usize, row_span: (usize, usize), curves: &[(usize, usize)]) -> CommitLine {
+    fn line(
+        child_column: usize,
+        row_span: (usize, usize),
+        curves: &[(usize, usize)],
+    ) -> CommitLine {
         let segments = curves
             .iter()
-            .map(|&(to_column, on_row)| LaneSegment::Curve { to_column, on_row, merge: false })
+            .map(|&(to_column, on_row)| LaneSegment::Curve {
+                to_column,
+                on_row,
+                merge: false,
+            })
             .collect();
-        CommitLine { child_column, row_span, color_idx: 0, segments }
+        CommitLine {
+            child_column,
+            row_span,
+            color_idx: 0,
+            segments,
+        }
     }
 
     #[test]
     fn the_child_row_draws_only_the_lower_half_of_its_own_lane() {
-        assert_eq!(line_strokes(&line(2, (4, 9), &[]), 4), vec![Stroke::Vertical { x: lane_x(2), y0: 15.0, y1: 30.0 }]);
+        assert_eq!(
+            line_strokes(&line(2, (4, 9), &[]), 4),
+            vec![Stroke::Vertical {
+                x: lane_x(2),
+                y0: 15.0,
+                y1: 30.0
+            }]
+        );
     }
 
     #[test]
     fn a_pass_through_row_draws_a_full_height_vertical() {
-        assert_eq!(line_strokes(&line(1, (4, 9), &[]), 6), vec![Stroke::Vertical { x: lane_x(1), y0: 0.0, y1: 30.0 }]);
+        assert_eq!(
+            line_strokes(&line(1, (4, 9), &[]), 6),
+            vec![Stroke::Vertical {
+                x: lane_x(1),
+                y0: 0.0,
+                y1: 30.0
+            }]
+        );
     }
 
     #[test]
     fn the_end_row_stops_at_mid_height_so_the_dot_caps_it() {
-        assert_eq!(line_strokes(&line(1, (4, 9), &[]), 9), vec![Stroke::Vertical { x: lane_x(1), y0: 0.0, y1: 15.0 }]);
+        assert_eq!(
+            line_strokes(&line(1, (4, 9), &[]), 9),
+            vec![Stroke::Vertical {
+                x: lane_x(1),
+                y0: 0.0,
+                y1: 15.0
+            }]
+        );
     }
 
     #[test]
@@ -129,7 +184,14 @@ mod tests {
         // 线从列 0 在第 6 行弯到列 3
         let strokes = line_strokes(&line(0, (4, 9), &[(3, 6)]), 6);
         assert_eq!(strokes[0], Stroke::Arc(arc(lane_x(0), lane_x(3))));
-        assert_eq!(strokes[1], Stroke::Vertical { x: lane_x(3), y0: 15.0, y1: 30.0 });
+        assert_eq!(
+            strokes[1],
+            Stroke::Vertical {
+                x: lane_x(3),
+                y0: 15.0,
+                y1: 30.0
+            }
+        );
     }
 
     #[test]

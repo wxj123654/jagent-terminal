@@ -4,10 +4,10 @@
 //! app 只做"把 core 的状态画出来、把输入事件翻译成 core 的方法调用"。
 
 pub mod acp_io;
-pub mod crash;
 pub mod actions;
 pub mod app;
+pub mod crash;
 pub mod state;
-pub mod theme;
 pub mod terminal_style;
+pub mod theme;
 pub mod views;

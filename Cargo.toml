@@ -1,8 +1,6 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
-# .refs/ 是旧 gpuix 参考仓库（P8 删除）；spikes/ 是 P0 独立 workspace（P1 删除）。
-exclude = [".refs", "spikes"]
 
 [workspace.package]
 version = "0.1.0"

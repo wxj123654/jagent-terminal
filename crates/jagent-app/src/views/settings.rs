@@ -1203,7 +1203,7 @@ fn section_content(
             rows = rows.child(readonly_value(
                 "配置文件",
                 "~/.j-agent/settings.json",
-                "打开外部编辑器操作尚未实现", 
+                "打开外部编辑器操作尚未实现",
                 cx,
             ));
             if let Some(err) = state.read(cx).settings.write_error() {

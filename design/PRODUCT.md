@@ -1,12 +1,15 @@
-# j-agent 原型
+# j-agent 原型（历史设计记录）
 
 <!-- impeccable:product-schema 1 -->
 
+> 注：本文件写作于 React/GPUIX 时代，描述的是当时的产品定义与设计意图。
+> 正式应用已于 2026-10 重写为纯 Rust gpui（`docs/gpui-rewrite.md`）；
+> 所引用的 HTML/React 原型已删除（git 历史 `aadecd4` 可查）。
+> 产品定位与交互意图仍然有效；技术表述以 `docs/architecture.md` 为准。
+
 ## Platform
 
-web
-
-这里记录浏览器可交互原型，不代表正式应用改用 Web 技术。正式应用仍是 GPUIX + 原生 PTY。
+桌面应用（Rust + gpui；本文件写作时为浏览器原型）。
 
 ## Users
 

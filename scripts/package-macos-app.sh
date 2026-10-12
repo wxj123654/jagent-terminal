@@ -20,7 +20,7 @@ if [[ ! -x "$BIN" ]]; then
   echo "release executable missing: $BIN (run cargo build --release -p jagent-app --target $TARGET)" >&2
   exit 1
 fi
-ICON="$ROOT/packages/app/assets/icons/app.icns"
+ICON="$ROOT/crates/jagent-app/assets/icons/app.icns"
 [[ -f "$ICON" ]] || { echo "missing icon: $ICON" >&2; exit 1; }
 APP="$ROOT/target/package/JAgent.app"
 CONTENTS="$APP/Contents"

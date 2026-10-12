@@ -43,14 +43,18 @@ fn str_of(v: &Value, k: &str) -> Option<String> {
 impl TurnCollector {
     /// 处理一条 `session/update` 的 `update` 对象。
     pub fn on_update(&mut self, u: &Value) {
-        let Some(kind) = u.get("sessionUpdate").and_then(Value::as_str) else { return };
+        let Some(kind) = u.get("sessionUpdate").and_then(Value::as_str) else {
+            return;
+        };
         match kind {
             "agent_message_chunk" => {
                 let Some(c) = u.get("content") else { return };
                 if c.get("type").and_then(Value::as_str) != Some("text") {
                     return;
                 }
-                let Some(text) = c.get("text").and_then(Value::as_str) else { return };
+                let Some(text) = c.get("text").and_then(Value::as_str) else {
+                    return;
+                };
                 let mid = str_of(u, "messageId");
                 if let (Some(mid), Some(cur)) = (&mid, &self.current_msg_id)
                     && mid != cur
@@ -67,12 +71,21 @@ impl TurnCollector {
                 if id.is_empty() || self.tools.contains_key(&id) {
                     return;
                 }
-                self.tools.insert(id.clone(), ToolRow { kind: str_of(u, "kind"), title: str_of(u, "title"), status: str_of(u, "status") });
+                self.tools.insert(
+                    id.clone(),
+                    ToolRow {
+                        kind: str_of(u, "kind"),
+                        title: str_of(u, "title"),
+                        status: str_of(u, "status"),
+                    },
+                );
                 self.tool_order.push(id);
             }
             "tool_call_update" => {
                 let id = u.get("toolCallId").map(value_to_id).unwrap_or_default();
-                let Some(row) = self.tools.get_mut(&id) else { return };
+                let Some(row) = self.tools.get_mut(&id) else {
+                    return;
+                };
                 if let Some(v) = str_of(u, "kind") {
                     row.kind = Some(v);
                 }
@@ -108,7 +121,12 @@ impl TurnCollector {
             .map(|t| {
                 let bits: Vec<&str> = ["tool"]
                     .into_iter()
-                    .chain([&t.kind, &t.title, &t.status].into_iter().filter_map(|x| x.as_deref()).filter(|s| !s.is_empty()))
+                    .chain(
+                        [&t.kind, &t.title, &t.status]
+                            .into_iter()
+                            .filter_map(|x| x.as_deref())
+                            .filter(|s| !s.is_empty()),
+                    )
                     .collect();
                 format!("- {}", bits.join(" · "))
             })
@@ -119,7 +137,11 @@ impl TurnCollector {
         if let Some(note) = stop_note(stop_reason) {
             parts.push(format!("> 停止：{note}"));
         }
-        if parts.is_empty() { "（turn 结束，无输出）".into() } else { parts.join("\n\n") }
+        if parts.is_empty() {
+            "（turn 结束，无输出）".into()
+        } else {
+            parts.join("\n\n")
+        }
     }
 }
 
@@ -147,9 +169,16 @@ fn stop_note(reason: &str) -> Option<&'static str> {
 #[derive(Debug, PartialEq)]
 pub enum Incoming {
     /// 对我方请求的响应：`Ok(result)` / `Err(message)`
-    Response { id: u64, result: Result<Value, String> },
+    Response {
+        id: u64,
+        result: Result<Value, String>,
+    },
     /// agent → client 的请求，需回复
-    Request { id: u64, method: String, params: Value },
+    Request {
+        id: u64,
+        method: String,
+        params: Value,
+    },
     /// 通知（无 id）
     Notification { method: String, params: Value },
 }
@@ -165,8 +194,15 @@ pub fn parse_line(line: &str) -> Option<Incoming> {
     if let Some(method) = msg.get("method").and_then(Value::as_str) {
         let params = msg.get("params").cloned().unwrap_or(Value::Null);
         return Some(match id {
-            Some(id) => Incoming::Request { id, method: method.to_owned(), params },
-            None => Incoming::Notification { method: method.to_owned(), params },
+            Some(id) => Incoming::Request {
+                id,
+                method: method.to_owned(),
+                params,
+            },
+            None => Incoming::Notification {
+                method: method.to_owned(),
+                params,
+            },
         });
     }
     let id = id?;
@@ -183,15 +219,24 @@ pub fn parse_line(line: &str) -> Option<Incoming> {
 
 /// 编码一条出站请求（一行，含换行）。
 pub fn encode_request(id: u64, method: &str, params: &Value) -> String {
-    format!("{}\n", json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }))
+    format!(
+        "{}\n",
+        json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params })
+    )
 }
 
 fn encode_response(id: u64, result: &Value) -> String {
-    format!("{}\n", json!({ "jsonrpc": "2.0", "id": id, "result": result }))
+    format!(
+        "{}\n",
+        json!({ "jsonrpc": "2.0", "id": id, "result": result })
+    )
 }
 
 fn encode_error(id: u64, code: i64, message: &str) -> String {
-    format!("{}\n", json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } }))
+    format!(
+        "{}\n",
+        json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
+    )
 }
 
 /// 自动应答 agent 请求（目前仅权限；无 UI——后续接权限面时替换）。
@@ -199,9 +244,19 @@ fn encode_error(id: u64, code: i64, message: &str) -> String {
 /// 返回要写回 stdin 的一行。
 pub fn reply_to_agent_request(id: u64, method: &str, params: &Value) -> String {
     if method == "session/request_permission" {
-        let options: Vec<&Value> = params.get("options").and_then(Value::as_array).map(|a| a.iter().collect()).unwrap_or_default();
-        let by_kind = |k: &str| options.iter().find(|o| o.get("kind").and_then(Value::as_str) == Some(k));
-        let pick = by_kind("allow_once").or_else(|| by_kind("allow_always")).or_else(|| options.first());
+        let options: Vec<&Value> = params
+            .get("options")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().collect())
+            .unwrap_or_default();
+        let by_kind = |k: &str| {
+            options
+                .iter()
+                .find(|o| o.get("kind").and_then(Value::as_str) == Some(k))
+        };
+        let pick = by_kind("allow_once")
+            .or_else(|| by_kind("allow_always"))
+            .or_else(|| options.first());
         let result = match pick.and_then(|o| o.get("optionId")) {
             Some(oid) => json!({ "outcome": "selected", "optionId": oid }),
             None => json!({ "outcome": "cancelled" }),
@@ -224,13 +279,20 @@ pub fn initialize_params(client_name: &str, client_version: &str) -> Value {
 pub fn check_initialize(result: &Value) -> Result<(), String> {
     match result.get("protocolVersion") {
         Some(Value::Number(n)) if n.as_u64() == Some(1) => Ok(()),
-        other => Err(format!("ACP 协议版本不兼容（agent 返回 {}）", other.map_or("undefined".into(), Value::to_string))),
+        other => Err(format!(
+            "ACP 协议版本不兼容（agent 返回 {}）",
+            other.map_or("undefined".into(), Value::to_string)
+        )),
     }
 }
 
 /// 取 `session/new` 的 sessionId。
 pub fn session_id_of(result: &Value) -> Result<String, String> {
-    result.get("sessionId").and_then(Value::as_str).map(str::to_owned).ok_or_else(|| "session/new 未返回 sessionId".into())
+    result
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| "session/new 未返回 sessionId".into())
 }
 
 /// `session/prompt` 的参数。
@@ -257,14 +319,22 @@ mod tests {
     fn parse_line_classifies_responses_requests_and_notifications() {
         assert_eq!(
             parse_line(r#"{"jsonrpc":"2.0","id":3,"result":{"x":1}}"#),
-            Some(Incoming::Response { id: 3, result: Ok(json!({"x":1})) })
+            Some(Incoming::Response {
+                id: 3,
+                result: Ok(json!({"x":1}))
+            })
         );
         assert_eq!(
             parse_line(r#"{"jsonrpc":"2.0","id":4,"error":{"code":-32000,"message":"boom"}}"#),
-            Some(Incoming::Response { id: 4, result: Err("ACP 错误 -32000：boom".into()) })
+            Some(Incoming::Response {
+                id: 4,
+                result: Err("ACP 错误 -32000：boom".into())
+            })
         );
         assert!(matches!(
-            parse_line(r#"{"jsonrpc":"2.0","id":9,"method":"session/request_permission","params":{}}"#),
+            parse_line(
+                r#"{"jsonrpc":"2.0","id":9,"method":"session/request_permission","params":{}}"#
+            ),
             Some(Incoming::Request { id: 9, .. })
         ));
         assert!(matches!(
@@ -278,25 +348,55 @@ mod tests {
         assert_eq!(parse_line(""), None);
         assert_eq!(parse_line("   "), None);
         assert_eq!(parse_line("not json"), None);
-        assert_eq!(parse_line(r#"{"jsonrpc":"2.0"}"#), None, "既无 method 也无 id");
-        assert_eq!(parse_line(r#"{"jsonrpc":"2.0","id":"str","result":1}"#), None, "非数字 id 不是我们发出的请求");
+        assert_eq!(
+            parse_line(r#"{"jsonrpc":"2.0"}"#),
+            None,
+            "既无 method 也无 id"
+        );
+        assert_eq!(
+            parse_line(r#"{"jsonrpc":"2.0","id":"str","result":1}"#),
+            None,
+            "非数字 id 不是我们发出的请求"
+        );
     }
 
     #[test]
     fn encode_request_is_one_line_with_a_trailing_newline() {
         let s = encode_request(1, "initialize", &initialize_params("j-agent", "0.1.0"));
-        assert!(s.ends_with('\n') && s.matches('\n').count() == 1, "禁内嵌换行");
+        assert!(
+            s.ends_with('\n') && s.matches('\n').count() == 1,
+            "禁内嵌换行"
+        );
         let v: Value = serde_json::from_str(s.trim()).unwrap();
-        assert_eq!((v["jsonrpc"].as_str(), v["id"].as_u64(), v["method"].as_str()), (Some("2.0"), Some(1), Some("initialize")));
+        assert_eq!(
+            (
+                v["jsonrpc"].as_str(),
+                v["id"].as_u64(),
+                v["method"].as_str()
+            ),
+            (Some("2.0"), Some(1), Some("initialize"))
+        );
         assert_eq!(v["params"]["protocolVersion"], 1);
-        assert_eq!(v["params"]["clientCapabilities"], json!({}), "不声明 fs/terminal 能力");
+        assert_eq!(
+            v["params"]["clientCapabilities"],
+            json!({}),
+            "不声明 fs/terminal 能力"
+        );
         assert_eq!(v["params"]["clientInfo"]["name"], "j-agent");
     }
 
     #[test]
     fn prompt_params_carry_the_text_even_when_it_contains_newlines() {
-        let s = encode_request(7, "session/prompt", &prompt_params("sess-1", "line1\nline2"));
-        assert_eq!(s.matches('\n').count(), 1, "文本里的换行被 JSON 转义，不破坏行分隔");
+        let s = encode_request(
+            7,
+            "session/prompt",
+            &prompt_params("sess-1", "line1\nline2"),
+        );
+        assert_eq!(
+            s.matches('\n').count(),
+            1,
+            "文本里的换行被 JSON 转义，不破坏行分隔"
+        );
         let v: Value = serde_json::from_str(s.trim()).unwrap();
         assert_eq!(v["params"]["prompt"][0]["text"], "line1\nline2");
     }
@@ -304,8 +404,16 @@ mod tests {
     #[test]
     fn handshake_checks_protocol_version_and_session_id() {
         assert!(check_initialize(&json!({"protocolVersion":1})).is_ok());
-        assert!(check_initialize(&json!({"protocolVersion":2})).unwrap_err().contains("不兼容"));
-        assert!(check_initialize(&json!({})).unwrap_err().contains("undefined"));
+        assert!(
+            check_initialize(&json!({"protocolVersion":2}))
+                .unwrap_err()
+                .contains("不兼容")
+        );
+        assert!(
+            check_initialize(&json!({}))
+                .unwrap_err()
+                .contains("undefined")
+        );
         assert_eq!(session_id_of(&json!({"sessionId":"s1"})).unwrap(), "s1");
         assert!(session_id_of(&json!({})).unwrap_err().contains("sessionId"));
         assert!(session_id_of(&json!({"sessionId":5})).is_err());
@@ -314,13 +422,31 @@ mod tests {
     #[test]
     fn permission_requests_prefer_allow_once_then_allow_always_then_first() {
         let pick = |opts: Value| -> Value {
-            let line = reply_to_agent_request(5, "session/request_permission", &json!({ "options": opts }));
+            let line = reply_to_agent_request(
+                5,
+                "session/request_permission",
+                &json!({ "options": opts }),
+            );
             serde_json::from_str::<Value>(line.trim()).unwrap()["result"].clone()
         };
         let o = |id: &str, k: &str| json!({"optionId": id, "kind": k});
-        assert_eq!(pick(json!([o("r", "reject_once"), o("a", "allow_always"), o("o", "allow_once")])), json!({"outcome":"selected","optionId":"o"}));
-        assert_eq!(pick(json!([o("r", "reject_once"), o("a", "allow_always")])), json!({"outcome":"selected","optionId":"a"}));
-        assert_eq!(pick(json!([o("r", "reject_once"), o("x", "reject_always")])), json!({"outcome":"selected","optionId":"r"}), "首项");
+        assert_eq!(
+            pick(json!([
+                o("r", "reject_once"),
+                o("a", "allow_always"),
+                o("o", "allow_once")
+            ])),
+            json!({"outcome":"selected","optionId":"o"})
+        );
+        assert_eq!(
+            pick(json!([o("r", "reject_once"), o("a", "allow_always")])),
+            json!({"outcome":"selected","optionId":"a"})
+        );
+        assert_eq!(
+            pick(json!([o("r", "reject_once"), o("x", "reject_always")])),
+            json!({"outcome":"selected","optionId":"r"}),
+            "首项"
+        );
         assert_eq!(pick(json!([])), json!({"outcome":"cancelled"}));
     }
 
@@ -328,61 +454,89 @@ mod tests {
     fn unknown_agent_requests_get_method_not_found() {
         let line = reply_to_agent_request(8, "fs/read_text_file", &json!({}));
         let v: Value = serde_json::from_str(line.trim()).unwrap();
-        assert_eq!((v["id"].as_u64(), v["error"]["code"].as_i64()), (Some(8), Some(-32601)));
-        assert!(v["error"]["message"].as_str().unwrap().contains("fs/read_text_file"));
+        assert_eq!(
+            (v["id"].as_u64(), v["error"]["code"].as_i64()),
+            (Some(8), Some(-32601))
+        );
+        assert!(
+            v["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("fs/read_text_file")
+        );
     }
 
     #[test]
     fn message_chunks_join_and_a_new_message_id_starts_a_new_paragraph() {
         let mut t = TurnCollector::default();
-        feed(&mut t, &[
-            r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","messageId":"m1","content":{"type":"text","text":"你好，"}}}}"#,
-            r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","messageId":"m1","content":{"type":"text","text":"世界"}}}}"#,
-            r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","messageId":"m2","content":{"type":"text","text":"第二段"}}}}"#,
-        ]);
+        feed(
+            &mut t,
+            &[
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","messageId":"m1","content":{"type":"text","text":"你好，"}}}}"#,
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","messageId":"m1","content":{"type":"text","text":"世界"}}}}"#,
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","messageId":"m2","content":{"type":"text","text":"第二段"}}}}"#,
+            ],
+        );
         assert_eq!(t.assemble("end_turn"), "你好，世界\n\n第二段");
     }
 
     #[test]
     fn non_text_chunks_and_unknown_updates_are_ignored() {
         let mut t = TurnCollector::default();
-        feed(&mut t, &[
-            r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"image","data":"x"}}}}"#,
-            r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"想想"}}}}"#,
-            r#"{"method":"session/update","params":{"update":{"sessionUpdate":"plan","entries":[]}}}"#,
-            r#"{"method":"session/update","params":{"update":{"noKind":true}}}"#,
-        ]);
+        feed(
+            &mut t,
+            &[
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"image","data":"x"}}}}"#,
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"想想"}}}}"#,
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"plan","entries":[]}}}"#,
+                r#"{"method":"session/update","params":{"update":{"noKind":true}}}"#,
+            ],
+        );
         assert_eq!(t.assemble("end_turn"), "（turn 结束，无输出）");
     }
 
     #[test]
     fn tool_calls_are_summarised_in_first_seen_order_and_updates_patch_the_row() {
         let mut t = TurnCollector::default();
-        feed(&mut t, &[
-            r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"开始"}}}}"#,
-            r#"{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCallId":"a","kind":"read","title":"Read x.rs","status":"pending"}}}"#,
-            r#"{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCallId":"b","title":"Run tests"}}}"#,
-            r#"{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCallId":"a","title":"重复 id 忽略"}}}"#,
-            r#"{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call_update","toolCallId":"a","status":"completed"}}}"#,
-            r#"{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call_update","toolCallId":"zzz","status":"completed"}}}"#,
-        ]);
-        assert_eq!(t.assemble("end_turn"), "开始\n\n- tool · read · Read x.rs · completed\n- tool · Run tests");
+        feed(
+            &mut t,
+            &[
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"开始"}}}}"#,
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCallId":"a","kind":"read","title":"Read x.rs","status":"pending"}}}"#,
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCallId":"b","title":"Run tests"}}}"#,
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCallId":"a","title":"重复 id 忽略"}}}"#,
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call_update","toolCallId":"a","status":"completed"}}}"#,
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call_update","toolCallId":"zzz","status":"completed"}}}"#,
+            ],
+        );
+        assert_eq!(
+            t.assemble("end_turn"),
+            "开始\n\n- tool · read · Read x.rs · completed\n- tool · Run tests"
+        );
     }
 
     #[test]
     fn numeric_tool_call_ids_are_accepted() {
         let mut t = TurnCollector::default();
-        feed(&mut t, &[
-            r#"{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCallId":7,"title":"n"}}}"#,
-            r#"{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call_update","toolCallId":7,"status":"done"}}}"#,
-        ]);
+        feed(
+            &mut t,
+            &[
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCallId":7,"title":"n"}}}"#,
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call_update","toolCallId":7,"status":"done"}}}"#,
+            ],
+        );
         assert_eq!(t.assemble("end_turn"), "- tool · n · done");
     }
 
     #[test]
     fn non_end_turn_stop_reasons_append_a_note() {
         let mut t = TurnCollector::default();
-        feed(&mut t, &[r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"半截"}}}}"#]);
+        feed(
+            &mut t,
+            &[
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"半截"}}}}"#,
+            ],
+        );
         assert_eq!(t.assemble("end_turn"), "半截");
         assert_eq!(t.assemble("max_tokens"), "半截\n\n> 停止：达到 token 上限");
         assert_eq!(t.assemble("refusal"), "半截\n\n> 停止：agent 拒绝继续");
@@ -419,6 +573,9 @@ mod tests {
         }
         check_initialize(&responses[&1]).unwrap();
         assert_eq!(session_id_of(&responses[&2]).unwrap(), "s-9");
-        assert_eq!(turn.assemble(responses[&3]["stopReason"].as_str().unwrap()), "done");
+        assert_eq!(
+            turn.assemble(responses[&3]["stopReason"].as_str().unwrap()),
+            "done"
+        );
     }
 }

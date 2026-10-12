@@ -20,8 +20,14 @@ pub const UNSET: usize = usize::MAX;
 /// 直线段：垂直线覆盖 `[产生行, to_row]`；曲线段：在 `on_row` 行从上一位置弯到 `to_column`。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LaneSegment {
-    Straight { to_row: usize },
-    Curve { to_column: usize, on_row: usize, merge: bool },
+    Straight {
+        to_row: usize,
+    },
+    Curve {
+        to_column: usize,
+        on_row: usize,
+        merge: bool,
+    },
 }
 
 /// 一条完整的连接线（child 列出发 → parent 列到达），行区间为闭区间。
@@ -110,24 +116,31 @@ impl GitGraphData {
                 self.parent_to_lanes.remove(&commit.sha);
                 for lane_column in waiting {
                     // merge 曲线落点修正
-                    let fix = self.lane_states[lane_column].as_ref().and_then(|state| {
-                        match state.segments.first() {
-                            Some(LaneSegment::Curve { merge: true, .. }) if lane_column != commit_lane => {
+                    let fix = self.lane_states[lane_column]
+                        .as_ref()
+                        .and_then(|state| match state.segments.first() {
+                            Some(LaneSegment::Curve { merge: true, .. })
+                                if lane_column != commit_lane =>
+                            {
                                 let curve_row = state.starting_row + 1;
                                 let would_overlap = curve_row < commit_row
-                                    && self.rows[curve_row..commit_row].iter().any(|r| r.lane == commit_lane);
+                                    && self.rows[curve_row..commit_row]
+                                        .iter()
+                                        .any(|r| r.lane == commit_lane);
                                 would_overlap.then_some(())
                             }
                             _ => None,
-                        }
-                    });
+                        });
                     if fix.is_some()
                         && let Some(state) = self.lane_states[lane_column].as_mut()
-                        && let Some(LaneSegment::Curve { to_column, .. }) = state.segments.first_mut()
+                        && let Some(LaneSegment::Curve { to_column, .. }) =
+                            state.segments.first_mut()
                     {
                         *to_column = lane_column;
                     }
-                    if let Some(line) = self.lane_to_commit_line(lane_column, commit_row, commit_lane, commit_color) {
+                    if let Some(line) =
+                        self.lane_to_commit_line(lane_column, commit_row, commit_lane, commit_color)
+                    {
                         // 索引到覆盖的每一行（闭区间）
                         for r in line.row_span.0..=line.row_span.1 {
                             self.lines_by_row.entry(r).or_default().push(line.clone());
@@ -158,14 +171,22 @@ impl GitGraphData {
                         starting_row: commit_row,
                         starting_col: commit_lane,
                         destination_column: None,
-                        segments: vec![LaneSegment::Curve { to_column: UNSET, on_row: UNSET, merge: true }],
+                        segments: vec![LaneSegment::Curve {
+                            to_column: UNSET,
+                            on_row: UNSET,
+                            merge: true,
+                        }],
                     });
                     self.push_parent_lane(p, nl);
                 }
             }
 
             self.max_lanes = self.max_lanes.max(self.lane_states.len());
-            self.rows.push(GraphRow { commit: commit.clone(), lane: commit_lane, color_idx: commit_color });
+            self.rows.push(GraphRow {
+                commit: commit.clone(),
+                lane: commit_lane,
+                color_idx: commit_color,
+            });
         }
     }
 
@@ -190,7 +211,10 @@ impl GitGraphData {
     }
 
     fn push_parent_lane(&mut self, parent: &str, lane: usize) {
-        self.parent_to_lanes.entry(parent.to_owned()).or_default().push(lane);
+        self.parent_to_lanes
+            .entry(parent.to_owned())
+            .or_default()
+            .push(lane);
     }
 
     /// lane 收尾（parent 提交到达，行号 = `ending_row`）。对齐 Zed `to_commit_lines`：
@@ -209,7 +233,11 @@ impl GitGraphData {
         let starting_row = state.starting_row;
         let mut segments = state.segments;
 
-        let checkout = |to_column| LaneSegment::Curve { to_column, on_row: ending_row, merge: false };
+        let checkout = |to_column| LaneSegment::Curve {
+            to_column,
+            on_row: ending_row,
+            merge: false,
+        };
 
         match segments.last().cloned() {
             Some(LaneSegment::Straight { to_row: UNSET }) => {
@@ -226,16 +254,30 @@ impl GitGraphData {
                     segments[last] = LaneSegment::Straight { to_row: ending_row };
                 }
             }
-            Some(LaneSegment::Curve { to_column, on_row, merge }) => {
+            Some(LaneSegment::Curve {
+                to_column,
+                on_row,
+                merge,
+            }) => {
                 let last = segments.len() - 1;
                 if on_row == UNSET {
-                    let to_column = if to_column == UNSET { final_destination } else { to_column };
+                    let to_column = if to_column == UNSET {
+                        final_destination
+                    } else {
+                        to_column
+                    };
                     if merge {
                         let on_row = starting_row + 1;
-                        segments[last] = LaneSegment::Curve { to_column, on_row, merge };
+                        segments[last] = LaneSegment::Curve {
+                            to_column,
+                            on_row,
+                            merge,
+                        };
                         if on_row < ending_row {
                             if to_column != final_destination {
-                                segments.push(LaneSegment::Straight { to_row: ending_row - 1 });
+                                segments.push(LaneSegment::Straight {
+                                    to_row: ending_row - 1,
+                                });
                                 segments.push(checkout(final_destination));
                             } else {
                                 segments.push(LaneSegment::Straight { to_row: ending_row });
@@ -244,7 +286,11 @@ impl GitGraphData {
                             segments.push(checkout(final_destination));
                         }
                     } else {
-                        segments[last] = LaneSegment::Curve { to_column, on_row: ending_row, merge };
+                        segments[last] = LaneSegment::Curve {
+                            to_column,
+                            on_row: ending_row,
+                            merge,
+                        };
                         if to_column != final_destination {
                             segments.push(LaneSegment::Straight { to_row: ending_row });
                             segments.push(checkout(final_destination));
@@ -252,7 +298,9 @@ impl GitGraphData {
                     }
                 } else if on_row < ending_row {
                     if to_column != final_destination {
-                        segments.push(LaneSegment::Straight { to_row: ending_row - 1 });
+                        segments.push(LaneSegment::Straight {
+                            to_row: ending_row - 1,
+                        });
                         segments.push(checkout(final_destination));
                     } else {
                         segments.push(LaneSegment::Straight { to_row: ending_row });
@@ -309,8 +357,15 @@ mod tests {
     /// 未设置环境变量时直接返回，不影响常规测试。
     #[test]
     fn export_fixture_for_legacy_comparison() {
-        let Ok(path) = std::env::var("GRAPH_EXPORT") else { return };
-        let fixture = [c("m1", &["m2", "f1"]), c("f1", &["m2"]), c("m2", &["m3"]), c("m3", &[])];
+        let Ok(path) = std::env::var("GRAPH_EXPORT") else {
+            return;
+        };
+        let fixture = [
+            c("m1", &["m2", "f1"]),
+            c("f1", &["m2"]),
+            c("m2", &["m3"]),
+            c("m3", &[]),
+        ];
         let mut g = GitGraphData::new(8);
         g.add_commits(&fixture);
         let rows: Vec<_> = g
@@ -343,9 +398,16 @@ mod tests {
     /// 未设置环境变量时直接返回。
     #[test]
     fn export_drawing_for_legacy_comparison() {
-        let Ok(path) = std::env::var("GRAPH_DRAW_EXPORT") else { return };
+        let Ok(path) = std::env::var("GRAPH_DRAW_EXPORT") else {
+            return;
+        };
         use crate::git::geometry::{Stroke, line_strokes};
-        let fixture = [c("m1", &["m2", "f1"]), c("f1", &["m2"]), c("m2", &["m3"]), c("m3", &[])];
+        let fixture = [
+            c("m1", &["m2", "f1"]),
+            c("f1", &["m2"]),
+            c("m2", &["m3"]),
+            c("m3", &[]),
+        ];
         let mut g = GitGraphData::new(8);
         g.add_commits(&fixture);
         let rows: Vec<_> = (0..g.rows.len())
@@ -382,7 +444,11 @@ mod tests {
         let mut g = GitGraphData::default();
         g.add_commits(&[c("c3", &["c2"]), c("c2", &["c1"]), c("c1", &[])]);
         assert_eq!(lanes(&g), [0, 0, 0]);
-        let spans: Vec<_> = g.lines.iter().map(|l| (l.child_column, l.row_span)).collect();
+        let spans: Vec<_> = g
+            .lines
+            .iter()
+            .map(|l| (l.child_column, l.row_span))
+            .collect();
         assert_eq!(spans, [(0, (0, 1)), (0, (1, 2))]);
         assert_eq!(g.lines[0].segments, [Straight { to_row: 1 }]);
         assert_eq!(g.max_lanes, 1);
@@ -392,7 +458,14 @@ mod tests {
     //   f(merge e,d)  row0 / e←c row1 lane0 / d←b row2 lane1 / c←b row3 lane0 / b←a row4 / a row5
 
     fn batch() -> Vec<GraphCommit> {
-        vec![c("f", &["e", "d"]), c("e", &["c"]), c("d", &["b"]), c("c", &["b"]), c("b", &["a"]), c("a", &[])]
+        vec![
+            c("f", &["e", "d"]),
+            c("e", &["c"]),
+            c("d", &["b"]),
+            c("c", &["b"]),
+            c("b", &["a"]),
+            c("a", &[]),
+        ]
     }
 
     #[test]
@@ -406,14 +479,34 @@ mod tests {
         // f→d 支线：从 f 的 col0 出发，row1 弯到 col1（merge），直线到 row2
         let d_line = &g.lines[1];
         assert_eq!((d_line.child_column, d_line.row_span), (0, (0, 2)));
-        assert_eq!(d_line.segments[0], Curve { to_column: 1, on_row: 1, merge: true });
+        assert_eq!(
+            d_line.segments[0],
+            Curve {
+                to_column: 1,
+                on_row: 1,
+                merge: true
+            }
+        );
         assert_eq!(d_line.segments[1], Straight { to_row: 2 });
-        assert_eq!(d_line.color_idx, g.rows[2].color_idx, "merge 支线色 = parent 所在 lane 的色");
+        assert_eq!(
+            d_line.color_idx, g.rows[2].color_idx,
+            "merge 支线色 = parent 所在 lane 的色"
+        );
 
         // b 到达时 waiting 顺序 = push 顺序 [lane1(from d), lane0(from c)]
         let b_join = &g.lines[3];
         assert_eq!((b_join.child_column, b_join.row_span), (1, (2, 4)));
-        assert_eq!(b_join.segments, [Straight { to_row: 3 }, Curve { to_column: 0, on_row: 4, merge: false }]);
+        assert_eq!(
+            b_join.segments,
+            [
+                Straight { to_row: 3 },
+                Curve {
+                    to_column: 0,
+                    on_row: 4,
+                    merge: false
+                }
+            ]
+        );
     }
 
     #[test]
@@ -436,8 +529,19 @@ mod tests {
         g.add_commits(&batch());
         g.add_commits(&[c("h", &["a", "x"]), c("x", &[])]);
         assert_eq!(g.rows[6].lane, 0);
-        let x_line = g.lines.iter().find(|l| l.row_span.0 == 6 && l.child_column == 0).unwrap();
-        assert_eq!(x_line.segments[0], Curve { to_column: 1, on_row: 7, merge: true });
+        let x_line = g
+            .lines
+            .iter()
+            .find(|l| l.row_span.0 == 6 && l.child_column == 0)
+            .unwrap();
+        assert_eq!(
+            x_line.segments[0],
+            Curve {
+                to_column: 1,
+                on_row: 7,
+                merge: true
+            }
+        );
         assert_eq!(g.max_lanes, 2);
     }
 
@@ -447,19 +551,50 @@ mod tests {
     fn curve_landing_blocked_by_a_middle_commit_falls_back_to_its_own_column() {
         //   h(merge g,e) row0 / g←e row1 lane0（挡在 e 的直线路径上）/ e←d row2 / d row3
         let mut g = GitGraphData::default();
-        g.add_commits(&[c("h", &["g", "e"]), c("g", &["e"]), c("e", &["d"]), c("d", &[])]);
+        g.add_commits(&[
+            c("h", &["g", "e"]),
+            c("g", &["e"]),
+            c("e", &["d"]),
+            c("d", &[]),
+        ]);
         let e_line = g.lines.iter().find(|l| l.row_span == (0, 2)).expect("h→e");
-        assert_eq!(e_line.segments[0], Curve { to_column: 1, on_row: 1, merge: true });
+        assert_eq!(
+            e_line.segments[0],
+            Curve {
+                to_column: 1,
+                on_row: 1,
+                merge: true
+            }
+        );
         assert_eq!(e_line.segments[1], Straight { to_row: 1 });
-        assert_eq!(e_line.segments[2], Curve { to_column: 0, on_row: 2, merge: false });
+        assert_eq!(
+            e_line.segments[2],
+            Curve {
+                to_column: 0,
+                on_row: 2,
+                merge: false
+            }
+        );
     }
 
     #[test]
     fn unobstructed_curves_are_not_corrected() {
         let mut g = GitGraphData::default();
-        g.add_commits(&[c("h3", &["g3", "e3"]), c("e3", &["d3"]), c("g3", &["d3"]), c("d3", &[])]);
+        g.add_commits(&[
+            c("h3", &["g3", "e3"]),
+            c("e3", &["d3"]),
+            c("g3", &["d3"]),
+            c("d3", &[]),
+        ]);
         let e3 = g.lines.iter().find(|l| l.row_span == (0, 1)).unwrap();
-        assert_eq!(e3.segments, [Curve { to_column: 1, on_row: 1, merge: true }]);
+        assert_eq!(
+            e3.segments,
+            [Curve {
+                to_column: 1,
+                on_row: 1,
+                merge: true
+            }]
+        );
     }
 
     // ── 颜色 ──
@@ -467,7 +602,13 @@ mod tests {
     #[test]
     fn lane_colors_are_cached_and_the_palette_wraps() {
         let mut g = GitGraphData::new(2);
-        g.add_commits(&[c("j", &["i1", "i2", "i3"]), c("i1", &["r"]), c("i2", &["r"]), c("i3", &["r"]), c("r", &[])]);
+        g.add_commits(&[
+            c("j", &["i1", "i2", "i3"]),
+            c("i1", &["r"]),
+            c("i2", &["r"]),
+            c("i3", &["r"]),
+            c("r", &[]),
+        ]);
         assert_eq!(g.max_lanes, 3);
         assert_eq!(g.rows[0].color_idx, 0);
         let from_j: Vec<_> = g.lines.iter().filter(|l| l.row_span.0 == 0).collect();
@@ -480,7 +621,12 @@ mod tests {
     #[test]
     fn merge_branch_inherits_the_parent_color_on_arrival() {
         let mut g = GitGraphData::default();
-        g.add_commits(&[c("f", &["e", "d"]), c("e", &["r"]), c("d", &["r"]), c("r", &[])]);
+        g.add_commits(&[
+            c("f", &["e", "d"]),
+            c("e", &["r"]),
+            c("d", &["r"]),
+            c("r", &[]),
+        ]);
         let d_line = g.lines.iter().find(|l| l.row_span.1 == 2).unwrap();
         assert_eq!(d_line.color_idx, g.rows[2].color_idx);
     }
@@ -522,9 +668,17 @@ mod tests {
         g.add_commits(&batch());
         // f→d 线覆盖 row 0..=2
         for r in 0..=2 {
-            assert!(g.lines_by_row[&r].iter().any(|l| l.row_span == (0, 2)), "row {r}");
+            assert!(
+                g.lines_by_row[&r].iter().any(|l| l.row_span == (0, 2)),
+                "row {r}"
+            );
         }
-        assert!(g.lines_by_row.values().flatten().all(|l| l.row_span.0 <= l.row_span.1));
+        assert!(
+            g.lines_by_row
+                .values()
+                .flatten()
+                .all(|l| l.row_span.0 <= l.row_span.1)
+        );
     }
 
     #[test]

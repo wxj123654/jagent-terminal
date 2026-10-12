@@ -12,7 +12,10 @@ fn bool_or(o: &Map<String, Value>, k: &str, d: bool) -> bool {
 }
 
 fn string_or_empty(o: &Map<String, Value>, k: &str) -> String {
-    o.get(k).and_then(Value::as_str).unwrap_or_default().to_owned()
+    o.get(k)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned()
 }
 
 /// 解析 state.json 内容（装配期一次性）：
@@ -21,8 +24,12 @@ fn string_or_empty(o: &Map<String, Value>, k: &str) -> String {
 /// - 其余坏字段回默认（expanded=true、lastSession=None、paneTab=home、showAll/pin=false、createdAt=0、name=""）。
 pub fn parse_workspace_state(raw: Option<&str>) -> Vec<Workspace> {
     let Some(raw) = raw else { return vec![] };
-    let Ok(Value::Object(root)) = serde_json::from_str::<Value>(raw) else { return vec![] };
-    let Some(Value::Array(rows)) = root.get("workspaces") else { return vec![] };
+    let Ok(Value::Object(root)) = serde_json::from_str::<Value>(raw) else {
+        return vec![];
+    };
+    let Some(Value::Array(rows)) = root.get("workspaces") else {
+        return vec![];
+    };
     rows.iter()
         .filter_map(|row| {
             let o = row.as_object()?;
@@ -37,7 +44,10 @@ pub fn parse_workspace_state(raw: Option<&str>) -> Vec<Workspace> {
                 name: string_or_empty(o, "name"),
                 path,
                 expanded: bool_or(o, "expanded", true),
-                last_session: o.get("lastSession").and_then(Value::as_str).map(str::to_owned),
+                last_session: o
+                    .get("lastSession")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
                 pane_tab: match o.get("paneTab").and_then(Value::as_str) {
                     Some("git") => PaneTab::Git,
                     _ => PaneTab::Home,
@@ -78,13 +88,20 @@ pub fn default_workspace(id: String, path: &str, now: i64) -> Workspace {
 
 /// 工作区的会话（创建序派生视图——侧栏分组渲染与「最后一个会话」判定用）。
 pub fn workspace_sessions<'a>(threads: &'a [Thread], workspace_id: &str) -> Vec<&'a Thread> {
-    threads.iter().filter(|t| t.workspace_id() == Some(workspace_id)).collect()
+    threads
+        .iter()
+        .filter(|t| t.workspace_id() == Some(workspace_id))
+        .collect()
 }
 
 // ── lastSession 不变量（store 的唯一规则写点）─────────────────────────
 
 /// 会话聚焦 → 归属工作区记录 last_session。实际变化返回 true（store 拿它做 persist 判据）。
-pub fn record_last_session(workspaces: &mut [Workspace], workspace_id: &str, thread_id: &str) -> bool {
+pub fn record_last_session(
+    workspaces: &mut [Workspace],
+    workspace_id: &str,
+    thread_id: &str,
+) -> bool {
     match workspaces.iter_mut().find(|w| w.id == workspace_id) {
         Some(ws) if ws.last_session.as_deref() != Some(thread_id) => {
             ws.last_session = Some(thread_id.to_owned());
@@ -95,7 +112,11 @@ pub fn record_last_session(workspaces: &mut [Workspace], workspace_id: &str, thr
 }
 
 /// 会话移除 → 若是所属工作区 last_session 则清空。实际变化返回 true。
-pub fn clear_last_session(workspaces: &mut [Workspace], workspace_id: &str, thread_id: &str) -> bool {
+pub fn clear_last_session(
+    workspaces: &mut [Workspace],
+    workspace_id: &str,
+    thread_id: &str,
+) -> bool {
     match workspaces.iter_mut().find(|w| w.id == workspace_id) {
         Some(ws) if ws.last_session.as_deref() == Some(thread_id) => {
             ws.last_session = None;
@@ -124,7 +145,11 @@ pub fn thread_priority(t: &Thread) -> u8 {
     }
 }
 
-fn conversation_priority(pending: bool, messages: &[super::model::ChatMessage], unread: bool) -> u8 {
+fn conversation_priority(
+    pending: bool,
+    messages: &[super::model::ChatMessage],
+    unread: bool,
+) -> u8 {
     if pending {
         return 0;
     }
@@ -186,14 +211,19 @@ pub fn search_threads<'a>(
     threads
         .iter()
         .filter_map(|t| {
-            let ws = t.workspace_id().and_then(|id| workspaces.iter().find(|w| w.id == id));
+            let ws = t
+                .workspace_id()
+                .and_then(|id| workspaces.iter().find(|w| w.id == id));
             let (tool, dir) = match t {
                 Thread::Terminal(x) => (
                     preset_label_of(x.preset.as_deref()).unwrap_or_else(|| "Terminal".into()),
                     x.cwd.clone(),
                 ),
                 Thread::Acp(_) => ("ACP".into(), ws.map(|w| w.path.clone()).unwrap_or_default()),
-                Thread::Chat(_) => ("Chat".into(), ws.map(|w| w.path.clone()).unwrap_or_default()),
+                Thread::Chat(_) => (
+                    "Chat".into(),
+                    ws.map(|w| w.path.clone()).unwrap_or_default(),
+                ),
             };
             let haystack = format!(
                 "{} {} {} {} {}",
@@ -204,7 +234,10 @@ pub fn search_threads<'a>(
                 ws.map_or("", |w| w.path.as_str()),
             )
             .to_lowercase();
-            haystack.contains(&q).then_some(SearchHit { thread: t, workspace: ws })
+            haystack.contains(&q).then_some(SearchHit {
+                thread: t,
+                workspace: ws,
+            })
         })
         .collect()
 }
@@ -230,7 +263,9 @@ impl WorkspaceFormError {
         match self {
             Self::NeedNameOrPath => "请填写名称或项目目录。",
             Self::PathRequired => "请填写项目目录。",
-            Self::PathNotAbsolute => "请填写绝对路径，例如 ~/Projects/app、/Projects/app 或 C:\\Projects\\app。",
+            Self::PathNotAbsolute => {
+                "请填写绝对路径，例如 ~/Projects/app、/Projects/app 或 C:\\Projects\\app。"
+            }
             Self::DuplicatePath => "此目录已有工作区，请从左侧选择，或填写其他目录。",
         }
     }
@@ -241,7 +276,10 @@ fn is_absolute_path(p: &str) -> bool {
     p.starts_with('/')
         || p.starts_with("~/")
         || p.starts_with("\\\\")
-        || (b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/'))
+        || (b.len() >= 3
+            && b[0].is_ascii_alphabetic()
+            && b[1] == b':'
+            && (b[2] == b'\\' || b[2] == b'/'))
 }
 
 fn normalize_dir(p: &str) -> &str {
@@ -249,7 +287,11 @@ fn normalize_dir(p: &str) -> &str {
 }
 
 /// 校验「添加工作区」表单。`name` / `path` 为用户原始输入（未 trim）。
-pub fn validate_workspace_form(name: &str, path: &str, existing: &[Workspace]) -> Result<(), WorkspaceFormError> {
+pub fn validate_workspace_form(
+    name: &str,
+    path: &str,
+    existing: &[Workspace],
+) -> Result<(), WorkspaceFormError> {
     let (name, path) = (name.trim(), path.trim());
     if name.is_empty() && path.is_empty() {
         return Err(WorkspaceFormError::NeedNameOrPath);
@@ -260,7 +302,10 @@ pub fn validate_workspace_form(name: &str, path: &str, existing: &[Workspace]) -
     if !is_absolute_path(path) {
         return Err(WorkspaceFormError::PathNotAbsolute);
     }
-    if existing.iter().any(|w| normalize_dir(&w.path) == normalize_dir(path)) {
+    if existing
+        .iter()
+        .any(|w| normalize_dir(&w.path) == normalize_dir(path))
+    {
         return Err(WorkspaceFormError::DuplicatePath);
     }
     Ok(())
@@ -282,7 +327,10 @@ mod tests {
             created_at: 0,
             messages: vec![],
             pending_reply: false,
-            common: ThreadCommon { workspace_id: ws_id.map(Into::into), ..Default::default() },
+            common: ThreadCommon {
+                workspace_id: ws_id.map(Into::into),
+                ..Default::default()
+            },
         })
     }
 
@@ -346,7 +394,10 @@ mod tests {
         assert!(w[1].expanded, "expanded 缺失 → true");
         assert_eq!(w[1].last_session, None, "lastSession 类型坏 → None");
         assert_eq!(w[1].created_at, 0);
-        assert_eq!(w[2].name, "", "name 缺失 → 空串（path 兜底是 UI/装配层职责）");
+        assert_eq!(
+            w[2].name, "",
+            "name 缺失 → 空串（path 兜底是 UI/装配层职责）"
+        );
     }
 
     #[test]
@@ -359,15 +410,28 @@ mod tests {
             {"id":"w5","path":7},
             "garbage"
         ]}"#;
-        let ids: Vec<_> = parse_workspace_state(Some(raw)).into_iter().map(|w| w.id).collect();
-        assert_eq!(ids, ["w1"], "缺 id / 空 id / 缺 path / 空 path / path 类型错 / 非对象 都剔除");
+        let ids: Vec<_> = parse_workspace_state(Some(raw))
+            .into_iter()
+            .map(|w| w.id)
+            .collect();
+        assert_eq!(
+            ids,
+            ["w1"],
+            "缺 id / 空 id / 缺 path / 空 path / path 类型错 / 非对象 都剔除"
+        );
     }
 
     #[test]
     fn serialize_then_parse_restores_everything() {
         let list = vec![
             ws("w1", "/Users/u/proj", 1),
-            Workspace { expanded: false, last_session: Some("t7".into()), pane_tab: PaneTab::Git, pin: true, ..ws("w2", "/srv/web", 2) },
+            Workspace {
+                expanded: false,
+                last_session: Some("t7".into()),
+                pane_tab: PaneTab::Git,
+                pin: true,
+                ..ws("w2", "/srv/web", 2)
+            },
         ];
         let raw = serialize_workspace_state(&list);
         assert!(raw.ends_with('\n'));
@@ -380,13 +444,29 @@ mod tests {
     #[test]
     fn default_workspace_uses_basename_and_starts_expanded() {
         let w = default_workspace("w9".into(), "/Users/u/jagent-terminal", 99);
-        assert_eq!((w.name.as_str(), w.expanded, w.last_session.clone(), w.created_at), ("jagent-terminal", true, None, 99));
+        assert_eq!(
+            (
+                w.name.as_str(),
+                w.expanded,
+                w.last_session.clone(),
+                w.created_at
+            ),
+            ("jagent-terminal", true, None, 99)
+        );
     }
 
     #[test]
     fn workspace_sessions_filters_by_creation_order() {
-        let threads = vec![chat("c1", "c1", Some("w1")), chat("c2", "c2", None), chat("c3", "c3", Some("w2")), chat("c4", "c4", Some("w1"))];
-        let ids: Vec<_> = workspace_sessions(&threads, "w1").iter().map(|t| t.id().to_owned()).collect();
+        let threads = vec![
+            chat("c1", "c1", Some("w1")),
+            chat("c2", "c2", None),
+            chat("c3", "c3", Some("w2")),
+            chat("c4", "c4", Some("w1")),
+        ];
+        let ids: Vec<_> = workspace_sessions(&threads, "w1")
+            .iter()
+            .map(|t| t.id().to_owned())
+            .collect();
         assert_eq!(ids, ["c1", "c4"]);
         assert!(workspace_sessions(&threads, "w-none").is_empty());
     }
@@ -397,7 +477,10 @@ mod tests {
         assert!(record_last_session(&mut w, "w1", "t1"));
         assert!(!record_last_session(&mut w, "w1", "t1"), "同值不算变化");
         assert!(!record_last_session(&mut w, "nope", "t1"));
-        assert!(!clear_last_session(&mut w, "w1", "t9"), "不是 last_session 不清");
+        assert!(
+            !clear_last_session(&mut w, "w1", "t9"),
+            "不是 last_session 不清"
+        );
         assert!(clear_last_session(&mut w, "w1", "t1"));
         assert_eq!(w[0].last_session, None);
     }
@@ -406,17 +489,42 @@ mod tests {
 
     #[test]
     fn search_matches_title_tool_dir_and_workspace_name_case_insensitively() {
-        let workspaces = vec![ws("w-a", "/w/alpha", 0), Workspace { name: "beta".into(), ..ws("w-b", "/w/beta", 0) }];
-        let threads = vec![chat("c-pi", "pi 调试会话", Some("w-a")), chat("c-plain", "c-plain", Some("w-b")), chat("c-orphan", "c-orphan", None)];
+        let workspaces = vec![
+            ws("w-a", "/w/alpha", 0),
+            Workspace {
+                name: "beta".into(),
+                ..ws("w-b", "/w/beta", 0)
+            },
+        ];
+        let threads = vec![
+            chat("c-pi", "pi 调试会话", Some("w-a")),
+            chat("c-plain", "c-plain", Some("w-b")),
+            chat("c-orphan", "c-orphan", None),
+        ];
         let none = |_: Option<&str>| None;
-        let ids = |q: &str| -> Vec<String> { search_threads(&threads, &workspaces, q, none).iter().map(|h| h.thread.id().to_owned()).collect() };
+        let ids = |q: &str| -> Vec<String> {
+            search_threads(&threads, &workspaces, q, none)
+                .iter()
+                .map(|h| h.thread.id().to_owned())
+                .collect()
+        };
 
         assert_eq!(ids("pi 调试"), ["c-pi"]);
         assert_eq!(ids("chat"), ["c-pi", "c-plain", "c-orphan"], "工具名 Chat");
         assert_eq!(ids("beta"), ["c-plain"], "工作区名命中；无归属行不进");
-        assert_eq!(search_threads(&threads, &workspaces, "beta", none)[0].workspace.unwrap().name, "beta");
+        assert_eq!(
+            search_threads(&threads, &workspaces, "beta", none)[0]
+                .workspace
+                .unwrap()
+                .name,
+            "beta"
+        );
         assert_eq!(ids("CHAT").len(), 3);
-        assert_eq!(ids("  "), ["c-pi", "c-plain", "c-orphan"], "空 query 全命中");
+        assert_eq!(
+            ids("  "),
+            ["c-pi", "c-plain", "c-orphan"],
+            "空 query 全命中"
+        );
     }
 
     #[test]
@@ -429,8 +537,15 @@ mod tests {
         })];
         let labels = |p: Option<&str>| (p == Some("shell")).then(|| "Shell".to_owned());
         assert_eq!(search_threads(&t, &workspaces, "shell", labels).len(), 1);
-        assert_eq!(search_threads(&t, &workspaces, "alpha/sub", |_| None).len(), 1);
-        assert_eq!(search_threads(&t, &workspaces, "terminal", |_| None).len(), 1, "未注入 → 工具面回退 Terminal");
+        assert_eq!(
+            search_threads(&t, &workspaces, "alpha/sub", |_| None).len(),
+            1
+        );
+        assert_eq!(
+            search_threads(&t, &workspaces, "terminal", |_| None).len(),
+            1,
+            "未注入 → 工具面回退 Terminal"
+        );
     }
 
     // ── 排序 ──────────────────────────────────────────────────────
@@ -438,7 +553,9 @@ mod tests {
     #[test]
     fn threads_sort_pin_then_run_then_queue_then_unread_then_recency() {
         let chat_with = |id: &str, created: i64, f: &dyn Fn(&mut ChatThread)| {
-            let Thread::Chat(mut c) = chat(id, id, None) else { unreachable!() };
+            let Thread::Chat(mut c) = chat(id, id, None) else {
+                unreachable!()
+            };
             c.created_at = created;
             f(&mut c);
             Thread::Chat(c)
@@ -446,44 +563,85 @@ mod tests {
         let threads = vec![
             term("t-old", |t| t.created_at = 1),
             chat_with("c-run", 2, &|c| c.pending_reply = true),
-            term("t-bell", |t| { t.created_at = 3; t.has_bell = true }),
+            term("t-bell", |t| {
+                t.created_at = 3;
+                t.has_bell = true
+            }),
             chat_with("c-unread", 4, &|c| c.common.unread = true),
             term("t-new", |t| t.created_at = 5),
             chat_with("c-pin", 1, &|c| c.common.pin = true),
         ];
-        let ids: Vec<_> = sort_threads(&threads).iter().map(|t| t.id().to_owned()).collect();
-        assert_eq!(ids, ["c-pin", "c-run", "t-bell", "c-unread", "t-new", "t-old"]);
+        let ids: Vec<_> = sort_threads(&threads)
+            .iter()
+            .map(|t| t.id().to_owned())
+            .collect();
+        assert_eq!(
+            ids,
+            ["c-pin", "c-run", "t-bell", "c-unread", "t-new", "t-old"]
+        );
     }
 
     #[test]
     fn live_terminal_is_not_running_and_exited_shares_the_idle_bucket() {
-        let Thread::Chat(mut run) = chat("c-run", "c-run", None) else { unreachable!() };
+        let Thread::Chat(mut run) = chat("c-run", "c-run", None) else {
+            unreachable!()
+        };
         run.created_at = 2;
         run.pending_reply = true;
-        let threads = vec![term("t-live", |t| t.created_at = 1), Thread::Chat(run), term("t-dead", |t| { t.created_at = 3; t.status = RunStatus::Exited })];
-        let ids: Vec<_> = sort_threads(&threads).iter().map(|t| t.id().to_owned()).collect();
+        let threads = vec![
+            term("t-live", |t| t.created_at = 1),
+            Thread::Chat(run),
+            term("t-dead", |t| {
+                t.created_at = 3;
+                t.status = RunStatus::Exited
+            }),
+        ];
+        let ids: Vec<_> = sort_threads(&threads)
+            .iter()
+            .map(|t| t.id().to_owned())
+            .collect();
         assert_eq!(ids, ["c-run", "t-dead", "t-live"]);
     }
 
     #[test]
     fn same_millisecond_ties_break_by_reverse_array_order() {
         let threads = vec![term("a", |_| {}), term("b", |_| {}), term("c", |_| {})];
-        let ids: Vec<_> = sort_threads(&threads).iter().map(|t| t.id().to_owned()).collect();
+        let ids: Vec<_> = sort_threads(&threads)
+            .iter()
+            .map(|t| t.id().to_owned())
+            .collect();
         assert_eq!(ids, ["c", "b", "a"], "数组尾 = 最新");
     }
 
     #[test]
     fn failed_assistant_reply_drops_out_of_the_unread_bucket() {
-        let Thread::Chat(mut c) = chat("c", "c", None) else { unreachable!() };
+        let Thread::Chat(mut c) = chat("c", "c", None) else {
+            unreachable!()
+        };
         c.common.unread = true;
-        c.messages.push(ChatMessage { id: "m1".into(), role: MessageRole::Assistant { error: true }, text: "x".into(), at: 0 });
+        c.messages.push(ChatMessage {
+            id: "m1".into(),
+            role: MessageRole::Assistant { error: true },
+            text: "x".into(),
+            at: 0,
+        });
         assert_eq!(thread_priority(&Thread::Chat(c)), 3);
     }
 
     #[test]
     fn workspaces_sort_pin_first_then_creation_order() {
-        let list = vec![ws("w-a", "/w/a", 1), Workspace { pin: true, ..ws("w-b", "/w/b", 2) }, ws("w-c", "/w/c", 3)];
-        let ids: Vec<_> = sort_workspaces(&list).iter().map(|w| w.id.clone()).collect();
+        let list = vec![
+            ws("w-a", "/w/a", 1),
+            Workspace {
+                pin: true,
+                ..ws("w-b", "/w/b", 2)
+            },
+            ws("w-c", "/w/c", 3),
+        ];
+        let ids: Vec<_> = sort_workspaces(&list)
+            .iter()
+            .map(|w| w.id.clone())
+            .collect();
         assert_eq!(ids, ["w-b", "w-a", "w-c"]);
     }
 
@@ -499,29 +657,72 @@ mod tests {
     #[test]
     fn workspace_form_requires_a_name_or_a_path_and_an_absolute_path() {
         let none: &[Workspace] = &[];
-        assert_eq!(validate_workspace_form("  ", "  ", none), Err(WorkspaceFormError::NeedNameOrPath));
-        assert_eq!(validate_workspace_form("app", "", none), Err(WorkspaceFormError::PathRequired));
-        assert_eq!(validate_workspace_form("", "relative/dir", none), Err(WorkspaceFormError::PathNotAbsolute));
-        assert_eq!(validate_workspace_form("", "app", none), Err(WorkspaceFormError::PathNotAbsolute));
-        for ok in ["/Users/u/app", "~/Projects/app", "C:\\Projects\\app", "c:/projects/app", "\\\\server\\share"] {
+        assert_eq!(
+            validate_workspace_form("  ", "  ", none),
+            Err(WorkspaceFormError::NeedNameOrPath)
+        );
+        assert_eq!(
+            validate_workspace_form("app", "", none),
+            Err(WorkspaceFormError::PathRequired)
+        );
+        assert_eq!(
+            validate_workspace_form("", "relative/dir", none),
+            Err(WorkspaceFormError::PathNotAbsolute)
+        );
+        assert_eq!(
+            validate_workspace_form("", "app", none),
+            Err(WorkspaceFormError::PathNotAbsolute)
+        );
+        for ok in [
+            "/Users/u/app",
+            "~/Projects/app",
+            "C:\\Projects\\app",
+            "c:/projects/app",
+            "\\\\server\\share",
+        ] {
             assert_eq!(validate_workspace_form("", ok, none), Ok(()), "{ok}");
         }
         // 只填名称、不填路径：路径必填（与旧表单一致）
-        assert_eq!(validate_workspace_form("app", "  ", none), Err(WorkspaceFormError::PathRequired));
+        assert_eq!(
+            validate_workspace_form("app", "  ", none),
+            Err(WorkspaceFormError::PathRequired)
+        );
     }
 
     #[test]
     fn workspace_form_rejects_a_directory_already_in_use_ignoring_trailing_separators() {
-        let existing = [ws("a", "/Users/u/app/", 1), ws("b", "C:\\Projects\\site\\", 2)];
-        assert_eq!(validate_workspace_form("", "/Users/u/app", &existing), Err(WorkspaceFormError::DuplicatePath));
-        assert_eq!(validate_workspace_form("", "/Users/u/app//", &existing), Err(WorkspaceFormError::DuplicatePath));
-        assert_eq!(validate_workspace_form("", "C:\\Projects\\site", &existing), Err(WorkspaceFormError::DuplicatePath));
-        assert_eq!(validate_workspace_form("", "/Users/u/other", &existing), Ok(()));
+        let existing = [
+            ws("a", "/Users/u/app/", 1),
+            ws("b", "C:\\Projects\\site\\", 2),
+        ];
+        assert_eq!(
+            validate_workspace_form("", "/Users/u/app", &existing),
+            Err(WorkspaceFormError::DuplicatePath)
+        );
+        assert_eq!(
+            validate_workspace_form("", "/Users/u/app//", &existing),
+            Err(WorkspaceFormError::DuplicatePath)
+        );
+        assert_eq!(
+            validate_workspace_form("", "C:\\Projects\\site", &existing),
+            Err(WorkspaceFormError::DuplicatePath)
+        );
+        assert_eq!(
+            validate_workspace_form("", "/Users/u/other", &existing),
+            Ok(())
+        );
     }
 
     #[test]
     fn every_form_error_has_the_user_facing_message_from_the_old_dialog() {
-        assert_eq!(WorkspaceFormError::PathRequired.message(), "请填写项目目录。");
-        assert!(WorkspaceFormError::DuplicatePath.message().starts_with("此目录已有工作区"));
+        assert_eq!(
+            WorkspaceFormError::PathRequired.message(),
+            "请填写项目目录。"
+        );
+        assert!(
+            WorkspaceFormError::DuplicatePath
+                .message()
+                .starts_with("此目录已有工作区")
+        );
     }
 }

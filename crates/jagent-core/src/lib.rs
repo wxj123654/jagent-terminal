@@ -1,14 +1,14 @@
 //! jagent-core：不依赖 gpui 的纯逻辑。普通 `#[test]` 即可覆盖，编译快。
 //!
-//! 对应旧 TS 实现：
-//! - [`settings`]：`settings/schema.ts` + `store.ts` + `file.ts`
-//! - [`acp`]：`threads/acp.ts` 的协议层（行分隔 JSON-RPC 编解码 + turn 状态机；进程 IO 在 jagent-app）
-//! - [`git`]：`git/{types,cli,graph}.ts`（解析 / lane 状态机 / 进程边界）
+//! - [`settings`]：设置 schema（字段级容错、未知键保留）、store（合并写+回滚）、file（原子写）
+//! - [`acp`]：ACP 协议层（行分隔 JSON-RPC 编解码 + turn 状态机；进程 IO 在 jagent-app）
+//! - [`git`]：git 数据层（cli 进程边界 / 解析 / lane 状态机 / 图状态 / 几何）
 //! - [`new_session`]：新建会话弹窗的数据模型（分组 / 筛选 / 归属约束）
-//! - [`presets`]：`threads/presets.ts`
-//! - [`threads`]：`threads/{store,workspaces,chat,terminal}.ts` + `internal/*`
+//! - [`presets`]：内置/自定义预设 CRUD 规则
+//! - [`threads`]：会话域规则（store / model / workspaces / conversation）
 //!
-//! 规格来源是旧 TS 代码与它的测试（`packages/app/src/**/__tests__`），P8 删除旧代码前以其为准。
+//! 迁移前的 React 实现与其测试是这些规则的历史规格，见 git 历史
+//! （`aadecd4` 及之前的 `packages/app/src/**`）。
 
 pub mod acp;
 pub mod git;

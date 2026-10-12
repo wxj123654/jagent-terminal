@@ -1,9 +1,8 @@
-//! error.rs — structured errors for the napi seam (docs/error-management.md
-//! 方案 B 第 1 步).
+//! error.rs — 结构化错误（沿用旧错误管理方案 B 的稳定错误码契约；跨语言 seam
+//! 已随 P8 移除，消费方是 `jagent-app`）。
 //!
-//! `anyhow` stays for internal plumbing; at the cross-language boundary
-//! (packages/native lib.rs) `TerminalError` maps to stable JS error codes
-//! (`error.code`, napi `Error<String>` status) so the JS side can branch:
+//! `anyhow` stays for internal plumbing; `TerminalError` carries stable
+//! error codes（`terminal_error_code`）so callers can branch:
 //! retry / ignore / prompt.
 //!
 //! Design note: spawn failures are NOT here. `TerminalModel::new` keeps the
@@ -12,7 +11,7 @@
 
 use std::fmt;
 
-/// Errors surfaced synchronously across the napi seam.
+/// Errors surfaced synchronously to the embedding app.
 #[derive(Debug, thiserror::Error)]
 pub enum TerminalError {
     /// `destroy(id)` on an id the pool never held (or already removed).
@@ -27,8 +26,7 @@ pub enum TerminalError {
     Host(String),
 }
 
-/// 稳定错误码（JS `error.code`）：JS 侧按此分支（可重试/可忽略/需提示）。
-/// 与 packages/native 的 `host_error` 约定同步维护。
+/// 稳定错误码：调用方按此分支（可重试/可忽略/需提示）。
 pub fn terminal_error_code(e: &TerminalError) -> &'static str {
     match e {
         TerminalError::SessionNotFound(_) => "ERR_TERMINAL_SESSION_NOT_FOUND",
@@ -38,9 +36,8 @@ pub fn terminal_error_code(e: &TerminalError) -> &'static str {
 }
 
 /// Marker carried inside `anyhow::Error` when a host closure panicked and was
-/// caught by `host::run_host`'s `catch_unwind`. The napi layer maps this to
-/// `ERR_NATIVE_PANIC` instead of `ERR_TERMINAL_HOST` so JS can tell "the host
-/// is now unreliable" from "the command was refused".
+/// caught by `catch_unwind`（旧 napi 层曾把它映射为 `ERR_NATIVE_PANIC` 以区分
+/// "host 不可靠"与"命令被拒绝"；gpui 版里由调用方自行分支）。
 #[derive(Debug)]
 pub struct HostPanic(pub String);
 

@@ -1,25 +1,5 @@
 # Rust
 /target/
-# P0 spike 独立 workspace 的构建产物（docs/p0-spike.md）
-/spikes/*/target/
-
-# 参考仓库浅克隆（可重建；本地补丁经 patches/ 目录版本化，见 bun run setup-refs）
-.refs/
-
-# Node / bun（Phase 1 起）
-node_modules/
-*.tsbuildinfo
-
-# napi 原生二进制（index.js/index.d.ts 是生成物但入库，供 TS 类型用）
-packages/native/*.node
-packages/native/*.dll
-# napi 换二进制时的临时残留（旧 .node 重命名中转）
-packages/native/*retired*
-
-# 打包产物（bun run build）
-dist/
-# bun compile 失败/中断时留在仓库根的临时大文件（~137MB）
-.*.bun-build
 
 # 杂项
 *.log
@@ -29,11 +9,5 @@ Thumbs.db
 # pi agent 本地会话产物
 .pi/
 
-# impeccable skill 设计工具工作产物
-design/.impeccable/
-
-# 会话临时产物（bench 脚本/分析报告等）
+# 会话临时产物
 .tmp/
-
-# TestRenderer 截图产物（sidebar-shot/range-shot 等可重建）
-.shots/
