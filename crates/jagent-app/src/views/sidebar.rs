@@ -1,4 +1,11 @@
 //! 侧栏视图：仅渲染 core 给出的分组/排序/截断结果，交互通过回调交给装配层。
+//!
+//! 视觉契约 = React 原型 `#sidebar`（旧 gpuix `sidebar/Sidebar.tsx` /
+//! `WorkspaceList.tsx` / `ThreadRow.tsx`，R4 对齐）：
+//! - 头 46px（mac 红绿灯让位 + 收起钮）+ nav 行组（新建/搜索）+ 区头「工作区」
+//!   固定不滚；滚动区只装分组；脚（齿轮/铃铛红点/版本号）。
+//! - 行件全部走 lucide 图标（[`crate::icons`]），hover 提亮/ghost 显隐用
+//!   gpui `group`/`group_hover`（无 JS 态）。
 use gpui::{
     App, ClickEvent, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce,
     SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder as _, px,
@@ -7,7 +14,8 @@ use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
 use gpui_component::{ActiveTheme, h_flex, v_flex};
 use jagent_core::threads::{Thread, Workspace, sort_threads, sort_workspaces};
 
-use crate::theme::{Tokens, sizes};
+use crate::icons::{IconName, icon};
+use crate::theme::{Tokens, colors, hex, sizes};
 
 type ClickFn = std::rc::Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 
@@ -25,43 +33,83 @@ pub type RowPick = std::rc::Rc<dyn Fn(RowAction, &mut Window, &mut App)>;
 pub enum GroupAction {
     ToggleExpanded,
     SetShowAll(bool),
+    SetPinned(bool),
+    Rename,
+    Remove,
+}
+
+/// 会话 kind（行头 tile 图标与配色）
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RowKind {
+    Terminal,
+    Chat,
+    Acp,
+}
+impl RowKind {
+    fn of(t: &Thread) -> Self {
+        match t {
+            Thread::Terminal(_) => Self::Terminal,
+            Thread::Chat(_) => Self::Chat,
+            Thread::Acp(_) => Self::Acp,
+        }
+    }
+    fn icon(self) -> IconName {
+        match self {
+            Self::Terminal => IconName::Terminal,
+            Self::Chat => IconName::Chat,
+            Self::Acp => IconName::Acp,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RowModel {
     pub id: String,
     pub title: SharedString,
+    pub kind: RowKind,
     pub dot: RowDot,
     pub active: bool,
     pub pinned: bool,
+    pub unread: bool,
+    pub exited: bool,
 }
 
+/// 状态点（D12 诚实语义）：terminal 存活 ≠ 在工作——不显示 running；
+/// chat/acp pendingReply 才是 running。`IdleOn` 由渲染层按 active+idle 补。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RowDot {
     None,
     Running,
-    Bell,
+    Need,
     Unread,
     Exited,
 }
 impl RowDot {
     fn of(t: &Thread) -> Self {
         if let Some(term) = t.as_terminal() {
-            if term.has_bell {
-                Self::Bell
-            } else if term.status == jagent_core::threads::RunStatus::Exited {
+            if term.status == jagent_core::threads::RunStatus::Exited {
                 Self::Exited
+            } else if term.has_bell {
+                Self::Need
             } else if t.common().unread {
                 Self::Unread
-            } else if term.status == jagent_core::threads::RunStatus::Running {
-                Self::Running
             } else {
                 Self::None
             }
-        } else if t.common().unread {
-            Self::Unread
         } else {
-            Self::None
+            // chat / acp：pendingReply 才是 running（agent 真在工作）
+            let pending = match t {
+                Thread::Chat(c) => c.pending_reply,
+                Thread::Acp(a) => a.pending_reply,
+                Thread::Terminal(_) => unreachable!("terminal 走上一分支"),
+            };
+            if pending {
+                Self::Running
+            } else if t.common().unread {
+                Self::Unread
+            } else {
+                Self::None
+            }
         }
     }
 }
@@ -74,6 +122,8 @@ pub struct GroupModel {
     pub pinned: bool,
     pub rows: Vec<RowModel>,
     pub hidden: usize,
+    /// 「未归属会话」虚拟组：恒展开、无折叠/菜单
+    pub unassigned: bool,
 }
 pub const COLLAPSED_ROWS: usize = 4;
 
@@ -82,7 +132,7 @@ pub fn build_groups(
     threads: &[Thread],
     active_thread: Option<&str>,
 ) -> Vec<GroupModel> {
-    sort_workspaces(workspaces)
+    let mut groups: Vec<GroupModel> = sort_workspaces(workspaces)
         .into_iter()
         .map(|w| {
             let mine: Vec<Thread> = threads
@@ -90,34 +140,83 @@ pub fn build_groups(
                 .filter(|t| t.workspace_id() == Some(&w.id))
                 .cloned()
                 .collect();
-            let sorted = sort_threads(&mine);
-            let total = sorted.len();
-            let shown = if w.show_all {
-                total
-            } else {
-                total.min(COLLAPSED_ROWS)
-            };
-            let rows = sorted
-                .into_iter()
-                .take(shown)
-                .map(|t| RowModel {
-                    id: t.id().to_owned(),
-                    title: t.title().into(),
-                    dot: RowDot::of(t),
-                    active: active_thread == Some(t.id()),
-                    pinned: t.common().pin,
-                })
-                .collect();
-            GroupModel {
-                id: w.id.clone(),
-                name: w.name.clone(),
-                expanded: w.expanded,
-                pinned: w.pin,
-                rows,
-                hidden: total - shown,
-            }
+            group_model(&w.id, &w.name, w.expanded, w.pin, w.show_all, &mine, active_thread, false)
         })
-        .collect()
+        .collect();
+    let orphans: Vec<Thread> = threads
+        .iter()
+        .filter(|t| t.workspace_id().is_none())
+        .cloned()
+        .collect();
+    if !orphans.is_empty() {
+        groups.push(group_model(
+            "__unassigned__",
+            "未归属会话",
+            true,
+            false,
+            false,
+            &orphans,
+            active_thread,
+            true,
+        ));
+    }
+    groups
+}
+
+#[allow(clippy::too_many_arguments)]
+fn group_model(
+    id: &str,
+    name: &str,
+    expanded: bool,
+    pinned: bool,
+    show_all: bool,
+    mine: &[Thread],
+    active_thread: Option<&str>,
+    unassigned: bool,
+) -> GroupModel {
+    let sorted = sort_threads(mine);
+    let total = sorted.len();
+    let shown = if show_all { total } else { total.min(COLLAPSED_ROWS) };
+    // active/focus 行不被截断（原型：lim 扩展到包含它）
+    let mut shown = shown;
+    if let Some(ix) = active_thread.and_then(|a| sorted.iter().position(|t| t.id() == a))
+        && ix >= shown {
+            shown = ix + 1;
+        }
+    let rows = sorted
+        .into_iter()
+        .take(shown)
+        .map(|t| RowModel {
+            id: t.id().to_owned(),
+            title: t.title().into(),
+            kind: RowKind::of(t),
+            dot: RowDot::of(t),
+            active: active_thread == Some(t.id()),
+            pinned: t.common().pin,
+            unread: t.common().unread,
+            exited: t.as_terminal().is_some_and(|x| x.status == jagent_core::threads::RunStatus::Exited),
+        })
+        .collect();
+    GroupModel {
+        id: id.to_owned(),
+        name: name.to_owned(),
+        expanded,
+        pinned,
+        rows,
+        hidden: total - shown,
+        unassigned,
+    }
+}
+
+/// 原型 3.5% 白 hover 底 / 2.5% tile 底 / 6% 引导线 / 2.5% more-link hover。
+fn white(alpha: f32) -> gpui::Hsla {
+    gpui::Rgba {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: alpha,
+    }
+    .into()
 }
 
 #[derive(IntoElement)]
@@ -136,56 +235,127 @@ impl ThreadRow {
     }
 }
 impl RenderOnce for ThreadRow {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let tokens = cx.global::<Tokens>().clone();
         let theme = cx.theme();
-        let dot = match self.model.dot {
-            RowDot::Running => Some(tokens.status_done),
-            RowDot::Bell => Some(tokens.status_error),
-            RowDot::Unread => Some(theme.primary),
-            RowDot::Exited | RowDot::None => None,
+        let Self { model, on_click, on_pick } = self;
+        let m = &model;
+        let exited = m.exited;
+        let unread = !exited && m.unread;
+        // tile 面色按 kind（terminal 绿 / chat accent / acp 紫）；exited 压灰 + tile 透明
+        let kind_color = if exited {
+            tokens.exited
+        } else {
+            match m.kind {
+                RowKind::Terminal => tokens.terminal_kind,
+                RowKind::Chat => hex(colors::ACCENT),
+                RowKind::Acp => tokens.acp_kind,
+            }
         };
-        let id: SharedString = format!("row-{}", self.model.id).into();
-        let (fg, active_bg, hover_bg) = (
-            theme.sidebar_foreground,
-            theme.sidebar_accent,
-            theme.list_hover,
-        );
-        let exited = self.model.dot == RowDot::Exited;
+        let title_color = if exited {
+            tokens.exited
+        } else if m.active || unread {
+            hex(colors::TEXT_BRIGHT)
+        } else {
+            theme.sidebar_foreground
+        };
+        let active_bg = theme.sidebar_accent;
+        let group: SharedString = format!("row-{}", m.id).into();
+        let id: SharedString = format!("row-{}", m.id).into();
+
+        // tile 右下角状态角标：6px 点 + 1.5px sidebar 描边半出外缘（9px 盒）；
+        // active 空闲 = 10px surfaceActive + g300 描边空心环；exited/idle 无点
+        let (dot_bg, dot_border, dot_size) = match m.dot {
+            RowDot::Running => (tokens.status_running, theme.sidebar, px(9.)),
+            RowDot::Need => (tokens.status_need, theme.sidebar, px(9.)),
+            RowDot::Unread => (theme.muted_foreground, theme.sidebar, px(9.)),
+            RowDot::None if m.active => (theme.sidebar_accent, hex(colors::G300), px(10.)),
+            _ => (gpui::transparent_black(), gpui::transparent_black(), px(0.)),
+        };
+
         h_flex()
             .id(ElementId::Name(id))
+            .group(group.clone())
             .h(px(sizes::ROW_HEIGHT))
-            .mx(px(sizes::ROW_MARGIN_X))
-            .px_2()
-            .gap_2()
+            .pl(px(5.0))
+            .pr(px(3.0))
+            .gap(px(6.0))
             .items_center()
+            .relative()
             .rounded(px(sizes::ROW_RADIUS))
-            .text_sm()
             .cursor_pointer()
-            .text_color(if exited { tokens.exited } else { fg })
             .when_else(
-                self.model.active,
+                m.active,
                 |d| d.bg(active_bg),
-                |d| d.hover(|h| h.bg(hover_bg)),
+                |d| d.hover(|h| h.bg(white(0.035))),
             )
-            .on_click(move |e, w, cx| (self.on_click)(e, w, cx))
+            .on_click(move |e, w, cx| (on_click)(e, w, cx))
+            // kind tile：20×20 r5，2.5% 白底（exited 透明），kind 色 12px 图标
             .child(
                 div()
-                    .size(px(8.0))
-                    .rounded_full()
-                    .when_some(dot, |d, c| d.bg(c)),
+                    .relative()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .size(px(20.0))
+                    .rounded(px(5.0))
+                    .when(!exited, |d| d.bg(white(0.025)))
+                    .child(icon(m.kind.icon(), 12.0, kind_color))
+                    // 状态角标：右下角半出外缘（-2,-2；overflow 默认可见）
+                    .child(
+                        div()
+                            .absolute()
+                            .right(px(-2.0))
+                            .bottom(px(-2.0))
+                            .size(dot_size)
+                            .rounded_full()
+                            .when(dot_size > px(0.), |d| {
+                                d.bg(dot_bg).border_1().border_color(dot_border)
+                            }),
+                    ),
             )
+            // 标题：12.5px；unread 600 + bright；exited 压灰；active 提亮
             .child(
                 div()
                     .flex_1()
+                    .min_w_0()
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_ellipsis()
-                    .child(self.model.title),
+                    .text_size(px(12.5))
+                    .text_color(title_color)
+                    .when(unread, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
+                    .child(m.title.clone()),
             )
-            .context_menu(move |menu, _, _| {
-                let pick = self.on_pick.clone();
-                let pinned = self.model.pinned;
+            // pin 图钉：标题后右缘 faint 12px
+            .when(m.pinned, |d| {
+                d.child(icon(IconName::Pin, 12.0, hex(colors::FAINT)))
+            })
+            // 「…」菜单槽固定 22px（不占位→位移；r8，hover 底 closeHover + 提亮；
+            // 行 hover/active 时显示。左键弹统一浮层待浮层系统，右键已全功能）
+            .child(
+                div()
+                    .id(ElementId::Name(format!("menu-{}", m.id).into()))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .size(px(22.0))
+                    .rounded(px(8.0))
+                    .flex_shrink_0()
+                    .opacity(0.0)
+                    .hover(|h| h.bg(hex(colors::CLOSE_HOVER)))
+                    .group_hover(group.clone(), |s| s.opacity(1.0))
+                    .when(m.active, |d| d.opacity(1.0))
+                    .child(
+                        icon(IconName::More, 12.0, theme.muted_foreground)
+                            .hover(|s| s.text_color(hex(colors::TEXT_BRIGHT))),
+                    ),
+            )
+            .context_menu({
+                let unread_label: &'static str = if m.unread { "标记为已读" } else { "标记为未读" };
+                let pinned = m.pinned;
+                move |menu, _, _| {
+                let pick = on_pick.clone();
                 let pin = PopupMenuItem::new(if pinned { "取消置顶" } else { "置顶" }).on_click({
                     let pick = pick.clone();
                     move |_, w, cx| pick(RowAction::SetPinned(!pinned), w, cx)
@@ -194,7 +364,7 @@ impl RenderOnce for ThreadRow {
                     let pick = pick.clone();
                     move |_, w, cx| pick(RowAction::Rename, w, cx)
                 });
-                let unread = PopupMenuItem::new("标记为未读").on_click({
+                let unread = PopupMenuItem::new(unread_label).on_click({
                     let pick = pick.clone();
                     move |_, w, cx| pick(RowAction::MarkUnread, w, cx)
                 });
@@ -205,6 +375,7 @@ impl RenderOnce for ThreadRow {
                     .item(unread)
                     .separator()
                     .item(remove)
+                }
             })
     }
 }
@@ -212,163 +383,532 @@ impl RenderOnce for ThreadRow {
 #[derive(IntoElement)]
 pub struct Sidebar {
     groups: Vec<GroupModel>,
+    unread_notices: usize,
+    version: SharedString,
     on_select: std::rc::Rc<dyn Fn(&str, &mut Window, &mut App)>,
     on_row: std::rc::Rc<dyn Fn(&str, RowAction, &mut Window, &mut App)>,
     on_add_workspace: std::rc::Rc<dyn Fn(&mut Window, &mut App)>,
     on_settings: std::rc::Rc<dyn Fn(&mut Window, &mut App)>,
-    on_group: std::rc::Rc<dyn Fn(&str, GroupAction, &mut App)>,
+    on_group: std::rc::Rc<dyn Fn(&str, GroupAction, &mut Window, &mut App)>,
+    on_new_session: std::rc::Rc<dyn Fn(&mut Window, &mut App)>,
+    on_search: std::rc::Rc<dyn Fn(&mut Window, &mut App)>,
+    on_collapse: std::rc::Rc<dyn Fn(&mut App)>,
 }
 impl Sidebar {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         groups: Vec<GroupModel>,
+        unread_notices: usize,
+        version: &str,
         on_select: impl Fn(&str, &mut Window, &mut App) + 'static,
         on_row: impl Fn(&str, RowAction, &mut Window, &mut App) + 'static,
         on_add_workspace: impl Fn(&mut Window, &mut App) + 'static,
         on_settings: impl Fn(&mut Window, &mut App) + 'static,
-        on_group: impl Fn(&str, GroupAction, &mut App) + 'static,
+        on_group: impl Fn(&str, GroupAction, &mut Window, &mut App) + 'static,
+        on_new_session: impl Fn(&mut Window, &mut App) + 'static,
+        on_search: impl Fn(&mut Window, &mut App) + 'static,
+        on_collapse: impl Fn(&mut App) + 'static,
     ) -> Self {
         Self {
             groups,
+            unread_notices,
+            version: format!("v{version}").into(),
             on_select: std::rc::Rc::new(on_select),
             on_row: std::rc::Rc::new(on_row),
             on_add_workspace: std::rc::Rc::new(on_add_workspace),
             on_settings: std::rc::Rc::new(on_settings),
             on_group: std::rc::Rc::new(on_group),
+            on_new_session: std::rc::Rc::new(on_new_session),
+            on_search: std::rc::Rc::new(on_search),
+            on_collapse: std::rc::Rc::new(on_collapse),
         }
     }
 }
+
+/// ghost 钮（原型 .ghost：24×24 r8；ws-head 内 0→hover 1）。
+/// `resting_opacity`：sec-head 内 0.75，ws-head 内 0。
+#[allow(clippy::too_many_arguments)]
+fn ghost_cell(
+    id: SharedString,
+    ic: IconName,
+    group: SharedString,
+    resting_opacity: f32,
+    on_click: impl Fn(&mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    div()
+        .id(ElementId::Name(id))
+        .flex()
+        .items_center()
+        .justify_center()
+        .size(px(24.0))
+        .rounded(px(8.0))
+        .cursor_pointer()
+        .opacity(resting_opacity)
+        .hover(|h| h.bg(hex(colors::SURFACE)))
+        .group_hover(group, |s| s.opacity(1.0))
+        .child(icon(ic, 12.0, hex(colors::MUTED)))
+        .on_click(move |_, w, cx| on_click(w, cx))
+}
+
+/// 「显示另外 N 个/收起会话」行内链接（原型 .more-link：h27 padl 7 gap 5 r5）
+fn more_link(id: SharedString, expanded: bool, hidden: usize, group_id: &str, on_group: &std::rc::Rc<dyn Fn(&str, GroupAction, &mut Window, &mut App)>) -> impl IntoElement {
+    let cb = on_group.clone();
+    let gid = group_id.to_owned();
+    h_flex()
+        .id(ElementId::Name(id))
+        .h(px(27.0))
+        .pl(px(7.0))
+        .pr(px(7.0))
+        .gap(px(5.0))
+        .items_center()
+        .rounded(px(5.0))
+        .cursor_pointer()
+        .hover(|h| h.bg(white(0.025)))
+        .child(icon(
+            if expanded {
+                IconName::ChevronUp
+            } else {
+                IconName::ChevronDown
+            },
+            11.0,
+            hex(colors::MUTED),
+        ))
+        .child(
+            div()
+                .text_size(px(11.0))
+                .text_color(hex(colors::MUTED))
+                .child(if expanded {
+                    SharedString::from("收起会话")
+                } else {
+                    format!("显示另外 {hidden} 个").into()
+                }),
+        )
+        .on_click(move |_, window, cx| {
+            cb(&gid, GroupAction::SetShowAll(!expanded), window, cx);
+        })
+}
+
 impl RenderOnce for Sidebar {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
-        let (bg, border, muted, fg) = (
-            theme.sidebar,
-            theme.sidebar_border,
-            theme.muted_foreground,
-            theme.sidebar_foreground,
-        );
+        let tokens = cx.global::<Tokens>().clone();
+        let muted = theme.muted_foreground;
+        let fg = theme.sidebar_foreground;
+        let border_subtle = hex(colors::BORDER_SUBTLE);
+
+        // ── 头（原型 .sb-head：46px + 底 1px 3.5% 白分隔线；mac 红绿灯让位 78 + 收起钮）──
+        let header = h_flex()
+            .id("sidebar-header")
+            .h(px(sizes::SIDEBAR_HEAD_HEIGHT))
+            .flex_shrink_0()
+            .items_center()
+            .bg(theme.sidebar)
+            .border_b_1()
+            .border_color(white(0.035))
+            .pl(px(78.0))
+            .child(
+                div()
+                    .id("sidebar-collapse")
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .size(px(28.0))
+                    .rounded(px(8.0))
+                    .cursor_pointer()
+                    .hover(|h| h.bg(hex(colors::SURFACE)))
+                    .child(icon(IconName::PanelLeft, 16.0, muted))
+                    .on_click({
+                        let cb = self.on_collapse.clone();
+                        move |_, _, cx| cb(cx)
+                    }),
+            );
+
+        // ── nav 行组（原型 .sb-nav：pad 8 gap 2 + 底部分隔线，固定不滚）──
+        let on_new = self.on_new_session.clone();
+        let on_search = self.on_search.clone();
+        let nav = v_flex()
+            .flex_shrink_0()
+            .gap(px(2.0))
+            .p(px(8.0))
+            .border_b_1()
+            .border_color(border_subtle)
+            .child(
+                h_flex()
+                    .id("nav-new-chat")
+                    .group("nav-new")
+                    .h(px(34.0))
+                    .pl(px(9.0))
+                    .pr(px(9.0))
+                    .gap(px(8.0))
+                    .items_center()
+                    .rounded(px(sizes::ROW_RADIUS))
+                    .cursor_pointer()
+                    .hover(|h| h.bg(hex(colors::SURFACE)))
+                    .child(
+                        div()
+                            .w(px(16.0))
+                            .flex()
+                            .justify_center()
+                            .flex_shrink_0()
+                            .child(
+                                icon(IconName::Plus, 14.0, muted)
+                                    .group_hover("nav-new", |s| s.text_color(hex(colors::TEXT_BRIGHT))),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .text_color(fg)
+                            .group_hover("nav-new", |s| s.text_color(hex(colors::TEXT_BRIGHT)))
+                            .child("新建会话"),
+                    )
+                    .on_click(move |_, w, cx| on_new(w, cx)),
+            )
+            .child(
+                h_flex()
+                    .id("nav-search")
+                    .group("nav-search")
+                    .h(px(34.0))
+                    .pl(px(9.0))
+                    .pr(px(9.0))
+                    .gap(px(8.0))
+                    .items_center()
+                    .rounded(px(sizes::ROW_RADIUS))
+                    .cursor_pointer()
+                    .hover(|h| h.bg(hex(colors::SURFACE)))
+                    .child(
+                        div()
+                            .w(px(16.0))
+                            .flex()
+                            .justify_center()
+                            .flex_shrink_0()
+                            .child(
+                                icon(IconName::Search, 14.0, muted)
+                                    .group_hover("nav-search", |s| s.text_color(hex(colors::TEXT_BRIGHT))),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .text_color(fg)
+                            .group_hover("nav-search", |s| s.text_color(hex(colors::TEXT_BRIGHT)))
+                            .child("搜索"),
+                    )
+                    .on_click(move |_, w, cx| on_search(w, cx)),
+            );
+
+        // ── 区头「工作区」（原型 .sec-head：mt 12 pad 6 5 4 9 min-h 28；10px/600 + ghost ＋）──
+        let section = h_flex()
+            .id("section-workspaces")
+            .group("sec-head")
+            .flex_shrink_0()
+            .min_h(px(28.0))
+            .mt(px(12.0))
+            .pl(px(9.0))
+            .pr(px(5.0))
+            .pt(px(6.0))
+            .pb(px(4.0))
+            .items_center()
+            .child(
+                div()
+                    .text_size(px(10.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(muted)
+                    .child("工作区"),
+            )
+            .child(div().flex_1())
+            .child(
+                div()
+                    .id("add-workspace")
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .size(px(24.0))
+                    .rounded(px(8.0))
+                    .cursor_pointer()
+                    .opacity(0.75)
+                    .hover(|h| h.bg(hex(colors::SURFACE)))
+                    .group_hover("sec-head", |s| s.opacity(1.0))
+                    .child(icon(IconName::Plus, 12.0, muted))
+                    .on_click({
+                        let cb = self.on_add_workspace.clone();
+                        move |_, w, cx| cb(w, cx)
+                    }),
+            );
+
+        // ── 滚动区（原型 .sb-scroll：pad 2 8 8；只装分组）──
+        let scroll = v_flex()
+            .id("sb-scroll")
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scroll()
+            .pl(px(sizes::ROW_MARGIN_X))
+            .pr(px(sizes::ROW_MARGIN_X))
+            .pt(px(2.0))
+            .pb(px(8.0))
+            .children(self.groups.into_iter().map(|g| {
+                let group_key: SharedString = format!("ws-{}", g.id).into();
+                let ws_row = h_flex()
+                    .id(ElementId::Name(format!("workspace-{}", g.id).into()))
+                    .group(group_key.clone())
+                    .h(px(34.0))
+                    .pl(px(5.0))
+                    .pr(px(50.0))
+                    .gap(px(7.0))
+                    .items_center()
+                    .flex_1()
+                    .min_w_0()
+                    .rounded(px(sizes::ROW_RADIUS))
+                    .cursor_pointer()
+                    .hover(|h| h.bg(white(0.035)))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .size(px(22.0))
+                            .rounded(px(5.0))
+                            .flex_shrink_0()
+                            .child(
+                                icon(
+                                    if g.unassigned {
+                                        IconName::Inbox
+                                    } else {
+                                        IconName::Folder
+                                    },
+                                    13.0,
+                                    muted,
+                                )
+                                .group_hover(group_key.clone(), |s| s.text_color(fg)),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .text_size(px(12.5))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(fg)
+                            .child(g.name.clone()),
+                    );
+
+                let (ws_row, acts) = if g.unassigned {
+                    // 未归属虚拟组：纯展示恒展开，无折叠/ghost/菜单
+                    (ws_row.cursor_default(), None)
+                } else {
+                    let gid = g.id.clone();
+                    let on_group = self.on_group.clone();
+                    let row = ws_row.on_click(move |_, window, cx| {
+                        on_group(&gid, GroupAction::ToggleExpanded, window, cx)
+                    });
+                    // .acts：absolute right 3 top 5——「…」工作区菜单 + ＋ 新建会话
+                    let on_new_in_ws = self.on_new_session.clone();
+                    let acts = div()
+                        .absolute()
+                        .right(px(3.0))
+                        .top(px(5.0))
+                        .flex()
+                        .flex_shrink_0()
+                        .child(ghost_cell(
+                            format!("menu-workspace-{}", g.id).into(),
+                            IconName::More,
+                            group_key.clone(),
+                            0.0,
+                            // 「…」左键弹统一浮层待浮层系统；右键已全功能
+                            |_, _| {},
+                        ))
+                        .child(ghost_cell(
+                            format!("new-menu-{}", g.id).into(),
+                            IconName::Plus,
+                            group_key.clone(),
+                            0.0,
+                            move |w, cx| on_new_in_ws(w, cx),
+                        ));
+                    (row, Some(acts))
+                };
+
+                // 工作区菜单（右键 = 「…」同一面）：置顶/重命名/移除；未归属组无菜单
+                let on_group_ctx = self.on_group.clone();
+                let ctx_model = (g.id.clone(), g.pinned, g.unassigned);
+                let ws_head = div()
+                    .relative()
+                    .flex()
+                    .flex_shrink_0()
+                    .child(ws_row)
+                    .when_some(acts, |d, a| d.child(a))
+                    .context_menu(move |menu, _window, _| {
+                        let (id, pinned, unassigned) = ctx_model.clone();
+                        if unassigned {
+                            return menu;
+                        }
+                        let cb = on_group_ctx.clone();
+                        let pin = PopupMenuItem::new(if pinned { "取消置顶工作区" } else { "置顶工作区" }).on_click({
+                            let (id, cb) = (id.clone(), cb.clone());
+                            move |_, window, cx| cb(&id, GroupAction::SetPinned(!pinned), window, cx)
+                        });
+                        let rename = PopupMenuItem::new("重命名…").on_click({
+                            let (id, cb) = (id.clone(), cb.clone());
+                            move |_, window, cx| cb(&id, GroupAction::Rename, window, cx)
+                        });
+                        let remove = PopupMenuItem::new("移除工作区").on_click({
+                            let (id, cb) = (id, cb);
+                            move |_, window, cx| cb(&id, GroupAction::Remove, window, cx)
+                        });
+                        menu.item(pin).item(rename).separator().item(remove)
+                    });
+
+                let mut group = v_flex().mb(px(3.0)).child(ws_head);
+                if g.expanded {
+                    // .ws-body：margin 1 0 5 12 + 左 1px 6% 白引导线
+                    let mut body = v_flex()
+                        .ml(px(12.0))
+                        .mt(px(1.0))
+                        .mb(px(5.0))
+                        .border_l_1()
+                        .border_color(white(0.06));
+                    if g.rows.is_empty() && !g.unassigned {
+                        // 空组引导（原型 .ws-empty-hint：h28 pad 0 7 gap 6 r5）
+                        let on_new_in_ws = self.on_new_session.clone();
+                        body = body.child(
+                            h_flex()
+                                .id(ElementId::Name(format!("workspace-create-first-{}", g.id).into()))
+                                .h(px(28.0))
+                                .pl(px(7.0))
+                                .pr(px(7.0))
+                                .gap(px(6.0))
+                                .items_center()
+                                .rounded(px(5.0))
+                                .cursor_pointer()
+                                .hover(|h| h.bg(white(0.035)))
+                                .child(icon(IconName::Plus, 11.0, muted))
+                                .child(
+                                    div()
+                                        .text_size(px(11.5))
+                                        .text_color(muted)
+                                        .child("启动第一个会话"),
+                                )
+                                .on_click(move |_, w, cx| on_new_in_ws(w, cx)),
+                        );
+                    } else {
+                        let rows_len = g.rows.len();
+                        let on_select = self.on_select.clone();
+                        let on_row = self.on_row.clone();
+                        body = body.children(g.rows.into_iter().map(move |r| {
+                            let sid = r.id.clone();
+                            let rid = sid.clone();
+                            let on_select = on_select.clone();
+                            let on_row = on_row.clone();
+                            let pick: RowPick =
+                                std::rc::Rc::new(move |a, w, cx| on_row(&rid, a, w, cx));
+                            ThreadRow::new(
+                                r,
+                                std::rc::Rc::new(move |_, w, cx| on_select(&sid, w, cx)),
+                                pick,
+                            )
+                        }));
+                        if g.hidden > 0 {
+                            body = body.child(more_link(
+                                format!("load-more-{}", g.id).into(),
+                                false,
+                                g.hidden,
+                                &g.id,
+                                &self.on_group,
+                            ));
+                        } else if rows_len > COLLAPSED_ROWS && g.expanded && !g.unassigned {
+                            body = body.child(more_link(
+                                format!("load-more-{}", g.id).into(),
+                                true,
+                                0,
+                                &g.id,
+                                &self.on_group,
+                            ));
+                        }
+                    }
+                    group = group.child(body);
+                }
+                group
+            }));
+
+        // ── 脚（原型 .sb-foot：pad 8 gap 2 + 顶部分隔线）：齿轮 + 铃铛（未读红点）+ 版本号 ──
+        let foot = h_flex()
+            .flex_shrink_0()
+            .gap(px(2.0))
+            .p(px(8.0))
+            .border_t_1()
+            .border_color(border_subtle)
+            .items_center()
+            .child(
+                div()
+                    .id("open-settings")
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .size(px(28.0))
+                    .rounded(px(8.0))
+                    .cursor_pointer()
+                    .hover(|h| h.bg(hex(colors::SURFACE)))
+                    .child(icon(IconName::Gear, 16.0, muted))
+                    .on_click({
+                        let cb = self.on_settings.clone();
+                        move |_, w, cx| cb(w, cx)
+                    }),
+            )
+            .child(
+                div().relative().child(
+                    div()
+                        .id("open-notifications")
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .size(px(28.0))
+                        .rounded(px(8.0))
+                        .cursor_pointer()
+                        .hover(|h| h.bg(hex(colors::SURFACE)))
+                        .child(icon(IconName::Bell, 16.0, muted))
+                        .on_click({
+                            let cb = self.on_search.clone();
+                            move |_, w, cx| cb(w, cx)
+                        }),
+                )
+                .when(self.unread_notices > 0, |d| {
+                    // 原型 .badge-dot：7px 点 + 1.5px 描边（10px 盒，右下 2.5）
+                    d.child(
+                        div()
+                            .absolute()
+                            .right(px(2.5))
+                            .top(px(2.5))
+                            .size(px(10.0))
+                            .rounded_full()
+                            .bg(tokens.status_error)
+                            .border_1()
+                            .border_color(theme.sidebar),
+                    )
+                }),
+            )
+            .child(div().flex_1())
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .text_color(hex(colors::FAINT))
+                    .child(self.version.clone()),
+            );
+
         v_flex()
             .id("sidebar")
             .w_full()
             .h_full()
             .flex_shrink_0()
-            .bg(bg)
+            .bg(theme.sidebar)
             .border_r_1()
-            .border_color(border)
-            .overflow_y_scroll()
-            .children(self.groups.into_iter().map(|g| {
-                let id = g.id.clone();
-                let on_group = self.on_group.clone();
-                let toggle = div()
-                    .id(ElementId::Name(format!("ws-toggle-{}", g.id).into()))
-                    .px_1()
-                    .cursor_pointer()
-                    .text_color(muted)
-                    .hover(|d| d.text_color(fg))
-                    .child(if g.expanded { "⌄" } else { "›" })
-                    .on_click({
-                        let id = id.clone();
-                        let cb = on_group.clone();
-                        move |_, _, cx| cb(&id, GroupAction::ToggleExpanded, cx)
-                    });
-                let add = div()
-                    .id(ElementId::Name(format!("ws-add-{}", g.id).into()))
-                    .px_1()
-                    .cursor_pointer()
-                    .text_color(muted)
-                    .hover(|d| d.text_color(fg))
-                    .child("+")
-                    .on_click({
-                        let cb = self.on_add_workspace.clone();
-                        move |_, w, cx| cb(w, cx)
-                    });
-                let header = h_flex()
-                    .px_3()
-                    .h(px(28.0))
-                    .items_center()
-                    .text_xs()
-                    .text_color(muted)
-                    .child(
-                        div()
-                            .flex_1()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .child(g.name.clone()),
-                    )
-                    .child(toggle)
-                    .child(add);
-                let mut group = v_flex().py_1().child(header);
-                if g.expanded {
-                    let on_select = self.on_select.clone();
-                    let on_row = self.on_row.clone();
-                    let expanded_row_count = g.rows.len();
-                    group = group.children(g.rows.into_iter().map(move |r| {
-                        let sid = r.id.clone();
-                        let rid = sid.clone();
-                        let on_select = on_select.clone();
-                        let on_row = on_row.clone();
-                        let pick: RowPick =
-                            std::rc::Rc::new(move |a, w, cx| on_row(&rid, a, w, cx));
-                        ThreadRow::new(
-                            r,
-                            std::rc::Rc::new(move |_, w, cx| on_select(&sid, w, cx)),
-                            pick,
-                        )
-                    }));
-                    if g.hidden > 0 {
-                        let id = g.id.clone();
-                        let cb = self.on_group.clone();
-                        group = group.child(
-                            div()
-                                .id(ElementId::Name(format!("ws-show-all-{}", g.id).into()))
-                                .px_4()
-                                .h(px(24.0))
-                                .text_xs()
-                                .text_color(muted)
-                                .cursor_pointer()
-                                .hover(|d| d.text_color(fg))
-                                .child(format!("还有 {} 个会话 · 显示全部", g.hidden))
-                                .on_click(move |_, _, cx| {
-                                    cb(&id, GroupAction::SetShowAll(true), cx)
-                                }),
-                        );
-                    }
-                    if g.hidden == 0 && expanded_row_count > COLLAPSED_ROWS {
-                        let id = g.id.clone();
-                        let cb = self.on_group.clone();
-                        group = group.child(
-                            div()
-                                .id(ElementId::Name(format!("ws-show-fewer-{}", g.id).into()))
-                                .px_4()
-                                .h(px(24.0))
-                                .text_xs()
-                                .text_color(muted)
-                                .cursor_pointer()
-                                .child("收起会话列表")
-                                .on_click(move |_, _, cx| {
-                                    cb(&id, GroupAction::SetShowAll(false), cx)
-                                }),
-                        );
-                    }
-                }
-                group
-            }))
-            .child(div().flex_1())
-            .child(
-                div()
-                    .id("sidebar-settings")
-                    .mx_2()
-                    .my_2()
-                    .px_3()
-                    .py_2()
-                    .rounded(px(6.0))
-                    .cursor_pointer()
-                    .text_xs()
-                    .text_color(muted)
-                    .hover(|d| d.bg(theme.list_hover).text_color(fg))
-                    .child("⚙ 设置  Ctrl-,")
-                    .on_click(move |_, w, cx| (self.on_settings)(w, cx)),
-            )
+            .border_color(border_subtle)
+            .child(header)
+            .child(nav)
+            .child(section)
+            .child(scroll)
+            .child(foot)
     }
 }
 
@@ -427,8 +967,9 @@ mod tests {
             a.rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
             ["t-bell", "t-old"]
         );
-        assert_eq!(a.rows[0].dot, RowDot::Bell);
+        assert_eq!(a.rows[0].dot, RowDot::Need);
         assert!(a.rows[1].active && !a.rows[0].active);
+        assert_eq!(a.rows[1].kind, RowKind::Terminal);
     }
     #[test]
     fn collapsed_group_reports_hidden_and_show_all_state() {
@@ -442,6 +983,19 @@ mod tests {
         w.show_all = true;
         let g = build_groups(&[w], &threads, None);
         assert_eq!((g[0].rows.len(), g[0].hidden), (7, 0));
+    }
+    #[test]
+    fn active_row_beyond_the_limit_is_never_truncated() {
+        let workspaces = vec![ws("a", "A", 1)];
+        let threads: Vec<Thread> = (0..7)
+            .map(|i| term(&format!("t{i}"), "a", i, |_| {}))
+            .collect();
+        // 排序为新→旧：t0 排末位。默认前 4 条不含 t0——active 时 lim 扩展包含它
+        let g = build_groups(&workspaces, &threads, Some("t0"));
+        assert!(g[0].rows.iter().any(|r| r.id == "t0"), "active 行不被截断");
+        assert_eq!(g[0].rows.len(), 7);
+        let inactive = build_groups(&workspaces, &threads, None);
+        assert_eq!(inactive[0].rows.len(), COLLAPSED_ROWS);
     }
     #[gpui::test]
     fn group_toggle_and_show_all_actions_persist_workspace_state(cx: &mut gpui::TestAppContext) {
@@ -476,21 +1030,23 @@ mod tests {
     }
 
     #[test]
-    fn threads_from_other_workspaces_and_unattached_ones_do_not_leak() {
+    fn unattached_threads_form_the_unassigned_virtual_group_last() {
         let workspaces = vec![ws("a", "A", 1)];
         let mut orphan = term("orphan", "a", 1, |_| {});
         orphan.common_mut().workspace_id = None;
-        let threads = vec![term("a", "a", 1, |_| {}), term("b", "b", 2, |_| {}), orphan];
+        let threads = vec![term("a", "a", 1, |_| {}), orphan];
         let g = build_groups(&workspaces, &threads, None);
-        assert_eq!(
-            g[0].rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
-            ["a"]
-        );
+        assert_eq!(g.len(), 2);
+        assert_eq!(g[0].rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["a"]);
+        let u = &g[1];
+        assert!(u.unassigned && u.expanded);
+        assert_eq!(u.rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["orphan"]);
     }
     #[test]
     fn row_dot_priority_is_stable() {
         let dot = |f: &dyn Fn(&mut TerminalThread)| RowDot::of(&term("t", "a", 0, |t| f(t)));
-        assert_eq!(dot(&|_| {}), RowDot::Running);
+        // terminal 存活 ≠ 在工作：running 不显示点
+        assert_eq!(dot(&|_| {}), RowDot::None);
         assert_eq!(dot(&|t| t.status = RunStatus::Exited), RowDot::Exited);
         assert_eq!(dot(&|t| t.common.unread = true), RowDot::Unread);
         assert_eq!(
@@ -498,26 +1054,28 @@ mod tests {
                 t.has_bell = true;
                 t.status = RunStatus::Exited
             }),
-            RowDot::Bell
+            RowDot::Exited
         );
+        assert_eq!(dot(&|t| t.has_bell = true), RowDot::Need);
     }
     #[test]
-    fn chat_dot_only_shows_unread() {
-        let chat = |unread| {
+    fn chat_dot_covers_pending_reply_and_unread() {
+        let chat = |unread, pending| {
             Thread::Chat(ChatThread {
                 id: "c".into(),
                 title: "Chat".into(),
                 created_at: 0,
                 messages: vec![],
-                pending_reply: false,
+                pending_reply: pending,
                 common: ThreadCommon {
                     unread,
                     ..Default::default()
                 },
             })
         };
-        assert_eq!(RowDot::of(&chat(false)), RowDot::None);
-        assert_eq!(RowDot::of(&chat(true)), RowDot::Unread);
+        assert_eq!(RowDot::of(&chat(false, false)), RowDot::None);
+        assert_eq!(RowDot::of(&chat(false, true)), RowDot::Running);
+        assert_eq!(RowDot::of(&chat(true, false)), RowDot::Unread);
     }
     #[test]
     fn terminal_title_uses_osc_then_init_command() {

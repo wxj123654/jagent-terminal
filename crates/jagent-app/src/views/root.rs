@@ -4,21 +4,23 @@
 
 use gpui::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    MouseButton, MouseDownEvent, ParentElement, Render, SharedString, Styled, Window, div, hsla,
+    MouseButton, MouseDownEvent, ParentElement, Render, SharedString, StatefulInteractiveElement as _,
+    Styled, Window, div, hsla,
     prelude::FluentBuilder as _, px,
 };
 use gpui_component::button::Button;
 use gpui_component::notification::Notification;
 use gpui_component::resizable::{ResizableState, h_resizable, resizable_panel};
-use gpui_component::{ActiveTheme, TitleBar, WindowExt as _, v_flex};
+use gpui_component::{ActiveTheme, TitleBar, WindowExt as _, h_flex, v_flex};
 use jagent_core::threads::{ActiveTarget, MAIN_VIEW_ID, SessionView, Thread};
 use jagent_terminal::TerminalView;
 
 use crate::actions::*;
+use crate::icons::{IconName, icon};
 use crate::state::{AppState, StateChanged};
-use crate::theme::sizes;
+use crate::theme::{colors, hex, sizes};
 use crate::views::conversation::ConversationView;
-use crate::views::session_tabs::{SessionTabs, tab_models};
+use crate::views::session_tabs::{ContextTab, SessionTabs, tab_models};
 use crate::views::sidebar::{GroupAction, RowAction, Sidebar, build_groups};
 use crate::views::terminal_pane::view_for_session;
 use crate::views::{git_graph, new_session, rename, search_threads, settings, workspace_dialog};
@@ -171,8 +173,11 @@ impl Render for RootView {
 
         let this = cx.entity().downgrade();
         let state_for_rows = self.state.clone();
+        let unread_notices = self.state.read(cx).threads.unread_notice_count();
         let sidebar = Sidebar::new(
             groups,
+            unread_notices,
+            env!("CARGO_PKG_VERSION"),
             move |id, _, cx| {
                 let id = id.to_owned();
                 let _ = this.update(cx, |v, cx| v.select(&id, cx));
@@ -197,8 +202,37 @@ impl Render for RootView {
                 }
             },
             {
+                // 工作区菜单动作：Rename 在视图层拦截开弹窗，其余落 store
                 let state = self.state.clone();
-                move |id, action, cx| apply_group_action(&state, id, action, cx)
+                move |id: &str, action, window, cx| match action {
+                    GroupAction::Rename => {
+                        let name = state
+                            .read(cx)
+                            .threads
+                            .workspace(id)
+                            .map(|w| w.name.clone())
+                            .unwrap_or_default();
+                        rename::open_workspace(state.clone(), id.to_owned(), name, window, cx);
+                    }
+                    _ => apply_group_action(&state, id, action, cx),
+                }
+            },
+            {
+                let state = self.state.clone();
+                move |window, cx| new_session::open(state.clone(), window, cx)
+            },
+            {
+                let state = self.state.clone();
+                move |window, cx| search_threads::open(state.clone(), window, cx)
+            },
+            {
+                let this = cx.entity().downgrade();
+                move |cx| {
+                    let _ = this.update(cx, |v, cx| {
+                        v.sidebar_open = !v.sidebar_open;
+                        cx.notify();
+                    });
+                }
             },
         );
 
@@ -213,12 +247,34 @@ impl Render for RootView {
             (tid, tabs)
         };
 
+        // 顶栏上下文块（原型 .tb-context：folder/gear + 名 + cwd）
+        let (ctx_icon, ctx_label, ctx_cwd) = {
+            let s = self.state.read(cx);
+            if self.settings_open {
+                (IconName::Gear, "设置".to_owned(), None)
+            } else if let Some(tid) = s.threads.active_thread_id() {
+                let t = s.threads.thread(tid);
+                let ws = t
+                    .and_then(|t| t.workspace_id())
+                    .and_then(|wid| s.threads.workspace(wid));
+                match ws {
+                    Some(w) => (IconName::Folder, w.name.clone(), Some(w.path.clone())),
+                    None => (
+                        IconName::Folder,
+                        t.map(|t| t.title()).unwrap_or_else(|| "j-agent".into()),
+                        None,
+                    ),
+                }
+            } else {
+                (IconName::Folder, "j-agent".to_owned(), None)
+            }
+        };
+
         let term_body = match &self.terminal {
             Some((_, v)) => div().size_full().child(v.clone()).into_any_element(),
             None => empty_presets(&self.state, cx),
         };
 
-        // 副页签条只对终端会话显示（对话 / ACP 的主面在 P4 接入）
         let body = if self.settings_open {
             self.settings_view
                 .as_ref()
@@ -230,51 +286,81 @@ impl Render for RootView {
                 None => term_body,
             }
         };
-        let body_column = if self.settings_open {
-            body
-        } else {
-            match (active_tid, tabs) {
-                (Some(tid), Some(tabs)) => {
-                    let st = self.state.clone();
-                    let (st_a, st_c, st_n) = (st.clone(), st.clone(), st);
-                    let (tid_a, tid_c, tid_n) = (tid.clone(), tid.clone(), tid);
-                    let bar = SessionTabs::new(
-                        tabs,
-                        move |vid, _, cx| {
-                            st_a.update(cx, |s, cx| {
-                                s.activate_view(&tid_a, vid, cx);
-                                cx.emit(StateChanged);
-                            })
-                        },
-                        move |vid, _, cx| {
-                            st_c.update(cx, |s, cx| {
-                                s.close_view(&tid_c, vid, cx);
-                                cx.emit(StateChanged);
-                            })
-                        },
-                        move |window, cx| {
-                            let r = st_n.update(cx, |s, cx| {
-                                let r = s.add_session_shell(&tid_n, cx);
-                                cx.emit(StateChanged);
-                                r
-                            });
-                            if let Err(e) = r {
-                                window.push_notification(
-                                    Notification::error(format!("新建 Shell 失败：{e}")),
-                                    cx,
-                                );
-                            }
-                        },
-                    );
-                    v_flex()
-                        .size_full()
-                        .child(bar)
-                        .child(body)
+        // 主体列（tab 条已上移顶栏第二行，全宽）
+        let body_column = body;
+
+        // 顶栏第二行 tab 条（原型 #tb-tabs：38px tabStrip 内凹面 + 5/8 padding）。
+        // settings → ContextTab(gear)；terminal → SessionTabs；chat/acp → ContextTab(kind)。
+        let tabs_row = h_flex()
+            .id("tb-tabs")
+            .flex_shrink_0()
+            .min_w_0()
+            .h(px(sizes::TAB_BAR_HEIGHT))
+            .gap(px(3.0))
+            .pt(px(5.0))
+            .pb(px(5.0))
+            .pl(px(8.0))
+            .pr(px(8.0))
+            .bg(hex(colors::TAB_STRIP))
+            .border_b_1()
+            .border_color(hex(colors::BORDER))
+            .overflow_hidden()
+            .child(if self.settings_open {
+                ContextTab::new(IconName::Gear, title.clone()).into_any_element()
+            } else {
+                match (active_tid, tabs) {
+                    (Some(tid), Some(tabs)) => {
+                        let st = self.state.clone();
+                        let (st_a, st_c, st_n) = (st.clone(), st.clone(), st);
+                        let (tid_a, tid_c, tid_n) = (tid.clone(), tid.clone(), tid);
+                        SessionTabs::new(
+                            tabs,
+                            move |vid, _, cx| {
+                                st_a.update(cx, |s, cx| {
+                                    s.activate_view(&tid_a, vid, cx);
+                                    cx.emit(StateChanged);
+                                })
+                            },
+                            move |vid, _, cx| {
+                                st_c.update(cx, |s, cx| {
+                                    s.close_view(&tid_c, vid, cx);
+                                    cx.emit(StateChanged);
+                                })
+                            },
+                            move |window, cx| {
+                                let r = st_n.update(cx, |s, cx| {
+                                    let r = s.add_session_shell(&tid_n, cx);
+                                    cx.emit(StateChanged);
+                                    r
+                                });
+                                if let Err(e) = r {
+                                    window.push_notification(
+                                        Notification::error(format!("新建 Shell 失败：{e}")),
+                                        cx,
+                                    );
+                                }
+                            },
+                        )
                         .into_any_element()
+                    }
+                    (Some(_), None) => {
+                        // chat / acp：单态页签（kind 图标 + 标题）
+                        let s = self.state.read(cx);
+                        let (ic, label) = s
+                            .threads
+                            .active_thread_id()
+                            .and_then(|id| s.threads.thread(id))
+                            .map(|t| match t {
+                                Thread::Chat(_) => (IconName::Chat, t.title()),
+                                Thread::Acp(_) => (IconName::Acp, t.title()),
+                                Thread::Terminal(_) => (IconName::Terminal, t.title()),
+                            })
+                            .unwrap_or((IconName::Home, "j-agent".into()));
+                        ContextTab::new(ic, label).into_any_element()
+                    }
+                    _ => ContextTab::new(IconName::Home, "j-agent").into_any_element(),
                 }
-                _ => body,
-            }
-        };
+            });
 
         let state = self.state.clone();
         v_flex()
@@ -328,7 +414,81 @@ impl Render for RootView {
             })
             .size_full()
             .bg(cx.theme().background)
-            .child(TitleBar::new().child(title))
+            // ── 顶栏主行（原型 #titlebar-main：44px；TitleBar 自带拖拽/红绿灯让位/三键）──
+            .child(
+                TitleBar::new()
+                    .h(px(sizes::TOOLBAR_HEIGHT))
+                    .bg(hex(colors::TITLEBAR))
+                    .border_color(hex(colors::BORDER_SUBTLE))
+                    // 窄屏汉堡钮（W4）/ 宽屏侧栏收起态的恢复钮（原型 ToolButton 28×28 r8）
+                    .when(narrow || !self.sidebar_open, |tb| {
+                        let this = cx.entity().downgrade();
+                        let (ic, on) = if narrow {
+                            (IconName::Menu, self.sidebar_open)
+                        } else {
+                            (IconName::PanelLeft, false)
+                        };
+                        tb.child(
+                            div()
+                                .id("titlebar-sidebar-toggle")
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .size(px(28.0))
+                                .rounded(px(8.0))
+                                .ml(px(6.0))
+                                .mr(px(2.0))
+                                .flex_shrink_0()
+                                .cursor_pointer()
+                                .when(on, |d| d.bg(hex(colors::SURFACE_ACTIVE)))
+                                .when(!on, |d| d.hover(|h| h.bg(hex(colors::SURFACE))))
+                                .child(icon(ic, 16.0, if on { hex(colors::TEXT_BRIGHT) } else { hex(colors::MUTED) }))
+                                .on_click(move |_, _, cx| {
+                                    let _ = this.update(cx, |v, cx| {
+                                        v.sidebar_open = !v.sidebar_open;
+                                        cx.notify();
+                                    });
+                                }),
+                        )
+                    })
+                    .child(
+                        // 上下文块（原型 .tb-context：icon 13 muted + 名 12/550 + cwd 11.5 faint）
+                        h_flex()
+                            .h_full()
+                            .items_center()
+                            .gap(px(7.0))
+                            .pl(px(12.0))
+                            .pr(px(12.0))
+                            .min_w_0()
+                            .child(icon(ctx_icon, 13.0, hex(colors::MUTED)))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(hex(colors::TEXT))
+                                    .whitespace_nowrap()
+                                    .child(ctx_label.clone()),
+                            )
+                            .when(!narrow, |d| {
+                                d.when_some(ctx_cwd.clone(), |d, cwd| {
+                                    d.child(
+                                        div()
+                                            .max_w(px(420.0))
+                                            .min_w_0()
+                                            .overflow_hidden()
+                                            .whitespace_nowrap()
+                                            .text_ellipsis()
+                                            .text_size(px(11.5))
+                                            .text_color(hex(colors::FAINT))
+                                            .child(cwd),
+                                    )
+                                })
+                            }),
+                    )
+                    .child(div().flex_1().min_w(px(12.0))),
+            )
+            // ── 顶栏第二行（#tb-tabs：38px 全宽 tab 条）──
+            .child(tabs_row)
             .child(if narrow {
                 narrow_body(
                     sidebar,
@@ -425,6 +585,13 @@ pub fn apply_group_action(
         match action {
             GroupAction::ToggleExpanded => s.threads.toggle_workspace_expanded(workspace_id),
             GroupAction::SetShowAll(show) => s.threads.set_workspace_show_all(workspace_id, show),
+            GroupAction::SetPinned(pin) => s.threads.set_workspace_pinned(workspace_id, pin),
+            GroupAction::Rename => {} // 在视图层拦截（rename::open_workspace）
+            GroupAction::Remove => {
+                s.threads.remove_workspace(workspace_id);
+                cx.notify();
+                return;
+            }
         }
         s.flush(cx);
         cx.emit(StateChanged);

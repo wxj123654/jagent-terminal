@@ -16,16 +16,23 @@ use gpui_component::{
 
 use crate::state::{AppState, StateChanged};
 
+/// 重命名目标：会话或工作区（同一弹窗形态）
+#[derive(Clone, Debug)]
+pub enum RenameTarget {
+    Thread(String),
+    Workspace(String),
+}
+
 pub struct RenameView {
     state: Entity<AppState>,
-    thread_id: String,
+    target: RenameTarget,
     input: Entity<InputState>,
 }
 
 impl RenameView {
     pub fn new(
         state: Entity<AppState>,
-        thread_id: String,
+        target: RenameTarget,
         current: String,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -40,7 +47,7 @@ impl RenameView {
         .detach();
         Self {
             state,
-            thread_id,
+            target,
             input,
         }
     }
@@ -48,7 +55,7 @@ impl RenameView {
     /// 提交：规则在 [`commit_rename`]；无论如何关弹窗。
     fn commit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let title = self.input.read(cx).value().to_string();
-        commit_rename(&self.state, &self.thread_id, &title, cx);
+        commit_rename(&self.state, &self.target, &title, cx);
         window.close_dialog(cx);
     }
 }
@@ -73,15 +80,18 @@ impl Render for RenameView {
 }
 
 /// 提交重命名：空串由 store 忽略；成功后落盘并通知视图。
-pub fn commit_rename(state: &Entity<AppState>, thread_id: &str, title: &str, cx: &mut App) {
+pub fn commit_rename(state: &Entity<AppState>, target: &RenameTarget, title: &str, cx: &mut App) {
     state.update(cx, |s, cx| {
-        s.threads.rename(thread_id, title);
+        match target {
+            RenameTarget::Thread(id) => s.threads.rename(id, title),
+            RenameTarget::Workspace(id) => s.threads.rename_workspace(id, title),
+        }
         s.flush(cx);
         cx.emit(StateChanged);
     });
 }
 
-/// 打开重命名弹窗。`current` 是当前显示标题，作为初始值。
+/// 打开重命名弹窗（会话）。`current` 是当前显示标题，作为初始值。
 pub fn open(
     state: Entity<AppState>,
     thread_id: String,
@@ -89,9 +99,39 @@ pub fn open(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let view = cx.new(|cx| RenameView::new(state, thread_id, current, window, cx));
+    let view = cx.new(|cx| {
+        RenameView::new(
+            state,
+            RenameTarget::Thread(thread_id),
+            current,
+            window,
+            cx,
+        )
+    });
     window.open_dialog(cx, move |dialog, _, _| {
         dialog.title("重命名会话").w(px(420.0)).child(view.clone())
+    });
+}
+
+/// 打开重命名弹窗（工作区）。
+pub fn open_workspace(
+    state: Entity<AppState>,
+    workspace_id: String,
+    current: String,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let view = cx.new(|cx| {
+        RenameView::new(
+            state,
+            RenameTarget::Workspace(workspace_id),
+            current,
+            window,
+            cx,
+        )
+    });
+    window.open_dialog(cx, move |dialog, _, _| {
+        dialog.title("重命名工作区").w(px(420.0)).child(view.clone())
     });
 }
 
@@ -114,12 +154,12 @@ mod tests {
             .unwrap();
             let ws = state.read(cx).workspaces()[0].id.clone();
             let id = state.update(cx, |s, cx| s.create_chat(Some(&ws), cx).unwrap());
-            commit_rename(&state, &id, "新标题", cx);
+            commit_rename(&state, &RenameTarget::Thread(id.clone()), "新标题", cx);
             assert_eq!(
                 state.read(cx).threads.thread(&id).unwrap().title(),
                 "新标题"
             );
-            commit_rename(&state, &id, "   ", cx);
+            commit_rename(&state, &RenameTarget::Thread(id.clone()), "   ", cx);
             assert_eq!(
                 state.read(cx).threads.thread(&id).unwrap().title(),
                 "新标题",

@@ -7,6 +7,7 @@ pub mod acp_io;
 pub mod actions;
 pub mod app;
 pub mod crash;
+pub mod icons;
 pub mod state;
 pub mod terminal_style;
 pub mod theme;

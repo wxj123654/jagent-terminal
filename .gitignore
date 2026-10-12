@@ -11,3 +11,6 @@ Thumbs.db
 
 # 会话临时产物
 .tmp/
+
+# 原型对齐参照物（git 历史 aadecd4/8df091c 提取，不入库）
+/.archive/
