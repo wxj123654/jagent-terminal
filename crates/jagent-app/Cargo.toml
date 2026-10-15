@@ -35,6 +35,10 @@ name = "shell_shot"
 harness = false
 
 [[test]]
+name = "v_shots"
+harness = false
+
+[[test]]
 name = "nested_scroll"
 path = "tests/nested_scroll.rs"
 harness = false

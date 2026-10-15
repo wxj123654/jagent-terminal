@@ -105,6 +105,15 @@ Git 图贝塞尔弯线、桌面通知真实弹出（Effects::notify 目前只记
 
 ## 会话日志（每 session 追加一行：日期 · 做了什么 · 下一步）
 
+- 2026-10-15 · **V 轮像素 diff 复核（收官后追加）**：新增视觉测试 `tests/v_shots.rs`
+      （harness=false，8 面离屏截图到 target/shots/v/：空态/chat/设置/通知/Git 图/面板/
+      AddPopover/窄屏；数据尽量复刻 seed.ts，真 git repo 9 提交含 merge）· 原型 vite 起服
+      浏览器截对应 8 面到 target/shots/proto/ · 并排对比页 compare.html 目检结论：**8 面
+      结构/布局/配色高度同构**（空态 home-card、会话面气泡/composer、设置页 nav+分区、
+      通知浮层 3 条含时间分档、Git 图工具条+徽标+表头、WorkPanel 文件行 M/A/D、
+      AddPopover 三段式、窄屏抽屉+遮罩全部对上）· 内容级差异均为预期（sha/±计数/真
+      zsh 提示符/工作区 path）· 顺手：root.rs 增 `set_add_popover_open`（测试用受控）
+      · 下一步：真窗口手感清单（输入法/拖动手感等，需用户真机）
 - 2026-10-15 · **V 轮收官（V2–V6 全部落地）**：多 subagent 并行实现（V2 分支钮/右栏/
       通知浮层、V3 Git 图贝塞尔/徽标/下拉/右键菜单、V4 设置页重写、V5 统一浮层 popup.rs
       +AddPopover+抽屉动画、V6b 会话面/空态）→ 主会话统一收尾（7 编译错+4 断言+

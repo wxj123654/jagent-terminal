@@ -166,6 +166,14 @@ impl RootView {
         cx.notify();
     }
 
+    /// 仅供视觉测试（tests/v_shots.rs）：直接置 AddPopover 的受控开合态，
+    /// 等价于点击顶栏 tab 条「+」钮（`add_popover_open` 字段对外不可见，
+    /// 而钮的 x 坐标随 tab 文本宽度变化，鼠标点击不可复现）。
+    pub fn set_add_popover_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        self.add_popover_open = open;
+        cx.notify();
+    }
+
     /// 行菜单动作：规则全在 store（`set_thread_pinned` / `set_thread_unread` / `close`），这里只落盘并通知。
     fn row_action(
         state: &Entity<AppState>,
