@@ -99,15 +99,8 @@ pub fn open(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let view = cx.new(|cx| {
-        RenameView::new(
-            state,
-            RenameTarget::Thread(thread_id),
-            current,
-            window,
-            cx,
-        )
-    });
+    let view =
+        cx.new(|cx| RenameView::new(state, RenameTarget::Thread(thread_id), current, window, cx));
     window.open_dialog(cx, move |dialog, _, _| {
         dialog.title("重命名会话").w(px(420.0)).child(view.clone())
     });
@@ -131,7 +124,10 @@ pub fn open_workspace(
         )
     });
     window.open_dialog(cx, move |dialog, _, _| {
-        dialog.title("重命名工作区").w(px(420.0)).child(view.clone())
+        dialog
+            .title("重命名工作区")
+            .w(px(420.0))
+            .child(view.clone())
     });
 }
 

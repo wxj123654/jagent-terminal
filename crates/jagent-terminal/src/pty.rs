@@ -12,7 +12,7 @@
 
 use std::io;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use alacritty_terminal::event::{Event as AlacTermEvent, WindowSize};
 use alacritty_terminal::event_loop::{EventLoop, Notifier};
@@ -101,6 +101,8 @@ fn pty_options(opts: &SpawnOptions) -> TtyOptions {
 /// alacritty event-loop channel (no direct fd/master access).
 pub struct PtySender {
     notifier: Notifier,
+    /// reader 线程的 join 动作（tty 后备类型平台不一，装箱擦除）。
+    reader_join: Mutex<Option<Box<dyn FnOnce() + Send>>>,
 }
 
 impl PtySender {
@@ -124,12 +126,18 @@ impl PtySender {
             ));
     }
 
-    /// Ask the event loop (reader/writer threads) to shut down.
+    /// Ask the event loop (reader/writer threads) to shut down, then wait for
+    /// the reader thread to exit. 收尾必须 join：shutdown 消息只请求退出，
+    /// reader 的残留活动若越过拥有者的生命边界（测试场景 = 下一个测试），
+    /// gpui test scheduler 会判定非确定性。
     pub fn shutdown(&self) {
         let _ = self
             .notifier
             .0
             .send(alacritty_terminal::event_loop::Msg::Shutdown);
+        if let Some(join) = self.reader_join.lock().unwrap().take() {
+            join();
+        }
     }
 }
 
@@ -155,8 +163,22 @@ pub fn open_pty(
     )?;
     // `spawn` consumes the event loop; take the channel first.
     let notifier = Notifier(event_loop.channel());
-    let _join = event_loop.spawn();
-    Ok((term, PtySender { notifier }))
+    let join = event_loop.spawn();
+    let join_action: Box<dyn FnOnce() + Send> = Box::new(move || {
+        // 等 reader 线程退出（shutdown 后 join，保证线程活动不越界）。
+        // 返回值持有 EventLoop/Pty，其 drop 会 SIGHUP + waitpid 阻塞等子进程
+        // ——放到一次性后台线程 drop：既不泄漏孤儿 shell，也不卡调用方
+        // （UI / 测试线程）。
+        let joined = join.join();
+        std::thread::spawn(move || drop(joined));
+    });
+    Ok((
+        term,
+        PtySender {
+            notifier,
+            reader_join: Mutex::new(Some(join_action)),
+        },
+    ))
 }
 
 /// Channel-level event from the alacritty side (term + event loop).

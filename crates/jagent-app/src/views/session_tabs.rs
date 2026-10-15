@@ -12,8 +12,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, ElementId, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce,
-    StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder as _, px,
+    App, ElementId, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels,
+    RenderOnce, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder as _, px,
 };
 use gpui_component::h_flex;
 use jagent_core::threads::{MAIN_VIEW_ID, RunStatus, SessionView, Thread};
@@ -131,7 +131,9 @@ pub fn tab_models(thread: &Thread) -> Vec<TabModel> {
         dot: thread_dot(thread),
         active: active == MAIN_VIEW_ID,
         closable: false,
-        exited: thread.as_terminal().is_some_and(|t| t.status == RunStatus::Exited),
+        exited: thread
+            .as_terminal()
+            .is_some_and(|t| t.status == RunStatus::Exited),
     }];
     out.extend(c.views.iter().map(|v| {
         let (icon, dot, exited) = match v {
@@ -189,18 +191,30 @@ fn tab(
                     .border_color(hex(colors::BORDER_SUBTLE))
                     .shadow_sm()
             },
-            |d| d.hover(|h| h.bg(gpui::Hsla::from(gpui::Rgba { r: 1., g: 1., b: 1., a: 0.035 }))),
+            |d| {
+                d.hover(|h| {
+                    h.bg(gpui::Hsla::from(gpui::Rgba {
+                        r: 1.,
+                        g: 1.,
+                        b: 1.,
+                        a: 0.035,
+                    }))
+                })
+            },
         )
         // 图标 13：active text / 其余 muted，hover 提亮
-        .child(icon(t.icon.icon(), 13.0, if t.active { hex(colors::TEXT) } else { hex(colors::MUTED) }))
+        .child(icon(
+            t.icon.icon(),
+            13.0,
+            if t.active {
+                hex(colors::TEXT)
+            } else {
+                hex(colors::MUTED)
+            },
+        ))
         // 状态点
         .when_some(t.dot, |d, dot| {
-            d.child(
-                div()
-                    .size(dot.size())
-                    .rounded_full()
-                    .bg(dot.color(tokens)),
-            )
+            d.child(div().size(dot.size()).rounded_full().bg(dot.color(tokens)))
         })
         // 标题 12px：exited 压灰 / active 提亮 / muted；hover text 由 group_hover
         .child(
@@ -230,7 +244,7 @@ fn tab(
     let tab_id = t.id.clone();
     let el = el.on_click(move |_, w, cx| on_activate(&tab_id, w, cx));
     // 中键关闭（原型 onMouseDown button===1）
-    
+
     if t.closable {
         let on_close = on_close.expect("closable tab 必须带关闭回调");
         let (on_mid, on_x) = (on_close.clone(), on_close);

@@ -30,6 +30,9 @@ pub trait Effects {
     fn new_id(&mut self) -> String;
     /// cwd 继承链兜底（preset.cwd ?? workspace.path ?? 本项）。
     fn default_cwd(&self) -> String;
+    /// 用系统关联程序打开文件（设置页「在编辑器中打开」settings.json）。
+    /// 失败由实现方自理（UI 不因外部程序问题报错弹窗）。
+    fn open_path(&mut self, path: &str);
 }
 
 /// `spawn_from_preset` 的第一步产物：调用方据此创建 PTY，拿到 session id 后调 `finish_spawn`。

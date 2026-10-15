@@ -3,27 +3,86 @@
 //! 视觉契约 = React 原型 `#sidebar`（旧 gpuix `sidebar/Sidebar.tsx` /
 //! `WorkspaceList.tsx` / `ThreadRow.tsx`，R4 对齐）：
 //! - 头 46px（mac 红绿灯让位 + 收起钮）+ nav 行组（新建/搜索）+ 区头「工作区」
-//!   固定不滚；滚动区只装分组；脚（齿轮/铃铛红点/版本号）。
+//!   固定不滚；滚动区只装分组；脚（齿轮/铃铛·通知中心浮层锚点/版本号）。
 //! - 行件全部走 lucide 图标（[`crate::icons`]），hover 提亮/ghost 显隐用
 //!   gpui `group`/`group_hover`（无 JS 态）。
 use gpui::{
-    App, ClickEvent, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder as _, px,
+    App, ClickEvent, ElementId, InteractiveElement, IntoElement, MouseButton, ParentElement,
+    RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, div,
+    prelude::FluentBuilder as _, px,
 };
-use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
+use gpui_base::Popover;
 use gpui_component::{ActiveTheme, h_flex, v_flex};
 use jagent_core::threads::{Thread, Workspace, sort_threads, sort_workspaces};
 
 use crate::icons::{IconName, icon};
 use crate::theme::{Tokens, colors, hex, sizes};
+use crate::views::notif_center::NotifSlot;
+use crate::views::popup::{MenuEntry, PickFn, PopupTrigger, menu_surface};
 
 type ClickFn = std::rc::Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+/// 菜单开合回调（受控浮层：trigger 左键 / 右键 / 点外 / Esc / 选中项都会走这里）
+type MenuOpenFn = std::rc::Rc<dyn Fn(bool, &mut Window, &mut App)>;
+/// 侧栏菜单受控回调：`(目标, 开/关, window, app)`——装配层据此维护唯一开合态
+pub type MenuToggleFn = std::rc::Rc<dyn Fn(MenuTarget, bool, &mut Window, &mut App)>;
+
+/// 无参动作回调（设置 / 新建会话 / 搜索 / 添加工作区）。
+pub type WindowActionFn = std::rc::Rc<dyn Fn(&mut Window, &mut App)>;
+/// 单 id 动作回调（选中会话）。
+pub type SelectFn = std::rc::Rc<dyn Fn(&str, &mut Window, &mut App)>;
+/// 行动作回调（置顶 / 重命名 / 移除 …）。
+pub type RowActionFn = std::rc::Rc<dyn Fn(&str, RowAction, &mut Window, &mut App)>;
+/// 工作区分组动作回调。
+pub type GroupActionFn = std::rc::Rc<dyn Fn(&str, GroupAction, &mut Window, &mut App)>;
+
+/// 当前打开的侧栏菜单（行「…」/ 工作区「…」），受控态挂在 RootView 上。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MenuTarget {
+    Row(String),
+    Workspace(String),
+}
+
+/// 行菜单条目（原型 `threadMenuItems`：pin/rename/unread/sep/remove(danger)）。
+pub fn thread_menu_entries(pinned: bool, unread: bool) -> Vec<MenuEntry> {
+    vec![
+        MenuEntry::item("pin", if pinned { "取消置顶" } else { "置顶" }),
+        MenuEntry::item("rename", "重命名…"),
+        MenuEntry::item(
+            "unread",
+            if unread {
+                "标记为已读"
+            } else {
+                "标记为未读"
+            },
+        ),
+        MenuEntry::Separator,
+        MenuEntry::danger("remove", "移除"),
+    ]
+}
+
+/// 工作区菜单条目（原型 `wsMenuItems`：pin/rename/sep/remove(danger)）。
+pub fn ws_menu_entries(pinned: bool) -> Vec<MenuEntry> {
+    vec![
+        MenuEntry::item(
+            "pin",
+            if pinned {
+                "取消置顶工作区"
+            } else {
+                "置顶工作区"
+            },
+        ),
+        MenuEntry::item("rename", "重命名…"),
+        MenuEntry::Separator,
+        MenuEntry::danger("remove", "移除工作区"),
+    ]
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RowAction {
     SetPinned(bool),
     Rename,
-    MarkUnread,
+    /// 原型是切换语义（unread ? 标为已读 : 标为未读）
+    SetUnread(bool),
     Remove,
 }
 
@@ -140,7 +199,16 @@ pub fn build_groups(
                 .filter(|t| t.workspace_id() == Some(&w.id))
                 .cloned()
                 .collect();
-            group_model(&w.id, &w.name, w.expanded, w.pin, w.show_all, &mine, active_thread, false)
+            group_model(
+                &w.id,
+                &w.name,
+                w.expanded,
+                w.pin,
+                w.show_all,
+                &mine,
+                active_thread,
+                false,
+            )
         })
         .collect();
     let orphans: Vec<Thread> = threads
@@ -176,13 +244,18 @@ fn group_model(
 ) -> GroupModel {
     let sorted = sort_threads(mine);
     let total = sorted.len();
-    let shown = if show_all { total } else { total.min(COLLAPSED_ROWS) };
+    let shown = if show_all {
+        total
+    } else {
+        total.min(COLLAPSED_ROWS)
+    };
     // active/focus 行不被截断（原型：lim 扩展到包含它）
     let mut shown = shown;
     if let Some(ix) = active_thread.and_then(|a| sorted.iter().position(|t| t.id() == a))
-        && ix >= shown {
-            shown = ix + 1;
-        }
+        && ix >= shown
+    {
+        shown = ix + 1;
+    }
     let rows = sorted
         .into_iter()
         .take(shown)
@@ -194,7 +267,9 @@ fn group_model(
             active: active_thread == Some(t.id()),
             pinned: t.common().pin,
             unread: t.common().unread,
-            exited: t.as_terminal().is_some_and(|x| x.status == jagent_core::threads::RunStatus::Exited),
+            exited: t
+                .as_terminal()
+                .is_some_and(|x| x.status == jagent_core::threads::RunStatus::Exited),
         })
         .collect();
     GroupModel {
@@ -222,13 +297,24 @@ fn white(alpha: f32) -> gpui::Hsla {
 #[derive(IntoElement)]
 pub struct ThreadRow {
     model: RowModel,
+    /// 本行「…」菜单浮层是否展开（受控态在 RootView）
+    menu_open: bool,
+    on_menu: MenuOpenFn,
     on_click: ClickFn,
     on_pick: RowPick,
 }
 impl ThreadRow {
-    pub fn new(model: RowModel, on_click: ClickFn, on_pick: RowPick) -> Self {
+    pub fn new(
+        model: RowModel,
+        menu_open: bool,
+        on_menu: MenuOpenFn,
+        on_click: ClickFn,
+        on_pick: RowPick,
+    ) -> Self {
         Self {
             model,
+            menu_open,
+            on_menu,
             on_click,
             on_pick,
         }
@@ -238,7 +324,13 @@ impl RenderOnce for ThreadRow {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let tokens = cx.global::<Tokens>().clone();
         let theme = cx.theme();
-        let Self { model, on_click, on_pick } = self;
+        let Self {
+            model,
+            menu_open,
+            on_menu,
+            on_click,
+            on_pick,
+        } = self;
         let m = &model;
         let exited = m.exited;
         let unread = !exited && m.unread;
@@ -332,50 +424,58 @@ impl RenderOnce for ThreadRow {
                 d.child(icon(IconName::Pin, 12.0, hex(colors::FAINT)))
             })
             // 「…」菜单槽固定 22px（不占位→位移；r8，hover 底 closeHover + 提亮；
-            // 行 hover/active 时显示。左键弹统一浮层待浮层系统，右键已全功能）
-            .child(
-                div()
-                    .id(ElementId::Name(format!("menu-{}", m.id).into()))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .size(px(22.0))
-                    .rounded(px(8.0))
-                    .flex_shrink_0()
-                    .opacity(0.0)
-                    .hover(|h| h.bg(hex(colors::CLOSE_HOVER)))
-                    .group_hover(group.clone(), |s| s.opacity(1.0))
-                    .when(m.active, |d| d.opacity(1.0))
-                    .child(
-                        icon(IconName::More, 12.0, theme.muted_foreground)
-                            .hover(|s| s.text_color(hex(colors::TEXT_BRIGHT))),
-                    ),
-            )
-            .context_menu({
-                let unread_label: &'static str = if m.unread { "标记为已读" } else { "标记为未读" };
-                let pinned = m.pinned;
-                move |menu, _, _| {
-                let pick = on_pick.clone();
-                let pin = PopupMenuItem::new(if pinned { "取消置顶" } else { "置顶" }).on_click({
-                    let pick = pick.clone();
-                    move |_, w, cx| pick(RowAction::SetPinned(!pinned), w, cx)
-                });
-                let rename = PopupMenuItem::new("重命名…").on_click({
-                    let pick = pick.clone();
-                    move |_, w, cx| pick(RowAction::Rename, w, cx)
-                });
-                let unread = PopupMenuItem::new(unread_label).on_click({
-                    let pick = pick.clone();
-                    move |_, w, cx| pick(RowAction::MarkUnread, w, cx)
-                });
-                let remove = PopupMenuItem::new("移除")
-                    .on_click(move |_, w, cx| pick(RowAction::Remove, w, cx));
-                menu.item(pin)
-                    .item(rename)
-                    .item(unread)
-                    .separator()
-                    .item(remove)
-                }
+            // 行 hover/active 时显示）。左键 / 右键都弹同一统一浮层菜单（原型
+            // DropMenu + CtxMenu 同条目；受控态在 RootView，见 root.rs）
+            .child({
+                let entries = thread_menu_entries(m.pinned, m.unread);
+                let (pinned, unread) = (m.pinned, m.unread);
+                let on_menu_change = on_menu.clone();
+                let menu_slot: SharedString = format!("menu-{}", m.id).into();
+                let row_active = m.active;
+                let trigger_group = group.clone();
+                let muted_fg = theme.muted_foreground;
+                Popover::new(ElementId::Name(format!("row-menu-{}", m.id).into()))
+                    .open(menu_open)
+                    .anchor(gpui::Anchor::TopLeft)
+                    .offset(px(4.0))
+                    .on_open_change(move |open, window, cx| on_menu_change(*open, window, cx))
+                    .trigger(PopupTrigger::new(move |open| {
+                        let on_menu_right = on_menu.clone();
+                        div()
+                            .id(ElementId::Name(menu_slot.clone()))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .size(px(22.0))
+                            .rounded(px(8.0))
+                            .flex_shrink_0()
+                            .opacity(0.0)
+                            .hover(|h| h.bg(hex(colors::CLOSE_HOVER)))
+                            .group_hover(trigger_group.clone(), |s| s.opacity(1.0))
+                            .when(row_active, |d| d.opacity(1.0))
+                            .child(
+                                icon(IconName::More, 12.0, muted_fg)
+                                    .hover(|s| s.text_color(hex(colors::TEXT_BRIGHT)))
+                                    .when(open, |s| s.text_color(hex(colors::TEXT_BRIGHT))),
+                            )
+                            // 右键 = 左键同一菜单（原型行右键 CtxMenu）
+                            .on_mouse_down(MouseButton::Right, move |_, window, cx| {
+                                on_menu_right(true, window, cx)
+                            })
+                            .into_any_element()
+                    }))
+                    .content(move |_, _, cx| {
+                        let popover = cx.entity();
+                        let pick = on_pick.clone();
+                        let pick_fn: PickFn = std::rc::Rc::new(move |id, w, cx| match id {
+                            "pin" => pick(RowAction::SetPinned(!pinned), w, cx),
+                            "rename" => pick(RowAction::Rename, w, cx),
+                            "unread" => pick(RowAction::SetUnread(!unread), w, cx),
+                            "remove" => pick(RowAction::Remove, w, cx),
+                            _ => {}
+                        });
+                        menu_surface(&entries, &pick_fn, &popover).into_any_element()
+                    })
             })
     }
 }
@@ -383,23 +483,29 @@ impl RenderOnce for ThreadRow {
 #[derive(IntoElement)]
 pub struct Sidebar {
     groups: Vec<GroupModel>,
-    unread_notices: usize,
     version: SharedString,
-    on_select: std::rc::Rc<dyn Fn(&str, &mut Window, &mut App)>,
-    on_row: std::rc::Rc<dyn Fn(&str, RowAction, &mut Window, &mut App)>,
-    on_add_workspace: std::rc::Rc<dyn Fn(&mut Window, &mut App)>,
-    on_settings: std::rc::Rc<dyn Fn(&mut Window, &mut App)>,
-    on_group: std::rc::Rc<dyn Fn(&str, GroupAction, &mut Window, &mut App)>,
-    on_new_session: std::rc::Rc<dyn Fn(&mut Window, &mut App)>,
-    on_search: std::rc::Rc<dyn Fn(&mut Window, &mut App)>,
+    /// 通知中心（铃铛浮层 + 未读徽标 + 动作回调），装配层投影注入
+    notif: NotifSlot,
+    /// 当前展开的侧栏菜单（行 / 工作区「…」），受控态在 RootView
+    open_menu: Option<MenuTarget>,
+    on_menu: MenuToggleFn,
+    on_select: SelectFn,
+    on_row: RowActionFn,
+    on_add_workspace: WindowActionFn,
+    on_settings: WindowActionFn,
+    on_group: GroupActionFn,
+    on_new_session: WindowActionFn,
+    on_search: WindowActionFn,
     on_collapse: std::rc::Rc<dyn Fn(&mut App)>,
 }
 impl Sidebar {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         groups: Vec<GroupModel>,
-        unread_notices: usize,
+        notif: NotifSlot,
         version: &str,
+        open_menu: Option<MenuTarget>,
+        on_menu: impl Fn(MenuTarget, bool, &mut Window, &mut App) + 'static,
         on_select: impl Fn(&str, &mut Window, &mut App) + 'static,
         on_row: impl Fn(&str, RowAction, &mut Window, &mut App) + 'static,
         on_add_workspace: impl Fn(&mut Window, &mut App) + 'static,
@@ -411,8 +517,10 @@ impl Sidebar {
     ) -> Self {
         Self {
             groups,
-            unread_notices,
             version: format!("v{version}").into(),
+            notif,
+            open_menu,
+            on_menu: std::rc::Rc::new(on_menu),
             on_select: std::rc::Rc::new(on_select),
             on_row: std::rc::Rc::new(on_row),
             on_add_workspace: std::rc::Rc::new(on_add_workspace),
@@ -451,7 +559,13 @@ fn ghost_cell(
 }
 
 /// 「显示另外 N 个/收起会话」行内链接（原型 .more-link：h27 padl 7 gap 5 r5）
-fn more_link(id: SharedString, expanded: bool, hidden: usize, group_id: &str, on_group: &std::rc::Rc<dyn Fn(&str, GroupAction, &mut Window, &mut App)>) -> impl IntoElement {
+fn more_link(
+    id: SharedString,
+    expanded: bool,
+    hidden: usize,
+    group_id: &str,
+    on_group: &GroupActionFn,
+) -> impl IntoElement {
     let cb = on_group.clone();
     let gid = group_id.to_owned();
     h_flex()
@@ -491,7 +605,6 @@ fn more_link(id: SharedString, expanded: bool, hidden: usize, group_id: &str, on
 impl RenderOnce for Sidebar {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
-        let tokens = cx.global::<Tokens>().clone();
         let muted = theme.muted_foreground;
         let fg = theme.sidebar_foreground;
         let border_subtle = hex(colors::BORDER_SUBTLE);
@@ -551,8 +664,9 @@ impl RenderOnce for Sidebar {
                             .justify_center()
                             .flex_shrink_0()
                             .child(
-                                icon(IconName::Plus, 14.0, muted)
-                                    .group_hover("nav-new", |s| s.text_color(hex(colors::TEXT_BRIGHT))),
+                                icon(IconName::Plus, 14.0, muted).group_hover("nav-new", |s| {
+                                    s.text_color(hex(colors::TEXT_BRIGHT))
+                                }),
                             ),
                     )
                     .child(
@@ -584,7 +698,9 @@ impl RenderOnce for Sidebar {
                             .flex_shrink_0()
                             .child(
                                 icon(IconName::Search, 14.0, muted)
-                                    .group_hover("nav-search", |s| s.text_color(hex(colors::TEXT_BRIGHT))),
+                                    .group_hover("nav-search", |s| {
+                                        s.text_color(hex(colors::TEXT_BRIGHT))
+                                    }),
                             ),
                     )
                     .child(
@@ -704,22 +820,101 @@ impl RenderOnce for Sidebar {
                     let row = ws_row.on_click(move |_, window, cx| {
                         on_group(&gid, GroupAction::ToggleExpanded, window, cx)
                     });
-                    // .acts：absolute right 3 top 5——「…」工作区菜单 + ＋ 新建会话
+                    // 行本体右键 = 「…」同一菜单（原型 ws-row CtxMenu）
+                    let (gid_right, on_menu_right) = (g.id.clone(), self.on_menu.clone());
+                    let row = row.on_mouse_down(MouseButton::Right, move |_, window, cx| {
+                        on_menu_right(MenuTarget::Workspace(gid_right.clone()), true, window, cx)
+                    });
+                    // .acts：absolute right 3 top 5——「…」工作区菜单 + ＋ 新建会话。
+                    // 「…」左键 / 右键弹统一浮层（受控态在 RootView）
                     let on_new_in_ws = self.on_new_session.clone();
+                    let ws_menu_open = self.open_menu == Some(MenuTarget::Workspace(g.id.clone()));
+                    let (entries, pinned) = (ws_menu_entries(g.pinned), g.pinned);
+                    let (on_menu_change, on_menu_right_btn) =
+                        (self.on_menu.clone(), self.on_menu.clone());
+                    let (menu_gid, menu_gid2) = (g.id.clone(), g.id.clone());
+                    let trigger_group = group_key.clone();
+                    let menu_cell =
+                        Popover::new(ElementId::Name(format!("ws-menu-{}", g.id).into()))
+                            .open(ws_menu_open)
+                            .anchor(gpui::Anchor::TopLeft)
+                            .offset(px(4.0))
+                            .on_open_change({
+                                let on_menu = on_menu_change.clone();
+                                let gid = menu_gid.clone();
+                                move |open, window, cx| {
+                                    on_menu(MenuTarget::Workspace(gid.clone()), *open, window, cx)
+                                }
+                            })
+                            .trigger(PopupTrigger::new(move |open| {
+                                div()
+                                    .id(ElementId::Name(
+                                        format!("menu-workspace-{}", menu_gid2).into(),
+                                    ))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .size(px(24.0))
+                                    .rounded(px(8.0))
+                                    .cursor_pointer()
+                                    .opacity(if open { 1.0 } else { 0.0 })
+                                    .hover(|h| h.bg(hex(colors::SURFACE)))
+                                    .group_hover(trigger_group.clone(), |s| s.opacity(1.0))
+                                    .child(icon(
+                                        IconName::More,
+                                        12.0,
+                                        if open {
+                                            hex(colors::TEXT_BRIGHT)
+                                        } else {
+                                            hex(colors::MUTED)
+                                        },
+                                    ))
+                                    .on_mouse_down(MouseButton::Right, {
+                                        let on_menu = on_menu_right_btn.clone();
+                                        let gid = menu_gid.clone();
+                                        move |_, window, cx| {
+                                            on_menu(
+                                                MenuTarget::Workspace(gid.clone()),
+                                                true,
+                                                window,
+                                                cx,
+                                            )
+                                        }
+                                    })
+                                    .into_any_element()
+                            }))
+                            .content({
+                                let on_group = self.on_group.clone();
+                                let gid = g.id.clone();
+                                move |_, _, cx| {
+                                    let popover = cx.entity();
+                                    let (on_group, gid) = (on_group.clone(), gid.clone());
+                                    let pick_fn: PickFn =
+                                        std::rc::Rc::new(move |id: &str, window, cx| match id {
+                                            "pin" => on_group(
+                                                &gid,
+                                                GroupAction::SetPinned(!pinned),
+                                                window,
+                                                cx,
+                                            ),
+                                            "rename" => {
+                                                on_group(&gid, GroupAction::Rename, window, cx)
+                                            }
+                                            "remove" => {
+                                                on_group(&gid, GroupAction::Remove, window, cx)
+                                            }
+                                            _ => {}
+                                        });
+                                    menu_surface(&entries, &pick_fn, &popover).into_any_element()
+                                }
+                            });
                     let acts = div()
                         .absolute()
                         .right(px(3.0))
                         .top(px(5.0))
                         .flex()
                         .flex_shrink_0()
-                        .child(ghost_cell(
-                            format!("menu-workspace-{}", g.id).into(),
-                            IconName::More,
-                            group_key.clone(),
-                            0.0,
-                            // 「…」左键弹统一浮层待浮层系统；右键已全功能
-                            |_, _| {},
-                        ))
+                        .child(menu_cell)
                         .child(ghost_cell(
                             format!("new-menu-{}", g.id).into(),
                             IconName::Plus,
@@ -730,35 +925,12 @@ impl RenderOnce for Sidebar {
                     (row, Some(acts))
                 };
 
-                // 工作区菜单（右键 = 「…」同一面）：置顶/重命名/移除；未归属组无菜单
-                let on_group_ctx = self.on_group.clone();
-                let ctx_model = (g.id.clone(), g.pinned, g.unassigned);
                 let ws_head = div()
                     .relative()
                     .flex()
                     .flex_shrink_0()
                     .child(ws_row)
-                    .when_some(acts, |d, a| d.child(a))
-                    .context_menu(move |menu, _window, _| {
-                        let (id, pinned, unassigned) = ctx_model.clone();
-                        if unassigned {
-                            return menu;
-                        }
-                        let cb = on_group_ctx.clone();
-                        let pin = PopupMenuItem::new(if pinned { "取消置顶工作区" } else { "置顶工作区" }).on_click({
-                            let (id, cb) = (id.clone(), cb.clone());
-                            move |_, window, cx| cb(&id, GroupAction::SetPinned(!pinned), window, cx)
-                        });
-                        let rename = PopupMenuItem::new("重命名…").on_click({
-                            let (id, cb) = (id.clone(), cb.clone());
-                            move |_, window, cx| cb(&id, GroupAction::Rename, window, cx)
-                        });
-                        let remove = PopupMenuItem::new("移除工作区").on_click({
-                            let (id, cb) = (id, cb);
-                            move |_, window, cx| cb(&id, GroupAction::Remove, window, cx)
-                        });
-                        menu.item(pin).item(rename).separator().item(remove)
-                    });
+                    .when_some(acts, |d, a| d.child(a));
 
                 let mut group = v_flex().mb(px(3.0)).child(ws_head);
                 if g.expanded {
@@ -774,7 +946,9 @@ impl RenderOnce for Sidebar {
                         let on_new_in_ws = self.on_new_session.clone();
                         body = body.child(
                             h_flex()
-                                .id(ElementId::Name(format!("workspace-create-first-{}", g.id).into()))
+                                .id(ElementId::Name(
+                                    format!("workspace-create-first-{}", g.id).into(),
+                                ))
                                 .h(px(28.0))
                                 .pl(px(7.0))
                                 .pr(px(7.0))
@@ -796,6 +970,8 @@ impl RenderOnce for Sidebar {
                         let rows_len = g.rows.len();
                         let on_select = self.on_select.clone();
                         let on_row = self.on_row.clone();
+                        let on_menu_rows = self.on_menu.clone();
+                        let open_menu = self.open_menu.clone();
                         body = body.children(g.rows.into_iter().map(move |r| {
                             let sid = r.id.clone();
                             let rid = sid.clone();
@@ -803,8 +979,18 @@ impl RenderOnce for Sidebar {
                             let on_row = on_row.clone();
                             let pick: RowPick =
                                 std::rc::Rc::new(move |a, w, cx| on_row(&rid, a, w, cx));
+                            let menu_open = matches!(open_menu,
+                                Some(MenuTarget::Row(ref id)) if *id == r.id);
+                            let on_menu_row: MenuOpenFn = {
+                                let (on_menu_rows, mid) = (on_menu_rows.clone(), r.id.clone());
+                                std::rc::Rc::new(move |open, w, cx| {
+                                    on_menu_rows(MenuTarget::Row(mid.clone()), open, w, cx)
+                                })
+                            };
                             ThreadRow::new(
                                 r,
+                                menu_open,
+                                on_menu_row,
                                 std::rc::Rc::new(move |_, w, cx| on_select(&sid, w, cx)),
                                 pick,
                             )
@@ -856,38 +1042,15 @@ impl RenderOnce for Sidebar {
                         move |_, w, cx| cb(w, cx)
                     }),
             )
-            .child(
-                div().relative().child(
-                    div()
-                        .id("open-notifications")
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .size(px(28.0))
-                        .rounded(px(8.0))
-                        .cursor_pointer()
-                        .hover(|h| h.bg(hex(colors::SURFACE)))
-                        .child(icon(IconName::Bell, 16.0, muted))
-                        .on_click({
-                            let cb = self.on_search.clone();
-                            move |_, w, cx| cb(w, cx)
-                        }),
-                )
-                .when(self.unread_notices > 0, |d| {
-                    // 原型 .badge-dot：7px 点 + 1.5px 描边（10px 盒，右下 2.5）
-                    d.child(
-                        div()
-                            .absolute()
-                            .right(px(2.5))
-                            .top(px(2.5))
-                            .size(px(10.0))
-                            .rounded_full()
-                            .bg(tokens.status_error)
-                            .border_1()
-                            .border_color(theme.sidebar),
-                    )
-                }),
-            )
+            // 铃铛 = 通知中心浮层锚点（V2 · D8：向上弹出，浮层与数据在 notif_center）
+            .child(crate::views::notif_center::bell_popover(
+                crate::views::notif_center::NotifSlot {
+                    models: self.notif.models,
+                    unread: self.notif.unread,
+                    on_open: self.notif.on_open,
+                    on_read_all: self.notif.on_read_all,
+                },
+            ))
             .child(div().flex_1())
             .child(
                 div()
@@ -1037,10 +1200,16 @@ mod tests {
         let threads = vec![term("a", "a", 1, |_| {}), orphan];
         let g = build_groups(&workspaces, &threads, None);
         assert_eq!(g.len(), 2);
-        assert_eq!(g[0].rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["a"]);
+        assert_eq!(
+            g[0].rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            ["a"]
+        );
         let u = &g[1];
         assert!(u.unassigned && u.expanded);
-        assert_eq!(u.rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["orphan"]);
+        assert_eq!(
+            u.rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            ["orphan"]
+        );
     }
     #[test]
     fn row_dot_priority_is_stable() {
@@ -1087,5 +1256,40 @@ mod tests {
         assert_eq!(g[0].rows[0].title, "vim");
         let g = build_groups(&[ws("a", "A", 1)], &[term("t", "a", 0, |_| {})], None);
         assert_eq!(g[0].rows[0].title, "cmd-t");
+    }
+
+    /// 菜单条目与原型 threadMenuItems / wsMenuItems 逐项对齐：
+    /// pin/unread 文案随状态翻转，remove 是 danger，中间一条分隔线。
+    #[test]
+    fn thread_and_ws_menu_entries_match_the_prototype_items() {
+        use crate::views::popup::MenuEntry;
+        let entries = thread_menu_entries(false, false);
+        assert_eq!(entries.len(), 5);
+        assert_eq!(entries[0], MenuEntry::item("pin", "置顶"));
+        assert_eq!(entries[2], MenuEntry::item("unread", "标记为未读"));
+        assert_eq!(entries[3], MenuEntry::Separator);
+        match &entries[4] {
+            MenuEntry::Item(m) => {
+                assert_eq!(m.id, "remove");
+                assert!(m.danger, "移除是 danger 项");
+            }
+            other => panic!("末项应为条目：{other:?}"),
+        } // 状态翻转：pin 过 → 取消置顶；未读 → 标记为已读
+        assert_eq!(
+            thread_menu_entries(true, true)[0],
+            MenuEntry::item("pin", "取消置顶")
+        );
+        assert_eq!(
+            thread_menu_entries(true, true)[2],
+            MenuEntry::item("unread", "标记为已读")
+        );
+
+        let ws = ws_menu_entries(false);
+        assert_eq!(ws[0], MenuEntry::item("pin", "置顶工作区"));
+        assert_eq!(ws[3], MenuEntry::danger("remove", "移除工作区"));
+        assert_eq!(
+            ws_menu_entries(true)[0],
+            MenuEntry::item("pin", "取消置顶工作区")
+        );
     }
 }

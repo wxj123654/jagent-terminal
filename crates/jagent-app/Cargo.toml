@@ -18,6 +18,9 @@ gpui-component.workspace = true
 gpui-base.workspace = true
 serde_json = "1"
 futures = "0.3"
+# 只为本地时区偏移（git 图相对时间的「昨天」日历日）；0.4 线与 gpui-component
+# 传递依赖同一份（0.4.45，crates.io 最新正式版，联网核实过），不引入第二份 chrono。
+chrono = "0.4"
 
 [build-dependencies]
 winresource = "0.1.31"

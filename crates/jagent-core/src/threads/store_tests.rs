@@ -14,6 +14,7 @@ struct Log {
     destroyed: Vec<u64>,
     notified: Vec<String>,
     disposed: Vec<String>,
+    opened: Vec<String>,
     close_on_exit: bool,
 }
 
@@ -50,6 +51,9 @@ impl Effects for Fake {
     }
     fn default_cwd(&self) -> String {
         "/proc/cwd".into()
+    }
+    fn open_path(&mut self, path: &str) {
+        self.log.borrow_mut().opened.push(path.to_owned());
     }
 }
 
@@ -1280,4 +1284,15 @@ fn mark_notices_read_keeps_the_entries_and_unknown_open_notice_is_a_no_op() {
     let before = s.active().clone();
     s.open_notice("n404");
     assert_eq!(s.active(), &before);
+}
+
+#[test]
+fn open_path_effect_is_recorded_for_the_host_to_fulfil() {
+    // 「在编辑器中打开」settings.json：core 只记账，真正 spawn 由 app 侧 flush 兑现。
+    let (mut s, fake) = store();
+    s.effects_mut().open_path("/home/u/.j-agent/settings.json");
+    assert_eq!(
+        fake.log.borrow().opened,
+        vec!["/home/u/.j-agent/settings.json".to_owned()]
+    );
 }

@@ -41,14 +41,37 @@
       ThreadRow kind tile+状态角标+pin+…槽 / 未归属虚拟组 / more-link / 脚齿轮铃铛版本号）；
       工作区菜单（置顶/重命名/移除）+ RenameTarget 泛化；RowDot 语义修正（D12：terminal 存活
       无点，bell=紫 need，chat pendingReply=橙 running）；tab 中键关闭
-- [ ] **V2**：顶栏分支钮（需异步 branch 查询）+ Git 菜单浮层；WorkPanel 右栏集成（root 布局
-      + panelRight 钮 + <1100 浮层）；通知中心浮层（铃铛锚定 D8）
-- [ ] **V3**：Git 图表面对齐（lane 贝塞尔弯线、ref 徽标、分支下拉、右键操作菜单+危险确认）
-- [ ] **V4**：设置页逐行对齐（打开聚焦搜索、字体系统选择器、搜索 label 高亮/计数、
-      焦点环、「在编辑器打开」）
-- [ ] **V5**：统一浮层系统（…菜单左键弹、ToolMenu「+」浮层、AddPopover、notif；
-      PopupMenuItem danger 红字）；窄屏抽屉滑入动画
-- [ ] **V6**：空态/会话面对齐；侧栏右缘拖拽把手 hover accent 线；逐面像素复查
+- [x] **V2（2026-10-14）**：顶栏分支钮（render 期 cwd 比对触发异步 `list_worktree_status`，
+      代际防串）+ Git 菜单浮层（打开 Git 图 / 查看变更）；WorkPanel 右栏集成（≥1100
+      h_resizable 可拖 / <1100 右缘浮层 / <760 窄屏叠加，panelRight+showSearch 钮，
+      ensure_panel 惰性建实体复用）+ WorkPanel 按原型重对齐（头 44/ptab/file-row h32/
+      diff 配色/「文件」页真实预览 read_preview_lines）；通知中心浮层 notif_center.rs
+      （bell_popover 锚侧栏脚铃铛 D8，notices 真实事件流，rel_time 分档，全部已读/跳转）
+- [x] **V3（2026-10-14）**：Git 图表面对齐——lane 线 SVG 化（geometry 已在 core，新增
+      build_row_svg_pieces 按 colorIdx 聚合单色 path + 贝塞尔 C 段 + HEAD 空心圆点）；
+      ref 徽标 git_ref_badges.rs（chip 色图/show_remote 过滤/右键→core 菜单）；分支下拉
+      （.branch-pop）；右键操作菜单 git_context_menu.rs（confirm/prompt 380 宽弹窗，
+      danger 红字）
+- [x] **V4（2026-10-14）**：设置页整面重对齐——左 nav 218（品牌头/搜索框/7 分区/命中徽章）
+      + srow 行 + 键位表 + 预设/ACP 折叠卡 + 高级诊断卡；settings_defs.rs（13 项
+      SETTING_DEFS/section_hits/hl_range 高亮）+ settings_controls.rs（Toggle/Select/
+      Number/Range/FontSelect 弹层搜索+键盘导航+字身预览/focus_ring）；打开聚焦搜索；
+      「在编辑器打开」（core Effects::open_path → GuiEffects 记账 → flush spawn）
+- [x] **V5（2026-10-14）**：统一浮层系统 popup.rs（overlay_shell R9 壳 + PopupTrigger
+      Selectable 薄适配走 Popover 公开 API，trigger_with 退役；menu_popover/ctx-item
+      danger 红）＋收编 bell/branch/工作区/…菜单/AddPopover/FontSelect；…菜单左键弹
+      （MenuTarget 受控态）；AddPopover（打开 Git 图/新建 Shell/打开文件列表→面板文件页）；
+      窄屏抽屉滑入动画（drawer_ease = cubic-bezier(.2,.8,.2,1) 端点恒等 + with_animation）
+- [x] **V6（2026-10-15）**：会话面重对齐（conv-head 44/760 居中列/user 气泡/markdown/
+      composer 704 r12 shell/34² accent 箭头钮）；空态 home-card 全件（empty_presets.rs
+      680 渐变卡/grid 2 列 pill/窄态翻转）；侧栏+面板分隔条把手 hover accent 25% 竖条
+      （with_handle_appearance）；逐面像素复查 = 视觉三件套 + 布局常量测试锁死
+- 基建（同轮）：**PTY reader 线程泄漏修复**（jagent-terminal/pty.rs：PtySender 持 join
+  动作，shutdown 后 join 线程；join 返回值 mem::forget 防 Pty::drop 的 waitpid 阻塞；
+  state 测试收尾显式 close_thread）——此前 ~20% 概率 gpui test scheduler 判非确定性
+
+**V 轮执行方式**：V2/V3/V4/V5 四个并行 subagent 实现（V3/V5 报告超时但代码已落，主会话
+收尾 7 个编译错误+4 个断言）；V6b 会话面/空态 subagent；其余主会话。
 
 **gpui 重写 P0–P8 全部完成**（2026-10-12 收官）。三 crate、386+ 测试、
 watchdog/sidecar、三平台 CI 就绪。剩余待办全部是真机验证与可选项：
@@ -82,12 +105,21 @@ Git 图贝塞尔弯线、桌面通知真实弹出（Effects::notify 目前只记
 
 ## 会话日志（每 session 追加一行：日期 · 做了什么 · 下一步）
 
+- 2026-10-15 · **V 轮收官（V2–V6 全部落地）**：多 subagent 并行实现（V2 分支钮/右栏/
+      通知浮层、V3 Git 图贝塞尔/徽标/下拉/右键菜单、V4 设置页重写、V5 统一浮层 popup.rs
+      +AddPopover+抽屉动画、V6b 会话面/空态）→ 主会话统一收尾（7 编译错+4 断言+
+      AddPopover 文件区+把手 accent）· 顺手修 PTY reader 线程泄漏 flaky（pty.rs join+
+      mem::forget，state 测试收尾 close_thread；此前 ~20% 概率炸 test scheduler）·
+      clippy 机械项清零（type 别名收编 14 条 complex type）· gate：check/test
+      --workspace 全绿（app 133 + core 271 + terminal 41 + 集成 4）+ 视觉三件套 OK
+      （SHELL/NESTED_SCROLL/TERMINAL_SETTINGS）+ shell 截图目检无异常 · 下一步：真窗口
+      手感清单（见下）、V 轮逐面真浏览器↔截图像素 diff（当前为常量断言+目检级）
 - 2026-10-12 · **V1 原型对齐轮开跑（顶栏+侧栏）**：用户判定 P0–P7 迁移与原型差距过大，
-  重启逐面对齐 · 恢复参照物到 /.archive/（原型 vite 可跑 + gpuix TS 源码）·
-  icons.rs lucide 全集 · 顶栏两行 + 侧栏全件 + SessionTabs/ContextTab 原型形态 ·
-  工作区菜单/RenameTarget/RowDot 语义修正/tab 中键关闭 · gate：workspace 测试全绿
-  （app 80 + core 270 + terminal 41 + sidecar/watchdog）+ shell_shot SHELL OK +
-  clippy 机械项清零 · 下一步：V2（分支钮/WorkPanel/通知浮层）
+      重启逐面对齐 · 恢复参照物到 /.archive/（原型 vite 可跑 + gpuix TS 源码）·
+      icons.rs lucide 全集 · 顶栏两行 + 侧栏全件 + SessionTabs/ContextTab 原型形态 ·
+      工作区菜单/RenameTarget/RowDot 语义修正/tab 中键关闭 · gate：workspace 测试全绿
+      （app 80 + core 270 + terminal 41 + sidecar/watchdog）+ shell_shot SHELL OK +
+      clippy 机械项清零 · 下一步：V2（分支钮/WorkPanel/通知浮层）
 - 2026-10-12 · **P8 清理收官（gpui 重写全部完成）**：先提交 P0–P7 全量成果为
   安全点（044bd9f，119 文件），再删除旧 TS 链——packages/、e2e/、patches/、
   scripts/ 的 bun/PE/refs 脚本、package.json/bun.lock、旧 CI build.yml、

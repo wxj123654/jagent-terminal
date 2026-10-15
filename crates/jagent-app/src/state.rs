@@ -40,6 +40,28 @@ pub fn data_dir() -> PathBuf {
         })
 }
 
+/// 用系统关联程序打开文件（旧 `settings/file.ts` 的 `openInSystemApp`：
+/// macOS `open` / Windows `cmd /c start` / 其他 `xdg-open`）。
+/// fire-and-forget：失败仅忽略——外部程序问题不该打断 app（旧版也只 warn）。
+fn open_in_system_app(path: &str) {
+    use std::process::{Command, Stdio};
+    let spawn_ignore = |cmd: &mut Command| {
+        let _ = cmd
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+    };
+    if cfg!(target_os = "windows") {
+        // 空标题参防路径带空格被当成标题
+        spawn_ignore(Command::new("cmd").args(["/c", "start", "", path]));
+    } else if cfg!(target_os = "macos") {
+        spawn_ignore(Command::new("open").arg(path));
+    } else {
+        spawn_ignore(Command::new("xdg-open").arg(path));
+    }
+}
+
 /// 副作用的可观察记录：桌面通知交给宿主（平台 toast 在 P7），这里先累积待发队列。
 #[derive(Default)]
 pub struct EffectLog {
@@ -48,6 +70,8 @@ pub struct EffectLog {
     /// 待发桌面通知（thread id）
     pub to_notify: Vec<String>,
     pub to_dispose_acp: Vec<String>,
+    /// 待用系统关联程序打开的文件路径（设置页「在编辑器中打开」）
+    pub to_open: Vec<String>,
 }
 
 /// core 的 `Effects` 实现。`ThreadStore` 方法拿不到 `&mut App`，所以副作用先记账，
@@ -113,6 +137,9 @@ impl Effects for GuiEffects {
     fn default_cwd(&self) -> String {
         self.cwd.borrow().clone()
     }
+    fn open_path(&mut self, path: &str) {
+        self.log.borrow_mut().to_open.push(path.to_owned());
+    }
 }
 
 /// 状态变化通知：视图 `cx.subscribe` / `cx.observe` 即可重绘。
@@ -175,14 +202,18 @@ impl AppState {
     /// 视图在每次改状态后调用（`update` 内，已持有 `&mut App`）。
     pub fn flush(&mut self, cx: &mut App) {
         use jagent_core::settings::FileAdapter as _;
-        let (destroy, _notify, dispose) = {
+        let (destroy, _notify, dispose, to_open) = {
             let mut log = self.effects.log.borrow_mut();
             (
                 std::mem::take(&mut log.to_destroy),
                 std::mem::take(&mut log.to_notify),
                 std::mem::take(&mut log.to_dispose_acp),
+                std::mem::take(&mut log.to_open),
             )
         };
+        for path in to_open {
+            open_in_system_app(&path);
+        }
         for thread_id in dispose {
             self.acp.remove(&thread_id);
             if let Some(disposer) = self.acp_disposers.remove(&thread_id) {
@@ -483,6 +514,60 @@ impl AppState {
                         cx.emit(StateChanged);
                         cx.notify();
                     });
+                });
+            }
+        })
+        .detach();
+    }
+
+    /// Git 图工具条的「显示远程分支」开关（纯视图偏好，core 已有规则）。
+    pub fn set_git_show_remote(state: &Entity<Self>, on: bool, cx: &mut App) {
+        state.update(cx, |s, cx| {
+            s.git_graph.set_show_remote(on);
+            cx.emit(StateChanged);
+            cx.notify();
+        });
+    }
+
+    /// 在仓库根执行一条 git 命令（右键菜单 / 分支切换 / fetch 等）：
+    /// 后台跑子进程，结果经 core 的 `finish_action`——成功触发重新挂载刷新，失败进 `action_error` 错误条。
+    pub fn run_git_action(state: &Entity<Self>, argv: Vec<String>, cx: &mut App) {
+        let Some(root) = state.update(cx, |s, cx| {
+            cx.notify();
+            s.git_graph.begin_action()
+        }) else {
+            return;
+        };
+        let weak = state.downgrade();
+        cx.spawn(async move |cx| {
+            let argv_bg = argv.clone();
+            let result = cx
+                .background_spawn(async move {
+                    let output = std::process::Command::new("git")
+                        .args(&argv_bg)
+                        .current_dir(&root)
+                        .output()
+                        .map_err(|e| e.to_string())?;
+                    if output.status.success() {
+                        Ok(())
+                    } else {
+                        Err(String::from_utf8_lossy(&output.stderr).trim().to_owned())
+                    }
+                })
+                .await;
+            if let Some(state) = weak.upgrade() {
+                cx.update(|cx| {
+                    let plan = state.update(cx, |s, cx| {
+                        let plan = s.git_graph.finish_action(result);
+                        cx.emit(StateChanged);
+                        cx.notify();
+                        plan
+                    });
+                    // 成功后刷新（finish_action 已重置挂载态，重新拉流即重新生效）
+                    if plan.is_some() {
+                        let cwd = state.read(cx).git_cwd();
+                        Self::mount_git_graph_inner(&state, cwd, false, cx);
+                    }
                 });
             }
         })
@@ -1023,6 +1108,11 @@ mod tests {
                 state.read(cx).threads.thread(&id).is_some(),
                 "关视图不关会话"
             );
+            // 收尾显式关会话：spawn_from_preset 的 PTY 走受控销毁（shutdown
+            // 后 join），reader 线程活动不得越过本测试边界（gpui test
+            // scheduler 的确定性检查会把残留活动判给下一个测试）。
+            state.update(cx, |s, cx| s.close_thread(&id, cx));
+            assert!(cx.global::<TerminalPool>().is_empty(), "池已清空");
         });
     }
 
@@ -1197,6 +1287,81 @@ mod tests {
             assert!(ta.has_bell, "后台会话 BEL → 红点");
             assert_eq!(s.threads.unread_notice_count(), 1);
             assert_eq!(s.threads.active(), &ActiveTarget::Thread(b));
+        });
+    }
+
+    /// V3：菜单动作执行链——成功动作（建分支）后图自动重新挂载刷新；
+    /// 失败动作（坏参数）把 stderr 写进 `action_error`，不刷新。
+    #[gpui::test]
+    fn run_git_action_refreshes_on_success_and_records_the_error_on_failure(
+        cx: &mut TestAppContext,
+    ) {
+        let dir = tmp();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        git_repo_with_commits(&repo, 1);
+        let cwd = repo.to_string_lossy().into_owned();
+        let state = cx.update(|cx| init(cx, dir.path().to_path_buf(), cwd.clone()).unwrap());
+        cx.update(|cx| AppState::mount_git_graph(&state, cwd, cx));
+        cx.run_until_parked();
+        cx.update(|cx| {
+            assert_eq!(state.read(cx).git_graph.status, GitGraphStatus::Ready);
+        });
+
+        // 成功动作：建一个分支 → 完成后 store 重新挂载（Loading），再回 Ready
+        cx.update(|cx| AppState::run_git_action(&state, vec!["branch".into(), "side".into()], cx));
+        cx.run_until_parked();
+        let (status, branches) = cx.update(|cx| {
+            let s = state.read(cx);
+            (
+                s.git_graph.status,
+                s.git_graph
+                    .branches
+                    .iter()
+                    .map(|b| b.name.clone())
+                    .collect::<Vec<_>>(),
+            )
+        });
+        assert_eq!(status, GitGraphStatus::Ready, "成功后重新挂载完成");
+        assert!(branches.contains(&"side".to_owned()), "{branches:?}");
+
+        // 失败动作：git 不认的参数 → action_error 带 stderr，状态不动
+        cx.update(|cx| {
+            AppState::run_git_action(&state, vec!["checkout".into(), "no-such-ref".into()], cx)
+        });
+        cx.run_until_parked();
+        cx.update(|cx| {
+            let s = state.read(cx);
+            assert_eq!(s.git_graph.status, GitGraphStatus::Ready, "失败不重挂载");
+            assert!(
+                s.git_graph
+                    .action_error
+                    .as_deref()
+                    .is_some_and(|e| e.contains("no-such-ref")),
+                "stderr 摘要进错误条：{:?}",
+                s.git_graph.action_error
+            );
+        });
+    }
+
+    /// V3：工具条「显示远程分支」开关写进 store 并广播 StateChanged。
+    #[gpui::test]
+    fn set_git_show_remote_flips_the_store_flag(cx: &mut TestAppContext) {
+        let dir = tmp();
+        let state = cx.update(|cx| {
+            init(
+                cx,
+                dir.path().to_path_buf(),
+                dir.path().to_string_lossy().into_owned(),
+            )
+            .unwrap()
+        });
+        cx.update(|cx| {
+            assert!(state.read(cx).git_graph.show_remote, "默认开");
+            AppState::set_git_show_remote(&state, false, cx);
+            assert!(!state.read(cx).git_graph.show_remote);
+            AppState::set_git_show_remote(&state, true, cx);
+            assert!(state.read(cx).git_graph.show_remote);
         });
     }
 
