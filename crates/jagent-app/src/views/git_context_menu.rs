@@ -19,6 +19,7 @@ use gpui_component::menu::{PopupMenu, PopupMenuItem};
 use jagent_core::git::actions::{GitMenuEntry, GitMenuItem};
 
 use crate::theme::{colors, hex};
+use crate::views::selectable::sel_text_id;
 use crate::views::sidebar::WindowActionFn;
 
 /// 一个菜单项被选中后视图要做的下一步（core `pick` 结果 + 弹层关闭）。
@@ -127,13 +128,13 @@ pub fn confirm_modal(
                         .gap(px(6.0))
                         .text_size(px(13.0))
                         .text_color(hex(colors::TEXT))
-                        .child(confirm.title.clone())
+                        .child(sel_text_id("git-confirm-title", confirm.title.clone()))
                         .child(
                             div()
                                 .font_family("monospace")
                                 .text_size(px(12.0))
                                 .text_color(hex(colors::BELL))
-                                .child(command),
+                                .child(sel_text_id("git-confirm-cmd", command)),
                         ),
                 )
                 // 按钮行
@@ -184,11 +185,10 @@ pub fn prompt_modal(
                         .child(prompt.item.label.clone()),
                 )
                 .child(
-                    div().px(px(16.0)).py(px(14.0)).child(
-                        gpui_component::input::Input::new(&input)
-                            .w_full()
-                            .h(px(30.0)),
-                    ),
+                    div()
+                        .px(px(16.0))
+                        .py(px(14.0))
+                        .child(crate::views::field::text_input(&input).w_full()),
                 )
                 .child(
                     div()
