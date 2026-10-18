@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>j-agent 图标体系重构对比台 (Icon System Studio)</title>
+<style>
+  :root {
+    --bg-app: #0b0d12;
+    --bg-sidebar: #0d0f15;
+    --bg-pane: #12151e;
+    --bg-surface: #181c27;
+    --bg-hover: #1e2330;
+    --bg-active: #23293a;
+    --border: #1e2330;
+    --border-subtle: #283042;
+    --text: #c3cad9;
+    --text-bright: #f2f5fa;
+    --muted: #7e889b;
+    --faint: #555e70;
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --term-green: #34d399;
+    --acp-purple: #c084fc;
+    --cyan: #38bdf8;
+    --amber: #fbbf24;
+    --danger: #f87171;
+    --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+    --font-mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #07080c;
+    color: var(--text);
+    font-family: var(--font-ui);
+    padding: 24px 30px 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  .header {
+    background: var(--bg-pane);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 18px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .header h1 {
+    font-size: 17px;
+    color: var(--text-bright);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .header p {
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-top: 5px;
+  }
+  .badge {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    padding: 2px 9px;
+    border-radius: 99px;
+    background: rgba(99, 102, 241, 0.16);
+    color: var(--accent-hover);
+    border: 1px solid rgba(129, 140, 248, 0.35);
+  }
+
+  /* 痛点诊断栏 */
+  .Audit-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .audit-card {
+    background: #10131b;
+    border: 1px solid #242b3b;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .audit-icon-pair {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .icon-box {
+    width: 38px;
+    height: 38px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+  }
+  .icon-box.bad {
+    border-color: rgba(248, 113, 113, 0.4);
+    background: rgba(248, 113, 113, 0.08);
+  }
+  .icon-box.good {
+    border-color: rgba(99, 102, 241, 0.45);
+    background: rgba(99, 102, 241, 0.12);
+  }
+  .audit-info h3 {
+    font-size: 13px;
+    color: var(--text-bright);
+    margin-bottom: 3px;
+  }
+  .audit-info p {
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+
+  /* 三大体系对比舞台 */
+  .systems-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+  @media (max-width: 1360px) {
+    .systems-grid { grid-template-columns: 1fr; }
+    .Audit-row { grid-template-columns: 1fr; }
+  }
+
+  .sys-card {
+    background: var(--bg-pane);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.15s ease;
+  }
+  .sys-card.recommended {
+    border-color: var(--accent);
+    box-shadow: 0 8px 30px rgba(99, 102, 241, 0.12);
+  }
+  .sys-head {
+    padding: 14px 18px;
+    background: #151924;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .sys-head-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sys-head h2 {
+    font-size: 14px;
+    color: var(--text-bright);
+  }
+  .sys-head p {
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .rec-pill {
+    font-size: 10.5px;
+    font-family: var(--font-mono);
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: rgba(52, 211, 153, 0.15);
+    color: var(--term-green);
+    border: 1px solid rgba(52, 211, 153, 0.35);
+  }
+
+  /* 真实 UI 上下文微缩预览 */
+  .context-preview {
+    padding: 14px 16px;
+    background: var(--bg-app);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .mock-bar {
+    height: 36px;
+    background: var(--bg-pane);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11.5px;
+  }
+  .mock-pill {
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 5px;
+    background: var(--bg-active);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-bright);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+  }
+  .mock-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    background: var(--bg-sidebar);
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .mock-row {
+    height: 28px;
+    padding: 0 8px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    position: relative;
+  }
+  .mock-row.active {
+    background: var(--bg-active);
+    color: var(--text-bright);
+    font-weight: 500;
+  }
+  .mock-row.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: var(--accent);
+  }
+  .tile {
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    background: rgba(255,255,255,0.03);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* 图标网格 */
+  .icon-grid {
+    padding: 16px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  .icon-cell {
+    background: #0e1118;
+    border: 1px solid #1c2230;
+    border-radius: 8px;
+    padding: 10px 6px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.12s ease;
+  }
+  .icon-cell:hover {
+    background: var(--bg-surface);
+    border-color: var(--border-subtle);
+    transform: translateY(-1px);
+  }
+  .icon-cell span {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--muted);
+  }
+
+  /* 底部：语义图标变体 & App Icon 对比 */
+  .bottom-split {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 18px;
+  }
+  @media (max-width: 1200px) {
+    .bottom-split { grid-template-columns: 1fr; }
+  }
+  .semantic-list {
+    padding: 16px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  .sem-box {
+    background: #0e1118;
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .sem-box h4 {
+    font-size: 12.5px;
+    color: var(--text-bright);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sem-icons-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .sem-item {
+    flex: 1;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+  }
+
+  .app-icon-compare {
+    padding: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    gap: 20px;
+  }
+  .app-icon-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+  }
+  .app-icon-col span {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-bright);
+  }
+  .app-icon-col small {
+    font-size: 11px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div>
+      <h1>
+        <span>j-agent 图标体系重构对比工作台 (Icon System Studio)</span>
+        <span class="badge">Obsidian Indigo Matched</span>
+      </h1>
+      <p>针对新落地的 Obsidian Indigo（#0b0d12 / #12151e + #6366f1 电光靛蓝 + #34d399 翡翠绿 + #c084fc 极光紫）设计的三套完整图标体系。</p>
+    </div>
+  </div>
+
+  <!-- 1. 旧版图标痛点诊断 -->
+  <div class="Audit-row">
+    <div class="audit-card">
+      <div class="audit-icon-pair">
+        <div class="icon-box bad" title="旧 Chat 图标 (靶心圆点)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="12" r="10"/></svg>
+        </div>
+        <span style="color:var(--muted);">→</span>
+        <div class="icon-box good" title="新 Chat 图标 (Duotone 对话气泡)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a8.5 8.5 0 0 1-8.5 8.5 8.9 8.9 0 0 1-3.8-.85L3 21l1.35-5.7A8.5 8.5 0 1 1 21 12Z" fill="#6366f1" fill-opacity="0.18" stroke="none"/>
+            <path d="M21 12a8.5 8.5 0 0 1-8.5 8.5 8.9 8.9 0 0 1-3.8-.85L3 21l1.35-5.7A8.5 8.5 0 1 1 21 12Z"/>
+            <path d="M8.5 11.5h7"/><path d="M8.5 15h4.5"/>
+          </svg>
+        </div>
+      </div>
+      <div class="audit-info">
+        <h3>痛点 1：Chat 图标语义错误</h3>
+        <p>旧版 <code>IconName::Chat</code> 用的是靶心圆圈（circle-dot），完全看不出是 AI 对话；重构为真正的对话气泡。</p>
+      </div>
+    </div>
+
+    <div class="audit-card">
+      <div class="audit-icon-pair">
+        <div class="icon-box bad" title="旧 ACP 图标 (股票折线)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></svg>
+        </div>
+        <span style="color:var(--muted);">→</span>
+        <div class="icon-box good" title="新 ACP 图标 (AI 星芒协同)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3Z" fill="#c084fc" fill-opacity="0.2" stroke="none"/>
+            <path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3Z"/>
+            <path d="M19 3v3"/><path d="M20.5 4.5h-3"/><path d="M5 17v3"/><path d="M6.5 18.5h-3"/>
+          </svg>
+        </div>
+      </div>
+      <div class="audit-info">
+        <h3>痛点 2：ACP 图标用了股票折线图</h3>
+        <p>旧版 <code>IconName::Acp</code> 是 <code>trending-up</code> 股票箭头，与 AI Agent 协议毫无关系；重绘为极光紫星芒/神经节点。</p>
+      </div>
+    </div>
+
+    <div class="audit-card">
+      <div class="audit-icon-pair">
+        <div class="icon-box bad" title="旧 2px 粗描边齿轮">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 0-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <span style="color:var(--muted);">→</span>
+        <div class="icon-box good" title="新 1.65px Duotone 精密图标">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="3" fill="#818cf8" fill-opacity="0.18" stroke="none"/>
+            <rect x="3" y="4" width="18" height="16" rx="3"/>
+            <path d="m7.5 9.5 3 2.5-3 2.5"/><path d="M12.5 14.5h4"/>
+          </svg>
+        </div>
+      </div>
+      <div class="audit-info">
+        <h3>痛点 3：2.0px 粗线在小字号下发糊笨重</h3>
+        <p>侧栏和胶囊页签图标仅 12.5~14px，旧 2px 粗描边缺乏呼吸感；收窄至 1.6px 配合微光内腔立显精致。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. 三大图标体系横向对比 -->
+  <div class="systems-grid">
+
+    <!-- 方案 A: Obsidian Duotone -->
+    <div class="sys-card recommended">
+      <div class="sys-head">
+        <div class="sys-head-top">
+          <h2>方案 A：Obsidian Duotone (双层微光体系)</h2>
+          <span class="rec-pill">Recommended</span>
+        </div>
+        <p>1.65px 精密几何描边 + 18% 同色系半透明微光内腔（GPUI <code>currentColor</code> 原生渲染），完美释放电光靛蓝、翡翠绿、极光紫的色彩层次。</p>
+      </div>
+
+      <!-- 真实 UI 上下文预览 -->
+      <div class="context-preview">
+        <div class="mock-bar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h4.1a2 2 0 0 1 1.6.8l1.2 1.6a1 1 0 0 0 .8.4h5.3A2.5 2.5 0 0 1 21 10.3v7.2a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-10Z" fill="currentColor" fill-opacity="0.2" stroke="none"/><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h4.1a2 2 0 0 1 1.6.8l1.2 1.6a1 1 0 0 0 .8.4h5.3A2.5 2.5 0 0 1 21 10.3v7.2a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-10Z"/></svg>
+          <strong style="color:var(--text-bright);">jagent-terminal</strong>
+          <span style="color:var(--border-subtle);">|</span>
+          <div class="mock-pill">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8.5 8.5 0 0 1-8.5 8.5 8.9 8.9 0 0 1-3.8-.85L3 21l1.35-5.7A8.5 8.5 0 1 1 21 12Z" fill="currentColor" fill-opacity="0.22" stroke="none"/><path d="M21 12a8.5 8.5 0 0 1-8.5 8.5 8.9 8.9 0 0 1-3.8-.85L3 21l1.35-5.7A8.5 8.5 0 1 1 21 12Z"/><path d="M8.5 11.5h7"/><path d="M8.5 15h4.5"/></svg>
+            <span>主对话</span>
+          </div>
+          <div class="mock-pill" style="background:transparent;border-color:transparent;color:var(--muted);">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3" fill="currentColor" fill-opacity="0.18" stroke="none"/><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7.5 9.5 3 2.5-3 2.5"/><path d="M12.5 14.5h4"/></svg>
+            <span>zsh</span>
+          </div>
+          <svg style="margin-left:auto;" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="15" y="3" width="6" height="18" rx="1" fill="currentColor" fill-opacity="0.25" stroke="none"/><rect width="18" height="18" x="3" y="3" rx="2.5"/><path d="M15 3v18"/></svg>
+        </div>
+
+        <div class="mock-rows">
+          <div class="mock-row active">
+            <div class="tile">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8.5 8.5 0 0 1-8.5 8.5 8.9 8.9 0 0 1-3.8-.85L3 21l1.35-5.7A8.5 8.5 0 1 1 21 12Z" fill="currentColor" fill-opacity="0.22" stroke="none"/><path d="M21 12a8.5 8.5 0 0 1-8.5 8.5 8.9 8.9 0 0 1-3.8-.85L3 21l1.35-5.7A8.5 8.5 0 1 1 21 12Z"/><path d="M8.5 11.5h7"/><path d="M8.5 15h4.5"/></svg>
+            </div>
+            <span>重构 UI 与图标体系</span>
+          </div>
+          <div class="mock-row">
+            <div class="tile">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3" fill="currentColor" fill-opacity="0.18" stroke="none"/><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7.5 9.5 3 2.5-3 2.5"/><path d="M12.5 14.5h4"/></svg>
+            </div>
+            <span>cargo test 守护终端</span>
+          </div>
+          <div class="mock-row">
+            <div class="tile">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3Z" fill="currentColor" fill-opacity="0.22" stroke="none"/><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3Z"/><path d="M19 3v3"/><path d="M20.5 4.5h-3"/></svg>
+            </div>
+            <span>ACP · Claude 架构审查</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 16 核心图标矩阵 -->
+      <div class="icon-grid">
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8.5 8.5 0 0 1-8.5 8.5 8.9 8.9 0 0 1-3.8-.85L3 21l1.35-5.7A8.5 8.5 0 1 1 21 12Z" fill="currentColor" fill-opacity="0.18" stroke="none"/><path d="M21 12a8.5 8.5 0 0 1-8.5 8.5 8.9 8.9 0 0 1-3.8-.85L3 21l1.35-5.7A8.5 8.5 0 1 1 21 12Z"/><path d="M8.5 11.5h7"/><path d="M8.5 15h4.5"/></svg><span>Chat</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3" fill="currentColor" fill-opacity="0.18" stroke="none"/><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7.5 9.5 3 2.5-3 2.5"/><path d="M12.5 14.5h4"/></svg><span>Terminal</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3Z" fill="currentColor" fill-opacity="0.2" stroke="none"/><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3Z"/><path d="M19 3v3"/><path d="M20.5 4.5h-3"/></svg><span>Acp</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="13" x="4" y="7" rx="3" fill="currentColor" fill-opacity="0.18" stroke="none"/><path d="M12 7V3"/><circle cx="12" cy="3" r="1" fill="currentColor"/><rect width="16" height="13" x="4" y="7" rx="3"/><path d="M9 12.5v2"/><path d="M15 12.5v2"/><path d="M2 13h2"/><path d="M20 13h2"/></svg><span>Agent</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c3cad9" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h4.1a2 2 0 0 1 1.6.8l1.2 1.6a1 1 0 0 0 .8.4h5.3A2.5 2.5 0 0 1 21 10.3v7.2a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-10Z" fill="currentColor" fill-opacity="0.18" stroke="none"/><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h4.1a2 2 0 0 1 1.6.8l1.2 1.6a1 1 0 0 0 .8.4h5.3A2.5 2.5 0 0 1 21 10.3v7.2a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-10Z"/></svg><span>Folder</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M6 21a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7.5L19 8.5V19a2 2 0 0 1-2 2H6Z" fill="currentColor" fill-opacity="0.16" stroke="none"/><path d="M6 21a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7.5L19 8.5V19a2 2 0 0 1-2 2H6Z"/><path d="M13 3v5a1 1 0 0 0 1 1h5"/></svg><span>File</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="6" r="3" fill="currentColor" fill-opacity="0.25"/><circle cx="6" cy="18" r="3" fill="currentColor" fill-opacity="0.25"/><path d="M6 3v12"/><path d="M18 9a9 9 0 0 1-9 9"/></svg><span>GitBranch</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" fill="currentColor" fill-opacity="0.16"/><circle cx="7.5" cy="7.5" r="1" fill="currentColor"/></svg><span>Tag</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c3cad9" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="18" rx="1" fill="currentColor" fill-opacity="0.22" stroke="none"/><rect width="18" height="18" x="3" y="3" rx="2.5"/><path d="M9 3v18"/></svg><span>PanelLeft</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c3cad9" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="15" y="3" width="6" height="18" rx="1" fill="currentColor" fill-opacity="0.22" stroke="none"/><rect width="18" height="18" x="3" y="3" rx="2.5"/><path d="M15 3v18"/></svg><span>PanelRight</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c3cad9" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7.5" fill="currentColor" fill-opacity="0.16"/><path d="m20 20-4.2-4.2"/></svg><span>Search</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c3cad9" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2" fill="currentColor" fill-opacity="0.22"/><path d="M12 2.5v2.2M12 19.3v2.2M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6"/><circle cx="12" cy="12" r="6.8"/></svg><span>Gear</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 4.5 1.5 6 2.7 7.3A1 1 0 0 1 20 17H4a1 1 0 0 1-.7-1.7C4.5 14 6 12.5 6 8Z" fill="currentColor" fill-opacity="0.18"/><path d="M10.3 21a2 2 0 0 0 3.4 0"/></svg><span>Bell</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" fill="currentColor" fill-opacity="0.18"/><path d="M12 17v5"/></svg><span>Pin</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z" fill="currentColor" fill-opacity="0.16" stroke="none"/><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg><span>Trash</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" fill="currentColor" fill-opacity="0.18"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><span>Alert</span></div>
+      </div>
+    </div>
+
+    <!-- 方案 B: Linear Precision 1.5px -->
+    <div class="sys-card">
+      <div class="sys-head">
+        <div class="sys-head-top">
+          <h2>方案 B：Linear Precision (1.5px 精密纯线性)</h2>
+        </div>
+        <p>无填充、统一 1.5px 锋利几何描边，去掉繁琐机械锯齿，极致冷静克制（Linear / Tabler 风格）。</p>
+      </div>
+
+      <div class="context-preview">
+        <div class="mock-bar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h4.1a2 2 0 0 1 1.6.8l1.2 1.6a1 1 0 0 0 .8.4h5.3A2.5 2.5 0 0 1 21 10.3v7.2a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-10Z"/></svg>
+          <strong style="color:var(--text-bright);">jagent-terminal</strong>
+          <span style="color:var(--border-subtle);">|</span>
+          <div class="mock-pill">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8.5 8.5 0 0 1-8.5 8.5 8.9 8.9 0 0 1-3.8-.85L3 21l1.35-5.7A8.5 8.5 0 1 1 21 12Z"/><path d="M8.5 11.5h7"/><path d="M8.5 15h4.5"/></svg>
+            <span>主对话</span>
+          </div>
+          <div class="mock-pill" style="background:transparent;border-color:transparent;color:var(--muted);">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7.5 9.5 3 2.5-3 2.5"/><path d="M12.5 14.5h4"/></svg>
+            <span>zsh</span>
+          </div>
+          <svg style="margin-left:auto;" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2.5"/><path d="M15 3v18"/></svg>
+        </div>
+
+        <div class="mock-rows">
+          <div class="mock-row active">
+            <div class="tile">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8.5 8.5 0 0 1-8.5 8.5 8.9 8.9 0 0 1-3.8-.85L3 21l1.35-5.7A8.5 8.5 0 1 1 21 12Z"/><path d="M8.5 11.5h7"/><path d="M8.5 15h4.5"/></svg>
+            </div>
+            <span>重构 UI 与图标体系</span>
+          </div>
+          <div class="mock-row">
+            <div class="tile">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7.5 9.5 3 2.5-3 2.5"/><path d="M12.5 14.5h4"/></svg>
+            </div>
+            <span>cargo test 守护终端</span>
+          </div>
+          <div class="mock-row">
+            <div class="tile">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3Z"/><path d="M19 3v3"/><path d="M20.5 4.5h-3"/></svg>
+            </div>
+            <span>ACP · Claude 架构审查</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="icon-grid">
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8.5 8.5 0 0 1-8.5 8.5 8.9 8.9 0 0 1-3.8-.85L3 21l1.35-5.7A8.5 8.5 0 1 1 21 12Z"/><path d="M8.5 11.5h7"/><path d="M8.5 15h4.5"/></svg><span>Chat</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7.5 9.5 3 2.5-3 2.5"/><path d="M12.5 14.5h4"/></svg><span>Terminal</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3Z"/><path d="M19 3v3"/><path d="M20.5 4.5h-3"/></svg><span>Acp</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7V3"/><circle cx="12" cy="3" r="1"/><rect width="16" height="13" x="4" y="7" rx="3"/><path d="M9 12.5v2"/><path d="M15 12.5v2"/><path d="M2 13h2"/><path d="M20 13h2"/></svg><span>Agent</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c3cad9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h4.1a2 2 0 0 1 1.6.8l1.2 1.6a1 1 0 0 0 .8.4h5.3A2.5 2.5 0 0 1 21 10.3v7.2a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-10Z"/></svg><span>Folder</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 21a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7.5L19 8.5V19a2 2 0 0 1-2 2H6Z"/><path d="M13 3v5a1 1 0 0 0 1 1h5"/></svg><span>File</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 3v12"/><path d="M18 9a9 9 0 0 1-9 9"/></svg><span>GitBranch</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1"/></svg><span>Tag</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c3cad9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2.5"/><path d="M9 3v18"/></svg><span>PanelLeft</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c3cad9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2.5"/><path d="M15 3v18"/></svg><span>PanelRight</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c3cad9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7.5"/><path d="m20 20-4.2-4.2"/></svg><span>Search</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c3cad9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v2.2M12 19.3v2.2M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6"/><circle cx="12" cy="12" r="6.8"/></svg><span>Gear</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 4.5 1.5 6 2.7 7.3A1 1 0 0 1 20 17H4a1 1 0 0 1-.7-1.7C4.5 14 6 12.5 6 8Z"/><path d="M10.3 21a2 2 0 0 0 3.4 0"/></svg><span>Bell</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/><path d="M12 17v5"/></svg><span>Pin</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg><span>Trash</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><span>Alert</span></div>
+      </div>
+    </div>
+
+    <!-- 方案 C: Hybrid Solid + Stroke -->
+    <div class="sys-card">
+      <div class="sys-head">
+        <div class="sys-head-top">
+          <h2>方案 C：Hybrid Solid (语义实心 + 工具线性)</h2>
+        </div>
+        <p>核心实体（Chat / Terminal / ACP / Folder / Bell）采用高饱和实心负空间切口，导航与操作钮保持 1.7px 线性（macOS SF 风格）。</p>
+      </div>
+
+      <div class="context-preview">
+        <div class="mock-bar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#818cf8" stroke="none"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h4.1a2 2 0 0 1 1.6.8l1.2 1.6a1 1 0 0 0 .8.4h5.3A2.5 2.5 0 0 1 21 10.3v7.2a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-10Z"/></svg>
+          <strong style="color:var(--text-bright);">jagent-terminal</strong>
+          <span style="color:var(--border-subtle);">|</span>
+          <div class="mock-pill">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="#6366f1"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3Zm-3.5 8a1 1 0 0 1 1-1h5a1 1 0 1 1 0 2h-5a1 1 0 0 1-1-1Zm1 3a1 1 0 1 0 0 2h3a1 1 0 1 0 0-2h-3Z"/></svg>
+            <span>主对话</span>
+          </div>
+          <div class="mock-pill" style="background:transparent;border-color:transparent;color:var(--muted);">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="#34d399"><path fill-rule="evenodd" clip-rule="evenodd" d="M5 4a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3H5Zm2.2 5.3a1 1 0 0 1 1.4 0l2.5 2.5a1 1 0 0 1 0 1.4l-2.5 2.5a1 1 0 1 1-1.4-1.4l1.8-1.8-1.8-1.8a1 1 0 0 1 0-1.4ZM12.5 14a1 1 0 1 0 0 2h4a1 1 0 1 0 0-2h-4Z"/></svg>
+            <span>zsh</span>
+          </div>
+          <svg style="margin-left:auto;" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2.5"/><path d="M15 3v18"/></svg>
+        </div>
+
+        <div class="mock-rows">
+          <div class="mock-row active">
+            <div class="tile">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="#6366f1"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3Zm-3.5 8a1 1 0 0 1 1-1h5a1 1 0 1 1 0 2h-5a1 1 0 0 1-1-1Zm1 3a1 1 0 1 0 0 2h3a1 1 0 1 0 0-2h-3Z"/></svg>
+            </div>
+            <span>重构 UI 与图标体系</span>
+          </div>
+          <div class="mock-row">
+            <div class="tile">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="#34d399"><path fill-rule="evenodd" clip-rule="evenodd" d="M5 4a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3H5Zm2.2 5.3a1 1 0 0 1 1.4 0l2.5 2.5a1 1 0 0 1 0 1.4l-2.5 2.5a1 1 0 1 1-1.4-1.4l1.8-1.8-1.8-1.8a1 1 0 0 1 0-1.4ZM12.5 14a1 1 0 1 0 0 2h4a1 1 0 1 0 0-2h-4Z"/></svg>
+            </div>
+            <span>cargo test 守护终端</span>
+          </div>
+          <div class="mock-row">
+            <div class="tile">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="#c084fc"><path d="M12 2.5l2.4 6.1 6.1 2.4-6.1 2.4-2.4 6.1-2.4-6.1-6.1-2.4 6.1-2.4L12 2.5ZM19 2.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></svg>
+            </div>
+            <span>ACP · Claude 架构审查</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="icon-grid">
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="#6366f1"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3Zm-3.5 8a1 1 0 0 1 1-1h5a1 1 0 1 1 0 2h-5a1 1 0 0 1-1-1Zm1 3a1 1 0 1 0 0 2h3a1 1 0 1 0 0-2h-3Z"/></svg><span>Chat</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="#34d399"><path fill-rule="evenodd" clip-rule="evenodd" d="M5 4a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3H5Zm2.2 5.3a1 1 0 0 1 1.4 0l2.5 2.5a1 1 0 0 1 0 1.4l-2.5 2.5a1 1 0 1 1-1.4-1.4l1.8-1.8-1.8-1.8a1 1 0 0 1 0-1.4ZM12.5 14a1 1 0 1 0 0 2h4a1 1 0 1 0 0-2h-4Z"/></svg><span>Terminal</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="#c084fc"><path d="M12 2.5l2.4 6.1 6.1 2.4-6.1 2.4-2.4 6.1-2.4-6.1-6.1-2.4 6.1-2.4L12 2.5ZM19 2.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></svg><span>Acp</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="#818cf8"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2a1.5 1.5 0 0 1 1 2.6V6h4a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3h4V4.6A1.5 1.5 0 0 1 12 2Zm-3 9.5a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm6 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Z"/></svg><span>Agent</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="#c3cad9"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h4.1a2 2 0 0 1 1.6.8l1.2 1.6a1 1 0 0 0 .8.4h5.3A2.5 2.5 0 0 1 21 10.3v7.2a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-10Z"/></svg><span>Folder</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="#38bdf8"><path fill-rule="evenodd" clip-rule="evenodd" d="M6 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8.5L14.5 3H6Zm7 2v4a1 1 0 0 0 1 1h4l-5-5Z"/></svg><span>File</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="6" r="3" fill="#818cf8"/><circle cx="6" cy="18" r="3" fill="#818cf8"/><path d="M6 3v12"/><path d="M18 9a9 9 0 0 1-9 9"/></svg><span>GitBranch</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="#fbbf24"><path fill-rule="evenodd" clip-rule="evenodd" d="M4 2a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4L12.6 2.6A2 2 0 0 0 11.2 2H4Zm3.5 7a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg><span>Tag</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c3cad9" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2.5"/><path d="M9 3v18"/></svg><span>PanelLeft</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c3cad9" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2.5"/><path d="M15 3v18"/></svg><span>PanelRight</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c3cad9" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7.5"/><path d="m20 20-4.2-4.2"/></svg><span>Search</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c3cad9" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v2.2M12 19.3v2.2M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6"/><circle cx="12" cy="12" r="6.8"/></svg><span>Gear</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="#fbbf24"><path d="M6 8a6 6 0 0 1 12 0c0 4.5 1.5 6 2.7 7.3A1 1 0 0 1 20 17H4a1 1 0 0 1-.7-1.7C4.5 14 6 12.5 6 8ZM10.3 20a2 2 0 0 0 3.4 0h-3.4Z"/></svg><span>Bell</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="#818cf8"><path d="M8 2a2 2 0 1 0 0 4 1 1 0 0 1 1 1v3.8a2 2 0 0 1-1.1 1.8l-1.8.9A2 2 0 0 0 5 15.2V16a1 1 0 0 0 1 1h5v5a1 1 0 1 0 2 0v-5h5a1 1 0 0 0 1-1v-.8a2 2 0 0 0-1.1-1.8l-1.8-.9A2 2 0 0 1 15 10.8V7a1 1 0 0 1 1-1 2 2 0 1 0 0-4H8Z"/></svg><span>Pin</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span>Trash</span></div>
+        <div class="icon-cell"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f87171"><path fill-rule="evenodd" clip-rule="evenodd" d="M10.3 3.9a2 2 0 0 1 3.4 0l8 14A2 2 0 0 1 20 21H4a2 2 0 0 1-1.7-3.1l8-14ZM12 8a1 1 0 0 1 1 1v4a1 1 0 1 1-2 0V9a1 1 0 0 1 1-1Zm0 9a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4Z"/></svg><span>Alert</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 3. 底部：关键语义符号造型 & 桌面应用图标 App Icon 对比 -->
+  <div class="bottom-split">
+    <div class="sys-card">
+      <div class="sys-head">
+        <h2>四大核心会话符号造型对比 (Chat / Terminal / ACP / Agent)</h2>
+        <p>侧栏和页签出镜率最高的 4 个符号，提供两套设计语汇供选择</p>
+      </div>
+      <div class="semantic-list">
+        <div class="sem-box" style="border-color:var(--accent);">
+          <h4><span>组合 1：现代 AI 语义 (气泡 + 终端窗 + 双星芒 + 智能体)</span> <span class="rec-pill">推荐</span></h4>
+          <div class="sem-icons-row">
+            <div class="sem-item">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8.5 8.5 0 0 1-8.5 8.5 8.9 8.9 0 0 1-3.8-.85L3 21l1.35-5.7A8.5 8.5 0 1 1 21 12Z" fill="currentColor" fill-opacity="0.18" stroke="none"/><path d="M21 12a8.5 8.5 0 0 1-8.5 8.5 8.9 8.9 0 0 1-3.8-.85L3 21l1.35-5.7A8.5 8.5 0 1 1 21 12Z"/><path d="M8.5 11.5h7"/><path d="M8.5 15h4.5"/></svg>
+              <span>Chat 气泡</span>
+            </div>
+            <div class="sem-item">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3" fill="currentColor" fill-opacity="0.18" stroke="none"/><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7.5 9.5 3 2.5-3 2.5"/><path d="M12.5 14.5h4"/></svg>
+              <span>Terminal 框</span>
+            </div>
+            <div class="sem-item">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3Z" fill="currentColor" fill-opacity="0.2" stroke="none"/><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3Z"/><path d="M19 3v3"/><path d="M20.5 4.5h-3"/></svg>
+              <span>ACP 星芒</span>
+            </div>
+            <div class="sem-item">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="13" x="4" y="7" rx="3" fill="currentColor" fill-opacity="0.18" stroke="none"/><path d="M12 7V3"/><circle cx="12" cy="3" r="1" fill="currentColor"/><rect width="16" height="13" x="4" y="7" rx="3"/><path d="M9 12.5v2"/><path d="M15 12.5v2"/></svg>
+              <span>Agent 核心</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sem-box">
+          <h4><span>组合 2：极客工程语义 (方框对话 + 纯提示符 + 协议拓扑 + 算力芯片)</span></h4>
+          <div class="sem-icons-row">
+            <div class="sem-item">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="currentColor" fill-opacity="0.18" stroke="none"/><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <span>Chat 折角框</span>
+            </div>
+            <div class="sem-item">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
+              <span>纯 >_ 符号</span>
+            </div>
+            <div class="sem-item">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" fill="currentColor" fill-opacity="0.25"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="m14.2 9.8 3.3-3.3"/><path d="m9.8 14.2-3.3 3.3"/><path d="m14.2 14.2 3.3 3.3"/></svg>
+              <span>ACP 协议网</span>
+            </div>
+            <div class="sem-item">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor" fill-opacity="0.18"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg>
+              <span>Agent 芯片</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 桌面 App Icon 对比 -->
+    <div class="sys-card">
+      <div class="sys-head">
+        <h2>桌面应用图标 (App Icon · app.svg) 配色同步对比</h2>
+        <p>是否将 macOS / Windows 桌面图标从旧 One Dark 灰蓝升级为 Obsidian Indigo？</p>
+      </div>
+      <div class="app-icon-compare">
+        <div class="app-icon-col">
+          <!-- 旧 app.svg -->
+          <svg width="108" height="108" viewBox="0 0 1024 1024" fill="none">
+            <defs>
+              <linearGradient id="old-tile" x1="512" y1="96" x2="512" y2="928" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#343B47"/>
+                <stop offset="1" stop-color="#1A1D23"/>
+              </linearGradient>
+              <linearGradient id="old-edge" x1="512" y1="96" x2="512" y2="928" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#596373"/>
+                <stop offset="1" stop-color="#282C34"/>
+              </linearGradient>
+            </defs>
+            <path d="M320 96H704C852 96 928 172 928 320V704C928 852 852 928 704 928H320C172 928 96 852 96 704V320C96 172 172 96 320 96Z" fill="url(#old-tile)"/>
+            <path d="M320 100H704C849 100 924 175 924 320V704C924 849 849 924 704 924H320C175 924 100 849 100 704V320C100 175 175 100 320 100Z" stroke="url(#old-edge)" stroke-width="6"/>
+            <path d="M304 378L438 512L304 646" stroke="#EDF2F7" stroke-width="80" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M692 432V586C692 676 646 716 568 716H520" stroke="#61AFEF" stroke-width="84" stroke-linecap="round"/>
+            <rect x="650" y="274" width="84" height="84" rx="21" fill="#61AFEF"/>
+          </svg>
+          <span>当前 App Icon (旧 One Dark)</span>
+          <small>#343B47 石墨灰底 + #61AFEF 旧粉蓝</small>
+        </div>
+
+        <span style="color:var(--muted);font-size:20px;">→</span>
+
+        <div class="app-icon-col">
+          <img src="../crates/jagent-app/assets/icons/app-256.png" width="108" height="108" style="border-radius:22px;" />
+          <span>新版 App Icon (已落地生成 PNG/ICNS/ICO)</span>
+          <small>#0B0D12 黑曜石底 + #34D399 翡翠绿 &gt; + #6366F1 靛蓝 j</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GPUI 真实离屏渲染截图画廊 -->
+  <div class="sys-card" style="border-color: var(--accent);">
+    <div class="sys-head">
+      <div class="sys-head-top">
+        <h2>GPUI 真实渲染验证截图 (Hybrid Solid 图标体系 + Obsidian Indigo 已生效)</h2>
+        <span class="rec-pill">All Tests Passed</span>
+      </div>
+      <p>以下为 <code>cargo test --test v_shots &amp; shell_shot</code> 刚刚生成的真实离屏渲染截图（侧栏实心负空间 Chat/Terminal/ACP/Folder + 顶栏胶囊 + 1.75px 工具图标）。</p>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 16px;">
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div style="font-size:12px;color:#c3cad9;font-weight:500;">1. AI 对话主面 (v_chat.png)</div>
+        <img src="../target/shots/v/v_chat.png" style="width:100%;border-radius:8px;border:1px solid #283042;" />
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div style="font-size:12px;color:#c3cad9;font-weight:500;">2. 终端主面 + 副页签 (app_shell.png)</div>
+        <img src="../target/shots/app_shell.png" style="width:100%;border-radius:8px;border:1px solid #283042;" />
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div style="font-size:12px;color:#c3cad9;font-weight:500;">3. 空工作区启动台 (v_empty.png)</div>
+        <img src="../target/shots/v/v_empty.png" style="width:100%;border-radius:8px;border:1px solid #283042;" />
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div style="font-size:12px;color:#c3cad9;font-weight:500;">4. 通知中心浮层 (v_notif.png)</div>
+        <img src="../target/shots/v/v_notif.png" style="width:100%;border-radius:8px;border:1px solid #283042;" />
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div style="font-size:12px;color:#c3cad9;font-weight:500;">5. Git 提交图谱 (v_git.png)</div>
+        <img src="../target/shots/v/v_git.png" style="width:100%;border-radius:8px;border:1px solid #283042;" />
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div style="font-size:12px;color:#c3cad9;font-weight:500;">6. 设置中心 (v_settings.png)</div>
+        <img src="../target/shots/v/v_settings.png" style="width:100%;border-radius:8px;border:1px solid #283042;" />
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

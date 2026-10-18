@@ -14,3 +14,9 @@ Thumbs.db
 
 # 原型对齐参照物（git 历史 aadecd4/8df091c 提取，不入库）
 /.archive/
+
+# React 原型：源码入库，构建产物与截图参照物仅存本地（node_modules 为指向
+# .archive 的符号链接，同样忽略）
+design/prototype-react/node_modules
+design/prototype-react/dist/
+design/prototype-react/shots/
