@@ -8,16 +8,41 @@ edition = "2024"
 license = "AGPL-3.0-or-later"
 
 # gpui 系列：= 精确锁定，升级须整体进行，且同一工程只允许一份 gpui（AGENTS.md 规则 5）。
-# 版本经 crates.io 核实（2026-10-10，docs/p0-results.md §0）。
+# 版本经 crates.io 核实（gpui-pre =0.3.9, gpui-component/gpui-base =0.7.3）。
 [workspace.dependencies]
-gpui = { package = "gpui-pre", version = "=0.3.8" }
-gpui_platform = { package = "gpui-pre-platform", version = "=0.3.8", features = ["font-kit"] }
-gpui-component = "=0.7.1"
-gpui-base = "=0.7.1"
+gpui = { package = "gpui-pre", version = "=0.3.9" }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.9", features = ["font-kit"] }
+gpui-component = { version = "=0.7.3", features = [
+    "tree-sitter",
+    "tree-sitter-rust",
+    "tree-sitter-toml",
+    "tree-sitter-typescript",
+    "tree-sitter-tsx",
+    "tree-sitter-javascript",
+    "tree-sitter-bash",
+    "tree-sitter-python",
+    "tree-sitter-go",
+    "tree-sitter-c",
+    "tree-sitter-cpp",
+    "tree-sitter-css",
+    "tree-sitter-html",
+    "tree-sitter-yaml",
+    "tree-sitter-markdown",
+    "tree-sitter-diff",
+    "tree-sitter-make",
+    "tree-sitter-cmake",
+] }
+gpui-base = "=0.7.3"
 
 [profile.dev]
 opt-level = 0
 debug = 1
+
+# gpui / alacritty / markdown / 文本排版等第三方依赖在 opt-level=0 下单帧慢约 5 倍
+# （实测 debug 8–40ms vs release 1.4–10ms，见 v_shots PERF=1）。依赖只在版本变化时重编，
+# 开优化不影响业务代码的增量编译速度；本工作区自己的 crate 仍保持 opt-level=0 便于调试。
+[profile.dev.package."*"]
+opt-level = 3
 
 [profile.release]
 lto = "thin"
