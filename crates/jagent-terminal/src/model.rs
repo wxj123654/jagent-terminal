@@ -11,6 +11,7 @@
 //!   (views subscribe for repaints) and forwards session-level events to the
 //!   global sink in [`crate::pool`]（app 侧 `bridge_terminal_events` 订阅）.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -26,6 +27,7 @@ use gpui::{App, AppContext, Context, Entity, EventEmitter, Pixels, SharedString}
 
 use crate::pool::{SessionEvent, forward_session_event};
 use crate::pty::{PtySender, SpawnOptions, TerminalSize, open_pty};
+use crate::view::TerminalLinkTarget;
 
 /// Events forwarded out of a terminal session on the gpui event bus.
 /// Views subscribe to `Wakeup` for repaints; the pool sink receives
@@ -40,18 +42,44 @@ pub enum Event {
     Exit,
     /// Grid has new content; views should repaint.
     Wakeup,
+    /// User Cmd/Ctrl-clicked a detected file path or URL in the terminal.
+    OpenLink(TerminalLinkTarget),
 }
 
 /// `EventListener` impl piping alacritty events into the model's channel.
+///
+/// Wrapping the sender in `Arc<Mutex<Option<...>>>` ensures `PtySender::shutdown`
+/// can take and drop the `UnboundedSender` on the foreground/main thread before
+/// handing the `EventLoop<Pty, SessionListener>` to a background teardown thread.
+/// Otherwise dropping `UnboundedSender` on a raw `std::thread::spawn` wakes the
+/// GPUI `LocalExecutor` task from an unregistered thread and aborts `TestScheduler`.
 #[derive(Clone)]
 pub struct SessionListener {
-    pub tx: UnboundedSender<crate::pty::PtyEvent>,
+    tx: Arc<std::sync::Mutex<Option<UnboundedSender<crate::pty::PtyEvent>>>>,
+}
+
+impl SessionListener {
+    pub fn new(tx: UnboundedSender<crate::pty::PtyEvent>) -> Self {
+        Self {
+            tx: Arc::new(std::sync::Mutex::new(Some(tx))),
+        }
+    }
+
+    pub fn close(&self) {
+        if let Ok(mut guard) = self.tx.lock() {
+            let _ = guard.take();
+        }
+    }
 }
 
 impl EventListener for SessionListener {
     fn send_event(&self, event: AlacTermEvent) {
         use crate::pty::PtyEvent;
-        let _ = self.tx.unbounded_send(PtyEvent::Event(event));
+        if let Ok(guard) = self.tx.lock()
+            && let Some(tx) = guard.as_ref()
+        {
+            let _ = tx.unbounded_send(PtyEvent::Event(event));
+        }
     }
 }
 
@@ -137,10 +165,13 @@ pub struct TerminalModel {
     id: u64,
     term: TermLock,
     pty: Option<PtySender>,
+    cwd: Option<PathBuf>,
     style: TerminalStyle,
     scrollback_lines: usize,
     /// Set once `Exit`/`ChildExit` is observed; further input is dropped.
     exited: bool,
+    /// Owned foreground consumer task so dropping `TerminalModel` drops the local task on the same thread.
+    _consumer_task: Option<gpui::Task<()>>,
 }
 
 impl EventEmitter<Event> for TerminalModel {}
@@ -161,19 +192,16 @@ impl TerminalModel {
 
         let (events_tx, mut events_rx) =
             futures::channel::mpsc::unbounded::<crate::pty::PtyEvent>();
+        let listener = SessionListener::new(events_tx);
         let default_size = TerminalSize::default();
         let dims = TermDimensions::new(default_size.columns as usize, default_size.rows as usize);
-        let term = Term::new(
-            term_config,
-            &dims,
-            SessionListener {
-                tx: events_tx.clone(),
-            },
-        );
+        let term = Term::new(term_config, &dims, listener.clone());
 
-        let (term, pty) = match open_pty(opts, default_size, term, events_tx.clone()) {
+        let initial_cwd = opts.cwd.clone().or_else(|| std::env::current_dir().ok());
+        let (term, pty) = match open_pty(opts, default_size, term, listener.clone()) {
             Ok(handle) => handle,
             Err(error) => {
+                listener.close();
                 // Surface the spawn failure as an immediately-exited session.
                 return cx
                     .new(|_| Self {
@@ -181,12 +209,14 @@ impl TerminalModel {
                         term: Arc::new(FairMutex::new(Term::new(
                             TermConfig::default(),
                             &dims,
-                            SessionListener { tx: events_tx },
+                            listener,
                         ))),
                         pty: None,
+                        cwd: initial_cwd,
                         style: opts.style.clone().unwrap_or_default(),
                         scrollback_lines: scrollback,
                         exited: true,
+                        _consumer_task: None,
                     })
                     .tap_error(error);
             }
@@ -194,7 +224,7 @@ impl TerminalModel {
 
         // Consumer task: Zed's 4ms batching scheme.
         cx.new(|cx: &mut Context<Self>| {
-            cx.spawn(async move |this, cx| {
+            let task = cx.spawn(async move |this, cx| {
                 while let Some(event) = events_rx.next().await {
                     if this
                         .update(cx, |model, cx| model.process_pty_event(event, cx))
@@ -249,16 +279,17 @@ impl TerminalModel {
                         }
                     }
                 }
-            })
-            .detach();
+            });
 
             Self {
                 id: 0,
                 term,
                 pty: Some(pty),
+                cwd: initial_cwd,
                 style: opts.style.clone().unwrap_or_default(),
                 scrollback_lines: scrollback,
                 exited: false,
+                _consumer_task: Some(task),
             }
         })
     }
@@ -380,6 +411,56 @@ impl TerminalModel {
     pub fn with_term_mut<R>(&self, f: impl FnOnce(&mut AlacTerm) -> R) -> R {
         let mut guard = self.term.lock();
         f(&mut guard)
+    }
+
+    /// Feed raw ANSI/UTF-8 bytes directly into the in-memory terminal grid
+    /// (useful for deterministic tests or synthetic output without waiting on a child PTY).
+    pub fn feed_bytes(&self, bytes: &[u8]) {
+        let mut processor: alacritty_terminal::vte::ansi::Processor = Default::default();
+        let mut guard = self.term.lock();
+        processor.advance(&mut *guard, bytes);
+    }
+
+    /// Create an in-memory terminal model without spawning a child PTY process.
+    pub fn new_in_memory(
+        columns: usize,
+        rows: usize,
+        scrollback_lines: usize,
+        cx: &mut App,
+    ) -> Entity<Self> {
+        let scrollback = scrollback_lines.min(MAX_SCROLLBACK_LINES);
+        let term_config = TermConfig {
+            scrolling_history: scrollback,
+            ..Default::default()
+        };
+        let (events_tx, _events_rx) = futures::channel::mpsc::unbounded::<crate::pty::PtyEvent>();
+        let dims = TermDimensions::new(columns.max(1), rows.max(1));
+        let term = Term::new(term_config, &dims, SessionListener::new(events_tx));
+        cx.new(|_| Self {
+            id: 0,
+            term: Arc::new(FairMutex::new(term)),
+            pty: None,
+            cwd: std::env::current_dir().ok(),
+            style: TerminalStyle::default(),
+            scrollback_lines: scrollback,
+            exited: false,
+            _consumer_task: None,
+        })
+    }
+
+    /// Working directory associated with this terminal session (used to resolve relative paths).
+    pub fn cwd(&self) -> Option<&Path> {
+        self.cwd.as_deref()
+    }
+
+    /// Update the working directory associated with this terminal session.
+    pub fn set_cwd(&mut self, cwd: Option<PathBuf>) {
+        self.cwd = cwd;
+    }
+
+    /// Emit an `Event::OpenLink` notification on the gpui event bus.
+    pub fn open_link(&mut self, target: TerminalLinkTarget, cx: &mut Context<Self>) {
+        cx.emit(Event::OpenLink(target));
     }
 
     pub fn term_lock(&self) -> TermLock {

@@ -19,6 +19,9 @@ futures = "0.3"
 # 结构化错误：稳定错误码（ERR_TERMINAL_*）。
 thiserror = "2.0.20"
 
+[dev-dependencies]
+tempfile = "3"
+
 # 示例在运行时设置 DPI 感知，而不是随 exe 附带 manifest。
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_HiDpi"] }

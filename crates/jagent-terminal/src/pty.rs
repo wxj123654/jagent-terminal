@@ -131,13 +131,19 @@ impl PtySender {
     /// reader 的残留活动若越过拥有者的生命边界（测试场景 = 下一个测试），
     /// gpui test scheduler 会判定非确定性。
     pub fn shutdown(&self) {
-        let _ = self
-            .notifier
-            .0
-            .send(alacritty_terminal::event_loop::Msg::Shutdown);
         if let Some(join) = self.reader_join.lock().unwrap().take() {
+            let _ = self
+                .notifier
+                .0
+                .send(alacritty_terminal::event_loop::Msg::Shutdown);
             join();
         }
+    }
+}
+
+impl Drop for PtySender {
+    fn drop(&mut self) {
+        self.shutdown();
     }
 }
 
@@ -145,26 +151,24 @@ impl PtySender {
 ///
 /// Returns the shared term lock and the writer handle. The event loop keeps
 /// reading the PTY into `term` (behind its `FairMutex`) and forwards events
-/// to `events_tx` via the `SessionListener` embedded in the `Term`.
+/// to `listener`.
 pub fn open_pty(
     opts: &SpawnOptions,
     size: TerminalSize,
     term: Term<SessionListener>,
-    events_tx: futures::channel::mpsc::UnboundedSender<PtyEvent>,
+    listener: SessionListener,
 ) -> io::Result<(TermLock, PtySender)> {
     let term: TermLock = Arc::new(FairMutex::new(term));
     let pty = tty::new(&pty_options(opts), size.to_window_size(), 0)?;
-    let event_loop = EventLoop::new(
-        term.clone(),
-        SessionListener { tx: events_tx },
-        pty,
-        true,
-        false,
-    )?;
+    let listener_for_shutdown = listener.clone();
+    let event_loop = EventLoop::new(term.clone(), listener, pty, true, false)?;
     // `spawn` consumes the event loop; take the channel first.
     let notifier = Notifier(event_loop.channel());
     let join = event_loop.spawn();
     let join_action: Box<dyn FnOnce() + Send> = Box::new(move || {
+        // 先在当前线程（UI / 测试主线程）关闭并释放 UnboundedSender，
+        // 避免随后后台线程 drop EventLoop 时在未注册线程上关闭 channel 唤醒 LocalExecutor。
+        listener_for_shutdown.close();
         // 等 reader 线程退出（shutdown 后 join，保证线程活动不越界）。
         // 返回值持有 EventLoop/Pty，其 drop 会 SIGHUP + waitpid 阻塞等子进程
         // ——放到一次性后台线程 drop：既不泄漏孤儿 shell，也不卡调用方

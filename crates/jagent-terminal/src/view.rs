@@ -20,11 +20,16 @@
 mod box_drawing;
 mod colors;
 mod input;
+mod link;
 mod render;
 
 pub use colors::ColorPalette;
 pub use input::keystroke_to_bytes;
+pub use link::{HoveredLink, TerminalLinkTarget, detect_link_at_point};
 pub use render::TerminalRenderer;
+
+/// 终端视图的 GPUI KeyContext 标识（用于隔离 Root Tab 焦点循环等全局裸键）。
+pub const TERMINAL_KEY_CONTEXT: &str = "Terminal";
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -35,11 +40,11 @@ use alacritty_terminal::index::{Column, Line, Point as AlacPoint, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::term::TermMode;
 use gpui::{
-    App, Bounds, ClipboardItem, Context, DispatchPhase, Edges, Entity, FocusHandle, InputHandler,
-    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseExitEvent,
-    MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render, ScrollDelta,
-    ScrollWheelEvent, Size, Styled, Subscription, UTF16Selection, Window, canvas, div, px, quad,
-    transparent_black,
+    App, Bounds, ClipboardItem, Context, CursorStyle, DispatchPhase, Edges, Entity, FocusHandle,
+    HitboxBehavior, InputHandler, InteractiveElement, IntoElement, KeyDownEvent, Modifiers,
+    ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseExitEvent, MouseMoveEvent,
+    MouseUpEvent, ParentElement, Pixels, Point, Render, ScrollDelta, ScrollWheelEvent, Size,
+    Styled, Subscription, UTF16Selection, Window, canvas, div, px, quad, transparent_black,
 };
 
 use crate::model::{Event, TerminalModel};
@@ -72,6 +77,8 @@ pub struct TerminalView {
     ime_state: Option<ImeState>,
     /// 左键拖拽选区进行中（本 view 发起的 selection drag）。
     selecting: bool,
+    /// MOUSE_MODE 下左键按下上报中：记录上次上报的 1-based (col, row)，用于拖拽去重与抬起配对。
+    mouse_reporting: Option<(usize, usize)>,
     /// 滚动条拖拽：按下点相对 thumb 顶部的偏移；None = 未在拖。
     scrollbar_drag: Option<Pixels>,
     /// 本帧内容区几何（paint 阶段写入）：鼠标事件 → grid 坐标换算用。
@@ -84,6 +91,14 @@ pub struct TerminalView {
     view_bounds: Rc<Cell<Bounds<Pixels>>>,
     /// 鼠标当前是否在视图内（MouseExitEvent/移动事件维护）。
     mouse_inside: bool,
+    /// 当前按住 Cmd/Ctrl 悬停命中的可点击文件路径或 URL。
+    hovered_link: Option<HoveredLink>,
+    /// Cmd/Ctrl + 左键按下时锁定的待打开链接（左键抬起仍在链接内时触发 OpenLink）。
+    pending_link_open: Option<HoveredLink>,
+    /// 上次执行链接探测的网格坐标（同格移动去重，避免重复扫描逻辑行与磁盘）。
+    last_hover_cell: Option<AlacPoint>,
+    /// 最近一次鼠标窗口坐标（供 ModifiersChangedEvent 原地刷新下划线显隐）。
+    last_mouse_pos: Option<Point<Pixels>>,
 }
 
 /// 终端内容区几何快照（paint 阶段写入，事件阶段读取）。
@@ -131,15 +146,12 @@ const SCROLLBAR_FADE_IN: Duration = Duration::from_millis(150);
 const SCROLLBAR_FADE_OUT: Duration = Duration::from_millis(400);
 /// 停止滚动后自动隐藏的延迟（Zed 同款 1s）。
 const SCROLLBAR_HIDE_DELAY: Duration = Duration::from_secs(1);
-/// 常态 thumb 不透明度。Zed One Dark 实测：常态 thumb（浅灰 30%）
-/// blend 到不透明 editor 背景上，是三态中【最亮】的。
-const SCROLLBAR_OPACITY: f32 = 0.6;
-/// 悬停 thumb 不透明度：Zed hover 换成不透明的深灰主题色
-/// （#363c46，≈轨道色），是三态中【最暗】的——悬停反而变暗。
-const SCROLLBAR_HOVER_OPACITY: f32 = 0.35;
-/// 拖拽 thumb 不透明度：Zed active（fallback step5 14%）blend 后
-/// 介于常态和悬停之间、偏悬停（rgb 69 vs 悬停 54 vs 常态 88）。
-const SCROLLBAR_ACTIVE_OPACITY: f32 = 0.45;
+/// 常态 thumb 不透明度：柔和半透明胶囊，不喧宾夺主。
+const SCROLLBAR_OPACITY: f32 = 0.42;
+/// 悬停 thumb 不透明度：鼠标移入滚动条命中区时加亮并加宽。
+const SCROLLBAR_HOVER_OPACITY: f32 = 0.72;
+/// 拖拽 thumb 不透明度：按住拖动时最高对比度反馈。
+const SCROLLBAR_ACTIVE_OPACITY: f32 = 0.88;
 /// thumb 最小高度（Zed `MINIMUM_THUMB_SIZE` = 25px）：内容极长时
 /// 等比缩出来的 thumb 会小到看不见/抓不到，兜底一个可点击尺寸。
 const SCROLLBAR_MIN_THUMB: f32 = 25.0;
@@ -173,8 +185,9 @@ impl TerminalView {
         );
 
         // Repaint when the model wakes up (new content, title, bell, exit...).
-        let subscription = cx.subscribe(&model, |_this, _model, event: &Event, cx| {
+        let subscription = cx.subscribe(&model, |this, _model, event: &Event, cx| {
             if matches!(event, Event::Wakeup) {
+                this.last_hover_cell = None;
                 cx.notify();
             }
         });
@@ -212,6 +225,7 @@ impl TerminalView {
             scroll_remainder_lines: 0.0,
             ime_state: None,
             selecting: false,
+            mouse_reporting: None,
             scrollbar_drag: None,
             content_metrics: Rc::new(Cell::new(None)),
             scrollbar_layout: Rc::new(Cell::new(None)),
@@ -223,7 +237,16 @@ impl TerminalView {
             })),
             view_bounds: Rc::new(Cell::new(Bounds::default())),
             mouse_inside: false,
+            hovered_link: None,
+            pending_link_open: None,
+            last_hover_cell: None,
+            last_mouse_pos: None,
         }
+    }
+
+    /// 当前按住 Cmd/Ctrl 悬停命中的链接（供视觉巡检与单元测试断言）。
+    pub fn hovered_link(&self) -> Option<&HoveredLink> {
+        self.hovered_link.as_ref()
     }
 
     pub fn model(&self) -> Entity<TerminalModel> {
@@ -235,7 +258,113 @@ impl TerminalView {
     }
 
     pub fn dimensions(&self) -> (usize, usize) {
-        self.last_dims
+        self.head_dimensions().unwrap_or(self.last_dims)
+    }
+
+    /// 最近一帧渲染记录的终端视图窗口矩形。
+    pub fn bounds(&self) -> Bounds<Pixels> {
+        self.view_bounds.get()
+    }
+
+    fn head_dimensions(&self) -> Option<(usize, usize)> {
+        self.content_metrics.get().map(|m| (m.cols, m.rows))
+    }
+
+    /// 当前回滚偏移行数（0 表示在最底部最新行，> 0 表示向上回滚了 N 行）。
+    pub fn display_offset(&self, cx: &App) -> usize {
+        self.model
+            .read(cx)
+            .with_term(|term| term.grid().display_offset())
+    }
+
+    /// 当前历史回滚缓冲区总行数。
+    pub fn history_size(&self, cx: &App) -> usize {
+        self.model
+            .read(cx)
+            .with_term(|term| term.grid().history_size())
+    }
+
+    /// 执行终端视口滚动（`Scroll::Delta` / `PageUp` / `PageDown` / `Top` / `Bottom`）。
+    pub fn scroll_display(&mut self, scroll: Scroll, cx: &mut Context<Self>) {
+        self.model
+            .read(cx)
+            .with_term_mut(|term| term.scroll_display(scroll));
+        self.last_hover_cell = None;
+        self.mouse_inside = true;
+        self.show_scrollbar(cx);
+        cx.notify();
+    }
+
+    /// 按行数滚动终端视口（正数向上看历史，负数向下回底部）。
+    pub fn scroll_lines(&mut self, lines: i32, cx: &mut Context<Self>) {
+        if lines != 0 {
+            self.scroll_display(Scroll::Delta(lines), cx);
+        }
+    }
+
+    /// 向上翻一页历史。
+    pub fn scroll_page_up(&mut self, cx: &mut Context<Self>) {
+        self.scroll_display(Scroll::PageUp, cx);
+    }
+
+    /// 向下翻一页历史。
+    pub fn scroll_page_down(&mut self, cx: &mut Context<Self>) {
+        self.scroll_display(Scroll::PageDown, cx);
+    }
+
+    /// 滚动到历史缓冲区最顶部。
+    pub fn scroll_to_top(&mut self, cx: &mut Context<Self>) {
+        self.scroll_display(Scroll::Top, cx);
+    }
+
+    /// 滚动回终端最底部（最新输出行）。
+    pub fn scroll_to_bottom(&mut self, cx: &mut Context<Self>) {
+        self.model
+            .read(cx)
+            .with_term_mut(|term| term.scroll_display(Scroll::Bottom));
+        cx.notify();
+    }
+
+    /// 读取当前终端选区文本（若无选区或选区为空白串则返回 `None`）。
+    pub fn selected_text(&self, cx: &App) -> Option<String> {
+        self.model
+            .read(cx)
+            .with_term(|term| term.selection_to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    /// 当前终端是否存在非空选区。
+    pub fn has_selection(&self, cx: &App) -> bool {
+        self.selected_text(cx).is_some()
+    }
+
+    /// 清除当前终端选区；若原本有选区则返回 `true`。
+    pub fn clear_selection(&mut self, cx: &mut Context<Self>) -> bool {
+        let cleared = self
+            .model
+            .read(cx)
+            .with_term_mut(|term| term.selection.take().is_some());
+        if cleared {
+            cx.notify();
+        }
+        cleared
+    }
+
+    /// 全选终端缓冲区（包含回滚历史与当前屏幕全部行）。
+    pub fn select_all(&mut self, cx: &mut Context<Self>) {
+        self.model.read(cx).with_term_mut(|term| {
+            let top = term.grid().topmost_line();
+            let bottom = term.grid().bottommost_line();
+            let last_col = term.grid().last_column();
+            let mut sel = Selection::new(
+                SelectionType::Simple,
+                AlacPoint::new(top, Column(0)),
+                Side::Left,
+            );
+            sel.update(AlacPoint::new(bottom, last_col), Side::Right);
+            term.selection = Some(sel);
+        });
+        cx.notify();
     }
 
     /// 设置 IME 组合文本（pre-edit）。空串等于清除。
@@ -263,10 +392,16 @@ impl TerminalView {
     }
 
     /// 把确认后的文本写入 PTY（IME 确认、macOS insertText、Windows WM_CHAR
-    /// 殊途同归）。顺带重置闪烁相位：打字时光标应立即可见。
+    /// 殊途同归）。顺带重置闪烁相位与回滚偏移：打字时光标应立即可见并归底。
     fn commit_text(&mut self, text: &str, cx: &mut Context<Self>) {
         if !text.is_empty() {
-            self.model.read(cx).write_to_pty(text.as_bytes());
+            let model = self.model.read(cx);
+            model.with_term_mut(|term| {
+                if term.grid().display_offset() > 0 {
+                    term.scroll_display(Scroll::Bottom);
+                }
+            });
+            model.write_to_pty(text.as_bytes());
         }
         self.blink_on = true;
         cx.notify();
@@ -302,13 +437,82 @@ impl TerminalView {
 
     fn on_key_down(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
         let ks = &event.keystroke;
-        // Ctrl+V / Ctrl+Shift+V / Shift+Insert = 粘贴（Zed windows keymap 同款）。
+        // 键盘视口回滚快捷键：Shift+PageUp / Shift+PageDown / Shift+Home / Shift+End / Cmd+Home / Cmd+End
+        if !ks.modifiers.control && !ks.modifiers.alt {
+            if ks.modifiers.shift && !ks.modifiers.platform {
+                match ks.key.as_str() {
+                    "pageup" => {
+                        self.scroll_page_up(cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                    "pagedown" => {
+                        self.scroll_page_down(cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                    "home" => {
+                        self.scroll_to_top(cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                    "end" => {
+                        self.scroll_to_bottom(cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+            if ks.modifiers.platform && !ks.modifiers.shift {
+                match ks.key.as_str() {
+                    "home" => {
+                        self.scroll_to_top(cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                    "end" => {
+                        self.scroll_to_bottom(cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                    "a" => {
+                        self.select_all(cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        // Cmd+C / Ctrl+Shift+C / Ctrl+Insert = 复制当前终端选区到剪贴板。
+        if (ks.key == "c" && ks.modifiers.platform && !ks.modifiers.alt && !ks.modifiers.control)
+            || (ks.key == "c"
+                && ks.modifiers.control
+                && ks.modifiers.shift
+                && !ks.modifiers.alt
+                && !ks.modifiers.platform)
+            || (ks.key == "insert"
+                && ks.modifiers.control
+                && !ks.modifiers.shift
+                && !ks.modifiers.alt)
+        {
+            self.copy_selection(cx);
+            cx.stop_propagation();
+            return;
+        }
+        // Cmd+V / Ctrl+V / Ctrl+Shift+V / Shift+Insert = 粘贴（Zed keymap 同款）。
         // 不能走 keystroke_to_bytes：Ctrl+V 会被编码成 0x16 (SYN) 写进 PTY，
         // readline 把它当 quoted-insert 吃掉，表现就是「粘贴没反应」。
-        if (ks.key == "v" && ks.modifiers.control && !ks.modifiers.alt && !ks.modifiers.platform)
+        if (ks.key == "v" && ks.modifiers.platform && !ks.modifiers.alt && !ks.modifiers.control)
+            || (ks.key == "v"
+                && ks.modifiers.control
+                && !ks.modifiers.alt
+                && !ks.modifiers.platform)
             || (ks.key == "insert" && ks.modifiers.shift && !ks.modifiers.control)
         {
             self.paste_clipboard(cx);
+            cx.stop_propagation();
             return;
         }
         let bytes = self
@@ -317,7 +521,17 @@ impl TerminalView {
             .mode()
             .pipe(|mode| input::keystroke_to_bytes(&event.keystroke, mode));
         if let Some(bytes) = bytes {
-            self.model.read(cx).write_to_pty(&bytes);
+            let model = self.model.read(cx);
+            // 终端惯例（scroll_to_bottom_on_input）：在历史回滚处敲命令自动回到底部。
+            model.with_term_mut(|term| {
+                if term.grid().display_offset() > 0 {
+                    term.scroll_display(Scroll::Bottom);
+                }
+            });
+            model.write_to_pty(&bytes);
+            self.blink_on = true;
+            cx.stop_propagation();
+            cx.notify();
         }
     }
 
@@ -328,8 +542,13 @@ impl TerminalView {
     ///
     /// 剪贴板无文本（图片等）时退化为转发原始 0x16，让能读 OS 剪贴板的
     /// TUI agent 走自己的粘贴路径。
-    fn paste_clipboard(&mut self, cx: &mut Context<Self>) {
+    pub fn paste_clipboard(&mut self, cx: &mut Context<Self>) {
         let model = self.model.read(cx);
+        model.with_term_mut(|term| {
+            if term.grid().display_offset() > 0 {
+                term.scroll_display(Scroll::Bottom);
+            }
+        });
         let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
             model.write_to_pty(&[0x16]);
             return;
@@ -343,12 +562,15 @@ impl TerminalView {
             text.replace("\r\n", "\r").replace('\n', "\r").into_bytes()
         };
         model.write_to_pty(&bytes);
+        self.blink_on = true;
+        cx.notify();
     }
 
     /// 左键按下：优先命中滚动条（拖拽/翻页），否则开始/调整选区。
-    /// 选区语义与 Zed/alacritty 一致：单击 Simple、双击 Semantic（词）、
-    /// 三击 Lines（整行）、Shift+单击扩展现有选区。应用接管鼠标
-    /// （MOUSE_MODE，如 vim）时按住 Shift 才走本地选区，否则留给应用。
+    /// 选区语义与 Zed/alacritty 一致：单击 Simple、Alt+单击 Block（矩形块）、
+    /// 双击 Semantic（词）、三击 Lines（整行）、Shift+单击扩展现有选区。
+    /// 应用接管鼠标（MOUSE_MODE，如 vim/tmux/pi）时按住 Shift/Alt 走本地选区，
+    /// 否则编码 SGR/X10 鼠标事件上报给 PTY。
     fn on_mouse_down(
         &mut self,
         event: &MouseDownEvent,
@@ -356,6 +578,7 @@ impl TerminalView {
         cx: &mut Context<Self>,
     ) {
         self.focus_handle.focus(window, cx);
+        cx.stop_propagation();
 
         // 滚动条命中：拖拽 thumb 或点击轨道翻页。
         if let Some(layout) = self.scrollbar_layout.get()
@@ -394,10 +617,31 @@ impl TerminalView {
             return;
         };
 
+        self.mouse_inside = true;
+        self.last_mouse_pos = Some(event.position);
+        self.pending_link_open = None;
+
+        // Zed 风格：Cmd+Click（macOS）/ Ctrl+Click（Windows/Linux）命中文件路径或 URL 时，
+        // 锁定待打开链接，不启动选区拖拽，也不向 MOUSE_MODE 上报点击。
+        if event.click_count == 1 && is_link_modifier(&event.modifiers) {
+            self.last_hover_cell = None;
+            self.update_hovered_link(event.position, &event.modifiers, cx);
+            if let Some(link) = self.hovered_link.clone() {
+                self.pending_link_open = Some(link);
+                cx.notify();
+                return;
+            }
+        }
+
         let model = self.model.read(cx);
         let mode = model.mode();
-        if mode.intersects(TermMode::MOUSE_MODE) && !event.modifiers.shift {
-            // 应用接管鼠标：不选区（鼠标上报待补），仅聚焦。
+        if mode.intersects(TermMode::MOUSE_MODE) && !event.modifiers.shift && !event.modifiers.alt {
+            // 应用接管鼠标：清除本地选区并向 PTY 上报鼠标左键按下。
+            model.with_term_mut(|term| term.selection = None);
+            let (col, row) = grid_cell_1based(event.position, metrics);
+            self.mouse_reporting = Some((col, row));
+            let bytes = encode_mouse_report(0, col, row, false, event.modifiers, mode);
+            model.write_to_pty(&bytes);
             cx.notify();
             return;
         }
@@ -406,15 +650,21 @@ impl TerminalView {
         model.with_term_mut(|term| {
             let (point, side) =
                 grid_point_and_side(event.position, metrics, term.grid().display_offset());
-            let selection_type = match event.click_count {
-                1 => SelectionType::Simple,
-                2 => SelectionType::Semantic,
-                _ => SelectionType::Lines,
+            let selection_type = if event.modifiers.alt {
+                SelectionType::Block
+            } else {
+                match event.click_count {
+                    1 => SelectionType::Simple,
+                    2 => SelectionType::Semantic,
+                    _ => SelectionType::Lines,
+                }
             };
             if selection_type == SelectionType::Simple && event.modifiers.shift {
-                // Shift+单击：把现有选区扩展到点击处。
+                // Shift+单击：把现有选区扩展到点击处；若此前无选区则新建。
                 if let Some(selection) = term.selection.as_mut() {
                     selection.update(point, side);
+                } else {
+                    term.selection = Some(Selection::new(selection_type, point, side));
                 }
             } else {
                 term.selection = Some(Selection::new(selection_type, point, side));
@@ -423,15 +673,54 @@ impl TerminalView {
         cx.notify();
     }
 
-    /// 左键抬起：结束滚动条拖拽；选区非空则复制到剪贴板
-    /// （终端惯例 copy-on-release；当前没有显式 copy 快捷键路径）。
+    /// 左键抬起：结束滚动条拖拽或鼠标上报；选区非空则复制到剪贴板
+    /// （终端惯例 copy-on-release），选区为空（单纯点击）则清除空选区对象。
     fn on_mouse_up(&mut self, event: &MouseUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(pending) = self.pending_link_open.take() {
+            if is_link_modifier(&event.modifiers)
+                && let Some(metrics) = self.content_metrics.get()
+            {
+                let display_offset = self.display_offset(cx);
+                let (point, _) = grid_point_and_side(event.position, metrics, display_offset);
+                if pending.contains(point) {
+                    self.model
+                        .update(cx, |m, cx| m.open_link(pending.target, cx));
+                }
+            }
+            return;
+        }
+        if let Some((last_col, last_row)) = self.mouse_reporting.take() {
+            let (col, row) = self
+                .content_metrics
+                .get()
+                .map(|m| grid_cell_1based(event.position, m))
+                .unwrap_or((last_col, last_row));
+            let model = self.model.read(cx);
+            let mode = model.mode();
+            if mode.intersects(TermMode::MOUSE_MODE) {
+                let bytes = encode_mouse_report(0, col, row, true, event.modifiers, mode);
+                model.write_to_pty(&bytes);
+            }
+        }
         let was_dragging = self.scrollbar_drag.take().is_some();
         if self.selecting {
             self.selecting = false;
-            self.copy_selection(cx);
+            if !self.copy_selection(cx) {
+                // 单击未拖出有效字符时，清理空 Selection
+                let cleared = self.model.read(cx).with_term_mut(|term| {
+                    if term.selection.as_ref().is_some_and(|s| s.is_empty()) {
+                        term.selection = None;
+                        true
+                    } else {
+                        false
+                    }
+                });
+                if cleared {
+                    cx.notify();
+                }
+            }
         }
-        // 拖拽结束：松手点不在滚动条上 → 渐出（Zed 同款）。
+        // 拖拽结束：松手点不在滚动条上且不在历史回滚中 → 渐出（Zed 同款）。
         if was_dragging {
             let hovered = self
                 .scrollbar_layout
@@ -441,7 +730,7 @@ impl TerminalView {
             fx.hovered = hovered;
             fx.dragging = false;
             self.scrollbar_fx.set(fx);
-            if !hovered {
+            if !hovered && self.display_offset(cx) == 0 {
                 self.hide_scrollbar(cx);
             } else {
                 cx.notify(); // 拖拽态 → 悬停态，重绘换色
@@ -458,6 +747,8 @@ impl TerminalView {
     fn handle_mouse_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
         // 按钮已松开（窗外松开等）→ 兜底收尾拖拽/选区。
         if event.pressed_button != Some(MouseButton::Left) {
+            self.mouse_reporting = None;
+            self.pending_link_open = None;
             if self.selecting {
                 self.selecting = false;
                 self.copy_selection(cx);
@@ -470,30 +761,53 @@ impl TerminalView {
         }
 
         let inside = self.view_bounds.get().contains(&event.position);
+        self.last_mouse_pos = inside.then_some(event.position);
         let hovered = self
             .scrollbar_layout
             .get()
             .is_some_and(|l| l.hit.contains(&event.position));
-        {
+        let prev_hovered = {
             let mut fx = self.scrollbar_fx.get();
+            let prev = fx.hovered;
             fx.hovered = hovered;
             self.scrollbar_fx.set(fx);
+            prev
+        };
+        if prev_hovered != hovered {
+            cx.notify();
         }
         if inside {
             // 移入/视图内移动：渐入并重置自动隐藏计时
             // （Zed 同款 last_show 语义）。
             self.show_scrollbar(cx);
-        } else if self.mouse_inside && self.scrollbar_drag.is_none() {
-            // 移出视图：立即渐出。
+        } else if self.mouse_inside && self.scrollbar_drag.is_none() && self.display_offset(cx) == 0
+        {
+            // 移出视图且处于底部：立即渐出。
             self.hide_scrollbar(cx);
         }
         self.mouse_inside = inside;
+        self.update_hovered_link(event.position, &event.modifiers, cx);
 
         if event.pressed_button != Some(MouseButton::Left) {
             return;
         }
         if self.scrollbar_drag.is_some() {
             self.update_scrollbar_drag(event.position, cx);
+            return;
+        }
+        if let Some((last_col, last_row)) = self.mouse_reporting {
+            if let Some(metrics) = self.content_metrics.get() {
+                let (col, row) = grid_cell_1based(event.position, metrics);
+                if (col, row) != (last_col, last_row) {
+                    self.mouse_reporting = Some((col, row));
+                    let model = self.model.read(cx);
+                    let mode = model.mode();
+                    if mode.intersects(TermMode::MOUSE_DRAG | TermMode::MOUSE_MOTION) {
+                        let bytes = encode_mouse_report(32, col, row, false, event.modifiers, mode);
+                        model.write_to_pty(&bytes);
+                    }
+                }
+            }
             return;
         }
         if !self.selecting {
@@ -534,14 +848,86 @@ impl TerminalView {
         }
     }
 
-    /// 鼠标离开窗口（平台级 MouseExited）：等价移出视图，渐出滚动条。
+    /// 鼠标离开窗口（平台级 MouseExited）：等价移出视图，若在底部则渐出滚动条。
     fn handle_mouse_exit(&mut self, _event: &MouseExitEvent, cx: &mut Context<Self>) {
         self.mouse_inside = false;
+        self.last_mouse_pos = None;
+        self.last_hover_cell = None;
+        self.pending_link_open = None;
+        let _ = self.hovered_link.take();
         let mut fx = self.scrollbar_fx.get();
         fx.hovered = false;
         self.scrollbar_fx.set(fx);
-        if self.scrollbar_drag.is_none() {
+        if self.scrollbar_drag.is_none() && self.display_offset(cx) == 0 {
             self.hide_scrollbar(cx);
+        } else {
+            cx.notify();
+        }
+    }
+
+    /// 修饰键变化（按下/松开 Cmd 或 Ctrl）：鼠标静止在路径上时原地切换下划线与手型光标。
+    pub fn on_modifiers_changed(&mut self, event: &ModifiersChangedEvent, cx: &mut Context<Self>) {
+        if let Some(pos) = self.last_mouse_pos {
+            self.update_hovered_link(pos, &event.modifiers, cx);
+        } else if self.hovered_link.take().is_some() {
+            self.last_hover_cell = None;
+            cx.notify();
+        }
+    }
+
+    /// 根据当前鼠标坐标与修饰键状态更新 `hovered_link`（含同格去重与同链接跨格复用）。
+    fn update_hovered_link(
+        &mut self,
+        position: Point<Pixels>,
+        modifiers: &Modifiers,
+        cx: &mut Context<Self>,
+    ) {
+        let on_scrollbar = self
+            .scrollbar_layout
+            .get()
+            .is_some_and(|l| l.hit.contains(&position));
+        if !self.mouse_inside
+            || on_scrollbar
+            || self.selecting
+            || self.scrollbar_drag.is_some()
+            || !is_link_modifier(modifiers)
+        {
+            self.last_hover_cell = None;
+            if self.hovered_link.take().is_some() {
+                cx.notify();
+            }
+            return;
+        }
+
+        let Some(metrics) = self.content_metrics.get() else {
+            return;
+        };
+        let display_offset = self.display_offset(cx);
+        let (point, _) = grid_point_and_side(position, metrics, display_offset);
+
+        // 同一网格 cell 内微移不重扫
+        if self.last_hover_cell == Some(point) {
+            return;
+        }
+        self.last_hover_cell = Some(point);
+
+        // 仍在当前已命中的链接区间内移动时，直接复用
+        if self
+            .hovered_link
+            .as_ref()
+            .is_some_and(|link| link.contains(point))
+        {
+            return;
+        }
+
+        let next_link = {
+            let model = self.model.read(cx);
+            let cwd = model.cwd().map(std::path::Path::to_path_buf);
+            model.with_term(|term| link::detect_link_at_point(term, point, cwd.as_deref()))
+        };
+        if self.hovered_link != next_link {
+            self.hovered_link = next_link;
+            cx.notify();
         }
     }
 
@@ -599,7 +985,8 @@ impl TerminalView {
     }
 
     /// 显示滚动条并重置自动隐藏计时（Zed `show_scrollbars` 同款：
-    /// 滚动/视图内移动都会调用，generation 防止过期 timer 提前隐藏）。
+    /// 滚动/视图内移动都会调用，generation 防止过期 timer 提前隐藏；
+    /// 处于历史回滚态 display_offset > 0 时保持可见，回到底部后才自动淡出）。
     fn show_scrollbar(&mut self, cx: &mut Context<Self>) {
         let mut fx = self.scrollbar_fx.get();
         fx.generation += 1;
@@ -616,6 +1003,7 @@ impl TerminalView {
                     && !fx.hovered
                     && v.scrollbar_drag.is_none()
                     && v.mouse_inside
+                    && v.display_offset(cx) == 0
                 {
                     v.fade_scrollbar(ScrollbarVisibility::Hidden, SCROLLBAR_FADE_OUT);
                     cx.notify();
@@ -632,8 +1020,8 @@ impl TerminalView {
         cx.notify();
     }
 
-    /// 当前选区文本写入剪贴板。
-    fn copy_selection(&mut self, cx: &mut Context<Self>) {
+    /// 当前选区文本写入剪贴板；若有非空选区并已写入则返回 `true`。
+    pub fn copy_selection(&mut self, cx: &mut Context<Self>) -> bool {
         let text = self
             .model
             .read(cx)
@@ -642,25 +1030,32 @@ impl TerminalView {
             && !text.is_empty()
         {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
+            return true;
         }
+        false
     }
 
-    /// 滚轮 → 两级路由：
-    /// - 主屏（normal screen）：scroll_display 移动回滚视口；
-    /// - 备用屏（alt screen，TUI 常驻）：无 scrollback，按终端惯例转
-    ///   Up/Down 方向键（多数 TUI 靠方向键滚动自己的视口）；
-    /// - 应用接管鼠标（MOUSE_MODE）：忽略——SGR wheel 上报需要 cell
-    ///   坐标换算，待需要时再补。
+    /// 滚轮 → 三级路由：
+    /// - 应用接管鼠标（MOUSE_MODE）且未按住 Shift：编码 SGR/X10 滚轮序列（button 64/65）发送给 PTY；
+    /// - 备用屏（alt screen，TUI 常驻）且未按住 Shift：无 scrollback，转 Up/Down 方向键发送给 PTY；
+    /// - 主屏（normal screen）或按住 Shift 强制回滚：scroll_display 移动回滚视口并显示滚动条。
     fn on_scroll(
         &mut self,
         event: &ScrollWheelEvent,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        cx.stop_propagation();
+        let cell_h = self
+            .content_metrics
+            .get()
+            .map(|m| m.cell_height)
+            .unwrap_or(self.renderer.cell_height)
+            .max(px(1.0));
         // GPUI 约定 delta.y > 0 = 向内容顶部滚动（向上）
         let lines_f32 = match event.delta {
             ScrollDelta::Lines(l) => l.y,
-            ScrollDelta::Pixels(p) => p.y / self.renderer.cell_height,
+            ScrollDelta::Pixels(p) => p.y / cell_h,
         };
         let lines = consume_scroll_lines(&mut self.scroll_remainder_lines, lines_f32);
         if lines == 0 {
@@ -669,10 +1064,20 @@ impl TerminalView {
         {
             let model = self.model.read(cx);
             let mode = model.mode();
-            if mode.intersects(TermMode::MOUSE_MODE) {
+            if mode.intersects(TermMode::MOUSE_MODE) && !event.modifiers.shift {
+                let (col, row) = self
+                    .content_metrics
+                    .get()
+                    .map(|m| grid_cell_1based(event.position, m))
+                    .unwrap_or((1, 1));
+                let btn = if lines > 0 { 64 } else { 65 };
+                let seq = encode_mouse_report(btn, col, row, false, event.modifiers, mode);
+                for _ in 0..lines.unsigned_abs() {
+                    model.write_to_pty(&seq);
+                }
                 return;
             }
-            if mode.contains(TermMode::ALT_SCREEN) {
+            if mode.contains(TermMode::ALT_SCREEN) && !event.modifiers.shift {
                 let dir = if lines > 0 { "up" } else { "down" };
                 if let Some(bytes) = input::arrow_key_bytes(dir, mode) {
                     for _ in 0..lines.unsigned_abs() {
@@ -697,6 +1102,15 @@ trait Pipe: Sized {
     }
 }
 impl<T> Pipe for T {}
+
+/// Zed 风格链接激活修饰键：macOS 下为 `Cmd`（`platform`），Windows/Linux 下为 `Ctrl`（`control` 或 `platform`）。
+fn is_link_modifier(modifiers: &Modifiers) -> bool {
+    if cfg!(target_os = "macos") {
+        modifiers.platform && !modifiers.control && !modifiers.alt
+    } else {
+        (modifiers.control || modifiers.platform) && !modifiers.alt
+    }
+}
 
 /// 滚动条可见性 → 不透明度：Animating 按经过时间线性插值，
 /// 动画完成由 paint 阶段收敛到终态（request_animation_frame 驱动）。
@@ -758,6 +1172,47 @@ fn grid_point_and_side(
     )
 }
 
+/// 窗口坐标 → 1-based (col, row)，供 SGR / X10 鼠标协议上报。
+fn grid_cell_1based(pos: Point<Pixels>, metrics: ContentMetrics) -> (usize, usize) {
+    let rel_x: f32 = (pos.x - metrics.origin.x).max(px(0.0)).into();
+    let rel_y: f32 = (pos.y - metrics.origin.y).max(px(0.0)).into();
+    let cw: f32 = metrics.cell_width.max(px(1.0)).into();
+    let ch: f32 = metrics.cell_height.max(px(1.0)).into();
+    let col = ((rel_x / cw) as usize + 1).clamp(1, metrics.cols.max(1));
+    let row = ((rel_y / ch) as usize + 1).clamp(1, metrics.rows.max(1));
+    (col, row)
+}
+
+/// 编码终端鼠标事件序列（优先 SGR 1006 扩展格式，回退 X10 / Normal 1000 格式）。
+fn encode_mouse_report(
+    button_code: u8,
+    col_1based: usize,
+    row_1based: usize,
+    release: bool,
+    modifiers: Modifiers,
+    mode: TermMode,
+) -> Vec<u8> {
+    let mut cb = button_code;
+    if modifiers.shift {
+        cb += 4;
+    }
+    if modifiers.alt {
+        cb += 8;
+    }
+    if modifiers.control {
+        cb += 16;
+    }
+    if mode.contains(TermMode::SGR_MOUSE) {
+        let suffix = if release { 'm' } else { 'M' };
+        format!("\x1b[<{cb};{col_1based};{row_1based}{suffix}").into_bytes()
+    } else {
+        let code = if release { (cb & !0b11) | 3 } else { cb };
+        let cx = (col_1based.min(223) as u8).saturating_add(32);
+        let cy = (row_1based.min(223) as u8).saturating_add(32);
+        vec![0x1b, b'[', b'M', code.saturating_add(32), cx, cy]
+    }
+}
+
 /// 消费滚动行数：亚像素/不足一行的触控板 delta 跨事件累计；单事件最多
 /// 派发 3 行，丢弃异常大尖峰，防止 TUI 方向键/重绘洪泛。
 fn consume_scroll_lines(remainder: &mut f32, delta_lines: f32) -> i32 {
@@ -774,6 +1229,7 @@ impl Render for TerminalView {
         // (Off-phase hides the cursor block entirely; steady when blink is
         // disabled — `blink_on` stays true in that branch of the task.)
         self.renderer.cursor_visible = self.blink_on;
+        self.renderer.hovered_link = self.hovered_link.clone();
 
         let model = self.model.clone();
         let renderer = self.renderer.clone();
@@ -789,16 +1245,24 @@ impl Render for TerminalView {
         let view_bounds = self.view_bounds.clone();
 
         div()
+            .id("terminal-view")
+            .key_context(TERMINAL_KEY_CONTEXT)
             .size_full()
             .bg(background)
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(Self::on_key_down))
+            .on_modifiers_changed(cx.listener(|v, e: &ModifiersChangedEvent, _, cx| {
+                v.on_modifiers_changed(e, cx);
+            }))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_scroll_wheel(cx.listener(Self::on_scroll))
             .child(
                 canvas(
-                    move |bounds, _window, _cx| bounds,
-                    move |bounds, _, window, cx| {
+                    move |bounds, window, _cx| {
+                        let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
+                        (bounds, hitbox)
+                    },
+                    move |bounds, (_, hitbox), window, cx| {
                         // Measure cell dimensions from the font every paint;
                         // cheap (cached font metrics inside gpui).
                         let mut measured = renderer.clone();
@@ -932,7 +1396,23 @@ impl Render for TerminalView {
                                 fx.visibility = ScrollbarVisibility::Hidden;
                                 scrollbar_fx.set(fx);
                                 opacity = 0.0;
+                            } else if history > 0
+                                && display_offset > 0
+                                && fx.visibility == ScrollbarVisibility::Hidden
+                            {
+                                // 处于历史回滚态时始终保持滚动条可见，指示当前不在底部。
+                                fx.visibility = ScrollbarVisibility::Visible;
+                                scrollbar_fx.set(fx);
+                                opacity = 1.0;
                             }
+                            window.set_cursor_style(
+                                if fx.hovered || fx.dragging || measured.hovered_link.is_some() {
+                                    CursorStyle::PointingHand
+                                } else {
+                                    CursorStyle::IBeam
+                                },
+                                &hitbox,
+                            );
                             if history > 0 && opacity > 0.0 {
                                 let track_top = bounds.origin.y + padding.top;
                                 let track_height =
@@ -950,13 +1430,18 @@ impl Render for TerminalView {
                                 let thumb_top = track_top + track_space * frac;
                                 let track_right =
                                     bounds.origin.x + bounds.size.width - padding.right;
+                                let thumb_width = if fx.hovered || fx.dragging {
+                                    px(5.0)
+                                } else {
+                                    px(3.5)
+                                };
                                 let thumb = Bounds {
                                     origin: Point {
-                                        x: track_right - px(6.0),
+                                        x: track_right - thumb_width - px(2.0),
                                         y: thumb_top,
                                     },
                                     size: Size {
-                                        width: px(4.0),
+                                        width: thumb_width,
                                         height: thumb_height,
                                     },
                                 };
@@ -977,9 +1462,28 @@ impl Render for TerminalView {
                                     track_height,
                                     max_offset: history,
                                 }));
+                                if fx.hovered || fx.dragging {
+                                    window.paint_quad(quad(
+                                        Bounds {
+                                            origin: Point {
+                                                x: track_right - px(8.0),
+                                                y: track_top,
+                                            },
+                                            size: Size {
+                                                width: px(7.0),
+                                                height: track_height,
+                                            },
+                                        },
+                                        px(99.0),
+                                        measured.palette.foreground().alpha(0.05 * opacity),
+                                        Edges::<Pixels>::default(),
+                                        transparent_black(),
+                                        Default::default(),
+                                    ));
+                                }
                                 window.paint_quad(quad(
                                     thumb,
-                                    px(2.0),
+                                    px(99.0),
                                     measured.palette.foreground().alpha(state_alpha * opacity),
                                     Edges::<Pixels>::default(),
                                     transparent_black(),
@@ -1115,7 +1619,7 @@ impl TerminalInputHandler {
 
 #[cfg(test)]
 mod tests {
-    use super::consume_scroll_lines;
+    use super::*;
 
     #[test]
     fn scroll_lines_accumulate_fractional_trackpad_events() {
@@ -1131,5 +1635,86 @@ mod tests {
         let mut remainder = 0.0;
         assert_eq!(consume_scroll_lines(&mut remainder, 50.0), 3);
         assert_eq!(consume_scroll_lines(&mut remainder, -50.0), -3);
+    }
+
+    #[test]
+    fn grid_cell_1based_and_sgr_mouse_report_encoding() {
+        let metrics = ContentMetrics {
+            origin: Point {
+                x: px(10.0),
+                y: px(20.0),
+            },
+            cell_width: px(8.0),
+            cell_height: px(16.0),
+            cols: 80,
+            rows: 24,
+        };
+        assert_eq!(
+            grid_cell_1based(
+                Point {
+                    x: px(10.0),
+                    y: px(20.0),
+                },
+                metrics
+            ),
+            (1, 1)
+        );
+        assert_eq!(
+            grid_cell_1based(
+                Point {
+                    x: px(10.0 + 8.0 * 4.5),
+                    y: px(20.0 + 16.0 * 2.2),
+                },
+                metrics
+            ),
+            (5, 3)
+        );
+
+        let sgr_mode = TermMode::MOUSE_REPORT_CLICK | TermMode::SGR_MOUSE;
+        // 左键按下 (1-based col=5, row=3)
+        assert_eq!(
+            encode_mouse_report(0, 5, 3, false, Modifiers::none(), sgr_mode),
+            b"\x1b[<0;5;3M".to_vec()
+        );
+        // 左键抬起
+        assert_eq!(
+            encode_mouse_report(0, 5, 3, true, Modifiers::none(), sgr_mode),
+            b"\x1b[<0;5;3m".to_vec()
+        );
+        // 滚轮向上 (button=64) / 向下 (button=65)
+        assert_eq!(
+            encode_mouse_report(64, 12, 8, false, Modifiers::none(), sgr_mode),
+            b"\x1b[<64;12;8M".to_vec()
+        );
+        assert_eq!(
+            encode_mouse_report(65, 12, 8, false, Modifiers::none(), sgr_mode),
+            b"\x1b[<65;12;8M".to_vec()
+        );
+    }
+
+    #[test]
+    fn grid_point_and_side_accounts_for_scrollback_display_offset() {
+        let metrics = ContentMetrics {
+            origin: Point {
+                x: px(8.0),
+                y: px(8.0),
+            },
+            cell_width: px(10.0),
+            cell_height: px(20.0),
+            cols: 80,
+            rows: 24,
+        };
+        // 屏幕第 2 行（0-based line=2）、第 3 列右半格，回滚 display_offset=10 → buffer Line(-8)
+        let (pt, side) = grid_point_and_side(
+            Point {
+                x: px(8.0 + 37.0),
+                y: px(8.0 + 45.0),
+            },
+            metrics,
+            10,
+        );
+        assert_eq!(pt.line, Line(-8));
+        assert_eq!(pt.column, Column(3));
+        assert_eq!(side, Side::Right);
     }
 }

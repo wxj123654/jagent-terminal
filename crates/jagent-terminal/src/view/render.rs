@@ -61,6 +61,7 @@
 
 use crate::model::SessionListener;
 use crate::perf::PaintGuard;
+use crate::view::HoveredLink;
 use crate::view::box_drawing;
 use crate::view::colors::ColorPalette;
 use alacritty_terminal::grid::Dimensions;
@@ -190,6 +191,9 @@ pub struct TerminalRenderer {
     /// Whether the cursor block is drawn this frame (blink phase; set by
     /// the view before cloning the renderer into the canvas closure).
     pub cursor_visible: bool,
+
+    /// Currently hovered link (when Cmd/Ctrl is held over a valid file path or URL).
+    pub hovered_link: Option<HoveredLink>,
 }
 
 impl TerminalRenderer {
@@ -234,6 +238,7 @@ impl TerminalRenderer {
             line_height_multiplier,
             palette,
             cursor_visible: true,
+            hovered_link: None,
         }
     }
 
@@ -498,6 +503,7 @@ impl TerminalRenderer {
     /// Paint the marked (IME pre-edit) text at the cursor position with an
     /// underline, covering the terminal text behind it. Mirrors Zed's
     /// terminal: composition feedback lives in the terminal view layer.
+    #[allow(clippy::too_many_arguments)]
     fn paint_marked_text(
         &self,
         marked_text: &str,
@@ -850,6 +856,33 @@ impl TerminalRenderer {
                     window,
                     _cx,
                 );
+            }
+
+            // Fourth pass: 悬停链接下划线（Cmd/Ctrl 悬停在文件路径或 URL 上时绘制）。
+            if let Some((start_col, end_col)) = self
+                .hovered_link
+                .as_ref()
+                .and_then(|link| link.cols_for_line(line, num_cols))
+            {
+                let start_cell_fg = grid[AlacPoint::new(line, Column(start_col))].fg;
+                let underline_color = self.palette.resolve(start_cell_fg, colors);
+                let x = origin.x + self.cell_width * (start_col as f32);
+                let width = self.cell_width * ((end_col - start_col) as f32);
+                let underline_y = (y_base + self.cell_height - px(2.0)).max(y_base);
+                window.paint_quad(quad(
+                    Bounds {
+                        origin: Point { x, y: underline_y },
+                        size: Size {
+                            width,
+                            height: px(1.5),
+                        },
+                    },
+                    px(0.0),
+                    underline_color,
+                    Edges::<Pixels>::default(),
+                    transparent_black(),
+                    Default::default(),
+                ));
             }
         }
 

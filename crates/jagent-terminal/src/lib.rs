@@ -29,4 +29,7 @@ pub use model::{Event, TerminalModel, TerminalStyle};
 pub use perf::{PaintPerfSnapshot, take_paint_perf};
 pub use pool::{SessionEvent, SessionEventFn, TerminalPool, set_session_event_fn};
 pub use pty::SpawnOptions;
-pub use view::{ColorPalette, TerminalRenderer, TerminalView, keystroke_to_bytes};
+pub use view::{
+    ColorPalette, HoveredLink, TERMINAL_KEY_CONTEXT, TerminalLinkTarget, TerminalRenderer,
+    TerminalView, detect_link_at_point, keystroke_to_bytes,
+};
