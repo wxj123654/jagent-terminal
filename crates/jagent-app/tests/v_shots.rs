@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use gpui::{
     App, AppContext as _, Entity, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent,
-    VisualTestAppContext, point, px, size,
+    ScrollDelta, ScrollWheelEvent, TouchPhase, VisualTestAppContext, point, px, size,
 };
 use gpui_component::Root;
 use jagent_app::app::setup;
@@ -84,18 +84,22 @@ struct Rig {
     cx: VisualTestAppContext,
     window: gpui::AnyWindowHandle,
     out: PathBuf,
+    frame_ms: Vec<f64>,
 }
 
 impl Rig {
     /// 刷新 + 绘制一帧（shell_shot 同款：run_until_parked 后手动 draw 清屏）。
     fn draw(&mut self) {
         self.cx.run_until_parked();
+        let t0 = std::time::Instant::now();
         self.cx
             .update_window(self.window, |_, w, app| {
                 w.refresh();
                 w.draw(app).clear(app);
             })
             .expect("draw");
+        // [PERF] 单帧（强制全量 refresh）耗时，PERF=1 时在 shot 前汇总
+        self.frame_ms.push(t0.elapsed().as_secs_f64() * 1000.0);
     }
 
     /// 帧间隔 100ms 连续绘制，给异步任务（PTY 提示符 / git 流 / 浮层 deferred）留时间。
@@ -129,7 +133,62 @@ impl Rig {
         );
     }
 
+    /// [PERF] 连续 n 次滚轮（每次 dy 像素）：每次 = 事件派发 + run_until_parked + 一帧 draw（非强制 refresh，
+    /// 与真机「滚动 → notify → 重绘」一致）。打印事件 / 帧耗时分布。
+    fn scroll_bench(&mut self, label: &str, x: f32, y: f32, dy: f32, n: usize) {
+        let mut ev = Vec::new();
+        let mut fr = Vec::new();
+        for _ in 0..n {
+            let t0 = std::time::Instant::now();
+            self.cx.simulate_event(
+                self.window,
+                ScrollWheelEvent {
+                    position: point(px(x), px(y)),
+                    delta: ScrollDelta::Pixels(point(px(0.0), px(dy))),
+                    modifiers: Modifiers::default(),
+                    touch_phase: TouchPhase::Moved,
+                },
+            );
+            self.cx.run_until_parked();
+            let t1 = std::time::Instant::now();
+            self.cx
+                .update_window(self.window, |_, w, app| {
+                    w.draw(app).clear(app);
+                })
+                .expect("draw");
+            ev.push((t1 - t0).as_secs_f64() * 1000.0);
+            fr.push(t1.elapsed().as_secs_f64() * 1000.0);
+        }
+        let stat = |v: &mut Vec<f64>| {
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let avg = v.iter().sum::<f64>() / v.len() as f64;
+            format!(
+                "avg={avg:.2} p50={:.2} p95={:.2} max={:.2}",
+                v[v.len() / 2],
+                v[(v.len() * 95 / 100).min(v.len() - 1)],
+                v[v.len() - 1]
+            )
+        };
+        println!(
+            "[SCROLL] {label}: event+parked(ms) {} | draw(ms) {}",
+            stat(&mut ev),
+            stat(&mut fr)
+        );
+    }
+
     fn shot(&mut self, name: &str) {
+        if std::env::var("PERF").is_ok() && !self.frame_ms.is_empty() {
+            let mut v = self.frame_ms.clone();
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let avg = v.iter().sum::<f64>() / v.len() as f64;
+            let med = v[v.len() / 2];
+            let last = *self.frame_ms.last().unwrap();
+            println!(
+                "[PERF] {name}: frames={} avg={avg:.1}ms med={med:.1}ms max={:.1}ms last={last:.1}ms",
+                v.len(),
+                v[v.len() - 1]
+            );
+        }
         let img = self.cx.capture_screenshot(self.window).expect("shot");
         let p = self.out.join(name);
         img.save(&p).expect("save");
@@ -162,6 +221,7 @@ fn harness(
             cx,
             window: window.into(),
             out: out_dir(),
+            frame_ms: Vec::new(),
         },
         root,
         state,
@@ -205,7 +265,9 @@ fn seed_threads(s: &mut AppState, jt: &str, df: &str, cx: &mut App) -> String {
 
     // t-ime2：回复中（seed pendingReply: true → tab 上的 running 点）
     let t_ime2 = s.create_chat(Some(jt), cx).expect("chat");
-    let _ = s.threads.begin_send(&t_ime2, IME_M1, ConversationKind::Chat);
+    let _ = s
+        .threads
+        .begin_send(&t_ime2, IME_M1, ConversationKind::Chat);
     s.threads
         .finish_send(&t_ime2, ConversationKind::Chat, Ok(IME_M2.to_owned()));
     s.threads.rename(&t_ime2, "终端接入 IME");
@@ -312,42 +374,99 @@ fn mk_git_repo(dir: &Path) -> PathBuf {
         74 * 3600,
     );
     git(
-        &["commit", "-q", "--allow-empty", "-m", "TerminalPool：切走 retain，后台 PTY 照跑"],
+        &[
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "TerminalPool：切走 retain，后台 PTY 照跑",
+        ],
         50 * 3600,
     );
     git(
-        &["commit", "-q", "--allow-empty", "-m", "会话事件走全局通道：title / bell / exit"],
+        &[
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "会话事件走全局通道：title / bell / exit",
+        ],
         26 * 3600,
     );
     git(
-        &["commit", "-q", "--allow-empty", "-m", "终端外观走元素 props：字号/色板/光标闪烁实时生效"],
+        &[
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "终端外观走元素 props：字号/色板/光标闪烁实时生效",
+        ],
         25 * 3600,
     );
     git(&["tag", "v0.1"], 0);
     git(
-        &["commit", "-q", "--allow-empty", "-m", "键位参数化：四动作从 settings.keybindings 读"],
+        &[
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "键位参数化：四动作从 settings.keybindings 读",
+        ],
         5 * 3600,
     );
     // feat/sidebar-c：d3b55e8 → 回 main merge（seed c7a9f22）
     git(&["branch", "feat/sidebar-c"], 0);
     git(&["checkout", "-q", "feat/sidebar-c"], 0);
     git(
-        &["commit", "-q", "--allow-empty", "-m", "通知中心：铃铛 + 未读红点 + 全部已读"],
+        &[
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "通知中心：铃铛 + 未读红点 + 全部已读",
+        ],
         3 * 3600,
     );
     git(&["checkout", "-q", "main"], 0);
     git(&["branch", "fix/ime-candidate"], 0);
     git(&["branch", "dev"], 0);
     git(
-        &["merge", "--no-ff", "-q", "-m", "merge: feat/sidebar-c → main", "feat/sidebar-c"],
+        &[
+            "merge",
+            "--no-ff",
+            "-q",
+            "-m",
+            "merge: feat/sidebar-c → main",
+            "feat/sidebar-c",
+        ],
         2 * 3600,
     );
+    write(
+        "packages/app/src/git/WorkPanel.tsx",
+        "export const WorkPanel = () => <div />\nexport const DiffView = () => <div />\n",
+    );
+    write(
+        "packages/app/src/git/components/GitGraphView.tsx",
+        "export function GitGraphView() {\n  return <div />\n}\n",
+    );
+    git(&["add", "-A"], 3600);
     git(
-        &["commit", "-q", "--allow-empty", "-m", "工作面板：变更 tab + 内联 unified diff"],
+        &[
+            "commit",
+            "-q",
+            "-m",
+            "工作面板：变更 tab + 内联 unified diff\n\n对齐 vscode-git-graph 的行内详情（CDV）布局：\n- 左栏顶部固定 Commit / Parents / Author / Date 四行元数据\n- 分隔线下方独立可滚动区展示粗体标题与多行提交正文\n- 右栏采用单子目录自动折叠的紧凑文件树展示变更文件与 (+N | -M) 统计\n- 展开与切换选中行时通过 ListState::splice 增量更新，保持滚动视口零跳动\n- 嵌套滚动容器显式 overflow_hidden + items_stretch，消除异步加载正文时的居中偏移",
+        ],
         3600,
     );
     git(
-        &["commit", "-q", "--allow-empty", "-m", "侧栏方案 C：nav 行下移，头部只留收起钮"],
+        &[
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "侧栏方案 C：nav 行下移，头部只留收起钮",
+        ],
         12 * 60,
     );
     // 工作区变更（seed worktree.files 的文件名；行数与 seed 的 42/18 等不同）
@@ -359,8 +478,14 @@ fn mk_git_repo(dir: &Path) -> PathBuf {
         "packages/app/src/plane/WorkspaceList.tsx",
         "export function WorkspaceList() {\n  const rows = []\n  return <div>{rows}</div>\n}\n",
     );
-    write("packages/app/src/tokens.ts", "export const SIDEBAR_WIDTH = 264\n");
-    write("packages/ui/src/display/Icon.tsx", "export const Icon = () => null\n");
+    write(
+        "packages/app/src/tokens.ts",
+        "export const SIDEBAR_WIDTH = 264\n",
+    );
+    write(
+        "packages/ui/src/display/Icon.tsx",
+        "export const Icon = () => null\n",
+    );
     std::fs::remove_file(repo.join("packages/app/src/plane/ToolMenu.tsx")).unwrap();
     write(
         "design/j-agent-prototype.html",
@@ -375,11 +500,17 @@ fn mk_git_repo(dir: &Path) -> PathBuf {
 /// 5 项同款（Pi / Claude Code / Codex / Amp / Shell，label/description 一致）。
 fn v_empty() {
     let dir = tempfile::tempdir().unwrap();
-    let (mut rig, _, _) = harness(W, H, dir.path(), &dir.path().to_string_lossy(), |state, cx| {
-        state.update(cx, |s, _| {
-            seed_workspaces(s, "/Users/u/jagent-terminal");
-        });
-    });
+    let (mut rig, _, _) = harness(
+        W,
+        H,
+        dir.path(),
+        &dir.path().to_string_lossy(),
+        |state, cx| {
+            state.update(cx, |s, _| {
+                seed_workspaces(s, "/Users/u/jagent-terminal");
+            });
+        },
+    );
     rig.settle(2);
     rig.shot("v_empty.png");
 }
@@ -442,9 +573,7 @@ fn v_notif() {
                 .threads
                 .iter()
                 .find_map(|t| match t {
-                    Thread::Terminal(x)
-                        if x.custom_title.as_deref() == Some("同步 nvim 配置") =>
-                    {
+                    Thread::Terminal(x) if x.custom_title.as_deref() == Some("同步 nvim 配置") => {
                         Some(x.id.clone())
                     }
                     _ => None,
@@ -503,6 +632,24 @@ fn v_git() {
         .expect("open git graph");
     rig.settle(15); // dialog deferred + git log / branches 流式加载
     rig.shot("v_git.png");
+
+    // 选中第 2 行提交（含多行正文与多目录变更文件），验证行内 CDV 展开不跳动、顶部元数据与文件树完整可见
+    let second_sha = rig
+        .cx
+        .read(|app| {
+            state
+                .read(app)
+                .git_graph
+                .rows()
+                .get(1)
+                .map(|r| r.commit.sha.clone())
+        })
+        .expect("second commit sha");
+    rig.cx.update(|app| {
+        AppState::select_git_commit(&state, Some(second_sha), app);
+    });
+    rig.settle(8);
+    rig.shot("v_git_cdv.png");
 }
 
 /// 工作面板右栏：repo 变更文件（seed worktree 的 6 项），点顶栏 panelRight 钮
@@ -565,7 +712,184 @@ fn v_narrow() {
     rig.shot("v_narrow.png");
 }
 
+/// 输入控件巡检（`ONLY_INPUTS=1` 可单跑）：设置页 Presets 展开 Pi 卡（Input/Textarea）+ Terminal 分区
+/// （Number/Select/Font/Toggle）+ Appearance（Range）+ 重命名 / 添加工作区弹窗。
+fn v_inputs() {
+    let dir = tempfile::tempdir().unwrap();
+    let cwd = dir.path().to_string_lossy().into_owned();
+    let (mut rig, _, state) = harness(W, H, dir.path(), &cwd, |state, cx| {
+        state.update(cx, |s, cx| {
+            let (jt, df, _web) = seed_workspaces(s, &cwd);
+            seed_threads(s, &jt, &df, cx);
+        });
+    });
+    rig.settle(2);
+    rig.click(X_GEAR, H - 22.0);
+    rig.settle(3);
+    rig.click(566.0, 300.0); // Pi 卡展开
+    rig.settle(2);
+    rig.shot("i_preset.png");
+    rig.click(165.0, 182.0); // Terminal 分区
+    rig.settle(2);
+    rig.shot("i_terminal.png");
+    rig.click(165.0, 219.0); // Appearance 分区
+    rig.settle(2);
+    rig.shot("i_appearance.png");
+    rig.click(165.0, 121.0); // Presets：再点「+」默认预设下拉
+    rig.settle(2);
+    rig.click(860.0, 212.0);
+    rig.settle(2);
+    rig.shot("i_select.png");
+    // 关设置：窗口右上 ×（遮罩 occlude 后侧栏齿轮点不到，这正是要的行为）
+    rig.click(993.0, 60.0);
+    rig.settle(2);
+    rig.cx
+        .update_window(rig.window, |_, window, app| {
+            jagent_app::views::workspace_dialog::open(state.clone(), window, app);
+        })
+        .expect("ws dialog");
+    rig.settle(3);
+    rig.shot("i_wsdialog.png");
+}
+
+/// 大数据量 repo：git fast-import 造 n 个线性提交（无 checkout，秒级）。
+fn mk_big_repo(dir: &Path, n: usize) -> PathBuf {
+    let repo = dir.join("big");
+    std::fs::create_dir_all(&repo).unwrap();
+    let run = |args: &[&str]| {
+        assert!(
+            Command::new("git")
+                .args(args)
+                .current_dir(&repo)
+                .status()
+                .unwrap()
+                .success()
+        );
+    };
+    run(&["init", "-q", "-b", "main"]);
+    let mut stream = String::new();
+    let base = chrono::Local::now().timestamp() - (n as i64) * 600;
+    for i in 0..n {
+        let msg = format!("commit {i}: 调整滚动与渲染路径 (perf bench)");
+        stream += &format!(
+            "commit refs/heads/main\nmark :{m}\ncommitter you <you@x.io> {t} +0800\ndata {l}\n{msg}\n",
+            m = i + 1,
+            t = base + (i as i64) * 600,
+            l = msg.len()
+        );
+        if i > 0 {
+            stream += &format!("from :{i}\n");
+        }
+        let body = format!("line {i}\n");
+        stream += &format!(
+            "M 100644 inline f{}.txt\ndata {}\n{body}\n",
+            i % 50,
+            body.len()
+        );
+    }
+    use std::io::Write;
+    let mut child = Command::new("git")
+        .args(["fast-import", "--quiet"])
+        .current_dir(&repo)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(stream.as_bytes())
+        .unwrap();
+    assert!(child.wait().unwrap().success());
+    run(&["checkout", "-q", "-f", "main"]);
+    repo
+}
+
+/// 滚动基准（`SCROLL=1`）：Git 图 5000 提交 / 会话 200 条含 markdown 消息 / 侧栏 + 设置页。
+fn scroll_benches() {
+    let n: usize = std::env::var("SCROLL_N")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5000);
+    // Git 图
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = mk_big_repo(dir.path(), n);
+        let repo_str = repo.to_string_lossy().into_owned();
+        let (mut rig, _, state) = harness(W, H, dir.path(), &repo_str, |state, cx| {
+            state.update(cx, |s, cx| {
+                let (jt, _, _) = seed_workspaces(s, &repo_str);
+                s.spawn_from_preset("shell", Some(&jt), cx).expect("spawn");
+            });
+        });
+        rig.settle(3);
+        rig.cx
+            .update_window(rig.window, |_, window, app| {
+                git_graph::open(state.clone(), window, app);
+            })
+            .expect("open git graph");
+        rig.settle(40);
+        rig.scroll_bench(
+            &format!("git-graph({n} commits) 向下 40px"),
+            W / 2.0,
+            H / 2.0,
+            -40.0,
+            120,
+        );
+        rig.scroll_bench("git-graph 向上 40px", W / 2.0, H / 2.0, 40.0, 120);
+        rig.scroll_bench("git-graph 大跨度 600px", W / 2.0, H / 2.0, -600.0, 60);
+    }
+    // 会话面：200 条
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = dir.path().to_string_lossy().into_owned();
+        let (mut rig, _, _) = harness(W, H, dir.path(), &cwd, |state, cx| {
+            state.update(cx, |s, cx| {
+                let (jt, df, _) = seed_workspaces(s, &cwd);
+                seed_threads(s, &jt, &df, cx);
+                let t = s.create_chat(Some(&jt), cx).expect("chat");
+                for _ in 0..100 {
+                    let _ = s.threads.begin_send(&t, M1, ConversationKind::Chat);
+                    s.threads
+                        .finish_send(&t, ConversationKind::Chat, Ok(M2.to_owned()));
+                }
+                s.activate(ActiveTarget::Thread(t), cx);
+            });
+        });
+        rig.settle(8);
+        rig.scroll_bench("chat(200 条 markdown) 向上 40px", 700.0, H / 2.0, 40.0, 120);
+        rig.scroll_bench("chat 向下 40px", 700.0, H / 2.0, -40.0, 120);
+    }
+    // 侧栏（会话行） + 设置页
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = dir.path().to_string_lossy().into_owned();
+        let (mut rig, _, _) = harness(W, H, dir.path(), &cwd, |state, cx| {
+            state.update(cx, |s, cx| {
+                let (jt, df, _) = seed_workspaces(s, &cwd);
+                seed_threads(s, &jt, &df, cx);
+                for _ in 0..60 {
+                    let _ = s.create_chat(Some(&jt), cx);
+                }
+            });
+        });
+        rig.settle(5);
+        rig.scroll_bench("sidebar(70 行) 向下 30px", 120.0, 300.0, -30.0, 100);
+        rig.click(X_GEAR, H - 22.0);
+        rig.settle(4);
+        rig.scroll_bench("settings 向下 30px", 700.0, 400.0, -30.0, 100);
+    }
+}
+
 fn main() {
+    if std::env::var("SCROLL").is_ok() {
+        scroll_benches();
+        return;
+    }
+    if std::env::var("ONLY_INPUTS").is_ok() {
+        v_inputs();
+        return;
+    }
     v_empty();
     v_chat();
     v_settings();
@@ -574,8 +898,9 @@ fn main() {
     v_panel();
     v_addpop();
     v_narrow();
+    v_inputs();
 
-    // 验收：8 张都在且 >10KB（非空白量级）
+    // 验收：全部截图都在且 >10KB（非空白量级）
     let out = out_dir();
     for name in [
         "v_empty.png",
@@ -583,9 +908,15 @@ fn main() {
         "v_settings.png",
         "v_notif.png",
         "v_git.png",
+        "v_git_cdv.png",
         "v_panel.png",
         "v_addpop.png",
         "v_narrow.png",
+        "i_preset.png",
+        "i_terminal.png",
+        "i_appearance.png",
+        "i_select.png",
+        "i_wsdialog.png",
     ] {
         let p = out.join(name);
         let len = p.metadata().expect("截图应已生成").len();

@@ -71,10 +71,10 @@ fn main() {
         cx.read(|app| state.read(app).threads.active().clone()),
         ActiveTarget::Thread(t1.clone())
     );
-    // 行位置（原型几何）：顶栏 44 + tab 条 38 + 侧栏头 46 + nav 组 86（8+34+2+34+8）
-    // + 区头 40（mt12+28）+ 滚动区 pt2 + ws-row 34 + ws-body mt1；行高 32。
-    // 第 1 行中线 = 82+46+86+40+2+34+1+16。
-    let row_y = 44.0 + 38.0 + 46.0 + 86.0 + 40.0 + 2.0 + 34.0 + 1.0 + 16.0;
+    // 行位置（新全高侧栏几何）：侧栏头 40 + 并排双胶囊 nav 组 44（pt4+32+pb8）
+    // + 区头 32（mt4+28）+ 滚动区 pt2 + ws-row 34 + ws-body mt1；行高 30。
+    // 第 1 行中线 = 40 + 44 + 32 + 2 + 34 + 1 + 15 = 168。
+    let row_y = 40.0 + 44.0 + 32.0 + 2.0 + 34.0 + 1.0 + 15.0;
     cx.simulate_event(
         window.into(),
         gpui::MouseDownEvent {

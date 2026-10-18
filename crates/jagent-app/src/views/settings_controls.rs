@@ -20,34 +20,36 @@ use std::rc::Rc;
 
 use gpui::{
     App, Bounds, Entity, FocusHandle, InteractiveElement as _, IntoElement, MouseButton,
-    MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Stateful,
+    MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, RenderOnce, Stateful,
     StatefulInteractiveElement as _, Styled as _, WeakEntity, Window, div,
     prelude::FluentBuilder as _, px,
 };
 use gpui_base::Popover;
+use gpui_base::actions::Confirm;
 use gpui_component::input::{Input, InputState};
 
 use crate::icons::{IconName, icon};
-use crate::theme::{colors, hex, rgba_css};
+use crate::theme::{accent_alpha, colors, hex};
+use crate::views::field;
 use crate::views::popup::{PopupTrigger, overlay_shell};
 use crate::views::settings::SettingsView;
 use crate::views::settings_defs::FontItem;
 
-/// 焦点环（gpuix `focusRing()`：贴元素 2px spread 的 ring 色）。
+/// 焦点环（贴元素 2px spread 的 ring 色）。
 pub fn focus_ring() -> Vec<gpui::BoxShadow> {
-    vec![gpui::BoxShadow::new(px(0.), px(0.), rgba_css(97, 175, 239, 0.38)).spread_radius(px(2.))]
+    vec![gpui::BoxShadow::new(px(0.), px(0.), accent_alpha(0.38)).spread_radius(px(2.))]
 }
 
-/// 菜单行（.sel-item / .font-row：26 高 r4，hover surface）
+/// 菜单行（.sel-item / .font-row：R9 增补 834 行 min-h 30 / r6，hover surface）
 fn menu_row(id: gpui::SharedString) -> Stateful<gpui::Div> {
     div()
         .id(id)
         .flex()
         .items_center()
         .gap(px(6.0))
-        .h(px(26.0))
+        .h(px(30.0))
         .px(px(8.0))
-        .rounded(px(4.0))
+        .rounded(px(6.0))
         .text_size(px(12.0))
         .text_color(hex(colors::TEXT))
         .cursor_pointer()
@@ -92,7 +94,10 @@ pub fn toggle(
         .cursor_pointer()
         .when(focused, |d| d.shadow(focus_ring()))
         .when(checked, |d| d.bg(hex(colors::ACCENT)))
-        .when(!checked, |d| d.bg(hex(colors::SURFACE_HOVER)))
+        // 关态：原型 surfaceHover 轨在 st-card（surface 系）上几乎隐形——
+        // 提一档到 borderSubtle，并给 knob 用 muted，保证「关」也读得出来
+        .when(!checked, |d| d.bg(hex(colors::BORDER_SUBTLE)))
+        .hover(|d| d.opacity(0.9))
         .child(
             // knob：top 2，左 2 ↔ 左 16（34-16-2），无边框直跳
             div()
@@ -103,7 +108,7 @@ pub fn toggle(
                 .size(px(16.0))
                 .rounded_full()
                 .when(checked, |d| d.bg(gpui::white()))
-                .when(!checked, |d| d.bg(hex(colors::FAINT))),
+                .when(!checked, |d| d.bg(hex(colors::MUTED))),
         )
         .on_click(move |_, window, cx| on_toggle.clone()(window, cx))
         .on_key_down(move |event, window, cx| {
@@ -114,96 +119,284 @@ pub fn toggle(
         })
 }
 
-// ── SelectField（.sel-trig 220×30 + chevron；.sel-pop min-140 菜单 + 勾选槽）──
+// ── SelectField（.sel-trig 220×30 + chevron；.sel-pop 同宽菜单 + 勾选槽）──
 //
-// options 用 owned Vec：预设「+」默认下拉的选项随 settings 动态变化，
-// 不要求调用方构造 'static。
+// 键盘契约（原型 Radix Select 同款）：Tab 可聚焦（焦点环）→ Enter/Space/↓
+// 打开 → ↑/↓ 循环移动高亮（hover 同步高亮）→ Enter 提交 → Esc 关闭；关闭后
+// 焦点回到触发器（Popover 内建归还）。
+//
+// 实现要点（gpui 事件模型）：
+// - 打开态受控：`use_keyed_state` 存 open / 高亮 / 两个 focus handle，Popover
+//   用 `.open(open)` 同步、`on_open_change` 回写（外点 / Esc / 点触发器都经此）；
+// - 菜单面 `track_focus(menu_focus)` 并交给 `Popover::track_focus`：打开即
+//   聚焦菜单面，键盘事件的 dispatch path 才经过菜单面的 listener；
+// - Enter 在 Popover 上下文被绑成 `Confirm`（会 toggle 关闭），所以提交要用
+//   菜单面上的 `on_action(Confirm)` 截获（冒泡阶段比 Popover 自身更靠里）。
+//
+// options 用 owned Vec：预设「+」默认下拉的选项随 settings 动态变化。
+
+/// 选择回调（值 id）
+type SelectFn = Rc<dyn Fn(&str, &mut Window, &mut App)>;
+/// 按下标提交并收起
+type CommitFn = Rc<dyn Fn(usize, &mut Window, &mut App)>;
+
+/// 选择器默认宽度（触发器与菜单同宽）
+pub const SELECT_W: f32 = 220.0;
 
 pub fn select_field(
     id: &str,
     value: &str,
     options: Vec<(String, String)>,
-    on_select: impl Fn(&str, &mut Window, &mut App) + Clone + 'static,
-) -> impl IntoElement {
-    let id = id.to_owned();
-    let value = value.to_owned();
-    let options_for_trigger = options.clone();
-    Popover::new(gpui::SharedString::from(id.clone()))
-        .anchor(gpui::Anchor::TopLeft)
-        .offset(px(4.0))
-        .trigger(PopupTrigger::new({
-            let id = id.clone();
-            let value = value.clone();
-            let options_for_trigger = options_for_trigger.clone();
-            move |open| {
-                // 触发器（.sel-trig：open/focus 时 accent 边；值 12px + chevron muted）
-                let label = options_for_trigger
-                    .iter()
-                    .find(|(v, _)| *v == value)
-                    .map(|(_, l)| l.clone())
-                    .unwrap_or_else(|| value.clone());
-                div()
-                    .id(gpui::SharedString::from(format!("{id}-trig")))
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap(px(8.0))
-                    .w(px(220.0))
-                    .h(px(30.0))
-                    .pl(px(10.0))
-                    .pr(px(8.0))
-                    .rounded(px(8.0))
-                    .cursor_pointer()
-                    .bg(hex(colors::INPUT_BG))
-                    .border_1()
-                    .border_color(control_border(open))
-                    .hover(|d| d.border_color(hex(colors::FOCUS_BORDER)))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .text_size(px(12.0))
-                            .text_color(hex(colors::TEXT_BRIGHT))
-                            .child(label),
-                    )
-                    .child(icon(IconName::ChevronDown, 12.0, hex(colors::MUTED)))
-                    .into_any_element()
-            }
-        }))
-        .content({
-            let id = id.clone();
-            let value = value.clone();
-            let options = Rc::new(options);
-            move |_, _, cx| {
-                // 选中一项后 dismiss（统一浮层菜单同模式）；
-                // 行 on_click 需要 'static：v/value/popover 各自 clone
-                let popover = cx.entity();
-                let mut surface = overlay_shell("sel-pop").min_w(px(140.0)).p(px(4.0));
-                for (v, l) in options.iter() {
-                    let on_select = on_select.clone();
-                    let popover = popover.clone();
-                    let selected = v == &value;
-                    let v = v.clone();
-                    surface = surface.child(
-                        menu_row(gpui::SharedString::from(format!("{id}-item-{v}")))
-                            .child(check_slot(selected))
-                            .child(div().child(l.clone()))
-                            .on_click(move |_, window, cx| {
-                                cx.stop_propagation();
-                                on_select(&v, window, cx);
-                                popover.update(cx, |s, cx| s.dismiss(window, cx));
-                            }),
-                    );
-                }
-                surface.into_any_element()
-            }
-        })
+    on_select: impl Fn(&str, &mut Window, &mut App) + 'static,
+) -> SelectField {
+    SelectField {
+        id: gpui::SharedString::from(id.to_owned()),
+        value: value.to_owned(),
+        options,
+        width: SELECT_W,
+        on_select: Rc::new(on_select),
+    }
 }
 
-// ── NumberInput（.num-in 76×30 + 自绘步进列 18 宽；↑/↓ 钮步进）─────────────
+/// 选择器每帧的跨帧状态（挂 element state，按 id 隔离）
+struct SelectUi {
+    open: bool,
+    hi: usize,
+    trigger_focus: FocusHandle,
+    menu_focus: FocusHandle,
+}
+
+#[derive(IntoElement)]
+pub struct SelectField {
+    id: gpui::SharedString,
+    value: String,
+    options: Vec<(String, String)>,
+    width: f32,
+    on_select: SelectFn,
+}
+
+impl SelectField {
+    #[allow(dead_code)]
+    pub fn width(mut self, width: f32) -> Self {
+        self.width = width;
+        self
+    }
+}
+
+/// 高亮循环移动（空列表恒 0）
+pub fn cycle_index(cur: usize, len: usize, delta: isize) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    (cur as isize + delta).rem_euclid(len as isize) as usize
+}
+
+impl RenderOnce for SelectField {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let Self {
+            id,
+            value,
+            options,
+            width,
+            on_select,
+        } = self;
+        let ui =
+            window.use_keyed_state(gpui::SharedString::from(format!("{id}-ui")), cx, |_, cx| {
+                SelectUi {
+                    open: false,
+                    hi: 0,
+                    trigger_focus: cx.focus_handle().tab_stop(true),
+                    menu_focus: cx.focus_handle(),
+                }
+            });
+        let (open, trigger_focus, menu_focus) = {
+            let u = ui.read(cx);
+            (u.open, u.trigger_focus.clone(), u.menu_focus.clone())
+        };
+        let trigger_focused = trigger_focus.is_focused(window);
+        let current_idx = options.iter().position(|(v, _)| *v == value).unwrap_or(0);
+        let label = options
+            .iter()
+            .find(|(v, _)| *v == value)
+            .map(|(_, l)| l.clone())
+            .unwrap_or_else(|| value.clone());
+        let options = Rc::new(options);
+
+        Popover::new(id.clone())
+            .anchor(gpui::Anchor::TopLeft)
+            .offset(px(4.0))
+            .open(open)
+            .track_focus(&menu_focus)
+            .on_open_change({
+                let ui = ui.clone();
+                move |next, _, cx| {
+                    ui.update(cx, |u, cx| {
+                        u.open = *next;
+                        // 每次打开高亮回到当前值（原型 Radix 同款）
+                        if *next {
+                            u.hi = current_idx;
+                        }
+                        cx.notify();
+                    });
+                }
+            })
+            .trigger(PopupTrigger::new({
+                let id = id.clone();
+                let ui = ui.clone();
+                move |open| {
+                    let ui = ui.clone();
+                    div()
+                        .id(gpui::SharedString::from(format!("{id}-trig")))
+                        .debug_selector({
+                            let id = id.clone();
+                            move || format!("{id}-trig")
+                        })
+                        .track_focus(&trigger_focus)
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap(px(8.0))
+                        .w(px(width))
+                        .h(px(field::FIELD_H))
+                        .pl(px(10.0))
+                        .pr(px(8.0))
+                        .rounded(px(field::FIELD_RADIUS))
+                        .cursor_pointer()
+                        .bg(hex(colors::INPUT_BG))
+                        .border_1()
+                        .border_color(control_border(open || trigger_focused))
+                        .when(trigger_focused && !open, |d| d.shadow(focus_ring()))
+                        .hover(|d| d.border_color(hex(colors::FOCUS_BORDER)))
+                        // ↓ 也能打开（Enter/Space 由 Popover 的 Confirm 绑定负责）
+                        .on_key_down(move |ev, _, cx| {
+                            if ev.keystroke.key == "down" && !ev.keystroke.modifiers.modified() {
+                                cx.stop_propagation();
+                                ui.update(cx, |u, cx| {
+                                    u.open = true;
+                                    u.hi = current_idx;
+                                    cx.notify();
+                                });
+                            }
+                        })
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_ellipsis()
+                                .text_size(px(field::FIELD_TEXT))
+                                .text_color(hex(colors::TEXT_BRIGHT))
+                                .child(label.clone()),
+                        )
+                        .child(icon(
+                            if open {
+                                IconName::ChevronUp
+                            } else {
+                                IconName::ChevronDown
+                            },
+                            12.0,
+                            hex(colors::MUTED),
+                        ))
+                        .into_any_element()
+                }
+            }))
+            .content({
+                let id = id.clone();
+                move |_, _, cx| {
+                    let popover = cx.entity();
+                    let hi = ui.read(cx).hi.min(options.len().saturating_sub(1));
+                    let len = options.len();
+                    let commit: CommitFn = {
+                        let options = options.clone();
+                        let on_select = on_select.clone();
+                        let popover = popover.clone();
+                        Rc::new(move |i, window, cx| {
+                            if let Some((v, _)) = options.get(i) {
+                                on_select(v, window, cx);
+                            }
+                            popover.update(cx, |s, cx| s.dismiss(window, cx));
+                        })
+                    };
+                    let mut surface = overlay_shell(gpui::SharedString::from(format!("{id}-pop")))
+                        .debug_selector({
+                            let id = id.clone();
+                            move || format!("{id}-pop")
+                        })
+                        .track_focus(&menu_focus)
+                        .w(px(width))
+                        .p(px(4.0))
+                        .on_action({
+                            let commit = commit.clone();
+                            move |_: &Confirm, window, cx| commit(hi, window, cx)
+                        })
+                        .on_key_down({
+                            let ui = ui.clone();
+                            move |ev, _, cx| {
+                                let delta = match ev.keystroke.key.as_str() {
+                                    "down" => 1,
+                                    "up" => -1,
+                                    _ => return,
+                                };
+                                cx.stop_propagation();
+                                ui.update(cx, |u, cx| {
+                                    u.hi = cycle_index(u.hi, len, delta);
+                                    cx.notify();
+                                });
+                            }
+                        });
+                    for (i, (v, l)) in options.iter().enumerate() {
+                        let commit = commit.clone();
+                        let ui = ui.clone();
+                        surface = surface.child(
+                            menu_row(gpui::SharedString::from(format!("{id}-item-{v}")))
+                                .debug_selector({
+                                    let sel = format!("{id}-item-{v}");
+                                    move || sel
+                                })
+                                .when(i == hi, |d| d.bg(hex(colors::SURFACE)))
+                                .child(check_slot(*v == value))
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .overflow_hidden()
+                                        .whitespace_nowrap()
+                                        .text_ellipsis()
+                                        .when(*v == value, |d| {
+                                            d.text_color(hex(colors::TEXT_BRIGHT))
+                                        })
+                                        .child(l.clone()),
+                                )
+                                .on_hover(move |hovered, _, cx| {
+                                    if *hovered {
+                                        ui.update(cx, |u, cx| {
+                                            if u.hi != i {
+                                                u.hi = i;
+                                                cx.notify();
+                                            }
+                                        });
+                                    }
+                                })
+                                .on_click(move |_, window, cx| {
+                                    cx.stop_propagation();
+                                    commit(i, window, cx);
+                                }),
+                        );
+                    }
+                    surface.into_any_element()
+                }
+            })
+    }
+}
+
+// ── NumberInput（.num-in 30 高 + mono 值 + 自绘步进列 18 宽；↑/↓ 钮步进）──
+//
+// 宽 96：scrollback 上限 100000（6 位）在 12px mono 下约 44px，76 宽扣掉步进列
+// 与库 Input 的默认 10px 水平内边距后只剩 ~30px，会被裁成「100(」。
+
+/// 数字框宽度
+pub const NUMBER_W: f32 = 96.0;
 
 pub fn number_input(
     id: &str,
@@ -214,36 +407,37 @@ pub fn number_input(
     div()
         .flex()
         .items_center()
-        .w(px(76.0))
-        .h(px(30.0))
+        .w(px(NUMBER_W))
+        .h(px(field::FIELD_H))
         .flex_shrink_0()
-        .rounded(px(8.0))
+        .rounded(px(field::FIELD_RADIUS))
         .bg(hex(colors::INPUT_BG))
         .border_1()
         .border_color(control_border(focused))
         .when(focused, |d| d.shadow(focus_ring()))
+        .overflow_hidden()
         .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .h_full()
-                .pl(px(8.0))
-                .pr(px(4.0))
-                .child(
-                    Input::new(state)
-                        .appearance(false)
-                        .h_full()
-                        .text_size(px(12.0)),
-                ),
+            div().flex_1().min_w_0().h_full().pl(px(10.0)).child(
+                Input::new(state)
+                    .appearance(false)
+                    .h_full()
+                    // 库默认 input_px(10)：外层已给 pl 10，这里清零免得双倍
+                    .px(px(0.0))
+                    .font_family(field::mono_family())
+                    .text_size(px(field::FIELD_TEXT))
+                    .text_color(hex(colors::TEXT_BRIGHT)),
+            ),
         )
         .child(
-            // 步进列（gpuix NumberInput：18 宽，↑/↓ 各占半，hover surfaceHover）
+            // 步进列（18 宽，左分隔线；↑/↓ 各占半，hover surfaceHover）
             div()
                 .flex()
                 .flex_col()
                 .w(px(18.0))
                 .self_stretch()
                 .flex_shrink_0()
+                .border_l_1()
+                .border_color(hex(colors::BORDER_SUBTLE))
                 .child(stepper_button(
                     gpui::SharedString::from(format!("{id}-inc")),
                     IconName::ChevronUp,
@@ -631,4 +825,117 @@ fn font_trigger(value: &str, active: bool) -> impl IntoElement {
                 .child(value.to_owned()),
         )
         .child(icon(IconName::ChevronDown, 12.0, hex(colors::MUTED)))
+}
+
+#[cfg(test)]
+mod select_tests {
+    use std::cell::RefCell;
+
+    use gpui::{Context, Modifiers, Render, TestAppContext};
+
+    use super::*;
+
+    #[test]
+    fn cycle_index_wraps_both_ways_and_tolerates_empty() {
+        assert_eq!(cycle_index(0, 3, 1), 1);
+        assert_eq!(cycle_index(2, 3, 1), 0, "↓ 到底回首");
+        assert_eq!(cycle_index(0, 3, -1), 2, "↑ 到顶回尾");
+        assert_eq!(cycle_index(5, 0, 1), 0);
+    }
+
+    struct Harness {
+        value: Rc<RefCell<String>>,
+    }
+
+    impl Render for Harness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let value = self.value.clone();
+            let current = value.borrow().clone();
+            div().p(px(20.0)).child(select_field(
+                "sel",
+                &current,
+                vec![
+                    ("a".into(), "Alpha".into()),
+                    ("b".into(), "Beta".into()),
+                    ("c".into(), "Gamma".into()),
+                ],
+                move |v, _, _| *value.borrow_mut() = v.to_owned(),
+            ))
+        }
+    }
+
+    fn setup(cx: &mut TestAppContext) -> (Rc<RefCell<String>>, &mut gpui::VisualTestContext) {
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            crate::theme::install(cx).expect("主题安装");
+        });
+        let value = Rc::new(RefCell::new("a".to_owned()));
+        let (_, vcx) = cx.add_window_view({
+            let value = value.clone();
+            move |_, _| Harness { value }
+        });
+        vcx.update(|window, cx| window.draw(cx).clear(cx));
+        (value, vcx)
+    }
+
+    fn redraw(cx: &mut gpui::VisualTestContext) {
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+    }
+
+    /// 菜单与触发器同宽（原型 Radix Select 的 trigger-width 菜单）。
+    #[gpui::test]
+    fn menu_matches_trigger_width_and_click_picks(cx: &mut TestAppContext) {
+        let (value, cx) = setup(cx);
+        let trig = cx.debug_bounds("sel-trig").expect("触发器在屏");
+        assert_eq!(trig.size.width, px(SELECT_W));
+        cx.simulate_click(trig.center(), Modifiers::default());
+        redraw(cx);
+        let pop = cx.debug_bounds("sel-pop").expect("点开后菜单在屏");
+        assert_eq!(pop.size.width, trig.size.width, "菜单与触发器同宽");
+        let item = cx.debug_bounds("sel-item-c").expect("选项在屏").center();
+        cx.simulate_click(item, Modifiers::default());
+        redraw(cx);
+        assert_eq!(*value.borrow(), "c");
+        assert!(cx.debug_bounds("sel-pop").is_none(), "选中后收起");
+    }
+
+    /// 键盘：打开后 ↓↓ 从当前值（Alpha）移到 Gamma，Enter 提交并收起；
+    /// 再打开 ↑ 从 Gamma 回到 Beta，Esc 关闭不提交。
+    #[gpui::test]
+    fn keyboard_navigates_commits_and_escapes(cx: &mut TestAppContext) {
+        let (value, cx) = setup(cx);
+        let trig = cx.debug_bounds("sel-trig").expect("触发器在屏").center();
+        cx.simulate_click(trig, Modifiers::default());
+        redraw(cx);
+        assert!(cx.debug_bounds("sel-pop").is_some());
+        cx.simulate_keystrokes("down down");
+        redraw(cx);
+        cx.simulate_keystrokes("enter");
+        redraw(cx);
+        assert_eq!(*value.borrow(), "c", "↓↓ + Enter 选中第三项");
+        assert!(cx.debug_bounds("sel-pop").is_none(), "Enter 提交后收起");
+
+        cx.simulate_click(trig, Modifiers::default());
+        redraw(cx);
+        cx.simulate_keystrokes("up");
+        redraw(cx);
+        cx.simulate_keystrokes("escape");
+        redraw(cx);
+        assert!(cx.debug_bounds("sel-pop").is_none(), "Esc 关闭");
+        assert_eq!(*value.borrow(), "c", "Esc 不提交");
+
+        // 焦点归还触发器：Enter 直接重开（键盘全程不碰鼠标）
+        cx.simulate_keystrokes("enter");
+        redraw(cx);
+        assert!(
+            cx.debug_bounds("sel-pop").is_some(),
+            "触发器聚焦时 Enter 打开"
+        );
+        cx.simulate_keystrokes("escape");
+        redraw(cx);
+        cx.simulate_keystrokes("down");
+        redraw(cx);
+        assert!(cx.debug_bounds("sel-pop").is_some(), "触发器聚焦时 ↓ 打开");
+    }
 }

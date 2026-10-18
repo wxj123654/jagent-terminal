@@ -10,11 +10,12 @@ use gpui::{
 use gpui_component::{
     ActiveTheme, WindowExt as _,
     button::{Button, ButtonVariants as _},
-    input::{Input, InputEvent, InputState},
+    input::{InputEvent, InputState},
     v_flex,
 };
 
 use crate::state::{AppState, StateChanged};
+use crate::views::field;
 
 /// 重命名目标：会话或工作区（同一弹窗形态）
 #[derive(Clone, Debug)]
@@ -65,7 +66,7 @@ impl Render for RenameView {
         let this = cx.entity();
         v_flex()
             .gap_3()
-            .child(Input::new(&self.input))
+            .child(field::text_input(&self.input))
             .child(
                 div().flex().flex_row().justify_end().child(
                     Button::new("rename-ok").primary().label("确定").on_click(

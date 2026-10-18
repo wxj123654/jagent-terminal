@@ -22,8 +22,8 @@ use jagent_core::presets::TerminalPreset;
 use jagent_core::settings::{FsAdapter, Settings, SettingsStore};
 use jagent_core::threads::{
     ActiveTarget, ConversationKind, Effects, SessionEvent as CoreSessionEvent, SpawnRequest,
-    StoreError, Thread, ThreadStore, Workspace, echo_reply, parse_workspace_state,
-    serialize_workspace_state,
+    StoreError, Thread, ThreadStore, Workspace, echo_reply, parse_persisted_acp_threads,
+    parse_workspace_state, serialize_workspace_and_acp_state, serialize_workspace_state,
 };
 use jagent_terminal::{SessionEvent as TermEvent, SpawnOptions, TerminalPool};
 
@@ -59,6 +59,47 @@ fn open_in_system_app(path: &str) {
         spawn_ignore(Command::new("open").arg(path));
     } else {
         spawn_ignore(Command::new("xdg-open").arg(path));
+    }
+}
+
+/// 已派发的系统桌面通知记录（供宿主与单元测试验证 `notifications.desktop` / `notifications.sound`）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DesktopNotificationRecord {
+    pub thread_id: String,
+    pub title: String,
+    pub body: String,
+    pub sound: bool,
+}
+
+/// 调用操作系统原生通知工具发送桌面通知（fire-and-forget，不阻塞 UI 线程）。
+#[cfg(not(test))]
+fn send_system_desktop_notification(title: &str, body: &str, sound: bool) {
+    use std::process::{Command, Stdio};
+    let spawn_ignore = |cmd: &mut Command| {
+        let _ = cmd
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+    };
+    if cfg!(target_os = "macos") {
+        let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
+        let script = if sound {
+            format!(
+                r#"display notification "{}" with title "{}" sound name "Glass""#,
+                esc(body),
+                esc(title)
+            )
+        } else {
+            format!(
+                r#"display notification "{}" with title "{}""#,
+                esc(body),
+                esc(title)
+            )
+        };
+        spawn_ignore(Command::new("osascript").args(["-e", &script]));
+    } else if cfg!(target_os = "linux") {
+        spawn_ignore(Command::new("notify-send").args([title, body]));
     }
 }
 
@@ -163,6 +204,17 @@ pub struct AppState {
     acp: std::collections::HashMap<String, crate::acp_io::AcpConnection>,
     /// Cancellation token 在 spawn 前注册，可安全处理关闭与后台进程创建之间的竞态。
     acp_disposers: std::collections::HashMap<String, crate::acp_io::AcpCancellation>,
+    /// 正在后台进行预握手的 ACP 会话集合。
+    acp_connecting: std::collections::HashSet<String>,
+    /// 连接繁忙期间暂存的配置变更请求（thread_id → Vec<(config_id, value, source)>）。
+    acp_pending_configs:
+        std::collections::HashMap<String, Vec<(String, String, jagent_core::acp::AcpConfigSource)>>,
+    /// 各 ACP 会话缓存的 `session/list` 历史会话列表（thread_id → Vec<AcpSessionSummary>）。
+    acp_sessions: std::collections::HashMap<String, Vec<jagent_core::acp::AcpSessionSummary>>,
+    /// 正在后台拉取 `session/list` 或执行 `session/load` 的会话集合。
+    acp_loading_sessions: std::collections::HashSet<String>,
+    /// 最近派发的系统桌面通知历史（上限 32 条）。
+    pub dispatched_notifications: Vec<DesktopNotificationRecord>,
 }
 
 impl EventEmitter<StateChanged> for AppState {}
@@ -173,7 +225,9 @@ impl AppState {
         use jagent_core::settings::FileAdapter;
         let settings = SettingsStore::init(FsAdapter::new(dir.join("settings.json")))?;
         let workspace_file = FsAdapter::new(dir.join("state.json"));
-        let workspaces = parse_workspace_state(workspace_file.read()?.as_deref());
+        let raw_state = workspace_file.read()?;
+        let workspaces = parse_workspace_state(raw_state.as_deref());
+        let persisted_acp = parse_persisted_acp_threads(raw_state.as_deref());
         let effects = GuiEffects::new(default_cwd.clone());
         effects.set_close_on_exit(settings.get().terminal.close_on_exit);
         let first_run = workspaces.is_empty();
@@ -182,6 +236,9 @@ impl AppState {
             // 首启：空列表 → 默认工作区（目录 basename 为名）。add_workspace 会置 dirty，
             // 随后第一次 flush 把它写进 state.json。
             threads.add_workspace("", &default_cwd);
+        }
+        if !persisted_acp.is_empty() {
+            threads.restore_persisted_acp_threads(persisted_acp);
         }
         Ok(Self {
             threads,
@@ -195,14 +252,19 @@ impl AppState {
             workspace_file,
             acp: Default::default(),
             acp_disposers: Default::default(),
+            acp_connecting: Default::default(),
+            acp_pending_configs: Default::default(),
+            acp_sessions: Default::default(),
+            acp_loading_sessions: Default::default(),
+            dispatched_notifications: Vec::new(),
         })
     }
 
-    /// 兑现 core 记下的副作用并持久化：销毁 PTY、落盘 workspaces、落盘 settings。
+    /// 兑现 core 记下的副作用并持久化：销毁 PTY、派发桌面通知、落盘 workspaces、落盘 settings。
     /// 视图在每次改状态后调用（`update` 内，已持有 `&mut App`）。
     pub fn flush(&mut self, cx: &mut App) {
         use jagent_core::settings::FileAdapter as _;
-        let (destroy, _notify, dispose, to_open) = {
+        let (destroy, notify_ids, dispose, to_open) = {
             let mut log = self.effects.log.borrow_mut();
             (
                 std::mem::take(&mut log.to_destroy),
@@ -214,8 +276,42 @@ impl AppState {
         for path in to_open {
             open_in_system_app(&path);
         }
+        let notif_cfg = self.settings.get().notifications.clone();
+        if notif_cfg.desktop {
+            for tid in notify_ids {
+                let (title, body) = self
+                    .threads
+                    .notices
+                    .iter()
+                    .rev()
+                    .find(|n| n.thread_id == tid)
+                    .map(|n| (format!("j-agent · {}", n.sub), n.text.clone()))
+                    .or_else(|| {
+                        self.threads
+                            .thread(&tid)
+                            .map(|t| ("j-agent".to_owned(), format!("「{}」等待注意", t.title())))
+                    })
+                    .unwrap_or_else(|| ("j-agent".to_owned(), "会话状态更新".to_owned()));
+                #[cfg(not(test))]
+                send_system_desktop_notification(&title, &body, notif_cfg.sound);
+                if self.dispatched_notifications.len() >= 32 {
+                    self.dispatched_notifications.remove(0);
+                }
+                self.dispatched_notifications
+                    .push(DesktopNotificationRecord {
+                        thread_id: tid,
+                        title,
+                        body,
+                        sound: notif_cfg.sound,
+                    });
+            }
+        }
         for thread_id in dispose {
             self.acp.remove(&thread_id);
+            self.acp_connecting.remove(&thread_id);
+            self.acp_pending_configs.remove(&thread_id);
+            self.acp_sessions.remove(&thread_id);
+            self.acp_loading_sessions.remove(&thread_id);
             if let Some(disposer) = self.acp_disposers.remove(&thread_id) {
                 disposer.cancel();
             }
@@ -228,7 +324,10 @@ impl AppState {
         if self.threads.take_workspaces_dirty() {
             let _ = self
                 .workspace_file
-                .write(&serialize_workspace_state(&self.threads.workspaces));
+                .write(&serialize_workspace_and_acp_state(
+                    &self.threads.workspaces,
+                    &self.threads.threads,
+                ));
         }
         #[cfg(test)]
         if let Some(message) = self.settings_write_failure.take() {
@@ -423,13 +522,20 @@ impl AppState {
         }
     }
 
-    /// Git 图的挂载目录：当前工作区的目录；没有工作区时用启动目录。
+    /// Git 图的挂载目录：当前工作区的目录；若为未归属终端会话则取终端 cwd；兜底用启动目录。
     pub fn git_cwd(&self) -> String {
         let id = self.active_workspace_id();
-        self.threads
-            .workspace(&id)
-            .map(|w| w.path.clone())
-            .unwrap_or_else(|| self.effects.default_cwd())
+        if let Some(w) = self.threads.workspace(&id) {
+            return w.path.clone();
+        }
+        if let Some(tid) = self.threads.active_thread_id()
+            && let Some(t) = self.threads.thread(tid)
+            && let Some(term) = t.as_terminal()
+            && !term.cwd.is_empty()
+        {
+            return term.cwd.clone();
+        }
+        self.effects.default_cwd()
     }
 
     /// 选中 / 清除 Git 图提交；详情（body + numstat）在后台读取，携带 DetailRequest 代际防止迟到结果覆盖新选中项。
@@ -586,6 +692,10 @@ impl AppState {
             cancellation.cancel();
         }
         self.acp.remove(thread_id);
+        self.acp_connecting.remove(thread_id);
+        self.acp_pending_configs.remove(thread_id);
+        self.acp_sessions.remove(thread_id);
+        self.acp_loading_sessions.remove(thread_id);
         self.threads.close(thread_id);
         self.flush(cx);
         cx.emit(StateChanged);
@@ -674,6 +784,53 @@ impl AppState {
         kind: ConversationKind,
     ) -> Option<jagent_core::threads::SendRequest> {
         self.threads.begin_send(thread_id, text, kind)
+    }
+
+    /// 当前已建立或正在运行中的 ACP 会话连接数。
+    pub fn active_acp_count(&self) -> usize {
+        self.acp.len()
+            + self
+                .acp_disposers
+                .keys()
+                .filter(|k| !self.acp.contains_key(*k))
+                .count()
+    }
+
+    /// 指定会话是否已持有活跃的 ACP 连接。
+    pub fn is_acp_connected(&self, thread_id: &str) -> bool {
+        self.acp.contains_key(thread_id) || self.threads.is_acp_connected(thread_id)
+    }
+
+    /// 指定会话是否正在后台建立 ACP 连接（拉取模型/模式列表中）。
+    pub fn is_acp_connecting(&self, thread_id: &str) -> bool {
+        self.acp_connecting.contains(thread_id)
+    }
+
+    /// 读取指定 ACP 会话已缓存的历史会话列表（`session/list`）。
+    pub fn acp_session_list(&self, thread_id: &str) -> &[jagent_core::acp::AcpSessionSummary] {
+        self.acp_sessions
+            .get(thread_id)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    /// 指定会话是否正在后台拉取历史会话列表或恢复历史会话。
+    pub fn is_acp_loading_sessions(&self, thread_id: &str) -> bool {
+        self.acp_loading_sessions.contains(thread_id)
+    }
+
+    /// 切换 ACP 会话的目标 agent，同时终止并清理旧连接（下次发送或预握手时按新 agent 建连）。
+    pub fn switch_acp_agent(&mut self, thread_id: &str, agent_id: &str, label: &str, cx: &mut App) {
+        if let Some(cancellation) = self.acp_disposers.remove(thread_id) {
+            cancellation.cancel();
+        }
+        self.acp.remove(thread_id);
+        self.acp_connecting.remove(thread_id);
+        self.acp_pending_configs.remove(thread_id);
+        self.acp_sessions.remove(thread_id);
+        self.acp_loading_sessions.remove(thread_id);
+        self.threads.set_acp_agent(thread_id, agent_id, label);
+        self.flush(cx);
     }
 
     pub fn workspaces(&self) -> &[Workspace] {
@@ -775,8 +932,21 @@ pub fn send_chat(state: &Entity<AppState>, thread_id: &str, text: &str, cx: &mut
 /// 规则在 core（`begin_send` / `mark_acp_connected` / `fail_acp_connect` / `finish_send`）；
 /// 阻塞的进程 IO 全部在 `background_spawn`，结果经 `state.update` 回到前台。
 pub fn send_acp(state: &Entity<AppState>, thread_id: &str, text: &str, cx: &mut App) {
+    send_acp_with_prompt(state, thread_id, text, text, cx);
+}
+
+/// ACP 发送（支持展示文本 `display_text` 与实际发给 agent 的 `prompt_text` 分离，例如附带文件上下文时）。
+pub fn send_acp_with_prompt(
+    state: &Entity<AppState>,
+    thread_id: &str,
+    display_text: &str,
+    prompt_text: &str,
+    cx: &mut App,
+) {
     let req = state.update(cx, |s, cx| {
-        let r = s.threads.begin_send(thread_id, text, ConversationKind::Acp);
+        let r = s
+            .threads
+            .begin_send(thread_id, display_text, ConversationKind::Acp);
         s.flush(cx);
         cx.emit(StateChanged);
         r
@@ -785,13 +955,22 @@ pub fn send_acp(state: &Entity<AppState>, thread_id: &str, text: &str, cx: &mut 
     let Some(agent_id) = req.agent_id.clone() else {
         return;
     };
+    let prompt_payload = if prompt_text.trim().is_empty() {
+        req.text.clone()
+    } else {
+        prompt_text.to_owned()
+    };
     let cancellation = crate::acp_io::AcpCancellation::default();
-    state.update(cx, |s, _| {
+    // 取出已有连接（所有权转移到后台任务），而不是复制；若此前预握手仍在进行则先取消预握手。
+    let (command, args, cwd, existing, pending_cfgs, resume_sid) = state.update(cx, |s, _| {
+        let existing = s.acp.remove(thread_id);
+        if existing.is_none() && s.acp_connecting.remove(thread_id) {
+            if let Some(prev_cancel) = s.acp_disposers.remove(thread_id) {
+                prev_cancel.cancel();
+            }
+        }
         s.acp_disposers
             .insert(thread_id.to_owned(), cancellation.clone());
-    });
-    // 取出已有连接（所有权转移到后台任务），而不是复制；连接不实现 Clone。
-    let (command, args, cwd, existing) = state.update(cx, |s, _| {
         let agent = s
             .settings
             .get()
@@ -806,12 +985,15 @@ pub fn send_acp(state: &Entity<AppState>, thread_id: &str, text: &str, cx: &mut 
             .and_then(|w| s.threads.workspace(w))
             .map(|w| w.path.clone());
         let cwd = cwd.unwrap_or_else(|| s.git_cwd());
-        let existing = s.acp.remove(thread_id);
+        let pending_cfgs = s.acp_pending_configs.remove(thread_id).unwrap_or_default();
+        let resume_sid = s.threads.acp_session_id(thread_id).map(str::to_owned);
         (
             agent.as_ref().map(|a| a.command.clone()),
             agent.map(|a| a.args).unwrap_or_default(),
             cwd,
             existing,
+            pending_cfgs,
+            resume_sid,
         )
     });
     if let Some(conn) = existing.as_ref() {
@@ -825,7 +1007,7 @@ pub fn send_acp(state: &Entity<AppState>, thread_id: &str, text: &str, cx: &mut 
     let state = state.downgrade();
     cx.spawn(async move |cx| {
         let thread_id = req.thread_id.clone();
-        let text = req.text.clone();
+        let text = prompt_payload;
         // 连接的所有权在后台任务内流转：取出（已有）或新建 → 用一轮 → 放回表。不跨 await 持有共享引用。
         let conn: Result<crate::acp_io::AcpConnection, String> = match existing {
             Some(c) => Ok(c),
@@ -841,10 +1023,18 @@ pub fn send_acp(state: &Entity<AppState>, thread_id: &str, text: &str, cx: &mut 
                     let path = std::path::PathBuf::from(cwd);
                     let cancellation_for_connect = cancellation.clone();
                     cx.background_spawn(async move {
-                        crate::acp_io::AcpConnection::connect_with_disposer(&command, &args, &path, move |d| {
-                            cancellation_for_connect.register(d);
-                        }).map_err(|e| format!("无法建立 ACP 连接：{e}"))
-                    }).await
+                        crate::acp_io::AcpConnection::connect_or_load_with_disposer(
+                            &command,
+                            &args,
+                            &path,
+                            resume_sid.as_deref(),
+                            move |d| {
+                                cancellation_for_connect.register(d);
+                            },
+                        )
+                        .map_err(|e| format!("无法建立 ACP 连接：{e}"))
+                    })
+                    .await
                 }
             },
         };
@@ -862,13 +1052,47 @@ pub fn send_acp(state: &Entity<AppState>, thread_id: &str, text: &str, cx: &mut 
         if cancellation.is_cancelled() {
             return;
         }
-        // prompt 在后台跑；每个 ACP chunk 通过 futures channel 即时回到前台更新同一条 assistant 行。
+        // 握手完成即刻把 sessionId、模型选择器、可用命令、启动欢迎信息同步回 UI
+        let remote_sid = conn.session_id().to_owned();
+        let initial_selectors = conn.config_selectors.clone();
+        let initial_commands = conn.available_commands.clone();
+        let initial_startup = conn.startup_info.clone();
+        if let Some(st) = state.upgrade() {
+            cx.update(|cx| {
+                st.update(cx, |s, cx| {
+                    s.threads.mark_acp_connected(&thread_id);
+                    s.threads.set_acp_session_id(&thread_id, &remote_sid);
+                    if !initial_selectors.is_empty() {
+                        s.threads
+                            .set_acp_config_selectors(&thread_id, initial_selectors);
+                    }
+                    if !initial_commands.is_empty() {
+                        s.threads
+                            .set_acp_available_commands(&thread_id, initial_commands);
+                    }
+                    if let Some(startup) = initial_startup.as_deref() {
+                        s.threads.push_acp_startup_info(&thread_id, startup);
+                    }
+                    s.flush(cx);
+                    cx.emit(StateChanged);
+                });
+            });
+        }
+        // prompt 在后台跑；若握手前有暂存的模型/思考等级变更先一并应用，再发 session/prompt。
         use futures::{FutureExt as _, StreamExt as _};
-        let (chunk_tx, mut chunk_rx) = futures::channel::mpsc::unbounded::<String>();
-        let turn_task = cx.background_spawn(async move {
-            let turn = conn.prompt(&text, chunk_tx).map_err(|e| e.to_string());
-            (conn, turn)
-        }).fuse();
+        let (chunk_tx, mut chunk_rx) =
+            futures::channel::mpsc::unbounded::<crate::acp_io::AcpTurnUpdate>();
+        let turn_task = cx
+            .background_spawn(async move {
+                for (cid, val, src) in pending_cfgs {
+                    let _ = conn.set_config_value(&cid, &val, src);
+                }
+                let turn = conn
+                    .prompt_structured(&text, chunk_tx)
+                    .map_err(|e| e.to_string());
+                (conn, turn)
+            })
+            .fuse();
         futures::pin_mut!(turn_task);
         let (conn, turn) = loop {
             let next_chunk = chunk_rx.next().fuse();
@@ -879,7 +1103,18 @@ pub fn send_acp(state: &Entity<AppState>, thread_id: &str, text: &str, cx: &mut 
                     if let Some(st) = state.upgrade() {
                         cx.update(|cx| {
                             st.update(cx, |s, cx| {
-                                s.threads.update_streaming_reply(&thread_id, ConversationKind::Acp, &chunk);
+                                if let Some(selectors) = chunk.config_selectors {
+                                    s.threads.set_acp_config_selectors(&thread_id, selectors);
+                                }
+                                if let Some(commands) = chunk.available_commands {
+                                    s.threads.set_acp_available_commands(&thread_id, commands);
+                                }
+                                s.threads.update_streaming_reply_with_tools(
+                                    &thread_id,
+                                    ConversationKind::Acp,
+                                    &chunk.text,
+                                    chunk.tool_calls,
+                                );
                                 s.flush(cx);
                                 cx.emit(StateChanged);
                             });
@@ -892,20 +1127,41 @@ pub fn send_acp(state: &Entity<AppState>, thread_id: &str, text: &str, cx: &mut 
             }
         };
         // 连接交还表：thread 已 close 则连接在此 drop（杀进程）
+        let mut need_drain_configs = false;
         if let Some(st) = state.upgrade() {
             cx.update(|cx| {
                 st.update(cx, |s, cx| {
                     // thread 已 close：连接在此 drop，子进程被杀
                     if s.threads.thread(&thread_id).is_some() {
-                        s.acp_disposers.insert(thread_id.clone(), cancellation.clone());
+                        if !conn.config_selectors.is_empty() {
+                            s.threads.set_acp_config_selectors(
+                                &thread_id,
+                                conn.config_selectors.clone(),
+                            );
+                        }
+                        if !conn.available_commands.is_empty() {
+                            s.threads.set_acp_available_commands(
+                                &thread_id,
+                                conn.available_commands.clone(),
+                            );
+                        }
+                        s.acp_disposers
+                            .insert(thread_id.clone(), cancellation.clone());
                         s.acp.insert(thread_id.clone(), conn);
                         s.threads.mark_acp_connected(&thread_id);
+                        need_drain_configs = s
+                            .acp_pending_configs
+                            .get(&thread_id)
+                            .is_some_and(|q| !q.is_empty());
                     } else {
                         s.acp_disposers.remove(&thread_id);
                         cancellation.cancel();
                     }
                     s.flush(cx);
                 });
+                if need_drain_configs {
+                    drain_pending_acp_configs(&st, &thread_id, cx);
+                }
             });
         }
         finish_acp(&state, &thread_id, turn, cx).await;
@@ -913,18 +1169,470 @@ pub fn send_acp(state: &Entity<AppState>, thread_id: &str, text: &str, cx: &mut 
     .detach();
 }
 
-/// 回写一轮结果：成功走 finish_send，连接 / 协议失败走 finish_send(Err)。thread 已 close 则丢弃（core 内部处理）。
+/// 预连接 ACP 会话（进入会话或切换 Agent 后在后台自动完成 `initialize` + `session/new`（或 `session/load`）握手，
+/// 从而立即获取 `configOptions` 模型与思考强度列表，若会话带有持久化的 `acp_session_id` 则一并恢复历史对话记录）。
+pub fn ensure_acp_connected(state: &Entity<AppState>, thread_id: &str, cx: &mut App) {
+    let setup = state.update(cx, |s, cx| {
+        if s.acp.contains_key(thread_id) || s.acp_connecting.contains(thread_id) {
+            return None;
+        }
+        let Some(Thread::Acp(acp_thread)) = s.threads.thread(thread_id) else {
+            return None;
+        };
+        if acp_thread.pending_reply {
+            return None;
+        }
+        let agent_id = acp_thread.agent_id.clone();
+        let ws_id = acp_thread.common.workspace_id.clone();
+        let resume_sid = acp_thread.acp_session_id.clone();
+        let agent = s
+            .settings
+            .get()
+            .acp_agents
+            .iter()
+            .find(|a| a.id == agent_id)
+            .cloned()?;
+        let cwd = ws_id
+            .as_deref()
+            .and_then(|w| s.threads.workspace(w))
+            .map(|w| w.path.clone())
+            .unwrap_or_else(|| s.git_cwd());
+        let cancellation = crate::acp_io::AcpCancellation::default();
+        s.acp_connecting.insert(thread_id.to_owned());
+        s.acp_disposers
+            .insert(thread_id.to_owned(), cancellation.clone());
+        cx.emit(StateChanged);
+        cx.notify();
+        Some((agent.command, agent.args, cwd, resume_sid, cancellation))
+    });
+    let Some((command, args, cwd, resume_sid, cancellation)) = setup else {
+        return;
+    };
+    let tid = thread_id.to_owned();
+    let weak = state.downgrade();
+    cx.spawn(async move |cx| {
+        let path = std::path::PathBuf::from(cwd);
+        let cancel_for_spawn = cancellation.clone();
+        let res = cx
+            .background_spawn(async move {
+                crate::acp_io::AcpConnection::connect_or_load_with_disposer(
+                    &command,
+                    &args,
+                    &path,
+                    resume_sid.as_deref(),
+                    move |d| {
+                        cancel_for_spawn.register(d);
+                    },
+                )
+            })
+            .await;
+        let Some(st) = weak.upgrade() else { return };
+        cx.update(|cx| {
+            let mut need_drain = false;
+            st.update(cx, |s, cx| {
+                s.acp_connecting.remove(&tid);
+                if cancellation.is_cancelled() || s.threads.thread(&tid).is_none() {
+                    return;
+                }
+                if let Ok(mut conn) = res {
+                    cancellation.register(conn.disposer());
+                    let sid = conn.session_id().to_owned();
+                    let replayed = std::mem::take(&mut conn.replayed_messages);
+                    if !replayed.is_empty() {
+                        s.threads.apply_acp_session_load(
+                            &tid,
+                            &sid,
+                            None,
+                            replayed,
+                            conn.config_selectors.clone(),
+                            conn.available_commands.clone(),
+                        );
+                    } else {
+                        s.threads.set_acp_session_id(&tid, &sid);
+                        if !conn.config_selectors.is_empty() {
+                            s.threads
+                                .set_acp_config_selectors(&tid, conn.config_selectors.clone());
+                        }
+                        if !conn.available_commands.is_empty() {
+                            s.threads
+                                .set_acp_available_commands(&tid, conn.available_commands.clone());
+                        }
+                        if let Some(startup) = conn.startup_info.as_deref() {
+                            s.threads.push_acp_startup_info(&tid, startup);
+                        }
+                    }
+                    s.threads.mark_acp_connected(&tid);
+                    s.acp.insert(tid.clone(), conn);
+                    need_drain = s
+                        .acp_pending_configs
+                        .get(&tid)
+                        .is_some_and(|q| !q.is_empty());
+                }
+                s.flush(cx);
+                cx.emit(StateChanged);
+                cx.notify();
+            });
+            if need_drain {
+                drain_pending_acp_configs(&st, &tid, cx);
+            }
+        });
+    })
+    .detach();
+}
+
+/// 在后台调用 `session/list` 拉取当前工作区下的 ACP 历史会话列表（供 `/resume` 浮层展示）。
+pub fn fetch_acp_session_list(state: &Entity<AppState>, thread_id: &str, cx: &mut App) {
+    let taken = state.update(cx, |s, cx| {
+        if s.acp_loading_sessions.contains(thread_id) {
+            return None;
+        }
+        let Some(Thread::Acp(acp_thread)) = s.threads.thread(thread_id) else {
+            return None;
+        };
+        if acp_thread.pending_reply {
+            return None;
+        }
+        let agent_id = acp_thread.agent_id.clone();
+        let ws_id = acp_thread.common.workspace_id.clone();
+        let resume_sid = acp_thread.acp_session_id.clone();
+        let existing = s.acp.remove(thread_id);
+        if existing.is_none() && s.acp_connecting.remove(thread_id) {
+            if let Some(prev_cancel) = s.acp_disposers.remove(thread_id) {
+                prev_cancel.cancel();
+            }
+        }
+        let agent = s
+            .settings
+            .get()
+            .acp_agents
+            .iter()
+            .find(|a| a.id == agent_id)
+            .cloned()?;
+        let cwd = ws_id
+            .as_deref()
+            .and_then(|w| s.threads.workspace(w))
+            .map(|w| w.path.clone())
+            .unwrap_or_else(|| s.git_cwd());
+        let cancellation = crate::acp_io::AcpCancellation::default();
+        if let Some(c) = existing.as_ref() {
+            cancellation.register(c.disposer());
+        }
+        s.acp_disposers
+            .insert(thread_id.to_owned(), cancellation.clone());
+        s.acp_loading_sessions.insert(thread_id.to_owned());
+        cx.emit(StateChanged);
+        cx.notify();
+        Some((
+            existing,
+            agent.command,
+            agent.args,
+            cwd,
+            resume_sid,
+            cancellation,
+        ))
+    });
+    let Some((existing, command, args, cwd, resume_sid, cancellation)) = taken else {
+        return;
+    };
+    let tid = thread_id.to_owned();
+    let weak = state.downgrade();
+    cx.spawn(async move |cx| {
+        let cancel_for_spawn = cancellation.clone();
+        let res = cx
+            .background_spawn(async move {
+                let mut conn = match existing {
+                    Some(c) => c,
+                    None => crate::acp_io::AcpConnection::connect_or_load_with_disposer(
+                        &command,
+                        &args,
+                        std::path::Path::new(&cwd),
+                        resume_sid.as_deref(),
+                        move |d| {
+                            cancel_for_spawn.register(d);
+                        },
+                    )?,
+                };
+                let sessions = conn.list_sessions(Some(&cwd)).unwrap_or_default();
+                Ok::<_, crate::acp_io::AcpError>((conn, sessions))
+            })
+            .await;
+        let Some(st) = weak.upgrade() else { return };
+        cx.update(|cx| {
+            let mut need_drain = false;
+            st.update(cx, |s, cx| {
+                s.acp_loading_sessions.remove(&tid);
+                if cancellation.is_cancelled() || s.threads.thread(&tid).is_none() {
+                    return;
+                }
+                if let Ok((conn, sessions)) = res {
+                    cancellation.register(conn.disposer());
+                    s.threads.set_acp_session_id(&tid, conn.session_id());
+                    if !conn.config_selectors.is_empty() {
+                        s.threads
+                            .set_acp_config_selectors(&tid, conn.config_selectors.clone());
+                    }
+                    if !conn.available_commands.is_empty() {
+                        s.threads
+                            .set_acp_available_commands(&tid, conn.available_commands.clone());
+                    }
+                    if let Some(startup) = conn.startup_info.as_deref() {
+                        s.threads.push_acp_startup_info(&tid, startup);
+                    }
+                    s.acp_sessions.insert(tid.clone(), sessions);
+                    s.threads.mark_acp_connected(&tid);
+                    s.acp.insert(tid.clone(), conn);
+                    need_drain = s
+                        .acp_pending_configs
+                        .get(&tid)
+                        .is_some_and(|q| !q.is_empty());
+                }
+                s.flush(cx);
+                cx.emit(StateChanged);
+                cx.notify();
+            });
+            if need_drain {
+                drain_pending_acp_configs(&st, &tid, cx);
+            }
+        });
+    })
+    .detach();
+}
+
+/// 在后台调用 `session/load` 恢复指定的历史会话，并将回放的多轮消息、标题与配置选择器写回当前 `AcpThread`。
+pub fn resume_acp_session(
+    state: &Entity<AppState>,
+    thread_id: &str,
+    target_session_id: &str,
+    title: Option<String>,
+    cx: &mut App,
+) {
+    let target_sid = target_session_id.trim().to_owned();
+    if target_sid.is_empty() {
+        return;
+    }
+    let taken = state.update(cx, |s, cx| {
+        let Some(Thread::Acp(acp_thread)) = s.threads.thread(thread_id) else {
+            return None;
+        };
+        if acp_thread.pending_reply {
+            return None;
+        }
+        let agent_id = acp_thread.agent_id.clone();
+        let ws_id = acp_thread.common.workspace_id.clone();
+        let existing = s.acp.remove(thread_id);
+        if existing.is_none() && s.acp_connecting.remove(thread_id) {
+            if let Some(prev_cancel) = s.acp_disposers.remove(thread_id) {
+                prev_cancel.cancel();
+            }
+        }
+        let agent = s
+            .settings
+            .get()
+            .acp_agents
+            .iter()
+            .find(|a| a.id == agent_id)
+            .cloned()?;
+        let cwd = ws_id
+            .as_deref()
+            .and_then(|w| s.threads.workspace(w))
+            .map(|w| w.path.clone())
+            .unwrap_or_else(|| s.git_cwd());
+        let cancellation = crate::acp_io::AcpCancellation::default();
+        if let Some(c) = existing.as_ref() {
+            cancellation.register(c.disposer());
+        }
+        s.acp_disposers
+            .insert(thread_id.to_owned(), cancellation.clone());
+        s.acp_loading_sessions.insert(thread_id.to_owned());
+        cx.emit(StateChanged);
+        cx.notify();
+        Some((existing, agent.command, agent.args, cwd, cancellation))
+    });
+    let Some((existing, command, args, cwd, cancellation)) = taken else {
+        return;
+    };
+    let tid = thread_id.to_owned();
+    let weak = state.downgrade();
+    cx.spawn(async move |cx| {
+        let cancel_for_spawn = cancellation.clone();
+        let sid_for_bg = target_sid.clone();
+        let res = cx
+            .background_spawn(async move {
+                let path = std::path::Path::new(&cwd);
+                match existing {
+                    Some(mut conn) => {
+                        let replayed = conn.load_session(&sid_for_bg, path)?;
+                        Ok::<_, crate::acp_io::AcpError>((conn, replayed))
+                    }
+                    None => {
+                        let mut conn = crate::acp_io::AcpConnection::connect_or_load_with_disposer(
+                            &command,
+                            &args,
+                            path,
+                            Some(&sid_for_bg),
+                            move |d| {
+                                cancel_for_spawn.register(d);
+                            },
+                        )?;
+                        let replayed = std::mem::take(&mut conn.replayed_messages);
+                        Ok((conn, replayed))
+                    }
+                }
+            })
+            .await;
+        let Some(st) = weak.upgrade() else { return };
+        cx.update(|cx| {
+            let mut need_drain = false;
+            st.update(cx, |s, cx| {
+                s.acp_loading_sessions.remove(&tid);
+                if cancellation.is_cancelled() || s.threads.thread(&tid).is_none() {
+                    return;
+                }
+                if let Ok((conn, replayed)) = res {
+                    cancellation.register(conn.disposer());
+                    s.threads.apply_acp_session_load(
+                        &tid,
+                        conn.session_id(),
+                        title.as_deref(),
+                        replayed,
+                        conn.config_selectors.clone(),
+                        conn.available_commands.clone(),
+                    );
+                    s.acp.insert(tid.clone(), conn);
+                    need_drain = s
+                        .acp_pending_configs
+                        .get(&tid)
+                        .is_some_and(|q| !q.is_empty());
+                }
+                s.flush(cx);
+                cx.emit(StateChanged);
+                cx.notify();
+            });
+            if need_drain {
+                drain_pending_acp_configs(&st, &tid, cx);
+            }
+        });
+    })
+    .detach();
+}
+
+/// 切换 ACP 会话的配置项（如 `model`、`thought_level`、`mode`）：
+/// 1. 立即乐观更新 `ThreadStore` 中的当前选中值，UI 零延迟响应；
+/// 2. 将变更排入队列，若当前连接空闲则立即在后台发送 `session/set_config_option`（或 `set_model`/`set_mode`），
+///    若连接正在执行 prompt 则在归还连接时自动应用。
+pub fn set_acp_config_option(
+    state: &Entity<AppState>,
+    thread_id: &str,
+    config_id: &str,
+    value: &str,
+    cx: &mut App,
+) {
+    let queued = state.update(cx, |s, cx| {
+        let source = s
+            .threads
+            .update_acp_config_value(thread_id, config_id, value)?;
+        let queue = s
+            .acp_pending_configs
+            .entry(thread_id.to_owned())
+            .or_default();
+        // 同一 config_id 只保留最新一次选择
+        queue.retain(|(cid, _, _)| cid != config_id);
+        queue.push((config_id.to_owned(), value.to_owned(), source));
+        s.flush(cx);
+        cx.emit(StateChanged);
+        cx.notify();
+        Some(())
+    });
+    if queued.is_some() {
+        drain_pending_acp_configs(state, thread_id, cx);
+    }
+}
+
+fn drain_pending_acp_configs(state: &Entity<AppState>, thread_id: &str, cx: &mut App) {
+    let taken = state.update(cx, |s, _| {
+        let has_pending = s
+            .acp_pending_configs
+            .get(thread_id)
+            .is_some_and(|q| !q.is_empty());
+        if !has_pending {
+            return None;
+        }
+        let conn = s.acp.remove(thread_id)?;
+        let items = s.acp_pending_configs.remove(thread_id).unwrap_or_default();
+        let cancel = s.acp_disposers.get(thread_id).cloned().unwrap_or_default();
+        Some((conn, items, cancel))
+    });
+    let Some((mut conn, items, cancellation)) = taken else {
+        return;
+    };
+    let tid = thread_id.to_owned();
+    let weak = state.downgrade();
+    cx.spawn(async move |cx| {
+        let (conn, latest_selectors) = cx
+            .background_spawn(async move {
+                let mut latest = None;
+                for (cid, val, src) in items {
+                    if let Ok(sels) = conn.set_config_value(&cid, &val, src) {
+                        latest = Some(sels);
+                    }
+                }
+                (conn, latest)
+            })
+            .await;
+        let Some(st) = weak.upgrade() else { return };
+        cx.update(|cx| {
+            let mut more = false;
+            st.update(cx, |s, cx| {
+                if cancellation.is_cancelled() || s.threads.thread(&tid).is_none() {
+                    return;
+                }
+                if let Some(sels) = latest_selectors
+                    && !sels.is_empty()
+                {
+                    s.threads.set_acp_config_selectors(&tid, sels);
+                }
+                s.acp.insert(tid.clone(), conn);
+                s.threads.mark_acp_connected(&tid);
+                more = s
+                    .acp_pending_configs
+                    .get(&tid)
+                    .is_some_and(|q| !q.is_empty());
+                s.flush(cx);
+                cx.emit(StateChanged);
+                cx.notify();
+            });
+            if more {
+                drain_pending_acp_configs(&st, &tid, cx);
+            }
+        });
+    })
+    .detach();
+}
+
+/// 回写一轮结果：成功走 finish_send_with_tools，连接 / 协议失败走 finish_send_with_tools(Err)。thread 已 close 则丢弃（core 内部处理）。
 async fn finish_acp(
     state: &WeakEntity<AppState>,
     thread_id: &str,
-    reply: Result<String, String>,
+    reply: Result<crate::acp_io::AcpTurnUpdate, String>,
     cx: &mut AsyncApp,
 ) {
     let Some(state) = state.upgrade() else { return };
     cx.update(|cx| {
         state.update(cx, |s, cx| {
-            s.threads
-                .finish_send(thread_id, ConversationKind::Acp, reply);
+            match reply {
+                Ok(u) => s.threads.finish_send_with_tools(
+                    thread_id,
+                    ConversationKind::Acp,
+                    Ok(u.text),
+                    u.tool_calls,
+                ),
+                Err(e) => s.threads.finish_send_with_tools(
+                    thread_id,
+                    ConversationKind::Acp,
+                    Err(e),
+                    Vec::new(),
+                ),
+            }
             s.flush(cx);
             cx.emit(StateChanged);
         });
@@ -1024,6 +1732,7 @@ mod tests {
             );
             // state.json 在 flush 时写出
             assert!(dir.path().join("state.json").exists());
+            state.update(cx, |s, cx| s.close_thread(&id, cx));
         });
     }
 
@@ -1247,6 +1956,180 @@ mod tests {
         assert!(cx.update(|cx| !state.read(cx).acp_disposers.contains_key(&id)));
     }
 
+    #[cfg(unix)]
+    #[gpui::test]
+    fn acp_send_populates_structured_tool_calls_and_switching_agent_resets_connection(
+        cx: &mut TestAppContext,
+    ) {
+        use crate::acp_io::tests::fake_agent_script_with_tools;
+        use jagent_core::settings::AcpAgentInput;
+        let dir = tmp();
+        let script = fake_agent_script_with_tools(dir.path());
+        let state = cx.update(|cx| {
+            init(
+                cx,
+                dir.path().to_path_buf(),
+                dir.path().to_string_lossy().into_owned(),
+            )
+            .unwrap()
+        });
+        let (agent1, agent2, ws) = state.update(cx, |s, _| {
+            let a1 = s.settings.add_acp_agent(AcpAgentInput {
+                label: "FakeWithTools".into(),
+                command: Some(script.to_string_lossy().into_owned()),
+                args: Some(vec![]),
+            });
+            let a2 = s.settings.add_acp_agent(AcpAgentInput {
+                label: "SecondAgent".into(),
+                command: Some(script.to_string_lossy().into_owned()),
+                args: Some(vec![]),
+            });
+            (a1, a2, s.workspaces()[0].id.clone())
+        });
+        let id = cx.update(|cx| {
+            state.update(cx, |s, cx| {
+                s.create_acp(&agent1, "FakeWithTools", Some(&ws), cx)
+                    .unwrap()
+            })
+        });
+        assert!(
+            !cx.update(|cx| state.read(cx).is_acp_connected(&id)),
+            "新建 ACP 会话尚未发送消息时处于未连接状态"
+        );
+
+        cx.update(|cx| send_acp(&state, &id, "inspect", cx));
+        cx.run_until_parked();
+        cx.update(|cx| {
+            let s = state.read(cx);
+            assert!(s.is_acp_connected(&id), "发送成功后标记为已连接");
+            assert_eq!(
+                s.threads.acp_current_model_label(&id).as_deref(),
+                Some("GPT-6 Astra"),
+                "握手后自动提取当前模型名称"
+            );
+            let c = s.threads.conversation(&id).unwrap();
+            assert_eq!(
+                c.messages.len(),
+                3,
+                "从上往下顺序：0=启动信息，1=用户提问，2=助手工具与回复"
+            );
+            assert!(
+                c.messages[0].text.starts_with("pi v1.3.0"),
+                "首条消息为 session/new 启动欢迎信息"
+            );
+            assert_eq!(c.messages[1].text, "inspect");
+            assert_eq!(
+                c.messages[2].text, "checked src/lib.rs",
+                "助手回复正文不应混入重复的 startupInfo"
+            );
+            assert_eq!(c.messages[2].tool_calls.len(), 1);
+            let tc = &c.messages[2].tool_calls[0];
+            assert_eq!(tc.kind.as_deref(), Some("read"));
+            assert_eq!(tc.path.as_deref(), Some("src/lib.rs"));
+            assert_eq!(tc.status.as_deref(), Some("completed"));
+        });
+
+        // 切换模型 → 乐观更新并通过 session/set_config_option 同步给 Agent
+        cx.update(|cx| {
+            set_acp_config_option(&state, &id, "model", "cpaapi/claude-sonnet-5-5-high", cx);
+        });
+        cx.run_until_parked();
+        cx.update(|cx| {
+            let s = state.read(cx);
+            assert_eq!(
+                s.threads.acp_current_model_label(&id).as_deref(),
+                Some("Claude Sonnet 5.5 High")
+            );
+        });
+
+        // 切换 ACP Agent → 清理旧连接与旧模型列表，连接状态归零
+        cx.update(|cx| {
+            state.update(cx, |s, cx| {
+                s.switch_acp_agent(&id, &agent2, "SecondAgent", cx);
+            });
+        });
+        cx.update(|cx| {
+            let s = state.read(cx);
+            assert!(!s.is_acp_connected(&id), "切换 Agent 后断开旧连接");
+            assert!(
+                s.threads.acp_config_selectors(&id).is_empty(),
+                "切换 Agent 后清空旧模型列表"
+            );
+            assert!(s.acp.is_empty());
+        });
+
+        // 新建会话并调用 ensure_acp_connected 预握手 → 无需发消息即可立即输出启动信息并拉回模型列表
+        let id2 = cx.update(|cx| {
+            state.update(cx, |s, cx| {
+                s.create_acp(&agent2, "SecondAgent", Some(&ws), cx).unwrap()
+            })
+        });
+        cx.update(|cx| ensure_acp_connected(&state, &id2, cx));
+        cx.run_until_parked();
+        cx.update(|cx| {
+            let s = state.read(cx);
+            assert!(s.is_acp_connected(&id2), "预握手完成后标记为已连接");
+            assert_eq!(
+                s.threads.acp_current_model_label(&id2).as_deref(),
+                Some("GPT-6 Astra")
+            );
+            let c2 = s.threads.conversation(&id2).unwrap();
+            assert_eq!(
+                c2.messages.len(),
+                1,
+                "打开 ACP 会话预握手完成后立即输出启动信息，无需等待用户发消息"
+            );
+            assert!(c2.messages[0].text.starts_with("pi v1.3.0"));
+        });
+
+        // 测试 /resume 链路：先拉取 session/list，再执行 resume_acp_session (session/load) 恢复历史消息
+        cx.update(|cx| fetch_acp_session_list(&state, &id2, cx));
+        cx.run_until_parked();
+        cx.update(|cx| {
+            let s = state.read(cx);
+            let list = s.acp_session_list(&id2);
+            assert_eq!(list.len(), 1);
+            assert_eq!(list[0].session_id, "s-prev-42");
+            assert_eq!(list[0].title.as_deref(), Some("上次重构会话"));
+        });
+
+        cx.update(|cx| {
+            resume_acp_session(&state, &id2, "s-prev-42", Some("上次重构会话".into()), cx);
+        });
+        cx.run_until_parked();
+        cx.update(|cx| {
+            let s = state.read(cx);
+            assert_eq!(s.threads.acp_session_id(&id2), Some("s-prev-42"));
+            assert_eq!(
+                s.threads.thread(&id2).unwrap().title(),
+                "上次重构会话",
+                "恢复会话后标题同步更新"
+            );
+            assert_eq!(
+                s.threads.acp_current_model_label(&id2).as_deref(),
+                Some("Claude Sonnet 5.5 High"),
+                "恢复会话后模型同步为该历史会话当时的模型"
+            );
+            let c2 = s.threads.conversation(&id2).unwrap();
+            assert_eq!(c2.messages.len(), 2);
+            assert!(c2.messages[0].is_user());
+            assert_eq!(c2.messages[0].text, "上次的问题");
+            assert_eq!(c2.messages[1].text, "上次的回答");
+            assert_eq!(c2.messages[1].tool_calls.len(), 1);
+            assert_eq!(
+                c2.messages[1].tool_calls[0].path.as_deref(),
+                Some("README.md")
+            );
+        });
+
+        cx.update(|cx| {
+            state.update(cx, |s, cx| {
+                s.close_thread(&id, cx);
+                s.close_thread(&id2, cx);
+            })
+        });
+    }
+
     #[gpui::test]
     fn terminal_events_reach_the_store_through_on_terminal_event(cx: &mut TestAppContext) {
         let dir = tmp();
@@ -1286,7 +2169,11 @@ mod tests {
             assert_eq!(ta.osc_title.as_deref(), Some("vim"));
             assert!(ta.has_bell, "后台会话 BEL → 红点");
             assert_eq!(s.threads.unread_notice_count(), 1);
-            assert_eq!(s.threads.active(), &ActiveTarget::Thread(b));
+            assert_eq!(s.threads.active(), &ActiveTarget::Thread(b.clone()));
+            state.update(cx, |s, cx| {
+                s.close_thread(&a, cx);
+                s.close_thread(&b, cx);
+            });
         });
     }
 
@@ -1598,5 +2485,44 @@ mod tests {
         assert_eq!(status, GitGraphStatus::NotARepo);
         assert_eq!(rows, 0, "切换后旧仓库的提交必须被丢弃");
         assert!(root.is_none(), "旧 repo root 必须被清除");
+    }
+
+    #[gpui::test]
+    fn desktop_notifications_honor_desktop_and_sound_settings(cx: &mut TestAppContext) {
+        let dir = tmp();
+        let state = cx.update(|cx| {
+            init(
+                cx,
+                dir.path().to_path_buf(),
+                dir.path().to_string_lossy().into_owned(),
+            )
+            .unwrap()
+        });
+
+        cx.update(|cx| {
+            let tid = state.update(cx, |s, cx| {
+                let ws = s.workspaces()[0].id.clone();
+                let tid = s.spawn_from_preset("shell", Some(&ws), cx).unwrap();
+                let _c2 = s.create_chat(Some(&ws), cx).unwrap(); // 切走焦点，使终端处于后台
+                let sid = s.threads.thread(&tid).unwrap().as_terminal().unwrap().session_id;
+                s.settings.patch("notifications.desktop", serde_json::json!(true));
+                s.settings.patch("notifications.sound", serde_json::json!(true));
+                s.on_terminal_event(&TermEvent::Bell { id: sid }, cx);
+                assert_eq!(s.dispatched_notifications.len(), 1);
+                assert_eq!(s.dispatched_notifications[0].thread_id, tid);
+                assert!(s.dispatched_notifications[0].sound);
+
+                // 关闭桌面通知开关后不再派发
+                s.settings.patch("notifications.desktop", serde_json::json!(false));
+                s.on_terminal_event(&TermEvent::Bell { id: sid }, cx);
+                assert_eq!(
+                    s.dispatched_notifications.len(),
+                    1,
+                    "notifications.desktop=false 时不派发桌面通知"
+                );
+                tid
+            });
+            state.update(cx, |s, cx| s.close_thread(&tid, cx));
+        });
     }
 }

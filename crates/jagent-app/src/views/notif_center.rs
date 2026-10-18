@@ -30,6 +30,7 @@ use jagent_core::threads::{NoticeTone, SessionNotice};
 use crate::icons::{IconName, icon};
 use crate::theme::{colors, hex};
 use crate::views::popup::{PopupTrigger, overlay_shell};
+use crate::views::selectable::sel_text_id;
 
 type OpenFn = Rc<dyn Fn(&str, &mut Window, &mut App)>;
 type ReadAllFn = Rc<dyn Fn(&mut Window, &mut App)>;
@@ -139,6 +140,7 @@ fn bell_trigger(is_open: bool, unread: usize) -> impl IntoElement {
 /// 浮层本体（壳 + 头 + 列表）。无内部状态，直接以函数产出元素树。
 fn notif_panel(slot: &NotifSlot) -> impl IntoElement {
     let on_read_all = slot.on_read_all.clone();
+    let unread = slot.unread;
     let head = div()
         .id("notif-head")
         .flex()
@@ -153,10 +155,31 @@ fn notif_panel(slot: &NotifSlot) -> impl IntoElement {
         .child(
             div()
                 .flex_1()
-                .text_size(px(12.0))
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(hex(colors::TEXT_BRIGHT))
-                .child("通知"),
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .child(
+                    div()
+                        .text_size(px(12.0))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(hex(colors::TEXT_BRIGHT))
+                        .child("通知中心"),
+                )
+                .when(unread > 0, |d| {
+                    d.child(
+                        div()
+                            .px(px(6.0))
+                            .rounded_full()
+                            .bg(crate::theme::accent_alpha(0.16))
+                            .border_1()
+                            .border_color(crate::theme::accent_alpha(0.35))
+                            .font_family("monospace")
+                            .text_size(px(10.0))
+                            .text_color(hex(colors::ACCENT_HOVER))
+                            .child(format!("{unread} 未读")),
+                    )
+                }),
         )
         // 原型 `.notif-clear`：h20 padding 0 7 gap 4 r4 11px muted；hover surface
         .child(
@@ -260,14 +283,40 @@ fn notif_item(m: &NotifModel, on_open: &OpenFn) -> impl IntoElement {
                         .text_size(px(12.0))
                         .text_color(hex(colors::TEXT))
                         .line_height(px(17.0))
-                        .child(m.title.clone()),
+                        .child(
+                            sel_text_id(
+                                gpui::ElementId::Name(format!("notif-title-{}", m.id).into()),
+                                m.title.clone(),
+                            )
+                            .cursor_ibeam(false),
+                        ),
                 )
                 .child(
                     div()
                         .mt(px(2.0))
-                        .text_size(px(10.5))
-                        .text_color(hex(colors::FAINT))
-                        .child(format!("{} · {}", m.sub, m.rel)),
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .justify_between()
+                        .gap(px(6.0))
+                        .child(
+                            div()
+                                .text_size(px(10.5))
+                                .text_color(hex(colors::FAINT))
+                                .child(
+                                    sel_text_id(
+                                        gpui::ElementId::Name(format!("notif-sub-{}", m.id).into()),
+                                        format!("{} · {}", m.sub, m.rel),
+                                    )
+                                    .cursor_ibeam(false),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.0))
+                                .text_color(hex(colors::ACCENT_HOVER))
+                                .child("跳转 →"),
+                        ),
                 ),
         )
 }

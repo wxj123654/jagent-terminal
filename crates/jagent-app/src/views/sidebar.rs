@@ -90,11 +90,13 @@ pub type RowPick = std::rc::Rc<dyn Fn(RowAction, &mut Window, &mut App)>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GroupAction {
+    Activate,
     ToggleExpanded,
     SetShowAll(bool),
     SetPinned(bool),
     Rename,
     Remove,
+    NewSession { shift: bool },
 }
 
 /// 会话 kind（行头 tile 图标与配色）
@@ -369,7 +371,7 @@ impl RenderOnce for ThreadRow {
             .id(ElementId::Name(id))
             .group(group.clone())
             .h(px(sizes::ROW_HEIGHT))
-            .pl(px(5.0))
+            .pl(px(8.0))
             .pr(px(3.0))
             .gap(px(6.0))
             .items_center()
@@ -382,7 +384,20 @@ impl RenderOnce for ThreadRow {
                 |d| d.hover(|h| h.bg(white(0.035))),
             )
             .on_click(move |e, w, cx| (on_click)(e, w, cx))
-            // kind tile：20×20 r5，2.5% 白底（exited 透明），kind 色 12px 图标
+            // 左侧 3px 主题色激活指示条（Obsidian Indigo 选中标识）
+            .when(m.active, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .left(px(0.0))
+                        .top(px(7.0))
+                        .w(px(3.0))
+                        .h(px(16.0))
+                        .rounded_r(px(2.0))
+                        .bg(hex(colors::ACCENT)),
+                )
+            })
+            // kind tile：20×20 r5，2.5% 白底（exited 透明），kind 色 13px 实心负空间图标
             .child(
                 div()
                     .relative()
@@ -391,8 +406,8 @@ impl RenderOnce for ThreadRow {
                     .justify_center()
                     .size(px(20.0))
                     .rounded(px(5.0))
-                    .when(!exited, |d| d.bg(white(0.025)))
-                    .child(icon(m.kind.icon(), 12.0, kind_color))
+                    .when(!exited, |d| d.bg(white(0.03)))
+                    .child(icon(m.kind.icon(), 13.0, kind_color))
                     // 状态角标：右下角半出外缘（-2,-2；overflow 默认可见）
                     .child(
                         div()
@@ -434,6 +449,7 @@ impl RenderOnce for ThreadRow {
                 let row_active = m.active;
                 let trigger_group = group.clone();
                 let muted_fg = theme.muted_foreground;
+                let on_pick_menu = on_pick.clone();
                 Popover::new(ElementId::Name(format!("row-menu-{}", m.id).into()))
                     .open(menu_open)
                     .anchor(gpui::Anchor::TopLeft)
@@ -466,7 +482,7 @@ impl RenderOnce for ThreadRow {
                     }))
                     .content(move |_, _, cx| {
                         let popover = cx.entity();
-                        let pick = on_pick.clone();
+                        let pick = on_pick_menu.clone();
                         let pick_fn: PickFn = std::rc::Rc::new(move |id, w, cx| match id {
                             "pin" => pick(RowAction::SetPinned(!pinned), w, cx),
                             "rename" => pick(RowAction::Rename, w, cx),
@@ -477,8 +493,46 @@ impl RenderOnce for ThreadRow {
                         menu_surface(&entries, &pick_fn, &popover).into_any_element()
                     })
             })
+            // 直接关闭按钮「×」（原型 ThreadRow 右侧 menu-btn close）
+            .child({
+                let pick_remove = on_pick.clone();
+                let close_slot: SharedString = format!("close-{}", m.id).into();
+                let row_active = m.active;
+                let trigger_group = group;
+                let muted_fg = theme.muted_foreground;
+                div()
+                    .id(ElementId::Name(close_slot))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .size(px(22.0))
+                    .rounded(px(6.0))
+                    .flex_shrink_0()
+                    .opacity(0.0)
+                    .hover(|h| h.bg(hex(colors::CLOSE_HOVER)))
+                    .group_hover(trigger_group, |s| s.opacity(1.0))
+                    .when(row_active, |d| d.opacity(1.0))
+                    .child(
+                        icon(IconName::Close, 11.5, muted_fg)
+                            .hover(|s| s.text_color(hex(colors::TEXT_BRIGHT))),
+                    )
+                    .on_click(move |_, w, cx| {
+                        cx.stop_propagation();
+                        pick_remove(RowAction::Remove, w, cx);
+                    })
+            })
     }
 }
+
+/// 左侧栏双模态（Devin / Cursor 风格：Agent 会话导航 vs Edit 项目文件树与变更）。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SidebarMode {
+    #[default]
+    Agent,
+    Edit,
+}
+
+pub type SidebarModeFn = std::rc::Rc<dyn Fn(SidebarMode, &mut Window, &mut App)>;
 
 #[derive(IntoElement)]
 pub struct Sidebar {
@@ -497,6 +551,9 @@ pub struct Sidebar {
     on_new_session: WindowActionFn,
     on_search: WindowActionFn,
     on_collapse: std::rc::Rc<dyn Fn(&mut App)>,
+    mode: SidebarMode,
+    on_mode_change: Option<SidebarModeFn>,
+    edit_content: Option<gpui::AnyElement>,
 }
 impl Sidebar {
     #[allow(clippy::too_many_arguments)]
@@ -529,7 +586,23 @@ impl Sidebar {
             on_new_session: std::rc::Rc::new(on_new_session),
             on_search: std::rc::Rc::new(on_search),
             on_collapse: std::rc::Rc::new(on_collapse),
+            mode: SidebarMode::Agent,
+            on_mode_change: None,
+            edit_content: None,
         }
+    }
+
+    /// 注入 Devin 风格 `Agent | Edit` 双模式状态与 `Edit` 模式下的文件树面板。
+    pub fn with_mode(
+        mut self,
+        mode: SidebarMode,
+        on_mode_change: impl Fn(SidebarMode, &mut Window, &mut App) + 'static,
+        edit_content: Option<gpui::AnyElement>,
+    ) -> Self {
+        self.mode = mode;
+        self.on_mode_change = Some(std::rc::Rc::new(on_mode_change));
+        self.edit_content = edit_content;
+        self
     }
 }
 
@@ -541,7 +614,7 @@ fn ghost_cell(
     ic: IconName,
     group: SharedString,
     resting_opacity: f32,
-    on_click: impl Fn(&mut Window, &mut App) + 'static,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     div()
         .id(ElementId::Name(id))
@@ -555,7 +628,7 @@ fn ghost_cell(
         .hover(|h| h.bg(hex(colors::SURFACE)))
         .group_hover(group, |s| s.opacity(1.0))
         .child(icon(ic, 12.0, hex(colors::MUTED)))
-        .on_click(move |_, w, cx| on_click(w, cx))
+        .on_click(move |ev, w, cx| on_click(ev, w, cx))
 }
 
 /// 「显示另外 N 个/收起会话」行内链接（原型 .more-link：h27 padl 7 gap 5 r5）
@@ -603,123 +676,206 @@ fn more_link(
 }
 
 impl RenderOnce for Sidebar {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
         let muted = theme.muted_foreground;
         let fg = theme.sidebar_foreground;
         let border_subtle = hex(colors::BORDER_SUBTLE);
 
-        // ── 头（原型 .sb-head：46px + 底 1px 3.5% 白分隔线；mac 红绿灯让位 78 + 收起钮）──
-        let header = h_flex()
-            .id("sidebar-header")
-            .h(px(sizes::SIDEBAR_HEAD_HEIGHT))
-            .flex_shrink_0()
-            .items_center()
-            .bg(theme.sidebar)
-            .border_b_1()
-            .border_color(white(0.035))
-            .pl(px(78.0))
-            .child(
-                div()
-                    .id("sidebar-collapse")
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .size(px(28.0))
-                    .rounded(px(8.0))
-                    .cursor_pointer()
-                    .hover(|h| h.bg(hex(colors::SURFACE)))
-                    .child(icon(IconName::PanelLeft, 16.0, muted))
-                    .on_click({
-                        let cb = self.on_collapse.clone();
-                        move |_, _, cx| cb(cx)
-                    }),
-            );
+        // ── 头（左悬浮导航岛 40px 顶栏：mac 非全屏红绿灯左让位 74 + [Agent | Edit] 模式切换 + ⌘K 搜索胶囊 + 右置收起钮）──
+        let on_search_head = self.on_search.clone();
+        let cur_mode = self.mode;
+        let on_mode_agent = self.on_mode_change.clone();
+        let on_mode_edit = self.on_mode_change.clone();
+        let mode_switch = crate::views::root::stop_titlebar_drag(
+            h_flex()
+                .id("sidebar-mode-switch")
+                .h(px(24.0))
+                .p(px(2.0))
+                .gap(px(1.0))
+                .flex_shrink_0()
+                .items_center()
+                .rounded(px(6.0))
+                .bg(hex(colors::INPUT_BG))
+                .child(crate::views::root::stop_titlebar_drag(
+                    div()
+                        .id("sidebar-mode-agent")
+                        .h(px(20.0))
+                        .px(px(7.0))
+                        .rounded(px(4.5))
+                        .flex()
+                        .items_center()
+                        .cursor_pointer()
+                        .text_size(px(11.0))
+                        .when_else(
+                            cur_mode == SidebarMode::Agent,
+                            |b| {
+                                b.bg(hex(colors::SURFACE_ACTIVE))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(hex(colors::TEXT_BRIGHT))
+                            },
+                            |b| {
+                                b.text_color(muted)
+                                    .hover(|h| h.text_color(hex(colors::TEXT)))
+                            },
+                        )
+                        .child("Agent")
+                        .on_click(move |_, w, cx| {
+                            if let Some(cb) = &on_mode_agent {
+                                cb(SidebarMode::Agent, w, cx);
+                            }
+                        }),
+                ))
+                .child(crate::views::root::stop_titlebar_drag(
+                    div()
+                        .id("sidebar-mode-edit")
+                        .h(px(20.0))
+                        .px(px(7.0))
+                        .rounded(px(4.5))
+                        .flex()
+                        .items_center()
+                        .cursor_pointer()
+                        .text_size(px(11.0))
+                        .when_else(
+                            cur_mode == SidebarMode::Edit,
+                            |b| {
+                                b.bg(hex(colors::SURFACE_ACTIVE))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(hex(colors::TEXT_BRIGHT))
+                            },
+                            |b| {
+                                b.text_color(muted)
+                                    .hover(|h| h.text_color(hex(colors::TEXT)))
+                            },
+                        )
+                        .child("Edit")
+                        .on_click(move |_, w, cx| {
+                            if let Some(cb) = &on_mode_edit {
+                                cb(SidebarMode::Edit, w, cx);
+                            }
+                        }),
+                )),
+        );
 
-        // ── nav 行组（原型 .sb-nav：pad 8 gap 2 + 底部分隔线，固定不滚）──
+        let sidebar_pl = crate::views::root::sidebar_header_left_padding(
+            cfg!(target_os = "macos"),
+            window.is_fullscreen(),
+        );
+        let header = crate::views::root::bind_titlebar_drag(
+            h_flex()
+                .id("sidebar-header")
+                .h(px(sizes::SIDEBAR_HEAD_HEIGHT))
+                .flex_shrink_0()
+                .items_center()
+                .gap(px(2.0))
+                .pl(px(sidebar_pl))
+                .pr(px(6.0))
+                .bg(crate::theme::rgba_css(13, 15, 21, 0.75))
+                .border_b_1()
+                .border_color(border_subtle),
+            "sidebar-titlebar-drag",
+            window,
+            cx,
+        )
+        .child(mode_switch)
+        .child(div().flex_1().min_w(px(2.0)).h_full())
+        .child(crate::views::root::stop_titlebar_drag(
+            div()
+                .id("nav-search")
+                .group("nav-search")
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(px(26.0))
+                .rounded(px(6.0))
+                .flex_shrink_0()
+                .cursor_pointer()
+                .hover(|h| h.bg(hex(colors::SURFACE)))
+                .child(
+                    icon(IconName::Search, 13.5, muted)
+                        .group_hover("nav-search", |s| s.text_color(hex(colors::TEXT_BRIGHT))),
+                )
+                .on_click(move |_, w, cx| on_search_head(w, cx)),
+        ))
+        .child(crate::views::root::stop_titlebar_drag(
+            div()
+                .id("sidebar-collapse")
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(px(26.0))
+                .rounded(px(6.0))
+                .flex_shrink_0()
+                .cursor_pointer()
+                .hover(|h| h.bg(hex(colors::SURFACE)))
+                .child(icon(IconName::PanelLeft, 14.0, muted))
+                .on_click({
+                    let cb = self.on_collapse.clone();
+                    move |_, _, cx| cb(cx)
+                }),
+        ));
+
+        // ── 同源内嵌主动作条（「＋ 新建会话 ⌘N」，与右岛控件同源圆角与边框）──
         let on_new = self.on_new_session.clone();
-        let on_search = self.on_search.clone();
-        let nav = v_flex()
+        let nav = h_flex()
             .flex_shrink_0()
-            .gap(px(2.0))
-            .p(px(8.0))
-            .border_b_1()
-            .border_color(border_subtle)
+            .gap(px(6.0))
+            .pl(px(8.0))
+            .pr(px(8.0))
+            .pt(px(4.0))
+            .pb(px(2.0))
             .child(
                 h_flex()
                     .id("nav-new-chat")
                     .group("nav-new")
-                    .h(px(34.0))
-                    .pl(px(9.0))
-                    .pr(px(9.0))
-                    .gap(px(8.0))
+                    .flex_1()
+                    .h(px(30.0))
+                    .pl(px(10.0))
+                    .pr(px(8.0))
+                    .gap(px(7.0))
                     .items_center()
                     .rounded(px(sizes::ROW_RADIUS))
+                    .bg(hex(colors::SURFACE))
+                    .border_1()
+                    .border_color(border_subtle)
                     .cursor_pointer()
-                    .hover(|h| h.bg(hex(colors::SURFACE)))
+                    .hover(|h| {
+                        h.bg(hex(colors::SURFACE_HOVER))
+                            .border_color(hex(colors::ACCENT))
+                    })
+                    .child(icon(IconName::Plus, 13.0, hex(colors::ACCENT_HOVER)))
                     .child(
                         div()
-                            .w(px(16.0))
-                            .flex()
-                            .justify_center()
-                            .flex_shrink_0()
-                            .child(
-                                icon(IconName::Plus, 14.0, muted).group_hover("nav-new", |s| {
-                                    s.text_color(hex(colors::TEXT_BRIGHT))
-                                }),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(13.0))
-                            .text_color(fg)
-                            .group_hover("nav-new", |s| s.text_color(hex(colors::TEXT_BRIGHT)))
+                            .text_size(px(12.0))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(hex(colors::TEXT_BRIGHT))
                             .child("新建会话"),
                     )
+                    .child(div().flex_1())
+                    .child(
+                        div()
+                            .pl(px(5.0))
+                            .pr(px(5.0))
+                            .rounded(px(4.0))
+                            .bg(white(0.04))
+                            .border_1()
+                            .border_color(border_subtle)
+                            .font_family("monospace")
+                            .text_size(px(10.0))
+                            .text_color(muted)
+                            .child("⌘N"),
+                    )
                     .on_click(move |_, w, cx| on_new(w, cx)),
-            )
-            .child(
-                h_flex()
-                    .id("nav-search")
-                    .group("nav-search")
-                    .h(px(34.0))
-                    .pl(px(9.0))
-                    .pr(px(9.0))
-                    .gap(px(8.0))
-                    .items_center()
-                    .rounded(px(sizes::ROW_RADIUS))
-                    .cursor_pointer()
-                    .hover(|h| h.bg(hex(colors::SURFACE)))
-                    .child(
-                        div()
-                            .w(px(16.0))
-                            .flex()
-                            .justify_center()
-                            .flex_shrink_0()
-                            .child(
-                                icon(IconName::Search, 14.0, muted)
-                                    .group_hover("nav-search", |s| {
-                                        s.text_color(hex(colors::TEXT_BRIGHT))
-                                    }),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(13.0))
-                            .text_color(fg)
-                            .group_hover("nav-search", |s| s.text_color(hex(colors::TEXT_BRIGHT)))
-                            .child("搜索"),
-                    )
-                    .on_click(move |_, w, cx| on_search(w, cx)),
             );
 
-        // ── 区头「工作区」（原型 .sec-head：mt 12 pad 6 5 4 9 min-h 28；10px/600 + ghost ＋）──
+        // ── 区头「工作区 (N)」──
+        let ws_count = self.groups.iter().filter(|g| !g.unassigned).count();
         let section = h_flex()
             .id("section-workspaces")
             .group("sec-head")
             .flex_shrink_0()
             .min_h(px(28.0))
-            .mt(px(12.0))
+            .mt(px(4.0))
             .pl(px(9.0))
             .pr(px(5.0))
             .pt(px(6.0))
@@ -730,7 +886,7 @@ impl RenderOnce for Sidebar {
                     .text_size(px(10.0))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(muted)
-                    .child("工作区"),
+                    .child(format!("工作区 ({ws_count})")),
             )
             .child(div().flex_1())
             .child(
@@ -764,6 +920,10 @@ impl RenderOnce for Sidebar {
             .pb(px(8.0))
             .children(self.groups.into_iter().map(|g| {
                 let group_key: SharedString = format!("ws-{}", g.id).into();
+                let total_sessions = g.rows.len() + g.hidden;
+                let toggle_gid = g.id.clone();
+                let on_group_toggle = self.on_group.clone();
+                let unassigned = g.unassigned;
                 let ws_row = h_flex()
                     .id(ElementId::Name(format!("workspace-{}", g.id).into()))
                     .group(group_key.clone())
@@ -779,6 +939,7 @@ impl RenderOnce for Sidebar {
                     .hover(|h| h.bg(white(0.035)))
                     .child(
                         div()
+                            .id(ElementId::Name(format!("ws-mark-{}", g.id).into()))
                             .flex()
                             .items_center()
                             .justify_center()
@@ -792,11 +953,26 @@ impl RenderOnce for Sidebar {
                                     } else {
                                         IconName::Folder
                                     },
-                                    13.0,
-                                    muted,
+                                    13.5,
+                                    if g.unassigned {
+                                        muted
+                                    } else {
+                                        hex(colors::ACCENT_HOVER)
+                                    },
                                 )
                                 .group_hover(group_key.clone(), |s| s.text_color(fg)),
-                            ),
+                            )
+                            .when(!unassigned, move |d| {
+                                d.on_click(move |_, window, cx| {
+                                    cx.stop_propagation();
+                                    on_group_toggle(
+                                        &toggle_gid,
+                                        GroupAction::ToggleExpanded,
+                                        window,
+                                        cx,
+                                    );
+                                })
+                            }),
                     )
                     .child(
                         div()
@@ -809,7 +985,18 @@ impl RenderOnce for Sidebar {
                             .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(fg)
                             .child(g.name.clone()),
-                    );
+                    )
+                    .when(!g.unassigned, |d| {
+                        d.child(
+                            div()
+                                .ml(px(4.0))
+                                .font_family("monospace")
+                                .text_size(px(10.5))
+                                .text_color(hex(colors::FAINT))
+                                .flex_shrink_0()
+                                .child(format!("{total_sessions}")),
+                        )
+                    });
 
                 let (ws_row, acts) = if g.unassigned {
                     // 未归属虚拟组：纯展示恒展开，无折叠/ghost/菜单
@@ -818,7 +1005,7 @@ impl RenderOnce for Sidebar {
                     let gid = g.id.clone();
                     let on_group = self.on_group.clone();
                     let row = ws_row.on_click(move |_, window, cx| {
-                        on_group(&gid, GroupAction::ToggleExpanded, window, cx)
+                        on_group(&gid, GroupAction::Activate, window, cx)
                     });
                     // 行本体右键 = 「…」同一菜单（原型 ws-row CtxMenu）
                     let (gid_right, on_menu_right) = (g.id.clone(), self.on_menu.clone());
@@ -827,7 +1014,8 @@ impl RenderOnce for Sidebar {
                     });
                     // .acts：absolute right 3 top 5——「…」工作区菜单 + ＋ 新建会话。
                     // 「…」左键 / 右键弹统一浮层（受控态在 RootView）
-                    let on_new_in_ws = self.on_new_session.clone();
+                    let on_group_plus = self.on_group.clone();
+                    let gid_plus = g.id.clone();
                     let ws_menu_open = self.open_menu == Some(MenuTarget::Workspace(g.id.clone()));
                     let (entries, pinned) = (ws_menu_entries(g.pinned), g.pinned);
                     let (on_menu_change, on_menu_right_btn) =
@@ -920,7 +1108,16 @@ impl RenderOnce for Sidebar {
                             IconName::Plus,
                             group_key.clone(),
                             0.0,
-                            move |w, cx| on_new_in_ws(w, cx),
+                            move |ev, w, cx| {
+                                on_group_plus(
+                                    &gid_plus,
+                                    GroupAction::NewSession {
+                                        shift: ev.modifiers().shift,
+                                    },
+                                    w,
+                                    cx,
+                                )
+                            },
                         ));
                     (row, Some(acts))
                 };
@@ -943,7 +1140,8 @@ impl RenderOnce for Sidebar {
                         .border_color(white(0.06));
                     if g.rows.is_empty() && !g.unassigned {
                         // 空组引导（原型 .ws-empty-hint：h28 pad 0 7 gap 6 r5）
-                        let on_new_in_ws = self.on_new_session.clone();
+                        let on_group_empty = self.on_group.clone();
+                        let gid_empty = g.id.clone();
                         body = body.child(
                             h_flex()
                                 .id(ElementId::Name(
@@ -964,7 +1162,16 @@ impl RenderOnce for Sidebar {
                                         .text_color(muted)
                                         .child("启动第一个会话"),
                                 )
-                                .on_click(move |_, w, cx| on_new_in_ws(w, cx)),
+                                .on_click(move |ev, w, cx| {
+                                    on_group_empty(
+                                        &gid_empty,
+                                        GroupAction::NewSession {
+                                            shift: ev.modifiers().shift,
+                                        },
+                                        w,
+                                        cx,
+                                    )
+                                }),
                         );
                     } else {
                         let rows_len = g.rows.len();
@@ -1018,11 +1225,15 @@ impl RenderOnce for Sidebar {
                 group
             }));
 
-        // ── 脚（原型 .sb-foot：pad 8 gap 2 + 顶部分隔线）：齿轮 + 铃铛（未读红点）+ 版本号 ──
+        // ── 脚（.sb-foot：左悬浮岛底栏，保持 (22, H-22) 与 (52, H-22) 几何锚点）──
         let foot = h_flex()
             .flex_shrink_0()
             .gap(px(2.0))
-            .p(px(8.0))
+            .pl(px(2.0))
+            .pr(px(8.0))
+            .pt(px(4.0))
+            .pb(px(2.0))
+            .bg(crate::theme::rgba_css(13, 15, 21, 0.55))
             .border_t_1()
             .border_color(border_subtle)
             .items_center()
@@ -1054,24 +1265,36 @@ impl RenderOnce for Sidebar {
             .child(div().flex_1())
             .child(
                 div()
+                    .font_family("monospace")
                     .text_size(px(11.0))
                     .text_color(hex(colors::FAINT))
-                    .child(self.version.clone()),
+                    .child(format!("{} · GPUI", self.version)),
             );
 
-        v_flex()
+        let mut root_col = v_flex()
             .id("sidebar")
             .w_full()
             .h_full()
             .flex_shrink_0()
-            .bg(theme.sidebar)
-            .border_r_1()
-            .border_color(border_subtle)
-            .child(header)
-            .child(nav)
-            .child(section)
-            .child(scroll)
-            .child(foot)
+            .bg(hex(colors::PANE))
+            .child(header);
+
+        if cur_mode == SidebarMode::Edit
+            && let Some(edit_el) = self.edit_content
+        {
+            root_col = root_col.child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .min_w_0()
+                    .size_full()
+                    .child(edit_el),
+            );
+        } else {
+            root_col = root_col.child(nav).child(section).child(scroll);
+        }
+
+        root_col.child(foot)
     }
 }
 

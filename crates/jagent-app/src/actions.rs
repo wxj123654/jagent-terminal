@@ -32,6 +32,8 @@ actions!(
         SearchThreads,
         /// 新建会话
         NewSession,
+        /// 快速新建交互式终端（⌘T / Ctrl-Shift-T）
+        NewTerminal,
         /// 收起 / 展开侧栏
         ToggleSidebar,
         /// 打开 Git 图（硬编码 Ctrl-Shift-G，不进 settings）
@@ -45,6 +47,11 @@ actions!(
         GitSelectPrev,
         GitRefresh,
         GitClearSelection,
+        /// 窗口与系统菜单动作（退出 / 切换原生全屏 / 最小化 / 缩放）
+        Quit,
+        ToggleFullScreen,
+        MinimizeWindow,
+        ZoomWindow,
     ]
 );
 
@@ -152,6 +159,15 @@ pub fn bindings(settings: &Settings) -> (Vec<KeyBinding>, Vec<Rejected>) {
 
     // 固定语义
     out.push(KeyBinding::new(
+        if cfg!(target_os = "macos") {
+            "cmd-t"
+        } else {
+            "ctrl-shift-t"
+        },
+        NewTerminal,
+        Some(CTX_WORKSPACE),
+    ));
+    out.push(KeyBinding::new(
         "ctrl-shift-g",
         OpenGitGraph,
         Some(CTX_WORKSPACE),
@@ -175,10 +191,53 @@ pub struct Rejected {
     pub keystroke: String,
 }
 
-/// 清掉旧绑定并装上新的（设置里改键位后即时生效）。返回被拒绝的项。
+/// 本 app 动作的命名空间前缀（`actions!(jagent, …)` 生成的 `Action::name()`）。
+const APP_ACTION_PREFIX: &str = "jagent::";
+
+/// 替换本 app 的绑定并装上新的（设置里改键位后即时生效）。返回被拒绝的项。
+///
+/// **只替换 `jagent::` 动作**：gpui 的键位表是全局一张，gpui-component 的输入框
+/// （backspace / delete / 方向键 / cmd-a …）、Popover、Dialog 也绑在里面。曾经
+/// 直接 `clear_key_bindings()` 把它们一起清掉——输入框能打字（文字走 IME 通道，
+/// 不经键位表）却删不掉字。Keymap 没有按条删除的 API，所以先快照非本 app 的
+/// 绑定，清表后按原顺序放回，再追加本 app 的新绑定。
 pub fn install(cx: &mut App, settings: &Settings) -> Vec<Rejected> {
     let (b, rejected) = bindings(settings);
+    let root_not_terminal = gpui::KeyBindingContextPredicate::parse("Root && !Terminal")
+        .ok()
+        .map(std::rc::Rc::new);
+    let keep: Vec<KeyBinding> = cx
+        .key_bindings()
+        .borrow()
+        .bindings()
+        .filter(|k| !k.action().name().starts_with(APP_ACTION_PREFIX))
+        .map(|k| {
+            // gpui_base::root::init 在 "Root" 上绑了裸键 tab / shift-tab 用于焦点切换；
+            // 当焦点在 TerminalView ("Terminal") 内时必须让位，保证 Tab 补全与 Shift-Tab 透传给 PTY。
+            let name = k.action().name();
+            if name == "root::Tab" || name == "root::TabPrev" {
+                let ks = k
+                    .keystrokes()
+                    .iter()
+                    .map(|s| s.inner().unparse())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                gpui::KeyBinding::load(
+                    &ks,
+                    k.action().boxed_clone(),
+                    root_not_terminal.clone(),
+                    false,
+                    k.action_input(),
+                    &gpui::DummyKeyboardMapper,
+                )
+                .unwrap_or_else(|_| k.clone())
+            } else {
+                k.clone()
+            }
+        })
+        .collect();
     cx.clear_key_bindings();
+    cx.bind_keys(keep);
     cx.bind_keys(b);
     rejected
 }
@@ -199,8 +258,8 @@ mod tests {
     fn default_settings_produce_every_binding_and_reject_nothing() {
         let (b, rejected) = bindings(&Settings::default());
         assert!(rejected.is_empty(), "{rejected:?}");
-        // 7 个可重绑 + ctrl-shift-g + 4 个 Git 图动作 + Settings Escape
-        assert_eq!(b.len(), 7 + 1 + 4 + 1);
+        // 7 个可重绑 + cmd-t/ctrl-shift-t + ctrl-shift-g + 4 个 Git 图动作 + Settings Escape
+        assert_eq!(b.len(), 7 + 2 + 4 + 1);
     }
 
     #[test]
@@ -279,7 +338,7 @@ mod tests {
         let names: Vec<_> = rejected.iter().map(|r| r.action).collect();
         assert_eq!(names, ["cycleNext", "newSession"]);
         assert_eq!(rejected[1].keystroke, "not a key combo");
-        assert_eq!(b.len(), 13 - 2, "只丢坏的两条，其余照常");
+        assert_eq!(b.len(), 14 - 2, "只丢坏的两条，其余照常");
     }
 
     #[test]
@@ -312,5 +371,65 @@ mod tests {
                 "clear_key_bindings 后旧的不残留：{all:?}"
             );
         });
+    }
+
+    /// 回归：install 曾 `clear_key_bindings()` 清空整张键位表，把 gpui-component
+    /// 输入框自带的 backspace / delete / 方向键一并抹掉——打字（走 IME 通道）
+    /// 正常但删不掉字。库键位必须在 install（含重装）后保留。
+    #[gpui::test]
+    fn install_keeps_library_input_bindings_across_reinstalls(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            assert!(install(cx, &Settings::default()).is_empty());
+            let mut s = Settings::default();
+            s.keybindings.cycle_next = "ctrl-alt-n".into();
+            assert!(install(cx, &s).is_empty(), "重装（设置里改键位）");
+            let keymap = cx.key_bindings();
+            let keymap = keymap.borrow();
+            let all: Vec<String> = keymap.bindings().map(keystrokes).collect();
+            for k in ["backspace", "delete", "left", "right"] {
+                assert!(all.iter().any(|x| x == k), "库输入框键位 {k} 丢失");
+            }
+            assert!(all.iter().any(|x| x == "ctrl-alt-n"), "新键位生效");
+            assert!(!all.iter().any(|x| x == "ctrl-tab"), "旧的用户键位不残留");
+        });
+    }
+
+    /// 端到端：真实 InputState 里按 backspace 能删字。
+    #[gpui::test]
+    fn backspace_deletes_in_a_focused_input_after_install(cx: &mut gpui::TestAppContext) {
+        use gpui::{AppContext as _, Context, Entity, IntoElement, Render, Window};
+        use gpui_component::input::{Input, InputState};
+
+        struct Harness {
+            input: Entity<InputState>,
+        }
+        impl Render for Harness {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                Input::new(&self.input)
+            }
+        }
+
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            assert!(install(cx, &Settings::default()).is_empty());
+        });
+        let (view, cx) = cx.add_window_view(|window, cx| {
+            let input = cx.new(|cx| {
+                let mut s = InputState::new(window, cx);
+                s.set_value("abc", window, cx);
+                s
+            });
+            Harness { input }
+        });
+        cx.update(|window, cx| {
+            let input = view.read(cx).input.clone();
+            input.update(cx, |s, cx| s.focus(window, cx));
+            window.draw(cx).clear(cx);
+        });
+        cx.simulate_keystrokes("end backspace");
+        cx.run_until_parked();
+        let value = cx.update(|_, cx| view.read(cx).input.read(cx).value().to_string());
+        assert_eq!(value, "ab", "backspace 应删掉末字符");
     }
 }

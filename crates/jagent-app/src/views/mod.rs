@@ -2,6 +2,8 @@
 
 pub mod conversation;
 pub mod empty_presets;
+pub mod field;
+pub mod file_surface;
 pub mod git_context_menu;
 pub mod git_graph;
 pub mod git_ref_badges;
@@ -12,6 +14,7 @@ pub mod popup;
 pub mod rename;
 pub mod root;
 pub mod search_threads;
+pub mod selectable;
 pub mod session_tabs;
 pub mod settings;
 pub mod settings_controls;

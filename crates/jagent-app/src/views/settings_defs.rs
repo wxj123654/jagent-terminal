@@ -199,6 +199,13 @@ pub const SETTING_DEFS: &[SettingDef] = &[
         },
     },
     SettingDef {
+        path: "appearance.wordWrap",
+        section: Section::Appearance,
+        label: "代码与 Diff 自动换行",
+        desc: "在主画布编辑器与 Diff 视图中对超长行启用软换行（关闭时支持横向滚动）",
+        control: ControlKind::Toggle,
+    },
+    SettingDef {
         path: "advanced.gpuBackend",
         section: Section::Advanced,
         label: "GPU 后端",
