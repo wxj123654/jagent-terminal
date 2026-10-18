@@ -66,6 +66,15 @@
       composer 704 r12 shell/34² accent 箭头钮）；空态 home-card 全件（empty_presets.rs
       680 渐变卡/grid 2 列 pill/窄态翻转）；侧栏+面板分隔条把手 hover accent 25% 竖条
       （with_handle_appearance）；逐面像素复查 = 视觉三件套 + 布局常量测试锁死
+- [x] **V7（2026-10-16）输入控件打磨**：`views/field.rs` 统一文本输入外壳（30 高 / r8 /
+      inputBg / 12px，mono 变体给命令路径类字段；收编添加工作区 / 重命名 / Git prompt /
+      预设·ACP 编辑卡）；主题 radius 8 / radius.lg 12 对齐原型；SelectField 改 RenderOnce
+      （Tab 可聚焦 + 焦点环、Enter/Space/↓ 开、↑↓ 循环高亮 + hover 同步、Enter 提交、Esc
+      关、焦点归还触发器；菜单与触发器同宽；行 30 高 r6）+ 3 个 gpui 测试锁键盘契约；
+      NumberInput 96 宽 + mono + 步进分隔线（修 scrollback「100(」截断）；Toggle 关态对比度
+      提升 + toggle/range 进 Tab 循环；预设卡按原型改两列网格 + placeholder；设置遮罩
+      `occlude()`（修点 nav 穿透到下层侧栏行、设置被关）；`v_shots` 新增 `v_inputs` 巡检
+      5 张（i_preset/i_terminal/i_appearance/i_select/i_wsdialog，`ONLY_INPUTS=1` 单跑）
 - 基建（同轮）：**PTY reader 线程泄漏修复**（jagent-terminal/pty.rs：PtySender 持 join
   动作，shutdown 后 join 线程；join 返回值 mem::forget 防 Pty::drop 的 waitpid 阻塞；
   state 测试收尾显式 close_thread）——此前 ~20% 概率 gpui test scheduler 判非确定性
@@ -104,6 +113,14 @@ Git 图贝塞尔弯线、桌面通知真实弹出（Effects::notify 目前只记
 8. 虚拟列表用 gpui `list`/`uniform_list`（+`FollowMode::Tail`），不用 gpui-component VirtualList
 
 ## 会话日志（每 session 追加一行：日期 · 做了什么 · 下一步）
+
+- 2026-10-16 · **修：输入框删不掉字**——`actions::install` 用 `clear_key_bindings()` 清空
+      全局键位表，连 gpui-component 输入框的 backspace/delete/方向键/cmd-a 一起抹掉（打字走
+      IME 通道不受影响，所以「能输入删不掉」）。改为只替换 `jagent::` 动作、保留库绑定；
+      2 个回归测试（重装后库键位仍在 + 真实 Input 里 backspace 删字）
+- 2026-10-16 · **V7 输入控件打磨**（见进度 V7）· 已知：`state::tests::spawning_a_preset…`
+      偶发 PTY reader 线程判非确定性（本轮 20+ 次跑中 1 次，基线同测例历史 ~20%→修后罕见），
+      非本轮引入 · 下一步：真机手感（Select 键盘、Tab 焦点环、IME 在双列字段）
 
 - 2026-10-15 · **V 轮像素 diff 复核（收官后追加）**：新增视觉测试 `tests/v_shots.rs`
       （harness=false，8 面离屏截图到 target/shots/v/：空态/chat/设置/通知/Git 图/面板/
