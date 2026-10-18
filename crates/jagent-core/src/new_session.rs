@@ -265,7 +265,7 @@ mod tests {
         assert_eq!(names(&m, "终端工具"), ["Shell"]);
         assert_eq!(
             names(&m, "对话"),
-            ["New Chat", "Codex (ACP)", "Claude (ACP)"]
+            ["New Chat", "Pi (ACP)", "Codex (ACP)", "Claude (ACP)"]
         );
         assert!(!m.empty);
     }
@@ -300,6 +300,7 @@ mod tests {
         assert_eq!(cmd("Amp"), "amp", "有 program → program");
         assert_eq!(cmd("Claude Code"), "claude", "无 program → initCommand");
         assert_eq!(cmd("Shell"), "", "都没有 → 空");
+        assert_eq!(cmd("Pi (ACP)"), "pi-acp");
         assert_eq!(cmd("Codex (ACP)"), "codex --acp");
     }
 
@@ -373,15 +374,15 @@ mod tests {
         let m = build(&p, &a, &[ws("w1", "alpha", "/a")], "", "", "");
         assert_eq!(
             names(&m, "对话"),
-            ["Codex (ACP)", "Claude (ACP)"],
+            ["Pi (ACP)", "Codex (ACP)", "Claude (ACP)"],
             "未归属：无 New Chat，ACP 仍列"
         );
         let acp = m.groups.iter().find(|g| g.label == "对话").unwrap().rows[0].clone();
         assert_eq!(
             acp.pick,
             Pick::NewAcp {
-                agent_id: "acp-codex".into(),
-                label: "Codex (ACP)".into(),
+                agent_id: "acp-pi".into(),
+                label: "Pi (ACP)".into(),
                 workspace_id: None
             }
         );

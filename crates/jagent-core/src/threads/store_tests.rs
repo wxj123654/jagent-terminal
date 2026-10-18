@@ -595,6 +595,27 @@ fn a_chat_reply_is_not_applied_to_an_acp_thread_with_the_same_id_space() {
     assert!(chat(&s, &c).pending_reply);
 }
 
+#[test]
+fn set_acp_agent_switches_agent_updates_auto_title_and_disposes_previous_connection() {
+    let (mut s, f) = store();
+    let id = s
+        .create_acp_thread("acp-codex", "Codex (ACP)", None)
+        .unwrap();
+    s.mark_acp_connected(&id);
+    assert!(s.is_acp_connected(&id));
+
+    s.set_acp_agent(&id, "acp-claude", "Claude (ACP)");
+    let a = acp(&s, &id);
+    assert_eq!(a.agent_id, "acp-claude");
+    assert_eq!(a.title, "Claude (ACP)", "auto_title 期间同步更新标题");
+    assert!(!s.is_acp_connected(&id), "切换 agent 后重置连接状态");
+    assert_eq!(
+        f.log.borrow().disposed,
+        std::slice::from_ref(&id),
+        "切换 agent 时清理旧连接"
+    );
+}
+
 // ═════════════════════ 工作区 CRUD 与持久化 ═════════════════════
 
 #[test]

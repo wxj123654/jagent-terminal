@@ -22,7 +22,7 @@ pub struct TerminalPreset {
     /// 新建会话弹窗行第二行
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// 内置不可删、id 不可改；复制内置 → builtin:false
+    /// 内置或自定义预设（均可删除、可拖拽排序；id 不可改；复制内置 → builtin:false）
     pub builtin: bool,
     /// 留空 = 系统默认 shell
     #[serde(default, skip_serializing_if = "Option::is_none")]

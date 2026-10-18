@@ -44,6 +44,12 @@ pub struct AcpAgent {
 fn default_acp_agents() -> Vec<AcpAgent> {
     vec![
         AcpAgent {
+            id: "acp-pi".into(),
+            label: "Pi (ACP)".into(),
+            command: "pi-acp".into(),
+            args: vec![],
+        },
+        AcpAgent {
             id: "acp-codex".into(),
             label: "Codex (ACP)".into(),
             command: "codex".into(),
@@ -92,6 +98,8 @@ pub struct Appearance {
     pub theme: String,
     #[serde(rename = "sidebarWidth")]
     pub sidebar_width: i64,
+    #[serde(rename = "wordWrap")]
+    pub word_wrap: bool,
 }
 
 /// 键位串语法：modifier 以 `-` 连接（`ctrl-tab` / `cmd-k` / `/`）。语义约束在编辑面校验。
@@ -170,6 +178,7 @@ impl Default for Settings {
             appearance: Appearance {
                 theme: "one-dark".into(),
                 sidebar_width: DEFAULT_SIDEBAR_WIDTH,
+                word_wrap: false,
             },
             acp_agents: default_acp_agents(),
             keybindings: Keybindings {
@@ -275,6 +284,20 @@ fn migrate_legacy(root: &mut Map<String, Value>) {
     {
         t.insert("fontFamily".into(), json!(default_terminal_font()));
     }
+    if let Some(Value::Array(agents)) = root.get_mut("acpAgents") {
+        for agent in agents.iter_mut() {
+            if let Some(obj) = agent.as_object_mut()
+                && obj.get("command").and_then(Value::as_str) == Some("pi")
+                && obj
+                    .get("args")
+                    .and_then(Value::as_array)
+                    .is_some_and(|a| a.len() == 1 && a[0].as_str() == Some("--acp-stdio"))
+            {
+                obj.insert("command".into(), json!("pi-acp"));
+                obj.insert("args".into(), json!([]));
+            }
+        }
+    }
 }
 
 /// 解析 settings.json 原文。永不失败：
@@ -368,6 +391,7 @@ fn parse_root(root: &Map<String, Value>) -> Result<Settings, ()> {
                 400,
                 d.appearance.sidebar_width,
             ),
+            word_wrap: leaf_bool(appearance, "wordWrap", d.appearance.word_wrap),
         },
         acp_agents: parse_acp_agents(root.get("acpAgents")),
         keybindings: Keybindings {
@@ -489,10 +513,11 @@ mod tests {
             d.appearance,
             Appearance {
                 theme: "one-dark".into(),
-                sidebar_width: 264
+                sidebar_width: 264,
+                word_wrap: false,
             }
         );
-        assert_eq!(d.acp_agents.len(), 2);
+        assert_eq!(d.acp_agents.len(), 3);
         assert_eq!(
             d.advanced,
             Advanced {
@@ -562,6 +587,18 @@ mod tests {
     fn legacy_jetbrains_mono_is_migrated_to_platform_font() {
         let s = parse(json!({ "terminal": { "fontFamily": "JetBrains Mono" } }));
         assert_eq!(s.terminal.font_family, default_terminal_font());
+    }
+
+    #[test]
+    fn legacy_pi_acp_stdio_is_migrated_to_pi_acp() {
+        let s = parse(json!({
+            "acpAgents": [
+                { "id": "acp-x-1", "label": "Pi ACP Bridge", "command": "pi", "args": ["--acp-stdio"] }
+            ]
+        }));
+        assert_eq!(s.acp_agents.len(), 1);
+        assert_eq!(s.acp_agents[0].command, "pi-acp");
+        assert!(s.acp_agents[0].args.is_empty());
     }
 
     #[test]

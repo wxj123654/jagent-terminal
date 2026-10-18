@@ -9,10 +9,24 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use jagent_core::acp::{
-    Incoming, TurnCollector, check_initialize, encode_request, initialize_params, parse_line,
-    prompt_params, reply_to_agent_request, session_id_of,
+    AcpCommand, AcpConfigSelector, AcpConfigSource, AcpSessionSummary, Incoming, ReplayedMessage,
+    SessionLoadCollector, TurnCollector, builtin_acp_commands, check_initialize, encode_request,
+    initialize_params, list_sessions_params, load_session_params, merge_acp_commands,
+    parse_commands_from_startup_info, parse_line, parse_session_config_selectors,
+    parse_session_list, parse_session_startup_info, prompt_params, reply_to_agent_request,
+    session_id_of, set_config_option_params, set_mode_params, set_model_params,
 };
+use jagent_core::threads::ToolCallTrace;
 use serde_json::Value;
+
+/// 流式或定稿的 ACP 轮次快照（正文 + 工具调用列表 + 可选配置项变更 + 可选命令列表变更）。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AcpTurnUpdate {
+    pub text: String,
+    pub tool_calls: Vec<ToolCallTrace>,
+    pub config_selectors: Option<Vec<AcpConfigSelector>>,
+    pub available_commands: Option<Vec<AcpCommand>>,
+}
 
 /// 一个已握手的 ACP 连接（一个 thread 一条）。
 pub struct AcpConnection {
@@ -23,6 +37,14 @@ pub struct AcpConnection {
     next_id: u64,
     /// stdout 读线程送来的入站消息
     rx: Receiver<Incoming>,
+    /// 当前会话暴露的配置项选择器（Model / Thinking / Mode）
+    pub config_selectors: Vec<AcpConfigSelector>,
+    /// 当前会话暴露的斜杠命令列表
+    pub available_commands: Vec<AcpCommand>,
+    /// `session/new` 返回的启动欢迎信息（如 `pi-acp` 的 `pi vX.Y.Z`、Context、Skills、Extensions 摘要）
+    pub startup_info: Option<String>,
+    /// 若通过 `session/load` 建立连接，保存回放还原出的历史消息列表
+    pub replayed_messages: Vec<ReplayedMessage>,
 }
 
 #[derive(Debug)]
@@ -44,6 +66,92 @@ impl std::fmt::Display for AcpError {
 
 impl std::error::Error for AcpError {}
 
+/// 在给定 `PATH` 字符串中解析裸命令名为可执行文件绝对路径。
+fn find_in_path_os(command: &str, paths: &std::ffi::OsStr) -> Option<std::path::PathBuf> {
+    for dir in std::env::split_paths(paths) {
+        let candidate = dir.join(command);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// 缓存合并了用户 login shell 的 PATH（解决 macOS GUI LaunchServices 启动时 PATH 只有 `/usr/bin:/bin`
+/// 导致找不到 fnm/nvm/homebrew 下的 `pi-acp`、`node`、`pi`、`codex` 等命令的问题）。
+fn merged_user_path() -> Option<std::ffi::OsString> {
+    static CACHED: std::sync::OnceLock<Option<std::ffi::OsString>> = std::sync::OnceLock::new();
+    CACHED
+        .get_or_init(|| {
+            let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+            let mut push_unique = |p: std::path::PathBuf| {
+                if !p.as_os_str().is_empty() && !dirs.contains(&p) {
+                    dirs.push(p);
+                }
+            };
+
+            if let Some(cur) = std::env::var_os("PATH") {
+                for p in std::env::split_paths(&cur) {
+                    push_unique(p);
+                }
+            }
+
+            #[cfg(all(unix, not(test)))]
+            {
+                let shell = std::env::var("SHELL")
+                    .ok()
+                    .filter(|s| !s.trim().is_empty())
+                    .unwrap_or_else(|| "/bin/zsh".to_owned());
+                if let Ok(out) = Command::new(&shell)
+                    .args(["-lc", "printf '__JAGENT_PATH__=%s' \"$PATH\""])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null())
+                    .output()
+                {
+                    let s = String::from_utf8_lossy(&out.stdout);
+                    if let Some((_, path_part)) = s.rsplit_once("__JAGENT_PATH__=") {
+                        for p in std::env::split_paths(path_part.trim()) {
+                            push_unique(p);
+                        }
+                    }
+                }
+            }
+
+            std::env::join_paths(dirs.iter()).ok()
+        })
+        .clone()
+}
+
+/// 解析 `command` 为可执行文件路径与子进程 `PATH`：
+/// - 若 `command` 含路径分隔符（如 `/tmp/.../fake-agent.sh`），直接原样使用且不触发 login shell 探测；
+/// - 若当前进程 `PATH` 已能找到该命令，直接返回该绝对路径与当前 `PATH`；
+/// - 否则合并 login shell `PATH` 再查找。
+fn resolve_command_and_path(command: &str) -> (std::path::PathBuf, Option<std::ffi::OsString>) {
+    let p = std::path::Path::new(command);
+    let cur_path = std::env::var_os("PATH");
+    if p.components().count() > 1 {
+        return (p.to_path_buf(), cur_path);
+    }
+    if let Some(cur) = &cur_path
+        && let Some(found) = find_in_path_os(command, cur)
+    {
+        return (found, cur_path);
+    }
+    let merged = merged_user_path();
+    if let Some(paths) = &merged
+        && let Some(found) = find_in_path_os(command, paths)
+    {
+        return (found, merged);
+    }
+    (p.to_path_buf(), merged)
+}
+
+#[cfg(test)]
+const ACP_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+#[cfg(not(test))]
+const ACP_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 impl AcpConnection {
     /// 起子进程并完成握手（initialize → session/new）。阻塞直到握手完成或失败，应在后台线程调用。
     pub fn connect(
@@ -61,12 +169,29 @@ impl AcpConnection {
         cwd: &std::path::Path,
         on_spawn: impl FnOnce(AcpDisposer),
     ) -> Result<Self, AcpError> {
-        let mut child = Command::new(command)
-            .args(args)
+        Self::connect_or_load_with_disposer(command, args, cwd, None, on_spawn)
+    }
+
+    /// 起子进程并完成握手：若提供 `resume_session_id` 则优先调用 `session/load` 恢复历史会话，
+    /// 若未提供或 `session/load` 失败则自动回退到 `session/new`。
+    pub fn connect_or_load_with_disposer(
+        command: &str,
+        args: &[String],
+        cwd: &std::path::Path,
+        resume_session_id: Option<&str>,
+        on_spawn: impl FnOnce(AcpDisposer),
+    ) -> Result<Self, AcpError> {
+        let (resolved_cmd, merged_path) = resolve_command_and_path(command);
+        let mut cmd = Command::new(&resolved_cmd);
+        cmd.args(args)
             .current_dir(cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null());
+        if let Some(path_env) = &merged_path {
+            cmd.env("PATH", path_env);
+        }
+        let mut child = cmd
             .spawn()
             .map_err(|e| AcpError::Spawn(format!("{command}: {e}")))?;
         let stdin = child
@@ -88,22 +213,150 @@ impl AcpConnection {
             session_id: String::new(),
             next_id: 1,
             rx,
+            config_selectors: Vec::new(),
+            available_commands: builtin_acp_commands(),
+            startup_info: None,
+            replayed_messages: Vec::new(),
         };
         let init = conn.request(
             "initialize",
             &initialize_params("j-agent", env!("CARGO_PKG_VERSION")),
         )?;
         check_initialize(&init).map_err(AcpError::Protocol)?;
+
+        if let Some(sid) = resume_session_id.map(str::trim).filter(|s| !s.is_empty())
+            && let Ok(replayed) = conn.load_session(sid, cwd)
+        {
+            conn.replayed_messages = replayed;
+            return Ok(conn);
+        }
+
         let cwd_s = cwd.to_string_lossy().into_owned();
         let session = conn.request(
             "session/new",
             &serde_json::json!({ "cwd": cwd_s, "mcpServers": [] }),
         )?;
         conn.session_id = session_id_of(&session).map_err(AcpError::Protocol)?;
+        let parsed = parse_session_config_selectors(&session);
+        if !parsed.is_empty() {
+            conn.config_selectors = parsed;
+        }
+        if let Some(startup) = parse_session_startup_info(&session) {
+            let from_startup = parse_commands_from_startup_info(Some(&startup));
+            conn.available_commands =
+                merge_acp_commands(from_startup, std::mem::take(&mut conn.available_commands));
+            conn.startup_info = Some(startup);
+        }
+        conn.drain_post_handshake_updates();
         Ok(conn)
     }
 
-    /// 发一条请求并等待它的响应；等待期间收到的 agent 请求按协议自动应答。
+    /// 当前绑定的远端 ACP `sessionId`。
+    pub fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    /// 调用 `session/list` 拉取指定工作区目录下的历史会话列表。
+    pub fn list_sessions(&mut self, cwd: Option<&str>) -> Result<Vec<AcpSessionSummary>, AcpError> {
+        let resp = self.request("session/list", &list_sessions_params(cwd, None))?;
+        Ok(parse_session_list(&resp))
+    }
+
+    /// 调用 `session/load` 恢复指定历史会话，并收集回放的完整多轮对话历史。
+    pub fn load_session(
+        &mut self,
+        target_session_id: &str,
+        cwd: &std::path::Path,
+    ) -> Result<Vec<ReplayedMessage>, AcpError> {
+        let cwd_s = cwd.to_string_lossy().into_owned();
+        let id = self.next_id;
+        self.next_id += 1;
+        let params = load_session_params(target_session_id, &cwd_s);
+        self.write(&encode_request(id, "session/load", &params))?;
+
+        let mut collector = SessionLoadCollector::default();
+        loop {
+            match self
+                .rx
+                .recv_timeout(ACP_REQUEST_TIMEOUT)
+                .map_err(|_| AcpError::Io("agent 未响应或已退出（等待 session/load）".into()))?
+            {
+                Incoming::Response { id: rid, result } if rid == id => {
+                    let v = result.map_err(AcpError::Protocol)?;
+                    self.session_id = target_session_id.to_owned();
+                    let parsed = parse_session_config_selectors(&v);
+                    if !parsed.is_empty() {
+                        self.config_selectors = parsed;
+                    } else if let Some(sels) = collector.config_selectors.take() {
+                        self.config_selectors = sels;
+                    }
+                    if let Some(cmds) = collector.available_commands.take() {
+                        self.available_commands =
+                            merge_acp_commands(cmds, std::mem::take(&mut self.available_commands));
+                    }
+                    self.drain_post_handshake_updates();
+                    return Ok(collector.finish());
+                }
+                Incoming::Request { id, method, params } => {
+                    let line = reply_to_agent_request(id, &method, &params);
+                    self.write(&line)?;
+                }
+                Incoming::Notification { method, params } if method == "session/update" => {
+                    if let Some(u) = params.get("update") {
+                        collector.on_update(u);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// 吸收 `session/new` 响应后紧随其后的异步初始化通知（例如 `pi-acp` 在 `setTimeout(..., 0)` 中推送的
+    /// `available_commands_update` 与重复的 `startupInfo` 通知）。
+    fn drain_post_handshake_updates(&mut self) {
+        let wait_for_async = self.startup_info.is_some();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(120);
+        loop {
+            let next = if wait_for_async {
+                let Some(rem) = deadline.checked_duration_since(std::time::Instant::now()) else {
+                    break;
+                };
+                self.rx.recv_timeout(rem).ok()
+            } else {
+                self.rx.try_recv().ok()
+            };
+            let Some(msg) = next else {
+                break;
+            };
+            match msg {
+                Incoming::Notification { method, params } if method == "session/update" => {
+                    if let Some(u) = params.get("update") {
+                        let mut turn = TurnCollector::default()
+                            .with_ignored_startup_text(self.startup_info.clone());
+                        turn.on_update(u);
+                        turn.apply_config_updates(&mut self.config_selectors);
+                        if let Some(cmds) = turn.available_commands_snapshot() {
+                            self.available_commands = merge_acp_commands(
+                                cmds,
+                                std::mem::take(&mut self.available_commands),
+                            );
+                            break;
+                        }
+                    }
+                }
+                Incoming::Request { id, method, params } => {
+                    if let Ok(line) =
+                        Ok::<String, AcpError>(reply_to_agent_request(id, &method, &params))
+                    {
+                        let _ = self.write(&line);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// 发一条请求并等待它的响应；等待期间收到的 agent 请求按协议自动应答，配置更新通知同步到 `config_selectors`。
     fn request(&mut self, method: &str, params: &Value) -> Result<Value, AcpError> {
         let id = self.next_id;
         self.next_id += 1;
@@ -111,8 +364,8 @@ impl AcpConnection {
         loop {
             match self
                 .rx
-                .recv()
-                .map_err(|_| AcpError::Io(format!("agent 已退出（等待 {method}）")))?
+                .recv_timeout(ACP_REQUEST_TIMEOUT)
+                .map_err(|_| AcpError::Io(format!("agent 未响应或已退出（等待 {method}）")))?
             {
                 Incoming::Response { id: rid, result } if rid == id => {
                     return result.map_err(AcpError::Protocol);
@@ -121,10 +374,62 @@ impl AcpConnection {
                     let line = reply_to_agent_request(id, &method, &params);
                     self.write(&line)?;
                 }
-                // 握手期间的通知与无关响应忽略
+                Incoming::Notification { method, params } if method == "session/update" => {
+                    if let Some(u) = params.get("update") {
+                        let mut turn = TurnCollector::default();
+                        turn.on_update(u);
+                        turn.apply_config_updates(&mut self.config_selectors);
+                        if let Some(cmds) = turn.available_commands_snapshot() {
+                            self.available_commands = merge_acp_commands(
+                                cmds,
+                                std::mem::take(&mut self.available_commands),
+                            );
+                        }
+                        if self.startup_info.is_none() {
+                            let snap = turn.text_snapshot();
+                            let trimmed = snap.trim();
+                            if !trimmed.is_empty() {
+                                self.startup_info = Some(trimmed.to_owned());
+                            }
+                        }
+                    }
+                }
+                // 其余无关通知与响应忽略
                 _ => {}
             }
         }
+    }
+
+    /// 切换当前 ACP 会话的某个配置项（如模型 `model`、思考等级 `thought_level` 或模式 `mode`）。
+    pub fn set_config_value(
+        &mut self,
+        config_id: &str,
+        value: &str,
+        source: AcpConfigSource,
+    ) -> Result<Vec<AcpConfigSelector>, AcpError> {
+        for sel in &mut self.config_selectors {
+            if sel.id == config_id {
+                sel.current_value = value.to_owned();
+            }
+        }
+        let session_id = self.session_id.clone();
+        let resp = match source {
+            AcpConfigSource::ConfigOption => self.request(
+                "session/set_config_option",
+                &set_config_option_params(&session_id, config_id, value),
+            )?,
+            AcpConfigSource::LegacyModel => {
+                self.request("session/set_model", &set_model_params(&session_id, value))?
+            }
+            AcpConfigSource::LegacyMode => {
+                self.request("session/set_mode", &set_mode_params(&session_id, value))?
+            }
+        };
+        let parsed = parse_session_config_selectors(&resp);
+        if !parsed.is_empty() {
+            self.config_selectors = parsed;
+        }
+        Ok(self.config_selectors.clone())
     }
 
     fn write(&mut self, line: &str) -> Result<(), AcpError> {
@@ -139,12 +444,22 @@ impl AcpConnection {
         AcpDisposer(self.process.clone())
     }
 
-    /// 发一轮 prompt，阻塞直到 `session/prompt` 响应，返回定稿文本。应在后台线程调用。
+    /// 发一轮 prompt，阻塞直到 `session/prompt` 响应，返回定稿文本（含文本化 tool 摘要，供旧测试用）。
     pub fn prompt(
         &mut self,
         text: &str,
         chunks: UnboundedSender<String>,
     ) -> Result<String, AcpError> {
+        let (tx, rx) = futures::channel::mpsc::unbounded::<AcpTurnUpdate>();
+        let forward = std::thread::spawn(move || {
+            use futures::StreamExt as _;
+            futures::executor::block_on(async move {
+                let mut rx = rx;
+                while let Some(u) = rx.next().await {
+                    let _ = chunks.unbounded_send(u.text);
+                }
+            });
+        });
         let session_id = self.session_id.clone();
         let id = self.next_id;
         self.next_id += 1;
@@ -153,7 +468,74 @@ impl AcpConnection {
             "session/prompt",
             &prompt_params(&session_id, text),
         ))?;
-        let mut turn = TurnCollector::default();
+        let mut turn =
+            TurnCollector::default().with_ignored_startup_text(self.startup_info.clone());
+        let res = loop {
+            match self
+                .rx
+                .recv()
+                .map_err(|_| AcpError::Io("agent 已退出（等待回复）".into()))
+            {
+                Ok(Incoming::Notification { method, params }) if method == "session/update" => {
+                    if let Some(u) = params.get("update") {
+                        turn.on_update(u);
+                        let changed = turn.apply_config_updates(&mut self.config_selectors);
+                        if let Some(cmds) = turn.available_commands_snapshot() {
+                            self.available_commands = merge_acp_commands(
+                                cmds,
+                                std::mem::take(&mut self.available_commands),
+                            );
+                        }
+                        let _ = tx.unbounded_send(AcpTurnUpdate {
+                            text: turn.text_snapshot(),
+                            tool_calls: turn.tool_calls_snapshot(),
+                            config_selectors: changed.then(|| self.config_selectors.clone()),
+                            available_commands: turn.available_commands_snapshot(),
+                        });
+                    }
+                }
+                Ok(Incoming::Response { id: rid, result }) if rid == id => {
+                    let v = match result.map_err(AcpError::Protocol) {
+                        Ok(v) => v,
+                        Err(e) => break Err(e),
+                    };
+                    let stop = v
+                        .get("stopReason")
+                        .and_then(Value::as_str)
+                        .unwrap_or("end_turn");
+                    break Ok(turn.assemble(stop));
+                }
+                Ok(Incoming::Request { id, method, params }) => {
+                    let line = reply_to_agent_request(id, &method, &params);
+                    if let Err(e) = self.write(&line) {
+                        break Err(e);
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => break Err(e),
+            }
+        };
+        drop(tx);
+        let _ = forward.join();
+        res
+    }
+
+    /// 发一轮 prompt，流式推送结构化 `AcpTurnUpdate`（正文 + 工具调用），结束时返回结构化定稿。
+    pub fn prompt_structured(
+        &mut self,
+        text: &str,
+        chunks: UnboundedSender<AcpTurnUpdate>,
+    ) -> Result<AcpTurnUpdate, AcpError> {
+        let session_id = self.session_id.clone();
+        let id = self.next_id;
+        self.next_id += 1;
+        self.write(&encode_request(
+            id,
+            "session/prompt",
+            &prompt_params(&session_id, text),
+        ))?;
+        let mut turn =
+            TurnCollector::default().with_ignored_startup_text(self.startup_info.clone());
         loop {
             match self
                 .rx
@@ -163,7 +545,19 @@ impl AcpConnection {
                 Incoming::Notification { method, params } if method == "session/update" => {
                     if let Some(u) = params.get("update") {
                         turn.on_update(u);
-                        let _ = chunks.unbounded_send(turn.text_snapshot());
+                        let changed = turn.apply_config_updates(&mut self.config_selectors);
+                        if let Some(cmds) = turn.available_commands_snapshot() {
+                            self.available_commands = merge_acp_commands(
+                                cmds,
+                                std::mem::take(&mut self.available_commands),
+                            );
+                        }
+                        let _ = chunks.unbounded_send(AcpTurnUpdate {
+                            text: turn.text_snapshot(),
+                            tool_calls: turn.tool_calls_snapshot(),
+                            config_selectors: changed.then(|| self.config_selectors.clone()),
+                            available_commands: turn.available_commands_snapshot(),
+                        });
                     }
                 }
                 Incoming::Response { id: rid, result } if rid == id => {
@@ -172,7 +566,19 @@ impl AcpConnection {
                         .get("stopReason")
                         .and_then(Value::as_str)
                         .unwrap_or("end_turn");
-                    return Ok(turn.assemble(stop));
+                    turn.apply_config_updates(&mut self.config_selectors);
+                    if let Some(cmds) = turn.available_commands_snapshot() {
+                        self.available_commands =
+                            merge_acp_commands(cmds, std::mem::take(&mut self.available_commands));
+                    }
+                    return Ok(AcpTurnUpdate {
+                        text: turn.assemble_body(stop),
+                        tool_calls: turn.tool_calls_snapshot(),
+                        config_selectors: (!self.config_selectors.is_empty())
+                            .then(|| self.config_selectors.clone()),
+                        available_commands: (!self.available_commands.is_empty())
+                            .then(|| self.available_commands.clone()),
+                    });
                 }
                 Incoming::Request { id, method, params } => {
                     let line = reply_to_agent_request(id, &method, &params);
@@ -279,11 +685,13 @@ pub(crate) mod tests {
         let p = dir.join("fake-agent.sh");
         let script = r#"#!/bin/sh
 while IFS= read -r line; do
+  req_id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
+  [ -z "$req_id" ] && req_id=1
   case "$line" in
     *'"method":"initialize"'*)
-      printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1}}' ;;
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":1}}\n' "$req_id" ;;
     *'"method":"session/new"'*)
-      printf '%s\n' '{"jsonrpc":"2.0","id":2,"result":{"sessionId":"s-1"}}' ;;
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"s-1"}}\n' "$req_id" ;;
     *'"method":"session/prompt"'*)
       if [ "__BLOCK_PROMPT__" = "1" ]; then
         echo started >&2
@@ -292,7 +700,7 @@ while IFS= read -r line; do
       printf '%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s-1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hello "}}}}'
       sleep 0.05
       printf '%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s-1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"from fake"}}}}'
-      printf '%s\n' '{"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn"}}' ;;
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"stopReason":"end_turn"}}\n' "$req_id" ;;
   esac
 done
 "#;
@@ -393,6 +801,10 @@ done
             session_id: String::new(),
             next_id: 1,
             rx,
+            config_selectors: Vec::new(),
+            available_commands: Vec::new(),
+            startup_info: None,
+            replayed_messages: Vec::new(),
         };
         let init = conn
             .request("initialize", &initialize_params("test", "0"))
@@ -416,6 +828,42 @@ done
             "closing the owner terminates blocked ACP IO"
         );
         assert!(!disposer.is_running());
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn fake_agent_script_with_tools(dir: &std::path::Path) -> std::path::PathBuf {
+        let p = dir.join("fake-agent-tools.sh");
+        let script = r#"#!/bin/sh
+while IFS= read -r line; do
+  req_id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
+  [ -z "$req_id" ] && req_id=1
+  case "$line" in
+    *'"method":"initialize"'*)
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":1}}\n' "$req_id" ;;
+    *'"method":"session/new"'*)
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"s-1","configOptions":[{"type":"select","id":"model","category":"model","name":"Model","currentValue":"cpaapi/gpt-6-astra","options":[{"value":"cpaapi/gpt-6-astra","name":"cpaapi/GPT-6 Astra"},{"value":"cpaapi/claude-sonnet-5-5-high","name":"cpaapi/Claude Sonnet 5.5 High"}]},{"type":"select","id":"thought_level","category":"thought_level","name":"Thinking","currentValue":"medium","options":[{"value":"low","name":"Thinking: low"},{"value":"medium","name":"Thinking: medium"},{"value":"high","name":"Thinking: high"}]}],"_meta":{"piAcp":{"startupInfo":"pi v1.3.0\\n---\\n\\n## Context\\n- /repo/AGENTS.md\\n"}}}}\n' "$req_id"
+      printf '%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s-1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"pi v1.3.0\n---\n\n## Context\n- /repo/AGENTS.md\n"}}}}' ;;
+    *'"method":"session/list"'*)
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"sessions":[{"sessionId":"s-prev-42","cwd":"/repo","title":"上次重构会话","updatedAt":"2026-10-17T09:15:00.000Z"}]}}\n' "$req_id" ;;
+    *'"method":"session/load"'*)
+      printf '%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s-prev-42","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"上次的问题"}}}}'
+      printf '%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s-prev-42","update":{"sessionUpdate":"tool_call","toolCallId":"tc-old","kind":"read","title":"Read README.md","locations":[{"path":"README.md"}],"status":"completed"}}}'
+      printf '%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s-prev-42","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"上次的回答"}}}}'
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"configOptions":[{"type":"select","id":"model","category":"model","name":"Model","currentValue":"cpaapi/claude-sonnet-5-5-high","options":[{"value":"cpaapi/gpt-6-astra","name":"cpaapi/GPT-6 Astra"},{"value":"cpaapi/claude-sonnet-5-5-high","name":"cpaapi/Claude Sonnet 5.5 High"}]}]}}\n' "$req_id" ;;
+    *'"method":"session/set_config_option"'*)
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"configOptions":[{"type":"select","id":"model","category":"model","name":"Model","currentValue":"cpaapi/claude-sonnet-5-5-high","options":[{"value":"cpaapi/gpt-6-astra","name":"cpaapi/GPT-6 Astra"},{"value":"cpaapi/claude-sonnet-5-5-high","name":"cpaapi/Claude Sonnet 5.5 High"}]},{"type":"select","id":"thought_level","category":"thought_level","name":"Thinking","currentValue":"medium","options":[{"value":"low","name":"Thinking: low"},{"value":"medium","name":"Thinking: medium"},{"value":"high","name":"Thinking: high"}]}]}}\n' "$req_id" ;;
+    *'"method":"session/prompt"'*)
+      printf '%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s-1","update":{"sessionUpdate":"tool_call","toolCallId":"tc-1","kind":"read","title":"Read src/lib.rs","locations":[{"path":"src/lib.rs"}],"status":"pending"}}}'
+      printf '%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s-1","update":{"sessionUpdate":"tool_call_update","toolCallId":"tc-1","status":"completed"}}}'
+      printf '%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s-1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"checked src/lib.rs"}}}}'
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"stopReason":"end_turn"}}\n' "$req_id" ;;
+  esac
+done
+"#;
+        std::fs::write(&p, script).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        p
     }
 
     #[cfg(unix)]
@@ -449,5 +897,62 @@ done
             Err(e) => panic!("应为 Spawn 错误：{e}"),
             Ok(_) => panic!("不应握手成功"),
         }
+    }
+
+    #[test]
+    #[ignore = "spawns external pi-acp/pi process; run explicitly with --ignored"]
+    fn pi_acp_completes_real_handshake_when_installed() {
+        let (resolved, _) = resolve_command_and_path("pi-acp");
+        if !resolved.is_file() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = AcpConnection::connect("pi-acp", &[], dir.path())
+            .expect("pi-acp 应成功完成 initialize + session/new 握手");
+        assert!(!conn.session_id.is_empty(), "应返回非空 sessionId");
+        assert!(
+            conn.config_selectors.iter().any(|s| s.is_model()),
+            "pi-acp 握手后应返回 model 选择器"
+        );
+        assert!(
+            conn.config_selectors.iter().any(|s| s.is_thought_level()),
+            "pi-acp 握手后应返回 thought_level 选择器"
+        );
+
+        // 测试真实切换 thinking level
+        if let Some(think_sel) = conn
+            .config_selectors
+            .iter()
+            .find(|s| s.is_thought_level())
+            .cloned()
+            && let Some(target_opt) = think_sel
+                .options
+                .iter()
+                .find(|o| o.value != think_sel.current_value)
+                .or_else(|| think_sel.options.first())
+        {
+            let updated = conn
+                .set_config_value(&think_sel.id, &target_opt.value, think_sel.source)
+                .expect("pi-acp 切换 thinking 等级应成功");
+            let after = updated.iter().find(|s| s.is_thought_level()).unwrap();
+            assert_eq!(after.current_value, target_opt.value);
+        }
+
+        // 测试真实切换 model
+        if let Some(model_sel) = conn.config_selectors.iter().find(|s| s.is_model()).cloned()
+            && let Some(target_opt) = model_sel
+                .options
+                .iter()
+                .find(|o| o.value != model_sel.current_value)
+                .or_else(|| model_sel.options.first())
+        {
+            let updated = conn
+                .set_config_value(&model_sel.id, &target_opt.value, model_sel.source)
+                .expect("pi-acp 切换模型应成功");
+            let after = updated.iter().find(|s| s.is_model()).unwrap();
+            assert_eq!(after.current_value, target_opt.value);
+        }
+
+        conn.disposer().terminate();
     }
 }

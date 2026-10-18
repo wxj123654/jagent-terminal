@@ -315,6 +315,7 @@ impl<E: Effects> ThreadStore<E> {
             Some(Thread::Acp(t)) => {
                 t.title = title.to_owned();
                 t.auto_title = false;
+                self.persist();
             }
             None => {}
         }
@@ -840,16 +841,35 @@ impl<E: Effects> ThreadStore<E> {
             title: label.into(),
             created_at,
             agent_id: agent_id.into(),
+            acp_session_id: None,
             messages: vec![],
             pending_reply: false,
             auto_title: true,
+            config_selectors: vec![],
+            available_commands: crate::acp::builtin_acp_commands(),
             common: ThreadCommon {
                 workspace_id: workspace_id.map(Into::into),
                 ..Default::default()
             },
         }));
+        self.persist();
         self.activate(ActiveTarget::Thread(id.clone()));
         Ok(id)
+    }
+
+    /// 装配期恢复 `state.json` 中持久化的 ACP 会话列表（不触发 `workspaces_dirty`）。
+    pub fn restore_persisted_acp_threads(&mut self, acp_threads: Vec<AcpThread>) {
+        for mut t in acp_threads {
+            if self.threads.iter().any(|existing| existing.id() == t.id) {
+                continue;
+            }
+            if let Some(ws_id) = t.common.workspace_id.as_deref()
+                && self.workspace(ws_id).is_none()
+            {
+                t.common.workspace_id = None;
+            }
+            self.threads.push(Thread::Acp(t));
+        }
     }
 
     fn next_msg_id(&mut self) -> String {
@@ -891,6 +911,7 @@ impl<E: Effects> ThreadStore<E> {
             role: MessageRole::User,
             text: text.to_owned(),
             at: self.effects.now(),
+            tool_calls: vec![],
         };
         let msg_id = msg.id.clone();
         let (msgs, pending) = self.messages_mut(thread_id, kind)?;
@@ -915,11 +936,17 @@ impl<E: Effects> ThreadStore<E> {
                 None
             }
             Some(Thread::Acp(t)) => {
+                let mut renamed = false;
                 if is_first_user && t.auto_title {
                     t.title = truncated;
                     t.auto_title = false;
+                    renamed = true;
                 }
-                Some(t.agent_id.clone())
+                let aid = t.agent_id.clone();
+                if renamed {
+                    self.persist();
+                }
+                Some(aid)
             }
             _ => None,
         };
@@ -941,8 +968,287 @@ impl<E: Effects> ThreadStore<E> {
         self.acp_connected.insert(thread_id.to_owned());
     }
 
+    /// 该 thread 是否已建立过活跃 ACP 连接。
+    pub fn is_acp_connected(&self, thread_id: &str) -> bool {
+        self.acp_connected.contains(thread_id)
+    }
+
+    /// 切换 ACP thread 的目标 agent_id（若原会话为本地 Chat 则原地升级为 ACP thread）；
+    /// 若此前已建立连接则调用 `dispose_acp` 清理旧连接并清空旧配置项。
+    pub fn set_acp_agent(&mut self, thread_id: &str, agent_id: &str, label: &str) {
+        let changed = match self.thread_mut(thread_id) {
+            Some(Thread::Acp(t)) if t.agent_id != agent_id => {
+                t.agent_id = agent_id.to_owned();
+                t.acp_session_id = None;
+                t.config_selectors.clear();
+                t.available_commands = crate::acp::builtin_acp_commands();
+                if t.auto_title {
+                    t.title = label.to_owned();
+                }
+                true
+            }
+            Some(slot @ Thread::Chat(_)) => {
+                if let Thread::Chat(c) = std::mem::replace(
+                    slot,
+                    Thread::Chat(ChatThread {
+                        id: String::new(),
+                        title: String::new(),
+                        created_at: 0,
+                        messages: vec![],
+                        pending_reply: false,
+                        common: ThreadCommon::default(),
+                    }),
+                ) {
+                    let auto_title =
+                        c.title == CHAT_DEFAULT_TITLE && !c.messages.iter().any(|m| m.is_user());
+                    let title = if auto_title {
+                        label.to_owned()
+                    } else {
+                        c.title
+                    };
+                    *slot = Thread::Acp(AcpThread {
+                        id: c.id,
+                        title,
+                        created_at: c.created_at,
+                        agent_id: agent_id.to_owned(),
+                        acp_session_id: None,
+                        messages: c.messages,
+                        pending_reply: c.pending_reply,
+                        auto_title,
+                        config_selectors: vec![],
+                        available_commands: crate::acp::builtin_acp_commands(),
+                        common: c.common,
+                    });
+                }
+                true
+            }
+            _ => false,
+        };
+        if changed {
+            if self.acp_connected.remove(thread_id) {
+                self.effects.dispose_acp(thread_id);
+            }
+            self.persist();
+        }
+    }
+
+    /// 记录 ACP 会话绑定到的远端 `sessionId`（由 `session/new` 或 `session/load` 返回）并标记持久化。
+    pub fn set_acp_session_id(&mut self, thread_id: &str, session_id: &str) {
+        let sid = session_id.trim();
+        if sid.is_empty() {
+            return;
+        }
+        let changed = match self.thread_mut(thread_id) {
+            Some(Thread::Acp(t)) if t.acp_session_id.as_deref() != Some(sid) => {
+                t.acp_session_id = Some(sid.to_owned());
+                true
+            }
+            _ => false,
+        };
+        if changed {
+            self.persist();
+        }
+    }
+
+    /// 读取指定 ACP 会话关联的远端 `sessionId`。
+    pub fn acp_session_id(&self, thread_id: &str) -> Option<&str> {
+        match self.thread(thread_id) {
+            Some(Thread::Acp(t)) => t.acp_session_id.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// 将 `session/load` 恢复出的历史消息、远端 `sessionId`、标题、模型选择器与斜杠命令写回 `AcpThread`。
+    pub fn apply_acp_session_load(
+        &mut self,
+        thread_id: &str,
+        session_id: &str,
+        title: Option<&str>,
+        replayed: Vec<crate::acp::ReplayedMessage>,
+        selectors: Vec<crate::acp::AcpConfigSelector>,
+        commands: Vec<crate::acp::AcpCommand>,
+    ) {
+        if self.thread(thread_id).is_none() {
+            return;
+        }
+        let now = self.effects.now();
+        let mut built_msgs = Vec::with_capacity(replayed.len());
+        for rm in replayed {
+            built_msgs.push(ChatMessage {
+                id: self.next_msg_id(),
+                role: if rm.is_user {
+                    MessageRole::User
+                } else {
+                    MessageRole::Assistant { error: false }
+                },
+                text: rm.text,
+                at: now,
+                tool_calls: rm.tool_calls,
+            });
+        }
+        let fallback_title = built_msgs
+            .iter()
+            .find(|m| m.is_user())
+            .map(|m| {
+                let t = m.text.trim();
+                if t.chars().count() > 32 {
+                    format!("{}…", t.chars().take(32).collect::<String>())
+                } else {
+                    t.to_owned()
+                }
+            })
+            .filter(|s| !s.is_empty());
+
+        if let Some(Thread::Acp(t)) = self.thread_mut(thread_id) {
+            if !session_id.trim().is_empty() {
+                t.acp_session_id = Some(session_id.trim().to_owned());
+            }
+            if let Some(explicit_title) = title.map(str::trim).filter(|s| !s.is_empty()) {
+                t.title = explicit_title.to_owned();
+                t.auto_title = false;
+            } else if t.auto_title
+                && let Some(ft) = fallback_title
+            {
+                t.title = ft;
+                t.auto_title = false;
+            }
+            if !built_msgs.is_empty() {
+                t.messages = built_msgs;
+            }
+            t.pending_reply = false;
+            if !selectors.is_empty() {
+                t.config_selectors = selectors;
+            }
+            if !commands.is_empty() {
+                let prev = std::mem::take(&mut t.available_commands);
+                t.available_commands = crate::acp::merge_acp_commands(commands, prev);
+            }
+        }
+        self.streaming_replies
+            .remove(&(thread_id.to_owned(), ConversationKind::Acp));
+        self.acp_connected.insert(thread_id.to_owned());
+        self.persist();
+    }
+
+    /// 写入 ACP 会话可用的斜杠命令列表（与现有命令合并，优先保留新命令描述）。
+    pub fn set_acp_available_commands(
+        &mut self,
+        thread_id: &str,
+        commands: Vec<crate::acp::AcpCommand>,
+    ) {
+        if let Some(Thread::Acp(t)) = self.thread_mut(thread_id)
+            && !commands.is_empty()
+        {
+            let prev = std::mem::take(&mut t.available_commands);
+            t.available_commands = crate::acp::merge_acp_commands(commands, prev);
+        }
+    }
+
+    /// 读取指定 ACP 会话支持的斜杠命令列表（对本地 Chat 会话返回内置快捷命令列表）。
+    pub fn acp_available_commands(&self, thread_id: &str) -> Vec<crate::acp::AcpCommand> {
+        match self.thread(thread_id) {
+            Some(Thread::Acp(t)) if !t.available_commands.is_empty() => {
+                t.available_commands.clone()
+            }
+            _ => crate::acp::builtin_acp_commands(),
+        }
+    }
+
+    /// 写入 ACP 会话从 `session/new` 或 `config_option_update` 拿到的配置选择器列表。
+    pub fn set_acp_config_selectors(
+        &mut self,
+        thread_id: &str,
+        selectors: Vec<crate::acp::AcpConfigSelector>,
+    ) {
+        if let Some(Thread::Acp(t)) = self.thread_mut(thread_id)
+            && !selectors.is_empty()
+        {
+            t.config_selectors = selectors;
+        }
+    }
+
+    /// 乐观更新某个 ACP 配置选择器（如切换 Model 或 Thinking 等级）并返回其协议源。
+    pub fn update_acp_config_value(
+        &mut self,
+        thread_id: &str,
+        config_id: &str,
+        value: &str,
+    ) -> Option<crate::acp::AcpConfigSource> {
+        let Some(Thread::Acp(t)) = self.thread_mut(thread_id) else {
+            return None;
+        };
+        let sel = t.config_selectors.iter_mut().find(|s| s.id == config_id)?;
+        sel.current_value = value.to_owned();
+        Some(sel.source)
+    }
+
+    /// 读取指定 ACP 会话的配置选择器列表。
+    pub fn acp_config_selectors(&self, thread_id: &str) -> &[crate::acp::AcpConfigSelector] {
+        match self.thread(thread_id) {
+            Some(Thread::Acp(t)) => &t.config_selectors,
+            _ => &[],
+        }
+    }
+
+    /// 读取指定 ACP 会话当前选中的模型展示名（如 `"Gemini 4 Argon High"`）。
+    pub fn acp_current_model_label(&self, thread_id: &str) -> Option<String> {
+        self.acp_config_selectors(thread_id)
+            .iter()
+            .find(|s| s.is_model())
+            .map(crate::acp::AcpConfigSelector::short_current_label)
+    }
+
+    /// 当 ACP 会话完成 `session/new` 握手且返回了启动信息（如 `pi-acp` 的版本、Context、Skills 摘要）时，
+    /// 立即将其作为一条独立的 Assistant 欢迎消息插入会话开头（即使尚未发送任何 prompt，打开会话即可看到）。
+    pub fn push_acp_startup_info(&mut self, thread_id: &str, startup_info: &str) {
+        let text = startup_info.trim();
+        if text.is_empty() {
+            return;
+        }
+        let already_exists = match self.thread(thread_id) {
+            Some(Thread::Acp(t)) => t
+                .messages
+                .iter()
+                .any(|m| !m.is_user() && m.text.trim() == text),
+            _ => return,
+        };
+        if already_exists {
+            return;
+        }
+        let msg = ChatMessage {
+            id: self.next_msg_id(),
+            role: MessageRole::Assistant { error: false },
+            text: text.to_owned(),
+            at: self.effects.now(),
+            tool_calls: vec![],
+        };
+        if let Some(Thread::Acp(t)) = self.thread_mut(thread_id) {
+            let from_startup = crate::acp::parse_commands_from_startup_info(Some(text));
+            let prev = std::mem::take(&mut t.available_commands);
+            t.available_commands = crate::acp::merge_acp_commands(from_startup, prev);
+            // 若用户在握手完成前已经抢先按了发送（队列末尾已有首条 user 消息），
+            // 则把启动欢迎消息插在首条 user 消息之前，保持时间流从上往下。
+            if let Some(first_user_ix) = t.messages.iter().position(ChatMessage::is_user) {
+                t.messages.insert(first_user_ix, msg);
+            } else {
+                t.messages.push(msg);
+            }
+        }
+    }
+
     /// 收到 ACP / streaming backend 的增量文本：新建或更新同一条 assistant 行，不结束 pending。
     pub fn update_streaming_reply(&mut self, thread_id: &str, kind: ConversationKind, text: &str) {
+        self.update_streaming_reply_with_tools(thread_id, kind, text, Vec::new());
+    }
+
+    /// 收到 ACP 的增量文本与工具调用列表：新建或更新同一条 assistant 行，不结束 pending。
+    pub fn update_streaming_reply_with_tools(
+        &mut self,
+        thread_id: &str,
+        kind: ConversationKind,
+        text: &str,
+        tool_calls: Vec<ToolCallTrace>,
+    ) {
         if self.thread(thread_id).is_none() {
             return;
         }
@@ -953,6 +1259,7 @@ impl<E: Effects> ThreadStore<E> {
                 role: MessageRole::Assistant { error: false },
                 text: text.to_owned(),
                 at: self.effects.now(),
+                tool_calls,
             };
             if let Some((messages, pending)) = self.messages_mut(thread_id, kind)
                 && *pending
@@ -965,6 +1272,7 @@ impl<E: Effects> ThreadStore<E> {
             && matches!(last.role, MessageRole::Assistant { error: false })
         {
             last.text = text.to_owned();
+            last.tool_calls = tool_calls;
         }
     }
 
@@ -976,9 +1284,23 @@ impl<E: Effects> ThreadStore<E> {
         kind: ConversationKind,
         reply: Result<String, String>,
     ) {
+        self.finish_send_with_tools(thread_id, kind, reply, Vec::new());
+    }
+
+    /// 第二步（带结构化工具调用记录）：若有 streaming 行则定稿替换它；否则新建 assistant 行。
+    pub fn finish_send_with_tools(
+        &mut self,
+        thread_id: &str,
+        kind: ConversationKind,
+        reply: Result<String, String>,
+        tool_calls: Vec<ToolCallTrace>,
+    ) {
         let (text, error) = match reply {
             Ok(t) => (t, false),
-            Err(e) => (format!("发送失败：{e}"), true),
+            Err(e) => {
+                self.acp_connected.remove(thread_id);
+                (format!("发送失败：{e}"), true)
+            }
         };
         let key = (thread_id.to_owned(), kind);
         if self.streaming_replies.remove(&key) {
@@ -988,16 +1310,20 @@ impl<E: Effects> ThreadStore<E> {
                 {
                     last.text = text;
                     last.role = MessageRole::Assistant { error };
+                    if !tool_calls.is_empty() {
+                        last.tool_calls = tool_calls;
+                    }
                 }
                 *pending = false;
             }
         } else {
-            self.push_reply(thread_id, kind, text, error);
+            self.push_reply_with_tools(thread_id, kind, text, error, tool_calls);
         }
     }
 
     /// ACP 连接建立失败（如配置被删）：落 error 行并复位 pending。注意此时 begin_send 已落了 user 消息。
     pub fn fail_acp_connect(&mut self, thread_id: &str, message: &str) {
+        self.acp_connected.remove(thread_id);
         self.push_reply(
             thread_id,
             ConversationKind::Acp,
@@ -1007,11 +1333,23 @@ impl<E: Effects> ThreadStore<E> {
     }
 
     fn push_reply(&mut self, thread_id: &str, kind: ConversationKind, text: String, error: bool) {
+        self.push_reply_with_tools(thread_id, kind, text, error, Vec::new());
+    }
+
+    fn push_reply_with_tools(
+        &mut self,
+        thread_id: &str,
+        kind: ConversationKind,
+        text: String,
+        error: bool,
+        tool_calls: Vec<ToolCallTrace>,
+    ) {
         let msg = ChatMessage {
             id: self.next_msg_id(),
             role: MessageRole::Assistant { error },
             text,
             at: self.effects.now(),
+            tool_calls,
         };
         if let Some((msgs, pending)) = self.messages_mut(thread_id, kind) {
             msgs.push(msg);

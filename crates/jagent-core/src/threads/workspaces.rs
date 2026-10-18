@@ -5,7 +5,7 @@
 
 use serde_json::{Map, Value};
 
-use super::model::{PaneTab, Thread, Workspace, workspace_display_name};
+use super::model::{AcpThread, PaneTab, Thread, ThreadCommon, Workspace, workspace_display_name};
 
 fn bool_or(o: &Map<String, Value>, k: &str, d: bool) -> bool {
     o.get(k).and_then(Value::as_bool).unwrap_or(d)
@@ -62,13 +62,117 @@ pub fn parse_workspace_state(raw: Option<&str>) -> Vec<Workspace> {
 
 /// 序列化形态（与 settings 同风格：2 空格缩进 + 尾换行）。
 pub fn serialize_workspace_state(workspaces: &[Workspace]) -> String {
+    serialize_workspace_and_acp_state(workspaces, &[])
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PersistedAcpThread<'a> {
+    id: &'a str,
+    title: &'a str,
+    created_at: i64,
+    agent_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    acp_session_id: Option<&'a str>,
+    auto_title: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    workspace_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pin: bool,
+}
+
+/// 序列化工作区与未关闭的 ACP 会话元信息到 `state.json`。
+pub fn serialize_workspace_and_acp_state(workspaces: &[Workspace], threads: &[Thread]) -> String {
     #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
     struct State<'a> {
         workspaces: &'a [Workspace],
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        acp_threads: Vec<PersistedAcpThread<'a>>,
     }
-    let mut s = serde_json::to_string_pretty(&State { workspaces }).expect("workspace serialize");
+    let acp_threads: Vec<PersistedAcpThread<'_>> = threads
+        .iter()
+        .filter_map(|t| match t {
+            Thread::Acp(a) => Some(PersistedAcpThread {
+                id: &a.id,
+                title: &a.title,
+                created_at: a.created_at,
+                agent_id: &a.agent_id,
+                acp_session_id: a.acp_session_id.as_deref(),
+                auto_title: a.auto_title,
+                workspace_id: a.common.workspace_id.as_deref(),
+                pin: a.common.pin,
+            }),
+            _ => None,
+        })
+        .collect();
+    let mut s = serde_json::to_string_pretty(&State {
+        workspaces,
+        acp_threads,
+    })
+    .expect("workspace and acp state serialize");
     s.push('\n');
     s
+}
+
+/// 从 `state.json` 解析持久化的 ACP 会话列表（逐行容错）。
+pub fn parse_persisted_acp_threads(raw: Option<&str>) -> Vec<AcpThread> {
+    let Some(raw) = raw else { return vec![] };
+    let Ok(Value::Object(root)) = serde_json::from_str::<Value>(raw) else {
+        return vec![];
+    };
+    let Some(Value::Array(rows)) = root.get("acpThreads") else {
+        return vec![];
+    };
+    rows.iter()
+        .filter_map(|row| {
+            let o = row.as_object()?;
+            let id = o.get("id")?.as_str()?.trim().to_owned();
+            let agent_id = o.get("agentId")?.as_str()?.trim().to_owned();
+            if id.is_empty() || agent_id.is_empty() {
+                return None;
+            }
+            let title = o
+                .get("title")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("ACP")
+                .to_owned();
+            let created_at = o.get("createdAt").and_then(Value::as_i64).unwrap_or(0);
+            let acp_session_id = o
+                .get("acpSessionId")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned);
+            let auto_title = bool_or(o, "autoTitle", acp_session_id.is_none());
+            let workspace_id = o
+                .get("workspaceId")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned);
+            let pin = bool_or(o, "pin", false);
+            Some(AcpThread {
+                id,
+                title,
+                created_at,
+                agent_id,
+                acp_session_id,
+                messages: vec![],
+                pending_reply: false,
+                auto_title,
+                config_selectors: vec![],
+                available_commands: crate::acp::builtin_acp_commands(),
+                common: ThreadCommon {
+                    workspace_id,
+                    pin,
+                    ..Default::default()
+                },
+            })
+        })
+        .collect()
 }
 
 /// 首启默认工作区（装配层在 state.json 为空时建；name = 目录 basename）。
@@ -255,6 +359,8 @@ pub enum WorkspaceFormError {
     PathRequired,
     PathNotAbsolute,
     DuplicatePath,
+    DirectoryNotFound,
+    NotADirectory,
 }
 
 impl WorkspaceFormError {
@@ -267,14 +373,74 @@ impl WorkspaceFormError {
                 "请填写绝对路径，例如 ~/Projects/app、/Projects/app 或 C:\\Projects\\app。"
             }
             Self::DuplicatePath => "此目录已有工作区，请从左侧选择，或填写其他目录。",
+            Self::DirectoryNotFound => "所选项目目录不存在，请检查路径或点击「浏览…」选择。",
+            Self::NotADirectory => "所选路径不是文件夹，请选择有效的项目目录。",
         }
+    }
+}
+
+/// 实时检测「添加工作区」输入框中路径的磁盘与 Git 状态。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceDirStatus {
+    /// 尚未输入路径
+    Empty,
+    /// 输入了相对路径
+    NotAbsolute,
+    /// 路径在磁盘上不存在
+    NotFound,
+    /// 路径存在但不是目录（例如是文件）
+    NotADirectory,
+    /// 目录存在且处于 Git 仓库中
+    GitRepo,
+    /// 目录存在，为普通本地目录（非 Git 仓库）
+    PlainDirectory,
+}
+
+fn user_home_dir() -> Option<String> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(|s| s.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
+}
+
+/// 将用户输入的路径去首尾空白并展开前导 `~`（`~` / `~/...` / `~\...`）。
+pub fn expand_workspace_path(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed == "~" {
+        if let Some(home) = user_home_dir() {
+            return trim_trailing_sep(&home).to_owned();
+        }
+    } else if let Some(rest) = trimmed
+        .strip_prefix("~/")
+        .or_else(|| trimmed.strip_prefix("~\\"))
+        && let Some(home) = user_home_dir()
+    {
+        let base = home.trim_end_matches(['/', '\\']);
+        let joined = format!("{base}/{rest}");
+        return trim_trailing_sep(&joined).to_owned();
+    }
+    trim_trailing_sep(trimmed).to_owned()
+}
+
+fn trim_trailing_sep(p: &str) -> &str {
+    let stripped = p.trim_end_matches(['/', '\\']);
+    if stripped.is_empty() && !p.is_empty() {
+        // 保留根路径 `/`
+        &p[..1]
+    } else if stripped.len() == 2 && stripped.as_bytes()[1] == b':' && p.len() > 2 {
+        // 保留 Windows 盘符根路径 `C:\`
+        &p[..3]
+    } else {
+        stripped
     }
 }
 
 fn is_absolute_path(p: &str) -> bool {
     let b = p.as_bytes();
-    p.starts_with('/')
+    p == "~"
+        || p.starts_with('/')
         || p.starts_with("~/")
+        || p.starts_with("~\\")
         || p.starts_with("\\\\")
         || (b.len() >= 3
             && b[0].is_ascii_alphabetic()
@@ -286,7 +452,7 @@ fn normalize_dir(p: &str) -> &str {
     p.trim_end_matches(['/', '\\'])
 }
 
-/// 校验「添加工作区」表单。`name` / `path` 为用户原始输入（未 trim）。
+/// 校验「添加工作区」表单（纯语法 + 重复校验，无磁盘 IO）。`name` / `path` 为用户原始输入（未 trim）。
 pub fn validate_workspace_form(
     name: &str,
     path: &str,
@@ -302,13 +468,145 @@ pub fn validate_workspace_form(
     if !is_absolute_path(path) {
         return Err(WorkspaceFormError::PathNotAbsolute);
     }
-    if existing
-        .iter()
-        .any(|w| normalize_dir(&w.path) == normalize_dir(path))
-    {
+    let expanded = expand_workspace_path(path);
+    if existing.iter().any(|w| {
+        normalize_dir(&w.path) == normalize_dir(path)
+            || normalize_dir(&expand_workspace_path(&w.path)) == normalize_dir(&expanded)
+    }) {
         return Err(WorkspaceFormError::DuplicatePath);
     }
     Ok(())
+}
+
+/// 校验「添加工作区」表单并检查磁盘目录存在性，成功时返回展开 `~` 后的规范路径。
+pub fn validate_workspace_form_on_disk(
+    name: &str,
+    path: &str,
+    existing: &[Workspace],
+) -> Result<String, WorkspaceFormError> {
+    validate_workspace_form(name, path, existing)?;
+    let expanded = expand_workspace_path(path);
+    let fs_path = std::path::Path::new(&expanded);
+    if !fs_path.exists() {
+        return Err(WorkspaceFormError::DirectoryNotFound);
+    }
+    if !fs_path.is_dir() {
+        return Err(WorkspaceFormError::NotADirectory);
+    }
+    Ok(expanded)
+}
+
+/// 实时检测用户输入路径的目录状态（用于弹窗底部预览卡）。
+pub fn inspect_workspace_dir(raw_path: &str) -> WorkspaceDirStatus {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        return WorkspaceDirStatus::Empty;
+    }
+    if !is_absolute_path(trimmed) {
+        return WorkspaceDirStatus::NotAbsolute;
+    }
+    let expanded = expand_workspace_path(trimmed);
+    let path = std::path::Path::new(&expanded);
+    if !path.exists() {
+        return WorkspaceDirStatus::NotFound;
+    }
+    if !path.is_dir() {
+        return WorkspaceDirStatus::NotADirectory;
+    }
+    let is_git = path
+        .ancestors()
+        .any(|ancestor| ancestor.join(".git").exists());
+    if is_git {
+        WorkspaceDirStatus::GitRepo
+    } else {
+        WorkspaceDirStatus::PlainDirectory
+    }
+}
+
+/// 扫描本机真实存在的、尚未添加为工作区的候选项目目录（供「快速选择」胶囊使用）。
+pub fn discover_suggested_workspace_dirs(existing: &[Workspace], max_count: usize) -> Vec<String> {
+    if max_count == 0 {
+        return Vec::new();
+    }
+    let existing_norm: std::collections::HashSet<String> = existing
+        .iter()
+        .map(|w| normalize_dir(&expand_workspace_path(&w.path)).to_owned())
+        .collect();
+
+    let mut search_roots: Vec<std::path::PathBuf> = Vec::new();
+    for ws in existing {
+        let exp = expand_workspace_path(&ws.path);
+        if let Some(parent) = std::path::Path::new(&exp).parent()
+            && parent.is_dir()
+            && !search_roots.iter().any(|p| p == parent)
+        {
+            search_roots.push(parent.to_path_buf());
+        }
+    }
+    if let Some(home) = user_home_dir() {
+        let home_path = std::path::Path::new(&home);
+        for sub in [
+            "Projects",
+            "Documents",
+            "Work",
+            "Workspace",
+            "Code",
+            "Repos",
+            "Developer",
+        ] {
+            let p = home_path.join(sub);
+            if p.is_dir() && !search_roots.iter().any(|r| r == &p) {
+                search_roots.push(p);
+            }
+        }
+    }
+
+    let mut git_or_proj_dirs: Vec<String> = Vec::new();
+    let mut plain_dirs: Vec<String> = Vec::new();
+    let mut seen = existing_norm;
+
+    for root in &search_roots {
+        let Ok(entries) = std::fs::read_dir(root) else {
+            continue;
+        };
+        let mut children: Vec<std::path::PathBuf> = entries
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| {
+                p.is_dir()
+                    && p.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| !n.starts_with('.'))
+            })
+            .collect();
+        children.sort();
+        for child in children {
+            let s = trim_trailing_sep(&child.to_string_lossy()).to_owned();
+            let norm = normalize_dir(&s).to_owned();
+            if !seen.insert(norm) {
+                continue;
+            }
+            let is_project = child.join(".git").exists()
+                || child.join("Cargo.toml").exists()
+                || child.join("package.json").exists()
+                || child.join("pyproject.toml").exists()
+                || child.join("go.mod").exists();
+            if is_project {
+                git_or_proj_dirs.push(s);
+                if git_or_proj_dirs.len() >= max_count {
+                    return git_or_proj_dirs;
+                }
+            } else if plain_dirs.len() < max_count {
+                plain_dirs.push(s);
+            }
+        }
+    }
+
+    git_or_proj_dirs.extend(
+        plain_dirs
+            .into_iter()
+            .take(max_count.saturating_sub(git_or_proj_dirs.len())),
+    );
+    git_or_proj_dirs
 }
 
 #[cfg(test)]
@@ -624,6 +922,7 @@ mod tests {
             role: MessageRole::Assistant { error: true },
             text: "x".into(),
             at: 0,
+            tool_calls: vec![],
         });
         assert_eq!(thread_priority(&Thread::Chat(c)), 3);
     }
@@ -723,6 +1022,107 @@ mod tests {
             WorkspaceFormError::DuplicatePath
                 .message()
                 .starts_with("此目录已有工作区")
+        );
+    }
+
+    #[test]
+    fn acp_threads_round_trip_through_state_json() {
+        let workspaces = vec![ws("w1", "/work/proj", 10)];
+        let threads = vec![Thread::Acp(AcpThread {
+            id: "a1".into(),
+            title: "重构 ACP".into(),
+            created_at: 123,
+            agent_id: "acp-pi".into(),
+            acp_session_id: Some("uuid-session-99".into()),
+            messages: vec![],
+            pending_reply: false,
+            auto_title: false,
+            config_selectors: vec![],
+            available_commands: crate::acp::builtin_acp_commands(),
+            common: ThreadCommon {
+                workspace_id: Some("w1".into()),
+                pin: true,
+                ..Default::default()
+            },
+        })];
+        let raw = serialize_workspace_and_acp_state(&workspaces, &threads);
+        assert_eq!(parse_workspace_state(Some(&raw)), workspaces);
+        let restored = parse_persisted_acp_threads(Some(&raw));
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].id, "a1");
+        assert_eq!(restored[0].title, "重构 ACP");
+        assert_eq!(restored[0].agent_id, "acp-pi");
+        assert_eq!(
+            restored[0].acp_session_id.as_deref(),
+            Some("uuid-session-99")
+        );
+        assert!(!restored[0].auto_title);
+        assert_eq!(restored[0].common.workspace_id.as_deref(), Some("w1"));
+        assert!(restored[0].common.pin);
+    }
+
+    #[test]
+    fn on_disk_validation_and_inspection_detect_git_plain_missing_and_file_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let git_repo = dir.path().join("repo-a");
+        std::fs::create_dir_all(git_repo.join(".git")).unwrap();
+        let plain_dir = dir.path().join("plain-b");
+        std::fs::create_dir_all(&plain_dir).unwrap();
+        let file_path = dir.path().join("file.txt");
+        std::fs::write(&file_path, "hi").unwrap();
+        let missing = dir.path().join("nope");
+
+        assert_eq!(inspect_workspace_dir("   "), WorkspaceDirStatus::Empty);
+        assert_eq!(
+            inspect_workspace_dir("relative/path"),
+            WorkspaceDirStatus::NotAbsolute
+        );
+        assert_eq!(
+            inspect_workspace_dir(&missing.to_string_lossy()),
+            WorkspaceDirStatus::NotFound
+        );
+        assert_eq!(
+            inspect_workspace_dir(&file_path.to_string_lossy()),
+            WorkspaceDirStatus::NotADirectory
+        );
+        assert_eq!(
+            inspect_workspace_dir(&git_repo.to_string_lossy()),
+            WorkspaceDirStatus::GitRepo
+        );
+        assert_eq!(
+            inspect_workspace_dir(&plain_dir.to_string_lossy()),
+            WorkspaceDirStatus::PlainDirectory
+        );
+
+        let existing = vec![ws("w1", &git_repo.to_string_lossy(), 1)];
+        assert_eq!(
+            validate_workspace_form_on_disk("", &missing.to_string_lossy(), &existing),
+            Err(WorkspaceFormError::DirectoryNotFound)
+        );
+        assert_eq!(
+            validate_workspace_form_on_disk("", &file_path.to_string_lossy(), &existing),
+            Err(WorkspaceFormError::NotADirectory)
+        );
+        assert_eq!(
+            validate_workspace_form_on_disk("", &git_repo.to_string_lossy(), &existing),
+            Err(WorkspaceFormError::DuplicatePath)
+        );
+        let ok_path =
+            validate_workspace_form_on_disk("", &plain_dir.to_string_lossy(), &existing).unwrap();
+        assert_eq!(ok_path, plain_dir.to_string_lossy());
+
+        let sibling_proj = dir.path().join("proj-c");
+        std::fs::create_dir_all(&sibling_proj).unwrap();
+        std::fs::write(sibling_proj.join("Cargo.toml"), "[package]").unwrap();
+
+        let suggestions = discover_suggested_workspace_dirs(&existing, 3);
+        assert!(
+            suggestions.contains(&sibling_proj.to_string_lossy().into_owned()),
+            "应优先发现当前工作区同级的项目目录，实际: {suggestions:?}"
+        );
+        assert!(
+            !suggestions.contains(&git_repo.to_string_lossy().into_owned()),
+            "已添加的工作区目录不应出现在快速选择列表中"
         );
     }
 }

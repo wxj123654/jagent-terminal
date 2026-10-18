@@ -88,6 +88,17 @@ pub enum MessageRole {
     },
 }
 
+/// 一条 ACP 工具调用记录（来自 `session/update` 的 `tool_call` / `tool_call_update`）。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCallTrace {
+    pub id: String,
+    pub kind: Option<String>,
+    pub title: Option<String>,
+    pub status: Option<String>,
+    /// 关联的相对或绝对文件路径（从 locations / rawInput / title 提取）
+    pub path: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatMessage {
     /// 仅需 thread 内唯一，store 侧自增分配
@@ -95,6 +106,8 @@ pub struct ChatMessage {
     pub role: MessageRole,
     pub text: String,
     pub at: i64,
+    /// 该条回复关联的 ACP 工具调用列表（按首次出现序）
+    pub tool_calls: Vec<ToolCallTrace>,
 }
 
 impl ChatMessage {
@@ -165,10 +178,16 @@ pub struct AcpThread {
     pub created_at: i64,
     /// settings.acpAgents 的配置 id（连接按 thread 惰性建立）
     pub agent_id: String,
+    /// 远端 ACP 会话 ID（由 `session/new` 或 `session/load` 返回，用于跨重启或 `/resume` 恢复会话）
+    pub acp_session_id: Option<String>,
     pub messages: Vec<ChatMessage>,
     pub pending_reply: bool,
     /// title 未被手改 / 首条消息改写（首条 user 消息自动改写的哨兵；rename 置 false）
     pub auto_title: bool,
+    /// ACP 握手或运行期同步的配置项选择器（Model / Thinking / Mode 等）
+    pub config_selectors: Vec<crate::acp::AcpConfigSelector>,
+    /// ACP 会话支持的斜杠命令列表（内置命令 + Skills + `available_commands_update`）
+    pub available_commands: Vec<crate::acp::AcpCommand>,
     pub common: ThreadCommon,
 }
 

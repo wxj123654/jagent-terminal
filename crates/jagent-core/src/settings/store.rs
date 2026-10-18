@@ -238,13 +238,10 @@ impl<F: FileAdapter> SettingsStore<F> {
         self.with_items(cur, items, None);
     }
 
-    /// 删除自定义预设（内置 no-op）；plusDefault 指向它 → 回退 null。
+    /// 删除预设（内置与自定义预设均可删除）；plusDefault 指向它 → 回退 null。
     pub fn delete_preset(&mut self, id: &str) {
         let cur = self.settings.clone();
-        let Some(p) = cur.presets.items.iter().find(|p| p.id == id) else {
-            return;
-        };
-        if p.builtin {
+        if !cur.presets.items.iter().any(|p| p.id == id) {
             return;
         }
         let items = cur
@@ -256,6 +253,47 @@ impl<F: FileAdapter> SettingsStore<F> {
             .collect();
         let plus = (cur.presets.plus_default.as_deref() == Some(id)).then_some(None);
         self.with_items(cur, items, plus);
+    }
+
+    /// 拖动重排预设列表：将 `from_id` 移动到 `to_id` 的位置（`before = true` 插在 `to_id` 前，
+    /// `before = false` 插在 `to_id` 后）。`from_id == to_id`、任一不存在或顺位未变时 no-op。
+    pub fn reorder_preset(&mut self, from_id: &str, to_id: &str, before: bool) {
+        if from_id == to_id {
+            return;
+        }
+        let cur = self.settings.clone();
+        let Some(from_idx) = cur.presets.items.iter().position(|p| p.id == from_id) else {
+            return;
+        };
+        if !cur.presets.items.iter().any(|p| p.id == to_id) {
+            return;
+        }
+        let mut items = cur.presets.items.clone();
+        let moved = items.remove(from_idx);
+        let Some(to_idx) = items.iter().position(|p| p.id == to_id) else {
+            return;
+        };
+        let insert_idx = if before { to_idx } else { to_idx + 1 };
+        items.insert(insert_idx, moved);
+        if items == cur.presets.items {
+            return;
+        }
+        self.with_items(cur, items, None);
+    }
+
+    /// 恢复 5 个默认内置预设，同时保留已有自定义预设（若自定义预设与内置 id 不冲突）。
+    pub fn restore_default_presets(&mut self) {
+        let cur = self.settings.clone();
+        let mut items = crate::presets::builtin_presets();
+        for p in &cur.presets.items {
+            if !p.builtin && !items.iter().any(|b| b.id == p.id) {
+                items.push(p.clone());
+            }
+        }
+        if items == cur.presets.items {
+            return;
+        }
+        self.with_items(cur, items, None);
     }
 
     /// 复制为自定义副本（builtin:false + label 副本后缀），返回新 id；源不存在返回空串。
@@ -354,8 +392,40 @@ impl<F: FileAdapter> SettingsStore<F> {
     }
 
     pub fn delete_acp_agent(&mut self, id: &str) {
-        let mut next = self.settings.clone();
+        let cur = self.settings.clone();
+        if !cur.acp_agents.iter().any(|a| a.id == id) {
+            return;
+        }
+        let mut next = cur;
         next.acp_agents.retain(|a| a.id != id);
+        self.commit(next, "acpAgents");
+    }
+
+    /// 拖动重排 ACP agent 列表：将 `from_id` 移动到 `to_id` 的位置（`before = true` 插在 `to_id` 前，
+    /// `before = false` 插在 `to_id` 后）。`from_id == to_id`、任一不存在或顺位未变时 no-op。
+    pub fn reorder_acp_agent(&mut self, from_id: &str, to_id: &str, before: bool) {
+        if from_id == to_id {
+            return;
+        }
+        let cur = self.settings.clone();
+        let Some(from_idx) = cur.acp_agents.iter().position(|a| a.id == from_id) else {
+            return;
+        };
+        if !cur.acp_agents.iter().any(|a| a.id == to_id) {
+            return;
+        }
+        let mut agents = cur.acp_agents.clone();
+        let moved = agents.remove(from_idx);
+        let Some(to_idx) = agents.iter().position(|a| a.id == to_id) else {
+            return;
+        };
+        let insert_idx = if before { to_idx } else { to_idx + 1 };
+        agents.insert(insert_idx, moved);
+        if agents == cur.acp_agents {
+            return;
+        }
+        let mut next = cur;
+        next.acp_agents = agents;
         self.commit(next, "acpAgents");
     }
 }
@@ -693,25 +763,74 @@ mod tests {
     }
 
     #[test]
-    fn delete_preset_custom_only_and_clears_plus_default() {
+    fn delete_preset_removes_builtin_or_custom_and_clears_plus_default() {
         let (mut s, _) = make(None);
         let id = s.add_preset(PresetInput {
             label: "X".into(),
             ..Default::default()
         });
         assert_eq!(s.get().presets.items.len(), 6);
-        s.delete_preset("claude"); // 内置不可删
-        assert_eq!(s.get().presets.items.len(), 6);
+        s.delete_preset("claude"); // 内置预设也可删除
+        assert_eq!(s.get().presets.items.len(), 5);
+        assert!(!s.get().presets.items.iter().any(|p| p.id == "claude"));
 
         s.patch("presets.plusDefault", json!(id));
         assert_eq!(s.get().presets.plus_default.as_deref(), Some(id.as_str()));
         s.delete_preset(&id);
-        assert_eq!(s.get().presets.items.len(), 5);
+        assert_eq!(s.get().presets.items.len(), 4);
         assert_eq!(
             s.get().presets.plus_default,
             None,
             "plusDefault 指向被删预设 → 回退 null"
         );
+
+        s.restore_default_presets();
+        assert_eq!(s.get().presets.items.len(), 5);
+        assert!(s.get().presets.items.iter().any(|p| p.id == "claude"));
+    }
+
+    #[test]
+    fn reorder_preset_and_acp_agent_move_items_before_or_after_target() {
+        let (mut s, _) = make(None);
+        // 初始顺序: pi, claude, codex, amp, shell
+        s.reorder_preset("shell", "pi", true);
+        let ids: Vec<_> = s
+            .get()
+            .presets
+            .items
+            .iter()
+            .map(|p| p.id.as_str())
+            .collect();
+        assert_eq!(ids, ["shell", "pi", "claude", "codex", "amp"]);
+
+        s.reorder_preset("pi", "codex", false);
+        let ids: Vec<_> = s
+            .get()
+            .presets
+            .items
+            .iter()
+            .map(|p| p.id.as_str())
+            .collect();
+        assert_eq!(ids, ["shell", "claude", "codex", "pi", "amp"]);
+
+        // 顺位不变时不 bump revision
+        let rev = s.revision();
+        s.reorder_preset("shell", "claude", true);
+        assert_eq!(s.revision(), rev);
+
+        // ACP agent 重排：初始 acp-pi, acp-codex, acp-claude
+        let a3 = s.add_acp_agent(AcpAgentInput {
+            label: "Gemini".into(),
+            command: Some("gemini".into()),
+            args: None,
+        });
+        s.reorder_acp_agent(&a3, "acp-pi", true);
+        let aids: Vec<_> = s.get().acp_agents.iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(aids, [a3.as_str(), "acp-pi", "acp-codex", "acp-claude"]);
+
+        s.reorder_acp_agent("acp-codex", "acp-claude", false);
+        let aids: Vec<_> = s.get().acp_agents.iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(aids, [a3.as_str(), "acp-pi", "acp-claude", "acp-codex"]);
     }
 
     #[test]
@@ -843,7 +962,7 @@ mod tests {
     #[test]
     fn add_acp_agent_persists_and_default_examples_are_deletable() {
         let (mut s, file) = make(None);
-        assert_eq!(s.get().acp_agents.len(), 2);
+        assert_eq!(s.get().acp_agents.len(), 3);
         let id = s.add_acp_agent(AcpAgentInput {
             label: "Gemini".into(),
             command: Some("gemini".into()),
@@ -859,12 +978,12 @@ mod tests {
             ("Gemini", "gemini", vec!["--acp".to_string()])
         );
         s.flush();
-        assert_eq!(disk(&file)["acpAgents"].as_array().unwrap().len(), 3);
+        assert_eq!(disk(&file)["acpAgents"].as_array().unwrap().len(), 4);
 
         let first = s.get().acp_agents[0].id.clone();
         s.delete_acp_agent(&first);
         s.flush();
-        assert_eq!(s.get().acp_agents.len(), 2);
+        assert_eq!(s.get().acp_agents.len(), 3);
     }
 
     #[test]
