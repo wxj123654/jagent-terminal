@@ -1,8 +1,8 @@
 //! 纯格式化工具：`%D` 装饰解析、相对时间、变更文件树。
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use super::types::ChangedFile;
+use super::types::{ChangedFile, WorktreeFile, WorktreeFileKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefKind {
@@ -97,12 +97,74 @@ pub struct FileTreeNode {
     pub files: Vec<ChangedFile>,
 }
 
+/// 清理路径片段首尾及重复的 `/`。
+fn clean_slashes(s: &str) -> String {
+    s.split('/')
+        .filter(|seg| !seg.is_empty())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// 将 `git show --numstat` 的路径（含 `{old => new}` 或 `old => new` 重命名语法）
+/// 拆分为 `(公共父目录段, 展示用文件名)`。
+///
+/// - 普通路径 `"src/pages/index.ts"` → `(["src", "pages"], "index.ts")`
+/// - 花括号重命名 `"packages/native/src/{ => elements}/git_graph.rs"`
+///   → `(["packages", "native", "src"], "git_graph.rs → elements/git_graph.rs")`
+/// - 花括号重命名 `"packages/native/src/{element.rs => elements/terminal.rs}"`
+///   → `(["packages", "native", "src"], "element.rs → elements/terminal.rs")`
+pub fn split_changed_file_path(path: &str) -> (Vec<&str>, String) {
+    if let (Some(open), Some(close)) = (path.find('{'), path.find('}'))
+        && open < close
+        && let Some((old_mid, new_mid)) = path[open + 1..close].split_once(" => ")
+    {
+        let prefix = path[..open].trim_end_matches('/');
+        let dirs: Vec<&str> = if prefix.is_empty() {
+            vec![]
+        } else {
+            prefix.split('/').filter(|s| !s.is_empty()).collect()
+        };
+        let suffix = &path[close + 1..];
+        let old_rel = clean_slashes(&format!("{old_mid}{suffix}"));
+        let new_rel = clean_slashes(&format!("{new_mid}{suffix}"));
+        return (dirs, format!("{old_rel} → {new_rel}"));
+    }
+    if let Some((old_full, new_full)) = path.split_once(" => ") {
+        return (
+            vec![],
+            format!("{} → {}", clean_slashes(old_full), clean_slashes(new_full)),
+        );
+    }
+    let mut parts: Vec<&str> = path.split('/').collect();
+    let name = parts.pop().unwrap_or_default().to_owned();
+    (parts, name)
+}
+
+/// 提取变更文件在文件树叶子行的展示名（自动展开美化 `{old => new}` 重命名语法）。
+pub fn display_file_name(path: &str) -> String {
+    split_changed_file_path(path).1
+}
+
+/// 将 `git show --numstat` 的原始路径还原为工作区中的目标新路径（用于点击打开文件）。
+pub fn resolve_changed_file_path(path: &str) -> String {
+    if let (Some(open), Some(close)) = (path.find('{'), path.find('}'))
+        && open < close
+        && let Some((_, new_mid)) = path[open + 1..close].split_once(" => ")
+    {
+        let prefix = &path[..open];
+        let suffix = &path[close + 1..];
+        return clean_slashes(&format!("{prefix}{new_mid}{suffix}"));
+    }
+    if let Some((_, new_full)) = path.split_once(" => ") {
+        return clean_slashes(new_full);
+    }
+    path.to_owned()
+}
+
 pub fn nest_changed_files(files: &[ChangedFile]) -> FileTreeNode {
     let mut root = FileTreeNode::default();
     for f in files {
-        let mut parts: Vec<&str> = f.path.split('/').collect();
-        let name = parts.pop().unwrap_or_default();
-        let _ = name;
+        let (parts, _) = split_changed_file_path(&f.path);
         let mut n = &mut root;
         for p in parts {
             n = n.dirs.entry(p.to_owned()).or_default();
@@ -122,6 +184,138 @@ pub fn compact_dir<'a>(name: &str, node: &'a FileTreeNode) -> (String, &'a FileT
         n = child;
     }
     (parts.join(" / "), n)
+}
+
+// ── 工作区完整多级文件树（Zed 风格 Project Panel 数据模型）──────────
+
+/// 工作区文件树中的叶子文件条目（附带可选的 Git 变更状态与增删行数）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceFileEntry {
+    /// 相对工作区根的完整路径（如 `"crates/jagent-app/src/views/root.rs"`）
+    pub path: String,
+    /// 叶子文件名（如 `"root.rs"`）
+    pub name: String,
+    pub status: Option<WorktreeFileKind>,
+    pub added: Option<u32>,
+    pub deleted: Option<u32>,
+}
+
+/// 工作区多级文件树目录节点。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WorkspaceTreeNode {
+    pub dirs: BTreeMap<String, WorkspaceTreeNode>,
+    pub files: Vec<WorkspaceFileEntry>,
+    /// 子孙节点的聚合 Git 状态（优先级：`M > A > D`）
+    pub aggregated_status: Option<WorktreeFileKind>,
+}
+
+fn merge_status(
+    a: Option<WorktreeFileKind>,
+    b: Option<WorktreeFileKind>,
+) -> Option<WorktreeFileKind> {
+    let rank = |k: WorktreeFileKind| match k {
+        WorktreeFileKind::M => 3u8,
+        WorktreeFileKind::A => 2u8,
+        WorktreeFileKind::D => 1u8,
+    };
+    match (a, b) {
+        (Some(x), Some(y)) => {
+            if rank(x) >= rank(y) {
+                Some(x)
+            } else {
+                Some(y)
+            }
+        }
+        (Some(x), None) => Some(x),
+        (None, Some(y)) => Some(y),
+        (None, None) => None,
+    }
+}
+
+fn matches_filter(path: &str, query_terms: &[String]) -> bool {
+    if query_terms.is_empty() {
+        return true;
+    }
+    let lower = path.to_lowercase();
+    query_terms.iter().all(|t| lower.contains(t.as_str()))
+}
+
+/// 将工作区全量文件路径与 Git 变更列表融合为多级目录树，支持多词大小写无关过滤。
+pub fn build_workspace_tree(
+    all_files: &[String],
+    changed: &[WorktreeFile],
+    filter_query: &str,
+) -> WorkspaceTreeNode {
+    let changed_map: HashMap<&str, &WorktreeFile> =
+        changed.iter().map(|f| (f.path.as_str(), f)).collect();
+
+    let mut unique_paths: BTreeSet<&str> = all_files
+        .iter()
+        .map(String::as_str)
+        .filter(|p| !p.is_empty())
+        .collect();
+    for c in changed {
+        if !c.path.is_empty() {
+            unique_paths.insert(c.path.as_str());
+        }
+    }
+
+    let query_terms: Vec<String> = filter_query
+        .split_whitespace()
+        .map(|s| s.to_lowercase())
+        .collect();
+
+    let mut root = WorkspaceTreeNode::default();
+    for path in unique_paths {
+        if !matches_filter(path, &query_terms) {
+            continue;
+        }
+        let mut parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+        let Some(name) = parts.pop() else {
+            continue;
+        };
+        let ch = changed_map.get(path).copied();
+        let status = ch.map(|c| c.status);
+        let entry = WorkspaceFileEntry {
+            path: path.to_owned(),
+            name: name.to_owned(),
+            status,
+            added: ch.and_then(|c| c.added),
+            deleted: ch.and_then(|c| c.deleted),
+        };
+
+        let mut cur = &mut root;
+        cur.aggregated_status = merge_status(cur.aggregated_status, status);
+        for seg in parts {
+            cur = cur.dirs.entry(seg.to_owned()).or_default();
+            cur.aggregated_status = merge_status(cur.aggregated_status, status);
+        }
+        cur.files.push(entry);
+    }
+    root
+}
+
+/// 连续「单子目录、无直接文件」链折叠为 `(完整相对路径, 展示名 "a/b/c", 目标节点)`。
+pub fn compact_workspace_dir<'a>(
+    parent_rel: &str,
+    name: &str,
+    node: &'a WorkspaceTreeNode,
+) -> (String, String, &'a WorkspaceTreeNode) {
+    let mut names = vec![name.to_owned()];
+    let mut full = if parent_rel.is_empty() {
+        name.to_owned()
+    } else {
+        format!("{parent_rel}/{name}")
+    };
+    let mut n = node;
+    while n.dirs.len() == 1 && n.files.is_empty() {
+        let (only, child) = n.dirs.iter().next().expect("len == 1");
+        names.push(only.clone());
+        full.push('/');
+        full.push_str(only);
+        n = child;
+    }
+    (full, names.join("/"), n)
 }
 
 #[cfg(test)]
@@ -278,5 +472,77 @@ mod tests {
     fn deep_chains_collapse_all_the_way() {
         let root = nest_changed_files(&[f("a/b/c/d/e.rs")]);
         assert_eq!(compact_dir("a", &root.dirs["a"]).0, "a / b / c / d");
+    }
+
+    #[test]
+    fn brace_rename_paths_keep_common_parent_dir_and_format_clean_display_and_target() {
+        let p1 = "packages/native/src/{ => elements}/git_graph.rs";
+        assert_eq!(
+            split_changed_file_path(p1),
+            (
+                vec!["packages", "native", "src"],
+                "git_graph.rs → elements/git_graph.rs".into()
+            )
+        );
+        assert_eq!(
+            resolve_changed_file_path(p1),
+            "packages/native/src/elements/git_graph.rs"
+        );
+
+        let p2 = "packages/native/src/{element.rs => elements/terminal.rs}";
+        assert_eq!(
+            split_changed_file_path(p2),
+            (
+                vec!["packages", "native", "src"],
+                "element.rs → elements/terminal.rs".into()
+            )
+        );
+        assert_eq!(
+            resolve_changed_file_path(p2),
+            "packages/native/src/elements/terminal.rs"
+        );
+
+        let root = nest_changed_files(&[f(p1), f(p2), f("packages/native/src/lib.rs")]);
+        let (collapsed, node) = compact_dir("packages", &root.dirs["packages"]);
+        assert_eq!(collapsed, "packages / native / src");
+        assert_eq!(node.files.len(), 3);
+    }
+
+    #[test]
+    fn workspace_tree_merges_status_filters_and_compacts_single_child_dirs() {
+        let all = vec![
+            "README.md".to_owned(),
+            "crates/jagent-app/src/views/root.rs".to_owned(),
+            "crates/jagent-app/src/views/sidebar.rs".to_owned(),
+            "crates/jagent-core/src/lib.rs".to_owned(),
+        ];
+        let changed = vec![
+            WorktreeFile {
+                path: "crates/jagent-app/src/views/root.rs".into(),
+                status: WorktreeFileKind::M,
+                added: Some(10),
+                deleted: Some(2),
+            },
+            WorktreeFile {
+                path: "deleted.txt".into(),
+                status: WorktreeFileKind::D,
+                added: Some(0),
+                deleted: Some(5),
+            },
+        ];
+        let tree = build_workspace_tree(&all, &changed, "");
+        assert_eq!(tree.files.len(), 2, "README.md + deleted.txt");
+        assert_eq!(tree.aggregated_status, Some(WorktreeFileKind::M));
+        let crates_node = &tree.dirs["crates"];
+        assert_eq!(crates_node.aggregated_status, Some(WorktreeFileKind::M));
+        let (rel, label, views_node) =
+            compact_workspace_dir("crates", "jagent-app", &crates_node.dirs["jagent-app"]);
+        assert_eq!(rel, "crates/jagent-app/src/views");
+        assert_eq!(label, "jagent-app/src/views");
+        assert_eq!(views_node.files.len(), 2);
+
+        let filtered = build_workspace_tree(&all, &changed, "app root");
+        assert!(filtered.files.is_empty());
+        assert_eq!(filtered.dirs.keys().collect::<Vec<_>>(), ["crates"]);
     }
 }

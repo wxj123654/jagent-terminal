@@ -15,6 +15,11 @@ pub mod parse;
 pub mod store;
 pub mod types;
 
+pub use format::{
+    FileTreeNode, RefDecor, RefKind, WorkspaceFileEntry, WorkspaceTreeNode, build_workspace_tree,
+    compact_dir, compact_workspace_dir, display_file_name, nest_changed_files, parse_ref_names,
+    relative_time, resolve_changed_file_path, split_changed_file_path,
+};
 pub use graph::{CommitLine, GitGraphData, GraphRow, LaneSegment, UNSET};
 pub use parse::{
     LineBuffer, parse_branches, parse_changed_files, parse_log_line, parse_status_entries,

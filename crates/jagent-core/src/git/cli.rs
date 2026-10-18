@@ -52,7 +52,8 @@ impl std::error::Error for GitError {}
 
 fn command(args: &[&str], cwd: &Path) -> Command {
     let mut c = Command::new("git");
-    c.args(args)
+    c.args(["-c", "core.quotepath=false"])
+        .args(args)
         .current_dir(cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -238,7 +239,207 @@ pub fn list_worktree_status(cwd: &Path) -> Option<WorktreeStatus> {
 
 /// 单文件 vs HEAD 的 unified patch（工作面板内联 diff）。未跟踪文件 → 空串。
 pub fn diff_worktree_file(root: &Path, path: &str) -> Result<String, GitError> {
-    run_git(root, &["diff", "--no-color", "HEAD", "--", path])
+    let base = find_repo_root(root)
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| root.to_path_buf());
+    run_git(&base, &["diff", "--no-color", "HEAD", "--", path])
+}
+
+/// 指定提交下单个文件的 unified patch（Git 图谱点击文件预览用）。
+pub fn diff_commit_file(root: &Path, sha: &str, path: &str) -> Result<String, GitError> {
+    let base = find_repo_root(root)
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| root.to_path_buf());
+    run_git(
+        &base,
+        &[
+            "show",
+            "--format=",
+            "--patch",
+            "--no-color",
+            sha,
+            "--",
+            path,
+        ],
+    )
+}
+
+/// 读取指定 revision（如 `HEAD`、`<sha>`、`<sha>~1`）下的文件完整内容（`git show <rev>:<path>`）。
+pub fn show_file_at_rev(cwd: &Path, rev: &str, path: &str) -> Result<String, GitError> {
+    let base = find_repo_root(cwd)
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| cwd.to_path_buf());
+    let clean = path
+        .trim_start_matches("./")
+        .trim_start_matches('/')
+        .replace('\\', "/");
+    let spec = format!("{rev}:{clean}");
+    let raw = run_git(&base, &["show", &spec])?;
+    Ok(if raw.contains('\r') {
+        raw.replace("\r\n", "\n")
+    } else {
+        raw
+    })
+}
+
+/// 当本地磁盘文件不存在时（例如在 Git Graph 查看历史提交中已删除/移动的文件，或工作区已删除 `D` 的文件），
+/// 自动按优先级从 Git 对象库回退读取完整源码：
+/// 1. `<preferred_sha>:<path>` → `<preferred_sha>~1:<path>`
+/// 2. `HEAD:<path>`
+/// 3. `git log -n 1 --format=%H -- <path>` 最近触碰该路径的提交 `<last_sha>:<path>` → `<last_sha>~1:<path>`
+pub fn show_file_from_git_history(
+    cwd: &Path,
+    preferred_sha: Option<&str>,
+    path: &str,
+) -> Option<String> {
+    let base = find_repo_root(cwd)
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| cwd.to_path_buf());
+    let clean = path
+        .trim_start_matches("./")
+        .trim_start_matches('/')
+        .replace('\\', "/");
+    if clean.is_empty() {
+        return None;
+    }
+
+    if let Some(sha) = preferred_sha.filter(|s| !s.trim().is_empty()) {
+        if let Ok(text) = show_file_at_rev(&base, sha, &clean) {
+            return Some(text);
+        }
+        let parent_rev = format!("{sha}~1");
+        if let Ok(text) = show_file_at_rev(&base, &parent_rev, &clean) {
+            return Some(text);
+        }
+    }
+
+    if let Ok(text) = show_file_at_rev(&base, "HEAD", &clean) {
+        return Some(text);
+    }
+
+    if let Ok(last_out) = run_git(&base, &["log", "-n", "1", "--format=%H", "--", &clean]) {
+        let last_sha = last_out.trim();
+        if !last_sha.is_empty() {
+            if let Ok(text) = show_file_at_rev(&base, last_sha, &clean) {
+                return Some(text);
+            }
+            let parent_rev = format!("{last_sha}~1");
+            if let Ok(text) = show_file_at_rev(&base, &parent_rev, &clean) {
+                return Some(text);
+            }
+        }
+    }
+
+    None
+}
+
+/// 将未跟踪新文件（Untracked `??`）的文本内容合成为合法的 Unified Diff patch，
+/// 使 `DiffState` 在 Unified / Split 模式下也能完整渲染新文件。
+pub fn synthetic_added_patch(path: &str, content: &str) -> String {
+    let clean = path.trim_start_matches('/').replace('\\', "/");
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.is_empty() {
+        return format!(
+            "diff --git a/{clean} b/{clean}\nnew file mode 100644\n--- /dev/null\n+++ b/{clean}\n"
+        );
+    }
+    let mut out = format!(
+        "diff --git a/{clean} b/{clean}\nnew file mode 100644\n--- /dev/null\n+++ b/{clean}\n@@ -0,0 +1,{} @@\n",
+        lines.len()
+    );
+    for line in lines {
+        out.push('+');
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+const SKIP_DIRS: &[&str] = &[
+    ".git",
+    "target",
+    "node_modules",
+    ".next",
+    "dist",
+    "build",
+    ".turbo",
+    ".cache",
+];
+
+fn walk_dir_files(base: &Path, max_files: usize) -> Vec<String> {
+    fn rec(base: &Path, dir: &Path, out: &mut Vec<String>, max_files: usize) {
+        if out.len() >= max_files {
+            return;
+        }
+        let Ok(read_dir) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let mut entries: Vec<_> = read_dir.filter_map(Result::ok).collect();
+        entries.sort_by_key(|e| e.file_name());
+        for entry in entries {
+            if out.len() >= max_files {
+                break;
+            }
+            let name = entry.file_name();
+            let Some(name_str) = name.to_str() else {
+                continue;
+            };
+            if name_str == ".DS_Store" || SKIP_DIRS.contains(&name_str) {
+                continue;
+            }
+            let Ok(ft) = entry.file_type() else {
+                continue;
+            };
+            if ft.is_symlink() {
+                continue;
+            }
+            let full = entry.path();
+            if ft.is_dir() {
+                rec(base, &full, out, max_files);
+            } else if ft.is_file()
+                && let Ok(rel) = full.strip_prefix(base)
+            {
+                let rel_str = rel.to_string_lossy().replace('\\', "/");
+                if !rel_str.is_empty() {
+                    out.push(rel_str);
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    rec(base, base, &mut out, max_files);
+    out
+}
+
+/// 枚举工作区全部文件（返回 `(root_path, relative_files)`）：
+/// - Git 仓库优先走 `git ls-files --cached --others --exclude-standard -z`（毫秒级且天然尊重 `.gitignore`）；
+/// - 非 Git 目录回退轻量文件系统遍历（跳过 `.git` / `target` / `node_modules` 等）。
+pub fn list_workspace_files(cwd: &Path) -> (String, Vec<String>) {
+    if let Some(root) = find_repo_root(cwd) {
+        let rootp = Path::new(&root);
+        if let Ok(raw) = run_git(
+            rootp,
+            &[
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+            ],
+        ) {
+            let mut files: Vec<String> = raw
+                .split('\0')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.replace('\\', "/"))
+                .collect();
+            files.sort();
+            files.dedup();
+            return (root, files);
+        }
+        return (root.clone(), walk_dir_files(rootp, 8000));
+    }
+    let root = cwd.to_string_lossy().into_owned();
+    (root, walk_dir_files(cwd, 8000))
 }
 
 #[cfg(test)]
@@ -475,5 +676,30 @@ mod tests {
         let st = list_worktree_status(empty.path()).expect("空 repo 也能给出状态");
         assert_eq!(st.branch, None, "无 HEAD → 无分支");
         assert_eq!(st.files.len(), 1);
+    }
+
+    #[test]
+    fn list_workspace_files_covers_tracked_untracked_and_non_git_dirs() {
+        let d = fixture();
+        std::fs::create_dir_all(d.path().join("src/nested")).unwrap();
+        std::fs::write(d.path().join("src/nested/new.rs"), "pub fn f() {}\n").unwrap();
+        let (_, files) = list_workspace_files(d.path());
+        assert!(files.contains(&"a.txt".to_owned()));
+        assert!(files.contains(&"b.txt".to_owned()));
+        assert!(files.contains(&"src/nested/new.rs".to_owned()));
+
+        let non_git = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(non_git.path().join("pkg")).unwrap();
+        std::fs::write(non_git.path().join("pkg/hello.txt"), "hi").unwrap();
+        let (_, walked) = list_workspace_files(non_git.path());
+        assert_eq!(walked, vec!["pkg/hello.txt".to_owned()]);
+    }
+
+    #[test]
+    fn synthetic_added_patch_produces_valid_unified_diff() {
+        let patch = synthetic_added_patch("src/new.rs", "fn main() {\n    println!(\"hi\");\n}\n");
+        assert!(patch.contains("+++ b/src/new.rs"));
+        assert!(patch.contains("@@ -0,0 +1,3 @@"));
+        assert!(patch.contains("+fn main() {"));
     }
 }
