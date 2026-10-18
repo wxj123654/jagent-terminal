@@ -28,7 +28,7 @@ pub fn hex(s: &str) -> Hsla {
     .into()
 }
 
-/// `rgba(97, 175, 239, 0.15)` → [`Hsla`]。
+/// `rgba(99, 102, 241, 0.15)` → [`Hsla`]。
 pub fn rgba_css(r: u8, g: u8, b: u8, a: f32) -> Hsla {
     Rgba {
         r: r as f32 / 255.0,
@@ -39,65 +39,99 @@ pub fn rgba_css(r: u8, g: u8, b: u8, a: f32) -> Hsla {
     .into()
 }
 
-/// 暗色色板（字面值与旧 tokens.ts 的 COLORS 逐项一致）。
-pub mod colors {
-    pub const APP: &str = "#242830";
-    pub const PANE: &str = "#1c1f25";
-    pub const SIDEBAR: &str = "#20242b";
-    pub const TITLEBAR: &str = "#20242b";
-    pub const TERMINAL: &str = "#1a1d23";
-    pub const SURFACE: &str = "#2a3039";
-    pub const SURFACE_HOVER: &str = "#313844";
-    pub const SURFACE_ACTIVE: &str = "#303743";
-    pub const TILE: &str = "#292f38";
-    pub const TILE_HOVER: &str = "#333b47";
-    pub const OVERLAY: &str = "#242a32";
-    pub const INPUT_BG: &str = "#171a1f";
-    pub const CLOSE_HOVER: &str = "#383f4b";
-    pub const TEXT: &str = "#b6beca";
-    pub const TEXT_BRIGHT: &str = "#eef1f5";
-    pub const MUTED: &str = "#818b99";
-    pub const FAINT: &str = "#626c79";
-    pub const ACCENT: &str = "#61afef";
-    pub const ACCENT_HOVER: &str = "#82c1f2";
-    pub const FOCUS_BORDER: &str = "#61afef";
-    pub const CYAN: &str = "#56b6c2";
-    pub const AMBER: &str = "#e5c07b";
-    pub const TERMINAL_KIND: &str = "#98c379";
-    pub const ACP_KIND: &str = "#c678dd";
-    /// 错误 / 危险语义（旧命名 bell）
-    pub const BELL: &str = "#e06c75";
-    pub const BORDER: &str = "#14171c";
-    pub const BORDER_SUBTLE: &str = "#363e49";
-    pub const EXITED: &str = "#4b5262";
-    pub const G300: &str = "#5c6370";
-    pub const STATUS_RUNNING: &str = "#e5c07b";
-    pub const STATUS_NEED: &str = "#c678dd";
-    pub const STATUS_DONE: &str = "#98c379";
-    pub const STATUS_ERROR: &str = "#e06c75";
-    pub const TAB_STRIP: &str = "#1b1e24";
+/// 主色 `ACCENT` (`#6366f1`) 带透明度 → [`Hsla`]。
+pub fn accent_alpha(a: f32) -> Hsla {
+    rgba_css(99, 102, 241, a)
 }
 
-/// git graph lane 色板：8 色轮转，冷色调和（旧 `GRAPH_LANE_COLORS`）。
+/// Obsidian Indigo（黑曜石靛蓝）现代暗色色板。
+pub mod colors {
+    /// 应用最底层背景（全高侧栏与悬浮画布岛底座）
+    pub const APP: &str = "#0b0d12";
+    /// 主工作台画布底色（悬浮圆角画布岛背景）
+    pub const PANE: &str = "#12151e";
+    /// 侧栏背景（融于深色底座）
+    pub const SIDEBAR: &str = "#0d0f15";
+    /// 工作台顶栏背景
+    pub const TITLEBAR: &str = "#12151e";
+    /// 终端画布底色（与工作台无缝融合）
+    pub const TERMINAL: &str = "#12151e";
+    /// 浮起卡片 / 按钮表面
+    pub const SURFACE: &str = "#181c27";
+    /// 悬停态表面
+    pub const SURFACE_HOVER: &str = "#1e2330";
+    /// 激活 / 选中态表面
+    pub const SURFACE_ACTIVE: &str = "#23293a";
+    /// 图标块 / 胶囊底座
+    pub const TILE: &str = "#171b26";
+    pub const TILE_HOVER: &str = "#212736";
+    /// 浮层 / 菜单背景
+    pub const OVERLAY: &str = "#151923";
+    /// 输入框 / 代码块凹陷底
+    pub const INPUT_BG: &str = "#0e1118";
+    /// 关闭按钮 / 菜单项悬停
+    pub const CLOSE_HOVER: &str = "#283044";
+    /// 正文主文字
+    pub const TEXT: &str = "#c3cad9";
+    /// 强调 / 标题亮白文字
+    pub const TEXT_BRIGHT: &str = "#f2f5fa";
+    /// 次级说明文字
+    pub const MUTED: &str = "#7e889b";
+    /// 弱化路径 / 辅助文字
+    pub const FAINT: &str = "#555e70";
+    /// 电光靛蓝主色
+    pub const ACCENT: &str = "#6366f1";
+    pub const ACCENT_HOVER: &str = "#818cf8";
+    pub const FOCUS_BORDER: &str = "#6366f1";
+    /// 信息青色
+    pub const CYAN: &str = "#38bdf8";
+    /// 警告 / 运行中琥珀色
+    pub const AMBER: &str = "#fbbf24";
+    /// 终端类型语义色（翡翠绿）
+    pub const TERMINAL_KIND: &str = "#34d399";
+    /// ACP Agent 语义色（极光紫）
+    pub const ACP_KIND: &str = "#c084fc";
+    /// 错误 / 危险语义色（珊瑚红）
+    pub const BELL: &str = "#f87171";
+    /// 结构分隔线
+    pub const BORDER: &str = "#1e2330";
+    /// 悬浮画布岛 / 卡片 / 浮层微光描边
+    pub const BORDER_SUBTLE: &str = "#283042";
+    /// 已退出会话灰阶
+    pub const EXITED: &str = "#434b5c";
+    pub const G300: &str = "#525b6e";
+    pub const STATUS_RUNNING: &str = "#fbbf24";
+    pub const STATUS_NEED: &str = "#c084fc";
+    pub const STATUS_DONE: &str = "#34d399";
+    pub const STATUS_ERROR: &str = "#f87171";
+    pub const TAB_STRIP: &str = "#0e1118";
+}
+
+/// git graph lane 色板：8 色轮转，适配 Obsidian Indigo 高对比暗底。
 pub const GRAPH_LANE_COLORS: [&str; 8] = [
-    "#61afef", "#98c379", "#c678dd", "#e5c07b", "#56b6c2", "#e06c75", "#d19a66", "#be5046",
+    "#6366f1", "#34d399", "#c084fc", "#fbbf24", "#38bdf8", "#f87171", "#fb923c", "#f472b6",
 ];
 
-/// 布局尺寸（旧 `SIZES`；原型 CSS 定稿值）。单位 px。
+/// 布局尺寸（现代化全高侧栏 + 悬浮画布岛 + 单行融合顶栏）。单位 px。
 pub mod sizes {
     pub const SIDEBAR_WIDTH: f32 = 264.0;
-    /// 侧栏会话行高（原型 .t-row 32px）
-    pub const ROW_HEIGHT: f32 = 32.0;
+    /// 侧栏会话行高
+    pub const ROW_HEIGHT: f32 = 30.0;
     pub const ROW_MARGIN_X: f32 = 8.0;
-    pub const ROW_RADIUS: f32 = 8.0;
+    pub const ROW_RADIUS: f32 = 7.0;
     pub const PANEL_WIDTH: f32 = 280.0;
     pub const PANEL_WIDTH_MIN: f32 = 244.0;
     pub const PANEL_WIDTH_MAX: f32 = 720.0;
     /// 工作面板覆盖阈值（<1100px 转为浮层）
     pub const PANEL_OVERLAY_WIDTH: f32 = 1100.0;
-    pub const TOOLBAR_HEIGHT: f32 = 44.0;
-    pub const TAB_BAR_HEIGHT: f32 = 38.0;
-    pub const SIDEBAR_HEAD_HEIGHT: f32 = 46.0;
+    /// 单行融合工作台顶栏高度
+    pub const TOOLBAR_HEIGHT: f32 = 40.0;
+    pub const TAB_BAR_HEIGHT: f32 = 34.0;
+    /// 侧栏顶部栏（红绿灯 + 折叠钮）高度
+    pub const SIDEBAR_HEAD_HEIGHT: f32 = 40.0;
+    /// 悬浮圆角画布岛外边距与圆角
+    pub const ISLAND_MARGIN: f32 = 6.0;
+    pub const ISLAND_RADIUS: f32 = 10.0;
     /// 窄窗口断点：侧栏抽屉化的阈值
     pub const NARROW_BREAKPOINT: f32 = 760.0;
 }
@@ -158,7 +192,7 @@ pub fn theme_config_json(name: &str) -> Value {
         ("input.border", BORDER_SUBTLE),
         ("ring", ACCENT),
         ("caret", ACCENT),
-        ("selection.background", "#61afef40"),
+        ("selection.background", "#6366f140"),
         //
         ("primary.background", ACCENT),
         ("primary.foreground", TEXT_BRIGHT),
@@ -208,9 +242,117 @@ pub fn theme_config_json(name: &str) -> Value {
         .iter()
         .map(|(k, v)| ((*k).to_owned(), json!(v)))
         .collect();
+    let highlight_pairs: &[(&str, &str)] = &[
+        ("editor.foreground", TEXT),
+        ("editor.background", PANE),
+        ("editor.gutter.background", PANE),
+        ("editor.active_line.background", "#181c27a6"),
+        ("editor.line_number", FAINT),
+        ("editor.active_line_number", TEXT_BRIGHT),
+        ("editor.invisible", "#28304280"),
+        ("conflict", "#fb923c"),
+        ("created", STATUS_DONE),
+        ("created.background", "#34d39922"),
+        ("deleted", STATUS_ERROR),
+        ("deleted.background", "#f8717122"),
+        ("modified", STATUS_RUNNING),
+        ("modified.background", "#fbbf2422"),
+        ("error", STATUS_ERROR),
+        ("error.background", "#f8717122"),
+        ("error.border", STATUS_ERROR),
+        ("warning", AMBER),
+        ("warning.background", "#fbbf2422"),
+        ("warning.border", AMBER),
+        ("info", CYAN),
+        ("info.background", "#38bdf822"),
+        ("info.border", CYAN),
+        ("hint", ACP_KIND),
+        ("hint.background", "#c084fc22"),
+        ("hint.border", ACP_KIND),
+        ("success", STATUS_DONE),
+        ("success.background", "#34d39922"),
+        ("hidden", FAINT),
+        ("predictive", FAINT),
+    ];
+    let syntax_colors: &[(&str, &str)] = &[
+        ("attribute", "#93c5fd"),
+        ("boolean", "#fb923c"),
+        ("constant", "#fbbf24"),
+        ("constructor", "#38bdf8"),
+        ("embedded", TEXT),
+        ("enum", "#38bdf8"),
+        ("function", "#818cf8"),
+        ("hint", MUTED),
+        ("keyword", "#c084fc"),
+        ("label", "#818cf8"),
+        ("number", "#fb923c"),
+        ("operator", "#7dd3fc"),
+        ("preproc", "#c084fc"),
+        ("primary", TEXT),
+        ("property", "#93c5fd"),
+        ("punctuation", MUTED),
+        ("punctuation.bracket", "#8b95a8"),
+        ("punctuation.delimiter", MUTED),
+        ("punctuation.list_marker", "#818cf8"),
+        ("punctuation.special", "#c084fc"),
+        ("string", "#34d399"),
+        ("string.escape", "#6ee7b7"),
+        ("string.regex", "#fbbf24"),
+        ("string.special", "#6ee7b7"),
+        ("string.special.symbol", "#6ee7b7"),
+        ("tag", "#f87171"),
+        ("text.literal", "#34d399"),
+        ("type", "#38bdf8"),
+        ("variable", "#e2e8f0"),
+        ("variable.special", "#f87171"),
+        ("variant", "#38bdf8"),
+    ];
+    let mut syntax: serde_json::Map<String, Value> = syntax_colors
+        .iter()
+        .map(|(k, c)| ((*k).to_owned(), json!({ "color": c })))
+        .collect();
+    syntax.insert(
+        "comment".to_owned(),
+        json!({ "color": "#5c667a", "font_style": "italic" }),
+    );
+    syntax.insert(
+        "comment.doc".to_owned(),
+        json!({ "color": "#6e7a91", "font_style": "italic" }),
+    );
+    syntax.insert("emphasis".to_owned(), json!({ "font_style": "italic" }));
+    syntax.insert("emphasis.strong".to_owned(), json!({ "font_weight": 700 }));
+    syntax.insert(
+        "link_text".to_owned(),
+        json!({ "color": "#38bdf8", "font_style": "normal" }),
+    );
+    syntax.insert(
+        "link_uri".to_owned(),
+        json!({ "color": "#818cf8", "font_style": "italic" }),
+    );
+    syntax.insert(
+        "predictive".to_owned(),
+        json!({ "color": FAINT, "font_style": "italic" }),
+    );
+    syntax.insert(
+        "title".to_owned(),
+        json!({ "color": TEXT_BRIGHT, "font_weight": 700 }),
+    );
+
+    let mut highlight: serde_json::Map<String, Value> = highlight_pairs
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), json!(v)))
+        .collect();
+    highlight.insert("syntax".to_owned(), Value::Object(syntax));
     json!({
         "name": name,
-        "themes": [{ "name": name, "mode": "dark", "is_default": true, "colors": colors }],
+        // 圆角对齐原型 `--radius:8px; --radius-lg:12px`（库默认 6 / 8）：Input /
+        // Button / Dialog 等库控件与自绘控件（views/field.rs）同一档圆角。
+        "themes": [{
+            "name": name, "mode": "dark", "is_default": true,
+            "radius": 8, "radius.lg": 12,
+            "colors": colors,
+            "highlight": highlight,
+        }],
     })
 }
 
@@ -283,12 +425,12 @@ mod tests {
     }
 
     #[test]
-    fn the_palette_matches_the_old_tokens_ts_for_the_key_values() {
-        // 抽查对账：这些是旧 tokens.ts 里被反复引用的主色
-        assert_eq!(colors::APP, "#242830");
-        assert_eq!(colors::ACCENT, "#61afef");
-        assert_eq!(colors::BELL, "#e06c75");
-        assert_eq!(colors::BORDER_SUBTLE, "#363e49");
+    fn the_palette_matches_obsidian_indigo_key_values() {
+        assert_eq!(colors::APP, "#0b0d12");
+        assert_eq!(colors::PANE, "#12151e");
+        assert_eq!(colors::ACCENT, "#6366f1");
+        assert_eq!(colors::BELL, "#f87171");
+        assert_eq!(colors::BORDER_SUBTLE, "#283042");
         assert_eq!(
             GRAPH_LANE_COLORS[0],
             colors::ACCENT,
@@ -332,7 +474,7 @@ mod tests {
     fn dark_tokens_expose_eight_graph_lane_colours() {
         let t = Tokens::dark();
         assert_eq!(t.graph_lanes.len(), 8);
-        assert_eq!(t.graph_lanes[3], hex("#e5c07b"));
+        assert_eq!(t.graph_lanes[3], hex("#fbbf24"));
         assert_eq!(t.status_error, t.graph_lanes[5], "状态红与 lane 红同值");
     }
 }
@@ -372,7 +514,19 @@ mod install_tests {
             assert_eq!(t.foreground, hex(colors::TEXT), "foreground ← text");
             assert_eq!(t.primary, hex(colors::ACCENT), "primary ← accent");
             assert_eq!(t.danger, hex(colors::BELL), "danger ← bell");
+            assert_eq!(t.radius, gpui::px(8.0), "radius ← 原型 --radius");
+            assert_eq!(t.radius_lg, gpui::px(12.0), "radius.lg ← 原型 --radius-lg");
             assert!(Theme::global(cx).mode.is_dark());
+            assert_eq!(
+                t.highlight_theme.style.editor_background,
+                Some(hex(colors::PANE)),
+                "editor.background 应对齐画布 PANE 底色"
+            );
+            assert_eq!(
+                t.highlight_theme.style.editor_gutter_background,
+                Some(hex(colors::PANE)),
+                "editor.gutter.background 应与画布无缝融合，不出现 #181d29 突兀灰蓝柱"
+            );
             assert_eq!(cx.global::<Tokens>().graph_lanes[0], hex(colors::ACCENT));
         });
     }
