@@ -23,8 +23,10 @@ use jagent_core::settings::{FsAdapter, Settings, SettingsStore};
 use jagent_core::threads::{
     ActiveTarget, ConversationKind, Effects, SessionEvent as CoreSessionEvent, SpawnRequest,
     StoreError, Thread, ThreadStore, Workspace, echo_reply, parse_persisted_acp_threads,
-    parse_workspace_state, serialize_workspace_and_acp_state, serialize_workspace_state,
+    parse_workspace_state, serialize_workspace_and_acp_state,
 };
+#[cfg(test)]
+use jagent_core::threads::serialize_workspace_state;
 use jagent_terminal::{SessionEvent as TermEvent, SpawnOptions, TerminalPool};
 
 /// 数据目录（`~/.j-agent`）：settings.json / state.json / 日志都在这里。

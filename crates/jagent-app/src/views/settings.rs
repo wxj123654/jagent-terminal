@@ -3493,6 +3493,7 @@ mod tests {
             assert_eq!(reset.font_size, factory.font_size);
             assert_eq!(reset.font_family, factory.font_family);
             assert_eq!(reset.cursor_blink, factory.cursor_blink);
+            state.update(cx, |s, cx| s.close_thread(&id, cx));
         });
     }
 

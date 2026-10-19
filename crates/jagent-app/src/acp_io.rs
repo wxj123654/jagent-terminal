@@ -671,6 +671,7 @@ fn read_lines(stdout: std::process::ChildStdout, tx: Sender<Incoming>) {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    #[cfg(unix)]
     use futures::StreamExt as _;
 
     /// 一个最小的假 ACP agent（shell 脚本）：握手 → 对 prompt 回一条 message_chunk 再结束。

@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use anyhow::Result;
-use gpui::{App, Entity, Global};
+use gpui::{App, BorrowAppContext as _, Entity, Global};
 
 use crate::error::TerminalError;
 use crate::model::{TerminalModel, TerminalStyle};
@@ -85,6 +85,18 @@ impl TerminalPool {
     pub fn init_global(cx: &mut App) {
         if !cx.has_global::<Self>() {
             cx.set_global(Self::new());
+            cx.on_app_quit(|cx| {
+                if cx.has_global::<Self>() {
+                    cx.update_global::<Self, _>(|pool, cx| {
+                        let ids = pool.session_ids();
+                        for id in ids {
+                            let _ = pool.destroy(id, cx);
+                        }
+                    });
+                }
+                async {}
+            })
+            .detach();
         }
     }
 

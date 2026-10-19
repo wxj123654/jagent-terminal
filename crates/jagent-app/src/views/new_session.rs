@@ -750,7 +750,7 @@ mod tests {
             trigger_plus_or_open(state.clone(), Some(w2.clone()), false, window, app);
         });
 
-        vcx.read(|app| {
+        let tid = vcx.read(|app| {
             let s = state.read(app);
             assert_eq!(
                 s.threads.threads.len(),
@@ -758,6 +758,10 @@ mod tests {
                 "配置了 presets.plusDefault 时点击 + 直接在目标工作区启动预设"
             );
             assert_eq!(s.threads.threads[0].workspace_id(), Some(w2.as_str()));
+            s.threads.threads[0].id().to_owned()
+        });
+        vcx.update(|_, app| {
+            state.update(app, |s, cx| s.close_thread(&tid, cx));
         });
     }
 }

@@ -867,5 +867,127 @@ mod tests {
                 "终端聚焦时按 Tab / Shift-Tab 必须留在终端内，不得被 Root 切走焦点"
             );
         });
+
+        // 6. 验证 Windows 风格 Shift+滚轮（delta.x 非零、delta.y = 0）与 Ctrl+Home / Ctrl+End / Ctrl+Shift+Up/Down
+        cx.simulate_event(gpui::ScrollWheelEvent {
+            position: point(px(100.0), px(100.0)),
+            delta: gpui::ScrollDelta::Lines(point(3.0, 0.0)),
+            modifiers: Modifiers {
+                shift: true,
+                ..Modifiers::default()
+            },
+            touch_phase: gpui::TouchPhase::Moved,
+        });
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            assert_eq!(
+                term_view.read(cx).display_offset(cx),
+                3,
+                "Windows 下 Shift+滚轮（增量位于 delta.x）应能正常回滚终端历史"
+            );
+        });
+
+        cx.simulate_keystrokes("ctrl-home");
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            let hist = term_view.read(cx).history_size(cx);
+            assert_eq!(
+                term_view.read(cx).display_offset(cx),
+                hist,
+                "Ctrl+Home 应跳到终端回滚历史顶部"
+            );
+        });
+
+        cx.simulate_keystrokes("ctrl-shift-down");
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            let hist = term_view.read(cx).history_size(cx);
+            assert_eq!(
+                term_view.read(cx).display_offset(cx),
+                hist.saturating_sub(1),
+                "Ctrl+Shift+Down 应向下滚动 1 行"
+            );
+        });
+
+        cx.simulate_keystrokes("ctrl-end");
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            assert_eq!(
+                term_view.read(cx).display_offset(cx),
+                0,
+                "Ctrl+End 应回滚到底部"
+            );
+        });
+
+        // 7. 验证 Ctrl+Shift+A 全选、鼠标右键复制并清除选区、单纯点击微小抖动不覆盖剪贴板
+        cx.update(|_, cx| {
+            cx.write_to_clipboard(gpui::ClipboardItem::new_string("BEFORE_SELECT_ALL".into()));
+        });
+        cx.simulate_keystrokes("ctrl-shift-a");
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            assert!(
+                term_view.read(cx).has_selection(cx),
+                "Ctrl+Shift+A 应全选终端内容"
+            );
+        });
+        // 在终端内点鼠标右键：应将全选内容复制到剪贴板并清除选区
+        cx.simulate_mouse_down(
+            point(px(80.0), px(60.0)),
+            MouseButton::Right,
+            Modifiers::default(),
+        );
+        cx.simulate_mouse_up(
+            point(px(80.0), px(60.0)),
+            MouseButton::Right,
+            Modifiers::default(),
+        );
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            assert!(
+                !term_view.read(cx).has_selection(cx),
+                "右键复制选区后应自动清除选区"
+            );
+            let clip = cx
+                .read_from_clipboard()
+                .and_then(|i| i.text())
+                .unwrap_or_default();
+            assert!(
+                clip.contains("TERM_ROW_00_ALPHA_BETA") && clip.contains("TERM_ROW_39_ALPHA_BETA"),
+                "右键应把 Ctrl+Shift+A 全选的完整历史+屏幕文本复制到剪贴板"
+            );
+        });
+
+        // 单纯左键点击且带 1.5px 微小抖动：不应产生 1 字符误选区，也不应覆盖剪贴板
+        cx.update(|_, cx| {
+            cx.write_to_clipboard(gpui::ClipboardItem::new_string("KEEP_CLIPBOARD".into()));
+        });
+        cx.simulate_mouse_down(
+            point(px(30.0), px(30.0)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.simulate_mouse_move(
+            point(px(31.5), px(30.5)),
+            Some(MouseButton::Left),
+            Modifiers::default(),
+        );
+        cx.simulate_mouse_up(
+            point(px(31.5), px(30.5)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            assert!(
+                !term_view.read(cx).has_selection(cx),
+                "低于阈值的 1.5px 点击抖动不应产生误选区"
+            );
+            assert_eq!(
+                cx.read_from_clipboard().and_then(|i| i.text()).as_deref(),
+                Some("KEEP_CLIPBOARD"),
+                "单纯点击不应覆盖剪贴板已有内容"
+            );
+        });
     }
 }

@@ -1489,6 +1489,12 @@ impl Render for RootView {
         .child(window_controls_bar(window, !narrow));
 
         let state = self.state.clone();
+        let active_term_for_copy = (!self.settings_open
+            && !active_view_is_git
+            && active_file_path.is_none()
+            && !(active_view_is_main && self.conversation.is_some()))
+        .then(|| self.terminal.as_ref().map(|(_, v)| v.clone()))
+        .flatten();
         v_flex()
             .track_focus(&self.focus_handle)
             .key_context(CTX_WORKSPACE)
@@ -1500,10 +1506,11 @@ impl Render for RootView {
             .child(
                 gpui::canvas(
                     |_, _, _| (),
-                    |_, _, window, _cx| {
+                    move |_, _, window, _cx| {
+                        let term_for_copy = active_term_for_copy.clone();
                         window.on_action(
                             std::any::TypeId::of::<gpui_base::input::Copy>(),
-                            |_, phase, window, cx| {
+                            move |_, phase, window, cx| {
                                 if phase == gpui::DispatchPhase::Capture {
                                     let text = gpui_base::TextSelection::selected_text(window, cx);
                                     if !text.trim().is_empty() {
@@ -1511,6 +1518,20 @@ impl Render for RootView {
                                             text.trim().to_string(),
                                         ));
                                         cx.stop_propagation();
+                                        return;
+                                    }
+                                    if let Some(ref tv) = term_for_copy {
+                                        let copied = tv.update(cx, |v, cx| {
+                                            let ok = v.copy_selection(cx);
+                                            #[cfg(not(target_os = "macos"))]
+                                            if ok {
+                                                v.clear_selection(cx);
+                                            }
+                                            ok
+                                        });
+                                        if copied {
+                                            cx.stop_propagation();
+                                        }
                                     }
                                 }
                             },
@@ -1527,11 +1548,18 @@ impl Render for RootView {
                     if let Some(view) = &this.settings_view {
                         view.update(cx, |view, _| view.focus_search());
                     }
+                } else if let Some((_, ref tv)) = this.terminal {
+                    let fh = tv.read(cx).focus_handle().clone();
+                    fh.focus(window, cx);
                 }
                 cx.notify();
             }))
-            .on_action(cx.listener(|this, _: &CloseSettings, _, cx| {
+            .on_action(cx.listener(|this, _: &CloseSettings, window, cx| {
                 this.settings_open = false;
+                if let Some((_, ref tv)) = this.terminal {
+                    let fh = tv.read(cx).focus_handle().clone();
+                    fh.focus(window, cx);
+                }
                 cx.notify();
             }))
             .on_action(cx.listener(|this, _: &FocusSettingsSearch, _, cx| {
@@ -1993,15 +2021,18 @@ fn terminal_surface_with_statusbar(
                             let term_for_down = term_for_mouse.clone();
                             window.on_mouse_event(
                                 move |event: &MouseDownEvent, phase, window, cx| {
-                                    if phase == gpui::DispatchPhase::Capture
-                                        && event.button == MouseButton::Left
-                                    {
+                                    if phase == gpui::DispatchPhase::Capture {
                                         if bounds.contains(&event.position) {
-                                            // 终端拥有独立网格选区：抑制 Root 的窗口级 TextSelectionLayer 拖选，
-                                            // 并清除窗口其他区域（侧栏/状态栏）的旧选区，防止跨区误选与 Cmd+C 截胡。
-                                            gpui_base::GlobalState::suppress_text_selection(cx);
-                                            gpui_base::TextSelection::clear(window, cx);
-                                        } else {
+                                            if matches!(
+                                                event.button,
+                                                MouseButton::Left | MouseButton::Right
+                                            ) {
+                                                // 终端拥有独立网格选区：抑制 Root 的窗口级 TextSelectionLayer 拖选，
+                                                // 并清除窗口其他区域（侧栏/状态栏）的旧选区，防止跨区误选与 Cmd+C 截胡。
+                                                gpui_base::GlobalState::suppress_text_selection(cx);
+                                                gpui_base::TextSelection::clear(window, cx);
+                                            }
+                                        } else if event.button == MouseButton::Left {
                                             // 点击在终端画布外（如状态栏/侧栏/顶栏）时清除终端选区，保持全窗单一选区。
                                             term_for_down.update(cx, |v, cx| {
                                                 v.clear_selection(cx);
@@ -3084,8 +3115,12 @@ mod tests {
             });
             assert_eq!(
                 state.read(cx).threads.active(),
-                &jagent_core::threads::ActiveTarget::Thread(a)
+                &jagent_core::threads::ActiveTarget::Thread(a.clone())
             );
+            state.update(cx, |s, cx| {
+                s.close_thread(&a, cx);
+                s.close_thread(&_b, cx);
+            });
         });
     }
 

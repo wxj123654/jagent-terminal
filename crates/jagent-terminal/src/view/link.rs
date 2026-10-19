@@ -169,11 +169,15 @@ fn parse_osc8_uri(uri: &str, cwd: Option<&Path>) -> Option<TerminalLinkTarget> {
         return Some(TerminalLinkTarget::Url(trimmed.to_owned()));
     }
     if let Some(rest) = trimmed.strip_prefix("file://") {
-        // file://hostname/path 或 file:///path
-        let path_part = if rest.starts_with('/') {
+        // file://hostname/path、file:///path 或 Windows 直接盘符 file://C:\path / file://C:/path
+        let path_part = if rest.starts_with('/')
+            || (rest.len() >= 2
+                && rest.as_bytes()[0].is_ascii_alphabetic()
+                && rest.as_bytes()[1] == b':')
+        {
             rest
         } else {
-            let slash_idx = rest.find('/')?;
+            let slash_idx = rest.find(['/', '\\'])?;
             &rest[slash_idx..]
         };
         // Windows 兼容：file:///C:/foo/bar -> C:/foo/bar

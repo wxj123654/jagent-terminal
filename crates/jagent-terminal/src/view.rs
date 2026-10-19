@@ -77,8 +77,12 @@ pub struct TerminalView {
     ime_state: Option<ImeState>,
     /// 左键拖拽选区进行中（本 view 发起的 selection drag）。
     selecting: bool,
+    /// 左键按下时的初始窗口坐标（用于区分单击抖动与真实拖拽，以及建立选区起点）。
+    mouse_down_pos: Option<Point<Pixels>>,
     /// MOUSE_MODE 下左键按下上报中：记录上次上报的 1-based (col, row)，用于拖拽去重与抬起配对。
     mouse_reporting: Option<(usize, usize)>,
+    /// MOUSE_MODE 下右键按下上报中：记录按下时的 1-based (col, row)，用于抬起配对。
+    right_mouse_reporting: Option<(usize, usize)>,
     /// 滚动条拖拽：按下点相对 thumb 顶部的偏移；None = 未在拖。
     scrollbar_drag: Option<Pixels>,
     /// 本帧内容区几何（paint 阶段写入）：鼠标事件 → grid 坐标换算用。
@@ -155,6 +159,9 @@ const SCROLLBAR_ACTIVE_OPACITY: f32 = 0.88;
 /// thumb 最小高度（Zed `MINIMUM_THUMB_SIZE` = 25px）：内容极长时
 /// 等比缩出来的 thumb 会小到看不见/抓不到，兜底一个可点击尺寸。
 const SCROLLBAR_MIN_THUMB: f32 = 25.0;
+/// 选区拖拽启动最小像素阈值（镜像 Zed `SELECTION_DRAG_THRESHOLD`）：
+/// 忽略聚焦窗口单击时的 1~2px 微小指针抖动，防止误建单字符选区覆盖剪贴板或阻塞 Ctrl+C。
+const SELECTION_DRAG_THRESHOLD: f32 = 3.0;
 
 /// 滚动条几何快照（paint 阶段写入，事件阶段读取）。
 #[derive(Clone, Copy)]
@@ -225,7 +232,9 @@ impl TerminalView {
             scroll_remainder_lines: 0.0,
             ime_state: None,
             selecting: false,
+            mouse_down_pos: None,
             mouse_reporting: None,
+            right_mouse_reporting: None,
             scrollbar_drag: None,
             content_metrics: Rc::new(Cell::new(None)),
             scrollbar_layout: Rc::new(Cell::new(None)),
@@ -310,6 +319,16 @@ impl TerminalView {
     /// 向下翻一页历史。
     pub fn scroll_page_down(&mut self, cx: &mut Context<Self>) {
         self.scroll_display(Scroll::PageDown, cx);
+    }
+
+    /// 向上滚动一行历史。
+    pub fn scroll_line_up(&mut self, cx: &mut Context<Self>) {
+        self.scroll_lines(1, cx);
+    }
+
+    /// 向下滚动一行历史。
+    pub fn scroll_line_down(&mut self, cx: &mut Context<Self>) {
+        self.scroll_lines(-1, cx);
     }
 
     /// 滚动到历史缓冲区最顶部。
@@ -437,8 +456,13 @@ impl TerminalView {
 
     fn on_key_down(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
         let ks = &event.keystroke;
-        // 键盘视口回滚快捷键：Shift+PageUp / Shift+PageDown / Shift+Home / Shift+End / Cmd+Home / Cmd+End
-        if !ks.modifiers.control && !ks.modifiers.alt {
+        let is_alt_screen = self.model.read(cx).mode().contains(TermMode::ALT_SCREEN);
+
+        // 键盘视口回滚快捷键：
+        // - Shift+PageUp / Shift+PageDown / Ctrl+Shift+PageUp / Ctrl+Shift+PageDown（翻页）
+        // - Shift+Up / Shift+Down / Ctrl+Shift+Up / Ctrl+Shift+Down（非 alt screen 逐行回滚）
+        // - Shift+Home / Shift+End / Cmd+Home / Cmd+End / Ctrl+Home / Ctrl+End / Ctrl+Shift+Home / Ctrl+Shift+End（跳顶/归底）
+        if !ks.modifiers.alt {
             if ks.modifiers.shift && !ks.modifiers.platform {
                 match ks.key.as_str() {
                     "pageup" => {
@@ -461,10 +485,21 @@ impl TerminalView {
                         cx.stop_propagation();
                         return;
                     }
+                    "up" if !is_alt_screen => {
+                        self.scroll_line_up(cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                    "down" if !is_alt_screen => {
+                        self.scroll_line_down(cx);
+                        cx.stop_propagation();
+                        return;
+                    }
                     _ => {}
                 }
             }
-            if ks.modifiers.platform && !ks.modifiers.shift {
+            if ks.modifiers.control && !ks.modifiers.shift && !ks.modifiers.platform && !is_alt_screen
+            {
                 match ks.key.as_str() {
                     "home" => {
                         self.scroll_to_top(cx);
@@ -476,7 +511,22 @@ impl TerminalView {
                         cx.stop_propagation();
                         return;
                     }
-                    "a" => {
+                    _ => {}
+                }
+            }
+            if ks.modifiers.platform && !ks.modifiers.shift && !ks.modifiers.control {
+                match ks.key.as_str() {
+                    "home" => {
+                        self.scroll_to_top(cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                    "end" => {
+                        self.scroll_to_bottom(cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                    k if k.eq_ignore_ascii_case("a") => {
                         self.select_all(cx);
                         cx.stop_propagation();
                         return;
@@ -485,14 +535,28 @@ impl TerminalView {
                 }
             }
         }
-        // Cmd+C / Ctrl+Shift+C / Ctrl+Insert = 复制当前终端选区到剪贴板。
-        if (ks.key == "c" && ks.modifiers.platform && !ks.modifiers.alt && !ks.modifiers.control)
-            || (ks.key == "c"
+        // Ctrl+Shift+A = 全选终端缓冲区（Windows / Linux 标准快捷键）。
+        if ks.key.eq_ignore_ascii_case("a")
+            && ks.modifiers.control
+            && ks.modifiers.shift
+            && !ks.modifiers.alt
+            && !ks.modifiers.platform
+        {
+            self.select_all(cx);
+            cx.stop_propagation();
+            return;
+        }
+        // Cmd+C / Ctrl+Shift+C / Ctrl+Insert = 显式复制当前终端选区到剪贴板。
+        if (ks.key.eq_ignore_ascii_case("c")
+            && ks.modifiers.platform
+            && !ks.modifiers.alt
+            && !ks.modifiers.control)
+            || (ks.key.eq_ignore_ascii_case("c")
                 && ks.modifiers.control
                 && ks.modifiers.shift
                 && !ks.modifiers.alt
                 && !ks.modifiers.platform)
-            || (ks.key == "insert"
+            || (ks.key.eq_ignore_ascii_case("insert")
                 && ks.modifiers.control
                 && !ks.modifiers.shift
                 && !ks.modifiers.alt)
@@ -501,15 +565,35 @@ impl TerminalView {
             cx.stop_propagation();
             return;
         }
+        // 智能 Ctrl+C（Windows / Linux 终端惯例）：
+        // 若当前存在非空选区，则复制选区到剪贴板并清除选区（使下一次 Ctrl+C 可发送 SIGINT）；
+        // 若无选区，则交由下方 keystroke_to_bytes 发送 0x03 (^C)。
+        if ks.key.eq_ignore_ascii_case("c")
+            && ks.modifiers.control
+            && !ks.modifiers.shift
+            && !ks.modifiers.alt
+            && !ks.modifiers.platform
+            && self.copy_selection(cx)
+        {
+            self.clear_selection(cx);
+            cx.stop_propagation();
+            return;
+        }
         // Cmd+V / Ctrl+V / Ctrl+Shift+V / Shift+Insert = 粘贴（Zed keymap 同款）。
         // 不能走 keystroke_to_bytes：Ctrl+V 会被编码成 0x16 (SYN) 写进 PTY，
         // readline 把它当 quoted-insert 吃掉，表现就是「粘贴没反应」。
-        if (ks.key == "v" && ks.modifiers.platform && !ks.modifiers.alt && !ks.modifiers.control)
-            || (ks.key == "v"
+        if (ks.key.eq_ignore_ascii_case("v")
+            && ks.modifiers.platform
+            && !ks.modifiers.alt
+            && !ks.modifiers.control)
+            || (ks.key.eq_ignore_ascii_case("v")
                 && ks.modifiers.control
                 && !ks.modifiers.alt
                 && !ks.modifiers.platform)
-            || (ks.key == "insert" && ks.modifiers.shift && !ks.modifiers.control)
+            || (ks.key.eq_ignore_ascii_case("insert")
+                && ks.modifiers.shift
+                && !ks.modifiers.control
+                && !ks.modifiers.alt)
         {
             self.paste_clipboard(cx);
             cx.stop_propagation();
@@ -619,6 +703,7 @@ impl TerminalView {
 
         self.mouse_inside = true;
         self.last_mouse_pos = Some(event.position);
+        self.mouse_down_pos = Some(event.position);
         self.pending_link_open = None;
 
         // Zed 风格：Cmd+Click（macOS）/ Ctrl+Click（Windows/Linux）命中文件路径或 URL 时，
@@ -636,14 +721,18 @@ impl TerminalView {
         let model = self.model.read(cx);
         let mode = model.mode();
         if mode.intersects(TermMode::MOUSE_MODE) && !event.modifiers.shift && !event.modifiers.alt {
-            // 应用接管鼠标：清除本地选区并向 PTY 上报鼠标左键按下。
-            model.with_term_mut(|term| term.selection = None);
-            let (col, row) = grid_cell_1based(event.position, metrics);
-            self.mouse_reporting = Some((col, row));
-            let bytes = encode_mouse_report(0, col, row, false, event.modifiers, mode);
-            model.write_to_pty(&bytes);
-            cx.notify();
-            return;
+            // 若应用仅开启点击上报（MOUSE_REPORT_CLICK）而未订阅拖拽/移动，双击/三击允许直接走本地选词/选行。
+            let tracks_drag = mode.intersects(TermMode::MOUSE_DRAG | TermMode::MOUSE_MOTION);
+            if event.click_count == 1 || tracks_drag {
+                // 应用接管鼠标：清除本地选区并向 PTY 上报鼠标左键按下。
+                model.with_term_mut(|term| term.selection = None);
+                let (col, row) = grid_cell_1based(event.position, metrics);
+                self.mouse_reporting = Some((col, row));
+                let bytes = encode_mouse_report(0, col, row, false, event.modifiers, mode);
+                model.write_to_pty(&bytes);
+                cx.notify();
+                return;
+            }
         }
 
         self.selecting = true;
@@ -666,6 +755,10 @@ impl TerminalView {
                 } else {
                     term.selection = Some(Selection::new(selection_type, point, side));
                 }
+            } else if selection_type == SelectionType::Simple && !event.modifiers.alt {
+                // 普通左键单击先清除旧选区，待拖拽距离超过 SELECTION_DRAG_THRESHOLD 时再从按下点创建选区，
+                // 避免聚焦窗口点击时的 1~2px 微小抖动误选中单字符。
+                term.selection = None;
             } else {
                 term.selection = Some(Selection::new(selection_type, point, side));
             }
@@ -673,9 +766,64 @@ impl TerminalView {
         cx.notify();
     }
 
+    /// 右键按下（Windows / Linux / 终端快捷交互）：
+    /// - 若当前终端已有非空选区：立即复制选区到剪贴板并清除选区（一键复制）；
+    /// - 若无选区且处于 MOUSE_MODE（未按 Shift/Alt）：向 PTY 上报鼠标右键按下；
+    /// - 否则：直接从剪贴板粘贴文本到 PTY（一键粘贴）。
+    fn on_right_mouse_down(
+        &mut self,
+        event: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.focus_handle.focus(window, cx);
+        cx.stop_propagation();
+
+        if self.copy_selection(cx) {
+            self.clear_selection(cx);
+            return;
+        }
+
+        let mode = self.model.read(cx).mode();
+        if mode.intersects(TermMode::MOUSE_MODE) && !event.modifiers.shift && !event.modifiers.alt {
+            if let Some(metrics) = self.content_metrics.get() {
+                let (col, row) = grid_cell_1based(event.position, metrics);
+                self.right_mouse_reporting = Some((col, row));
+                let bytes = encode_mouse_report(2, col, row, false, event.modifiers, mode);
+                self.model.read(cx).write_to_pty(&bytes);
+            }
+            return;
+        }
+
+        self.paste_clipboard(cx);
+    }
+
+    /// 右键抬起：配对上报 MOUSE_MODE 下的右键释放事件。
+    fn on_right_mouse_up(
+        &mut self,
+        event: &MouseUpEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some((last_col, last_row)) = self.right_mouse_reporting.take() {
+            let (col, row) = self
+                .content_metrics
+                .get()
+                .map(|m| grid_cell_1based(event.position, m))
+                .unwrap_or((last_col, last_row));
+            let model = self.model.read(cx);
+            let mode = model.mode();
+            if mode.intersects(TermMode::MOUSE_MODE) {
+                let bytes = encode_mouse_report(2, col, row, true, event.modifiers, mode);
+                model.write_to_pty(&bytes);
+            }
+        }
+    }
+
     /// 左键抬起：结束滚动条拖拽或鼠标上报；选区非空则复制到剪贴板
     /// （终端惯例 copy-on-release），选区为空（单纯点击）则清除空选区对象。
     fn on_mouse_up(&mut self, event: &MouseUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        self.mouse_down_pos = None;
         if let Some(pending) = self.pending_link_open.take() {
             if is_link_modifier(&event.modifiers)
                 && let Some(metrics) = self.content_metrics.get()
@@ -799,16 +947,24 @@ impl TerminalView {
             if let Some(metrics) = self.content_metrics.get() {
                 let (col, row) = grid_cell_1based(event.position, metrics);
                 if (col, row) != (last_col, last_row) {
-                    self.mouse_reporting = Some((col, row));
                     let model = self.model.read(cx);
                     let mode = model.mode();
                     if mode.intersects(TermMode::MOUSE_DRAG | TermMode::MOUSE_MOTION) {
+                        self.mouse_reporting = Some((col, row));
                         let bytes = encode_mouse_report(32, col, row, false, event.modifiers, mode);
                         model.write_to_pty(&bytes);
+                        return;
                     }
+                    // 应用仅开启了点击上报（MOUSE_REPORT_CLICK，如只监听点击/滚轮的 CLI），
+                    // 未订阅拖拽移动事件：用户跨格拖动鼠标时自动切换为本地文本选区。
+                    self.mouse_reporting = None;
+                    self.selecting = true;
+                } else {
+                    return;
                 }
+            } else {
+                return;
             }
-            return;
         }
         if !self.selecting {
             return;
@@ -817,7 +973,25 @@ impl TerminalView {
             return;
         };
 
+        let down_pos = self.mouse_down_pos;
+        let selection_type = if event.modifiers.alt {
+            SelectionType::Block
+        } else {
+            SelectionType::Simple
+        };
+
         let changed = self.model.read(cx).with_term_mut(|term| {
+            if term.selection.is_none() {
+                let start_pos = down_pos.unwrap_or(event.position);
+                let dx: f32 = (event.position.x - start_pos.x).into();
+                let dy: f32 = (event.position.y - start_pos.y).into();
+                if dx.hypot(dy) < SELECTION_DRAG_THRESHOLD {
+                    return false;
+                }
+                let (start_point, start_side) =
+                    grid_point_and_side(start_pos, metrics, term.grid().display_offset());
+                term.selection = Some(Selection::new(selection_type, start_point, start_side));
+            }
             let mut changed = false;
             // 拖出内容区上下边界 → 自动滚动（alacritty 惯例：每事件约 5 行）。
             let content_bottom = metrics.origin.y + metrics.cell_height * metrics.rows as f32;
@@ -1052,11 +1226,10 @@ impl TerminalView {
             .map(|m| m.cell_height)
             .unwrap_or(self.renderer.cell_height)
             .max(px(1.0));
-        // GPUI 约定 delta.y > 0 = 向内容顶部滚动（向上）
-        let lines_f32 = match event.delta {
-            ScrollDelta::Lines(l) => l.y,
-            ScrollDelta::Pixels(p) => p.y / cell_h,
-        };
+        // GPUI 约定 delta.y > 0 = 向内容顶部滚动（向上）。
+        // Windows 平台层（gpui-pre-windows）在按住 Shift 滚轮时会将垂直滚轮量放入 delta.x（delta.y = 0），
+        // 因此当 delta.y 为 0 且按住 Shift 时回退读取 delta.x，确保 Windows 下 Shift+滚轮可正常回滚终端历史。
+        let lines_f32 = scroll_delta_lines(event.delta, event.modifiers.shift, cell_h);
         let lines = consume_scroll_lines(&mut self.scroll_remainder_lines, lines_f32);
         if lines == 0 {
             return;
@@ -1213,6 +1386,27 @@ fn encode_mouse_report(
     }
 }
 
+/// 提取滚轮垂直滚动行数：兼容 Windows 平台层将 `Shift + 垂直滚轮` 转换为横向 `delta.x` 的行为。
+fn scroll_delta_lines(delta: ScrollDelta, shift: bool, cell_h: Pixels) -> f32 {
+    match delta {
+        ScrollDelta::Lines(l) => {
+            if l.y.abs() > f32::EPSILON || !shift {
+                l.y
+            } else {
+                l.x
+            }
+        }
+        ScrollDelta::Pixels(p) => {
+            let dy = if p.y.abs() > px(0.01) || !shift {
+                p.y
+            } else {
+                p.x
+            };
+            dy / cell_h
+        }
+    }
+}
+
 /// 消费滚动行数：亚像素/不足一行的触控板 delta 跨事件累计；单事件最多
 /// 派发 3 行，丢弃异常大尖峰，防止 TUI 方向键/重绘洪泛。
 fn consume_scroll_lines(remainder: &mut f32, delta_lines: f32) -> i32 {
@@ -1255,6 +1449,7 @@ impl Render for TerminalView {
                 v.on_modifiers_changed(e, cx);
             }))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
+            .on_mouse_down(MouseButton::Right, cx.listener(Self::on_right_mouse_down))
             .on_scroll_wheel(cx.listener(Self::on_scroll))
             .child(
                 canvas(
@@ -1339,8 +1534,14 @@ impl Render for TerminalView {
                             });
                             let view = this.clone();
                             window.on_mouse_event(move |e: &MouseUpEvent, phase, _window, cx| {
-                                if phase == DispatchPhase::Bubble && e.button == MouseButton::Left {
-                                    view.update(cx, |v, cx| v.on_mouse_up(e, _window, cx));
+                                if phase == DispatchPhase::Bubble {
+                                    if e.button == MouseButton::Left {
+                                        view.update(cx, |v, cx| v.on_mouse_up(e, _window, cx));
+                                    } else if e.button == MouseButton::Right {
+                                        view.update(cx, |v, cx| {
+                                            v.on_right_mouse_up(e, _window, cx);
+                                        });
+                                    }
                                 }
                             });
                             let view = this.clone();
@@ -1635,6 +1836,22 @@ mod tests {
         let mut remainder = 0.0;
         assert_eq!(consume_scroll_lines(&mut remainder, 50.0), 3);
         assert_eq!(consume_scroll_lines(&mut remainder, -50.0), -3);
+    }
+
+    #[test]
+    fn scroll_delta_lines_handles_windows_shift_wheel_in_delta_x() {
+        // Windows 平台层在按住 Shift 滚动鼠标滚轮时会将垂直增量放入 delta.x（delta.y = 0）
+        let delta = ScrollDelta::Lines(Point { x: 3.0, y: 0.0 });
+        assert_eq!(scroll_delta_lines(delta, true, px(16.0)), 3.0);
+        // 未按 Shift 时，纯横向滚轮不应触发垂直滚动
+        assert_eq!(scroll_delta_lines(delta, false, px(16.0)), 0.0);
+
+        let px_delta = ScrollDelta::Pixels(Point {
+            x: px(32.0),
+            y: px(0.0),
+        });
+        assert_eq!(scroll_delta_lines(px_delta, true, px(16.0)), 2.0);
+        assert_eq!(scroll_delta_lines(px_delta, false, px(16.0)), 0.0);
     }
 
     #[test]

@@ -160,11 +160,23 @@ pub const DEFAULT_SCROLLBACK_LINES: usize = 10_000;
 /// Zed's cap.
 pub const MAX_SCROLLBACK_LINES: usize = 100_000;
 
+/// Ensures the PTY reader thread and `SessionListener` channel are shut down
+/// synchronously on the foreground thread as soon as the consumer task is dropped
+/// (e.g., when `TestDispatcher::drain_tasks` tears down tasks at the end of a `#[gpui::test]`,
+/// even if `add_window_view` leaked a `VisualTestContext` keeping `App` alive).
+struct ConsumerShutdownGuard(Arc<PtySender>);
+
+impl Drop for ConsumerShutdownGuard {
+    fn drop(&mut self) {
+        self.0.shutdown();
+    }
+}
+
 /// The terminal session model. One per PTY; lives in the pool, not in views.
 pub struct TerminalModel {
     id: u64,
     term: TermLock,
-    pty: Option<PtySender>,
+    pty: Option<Arc<PtySender>>,
     cwd: Option<PathBuf>,
     style: TerminalStyle,
     scrollback_lines: usize,
@@ -223,8 +235,11 @@ impl TerminalModel {
         };
 
         // Consumer task: Zed's 4ms batching scheme.
+        let pty = Arc::new(pty);
+        let guard = ConsumerShutdownGuard(pty.clone());
         cx.new(|cx: &mut Context<Self>| {
             let task = cx.spawn(async move |this, cx| {
+                let _guard = guard;
                 while let Some(event) = events_rx.next().await {
                     if this
                         .update(cx, |model, cx| model.process_pty_event(event, cx))
