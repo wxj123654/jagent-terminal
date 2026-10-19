@@ -32,6 +32,7 @@ use gpui_base::{Popover, PopoverState, Selectable};
 
 use crate::icons::{IconName, icon};
 use crate::theme::{colors, hex};
+use crate::ui_scale::fs;
 
 /// 菜单项选中回调：`(item id, window, app)`。
 pub type PickFn = Rc<dyn Fn(&str, &mut Window, &mut App)>;
@@ -174,11 +175,11 @@ fn ctx_item(
         .pr(px(8.0))
         .rounded(px(6.0))
         .cursor_pointer()
-        .text_size(px(12.0))
+        .text_size(fs(12.0))
         .text_color(fg)
         .hover(|h| h.bg(hex(colors::SURFACE)))
         .when_some(m.icon, |d, ic| {
-            d.child(div().w(px(14.0)).flex_shrink_0().child(icon(ic, 13.0, fg)))
+            d.child(div().w(fs(14.0)).flex_shrink_0().child(icon(ic, 13.0, fg)))
         })
         .child(
             div()
@@ -194,7 +195,7 @@ fn ctx_item(
                 div()
                     .flex_shrink_0()
                     .font_family("monospace")
-                    .text_size(px(11.0))
+                    .text_size(fs(11.0))
                     .text_color(hex(colors::MUTED))
                     .child(key),
             )
@@ -275,7 +276,7 @@ pub fn action_row(
         .pr(px(8.0))
         .rounded(px(5.0))
         .cursor_pointer()
-        .text_size(px(12.0))
+        .text_size(fs(12.0))
         .text_color(hex(colors::TEXT))
         .hover(|h| h.bg(hex(colors::SURFACE)))
         .child(icon(ic, 13.0, hex(colors::MUTED)))
@@ -289,7 +290,7 @@ pub fn action_row(
 /// 小节标题（`.sa-sub`：10.5 / 500 / muted，padding 8 8 4）。
 pub fn section_label(text: &str) -> impl IntoElement {
     div()
-        .text_size(px(10.5))
+        .text_size(fs(10.5))
         .font_weight(gpui::FontWeight::MEDIUM)
         .text_color(hex(colors::MUTED))
         .pt(px(8.0))

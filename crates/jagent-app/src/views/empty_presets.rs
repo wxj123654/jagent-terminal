@@ -25,6 +25,7 @@ use jagent_core::threads::{ActiveTarget, RunStatus, Thread};
 use crate::icons::{IconName, icon};
 use crate::state::{AppState, StateChanged};
 use crate::theme::{accent_alpha, colors, hex, rgba_css};
+use crate::ui_scale::fs;
 use crate::views::selectable::sel_text_id;
 use crate::views::{git_graph, nested_scroll, new_session};
 
@@ -181,7 +182,7 @@ pub fn empty_pane_with_context(
         .border_color(hex(colors::BORDER_SUBTLE))
         .child(
             div()
-                .size(px(38.0))
+                .size(fs(38.0))
                 .rounded(px(10.0))
                 .flex()
                 .items_center()
@@ -194,7 +195,7 @@ pub fn empty_pane_with_context(
         )
         .child(
             div()
-                .text_size(px(18.0))
+                .text_size(fs(18.0))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(hex(colors::TEXT_BRIGHT))
                 .child(sel_text_id("bento-ws-name", ws_name.clone())),
@@ -206,7 +207,7 @@ pub fn empty_pane_with_context(
                 .justify_center()
                 .gap(px(8.0))
                 .font_family("monospace")
-                .text_size(px(11.5))
+                .text_size(fs(11.5))
                 .text_color(hex(colors::MUTED))
                 .child(div().child(sel_text_id("bento-ws-path", ws_path)))
                 .child(
@@ -253,7 +254,7 @@ pub fn empty_pane_with_context(
                         .child(icon(IconName::GitBranch, 12.0, hex(colors::ACCENT_HOVER)))
                         .child(
                             div()
-                                .text_size(px(11.0))
+                                .text_size(fs(11.0))
                                 .text_color(hex(colors::TEXT))
                                 .child(format!("{branch_label} · Git 图谱")),
                         )
@@ -277,19 +278,19 @@ pub fn empty_pane_with_context(
                             .hover(|h| h.bg(hex(colors::SURFACE_HOVER)))
                             .child(
                                 div()
-                                    .text_size(px(11.0))
+                                    .text_size(fs(11.0))
                                     .text_color(hex(colors::TEXT))
                                     .child(format!("{change_count} 变更")),
                             )
                             .child(
                                 div()
-                                    .text_size(px(11.0))
+                                    .text_size(fs(11.0))
                                     .text_color(hex(colors::STATUS_DONE))
                                     .child(format!("+{add_lines}")),
                             )
                             .child(
                                 div()
-                                    .text_size(px(11.0))
+                                    .text_size(fs(11.0))
                                     .text_color(hex(colors::STATUS_ERROR))
                                     .child(format!("−{del_lines}")),
                             )
@@ -325,7 +326,7 @@ pub fn empty_pane_with_context(
                 })
                 .child(
                     div()
-                        .size(px(34.0))
+                        .size(fs(34.0))
                         .rounded(px(8.0))
                         .flex_shrink_0()
                         .flex()
@@ -341,14 +342,14 @@ pub fn empty_pane_with_context(
                         .gap(px(1.0))
                         .child(
                             div()
-                                .text_size(px(13.0))
+                                .text_size(fs(13.0))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .text_color(hex(colors::TEXT_BRIGHT))
                                 .child("启动 AI Coding Agent"),
                         )
                         .child(
                             div()
-                                .text_size(px(11.5))
+                                .text_size(fs(11.5))
                                 .text_color(hex(colors::MUTED))
                                 .overflow_hidden()
                                 .whitespace_nowrap()
@@ -379,7 +380,7 @@ pub fn empty_pane_with_context(
                 })
                 .child(
                     div()
-                        .size(px(34.0))
+                        .size(fs(34.0))
                         .rounded(px(8.0))
                         .flex_shrink_0()
                         .flex()
@@ -395,14 +396,14 @@ pub fn empty_pane_with_context(
                         .gap(px(1.0))
                         .child(
                             div()
-                                .text_size(px(13.0))
+                                .text_size(fs(13.0))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .text_color(hex(colors::TEXT_BRIGHT))
                                 .child("新建交互式终端"),
                         )
                         .child(
                             div()
-                                .text_size(px(11.5))
+                                .text_size(fs(11.5))
                                 .text_color(hex(colors::MUTED))
                                 .overflow_hidden()
                                 .whitespace_nowrap()
@@ -433,7 +434,7 @@ pub fn empty_pane_with_context(
         .justify_between()
         .child(
             div()
-                .text_size(px(11.0))
+                .text_size(fs(11.0))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(hex(colors::MUTED))
                 .child(format!("终端与 AGENT 预设 ({})", presets.len())),
@@ -441,7 +442,7 @@ pub fn empty_pane_with_context(
         .child(
             div()
                 .id("bento-manage-presets")
-                .text_size(px(11.5))
+                .text_size(fs(11.5))
                 .text_color(hex(colors::ACCENT_HOVER))
                 .cursor_pointer()
                 .child("管理预设 →")
@@ -463,7 +464,7 @@ pub fn empty_pane_with_context(
             .bg(rgba_css(24, 28, 39, 0.4))
             .child(
                 div()
-                    .text_size(px(12.0))
+                    .text_size(fs(12.0))
                     .text_color(hex(colors::MUTED))
                     .child(
                         "预设工具已全部移除。仍可使用上方两张主入口卡启动会话，或恢复默认预设。",
@@ -489,7 +490,7 @@ pub fn empty_pane_with_context(
                             .child(icon(IconName::Reset, 11.5, hex(colors::MUTED)))
                             .child(
                                 div()
-                                    .text_size(px(11.5))
+                                    .text_size(fs(11.5))
                                     .text_color(hex(colors::TEXT))
                                     .child("恢复默认预设"),
                             )
@@ -517,7 +518,7 @@ pub fn empty_pane_with_context(
                             .child(icon(IconName::Plus, 11.5, hex(colors::ACCENT_HOVER)))
                             .child(
                                 div()
-                                    .text_size(px(11.5))
+                                    .text_size(fs(11.5))
                                     .text_color(hex(colors::TEXT_BRIGHT))
                                     .child("添加预设"),
                             )
@@ -537,7 +538,7 @@ pub fn empty_pane_with_context(
         .justify_between()
         .child(
             div()
-                .text_size(px(11.0))
+                .text_size(fs(11.0))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(hex(colors::MUTED))
                 .child(format!("工作区会话 ({})", ws_threads.len())),
@@ -547,7 +548,7 @@ pub fn empty_pane_with_context(
             d.child(
                 div()
                     .id("bento-clear-ws-sessions")
-                    .text_size(px(11.5))
+                    .text_size(fs(11.5))
                     .text_color(hex(colors::BELL))
                     .cursor_pointer()
                     .child("清空本工作区会话")
@@ -586,7 +587,7 @@ pub fn empty_pane_with_context(
                             .child(icon(IconName::Terminal, 16.0, hex(colors::FAINT)))
                             .child(
                                 div()
-                                    .text_size(px(12.5))
+                                    .text_size(fs(12.5))
                                     .text_color(hex(colors::MUTED))
                                     .child("当前工作区暂无活跃会话。点击上方卡片即可创建新会话。"),
                             ),
@@ -608,7 +609,7 @@ pub fn empty_pane_with_context(
                             .child(icon(IconName::Plus, 11.5, hex(colors::ACCENT_HOVER)))
                             .child(
                                 div()
-                                    .text_size(px(11.5))
+                                    .text_size(fs(11.5))
                                     .text_color(hex(colors::TEXT))
                                     .child("快速启动终端"),
                             )
@@ -655,13 +656,13 @@ pub fn empty_pane_with_context(
                                 .child(
                                     div()
                                         .font_family("monospace")
-                                        .text_size(px(10.5))
+                                        .text_size(fs(10.5))
                                         .text_color(hex(colors::ACCENT_HOVER))
                                         .child(k),
                                 )
                                 .child(
                                     div()
-                                        .text_size(px(11.0))
+                                        .text_size(fs(11.0))
                                         .text_color(hex(colors::MUTED))
                                         .child(lbl),
                                 )
@@ -734,7 +735,7 @@ pub fn empty_pane_with_context(
                             .overflow_hidden()
                             .whitespace_nowrap()
                             .text_ellipsis()
-                            .text_size(px(12.5))
+                            .text_size(fs(12.5))
                             .font_weight(if unread {
                                 FontWeight::SEMIBOLD
                             } else {
@@ -758,7 +759,7 @@ pub fn empty_pane_with_context(
                                 .bg(rgba_css(251, 191, 36, 0.14))
                                 .border_1()
                                 .border_color(rgba_css(251, 191, 36, 0.30))
-                                .text_size(px(10.0))
+                                .text_size(fs(10.0))
                                 .text_color(hex(colors::STATUS_RUNNING))
                                 .child("思考中…"),
                         )
@@ -771,7 +772,7 @@ pub fn empty_pane_with_context(
                                 .bg(rgba_css(192, 132, 252, 0.14))
                                 .border_1()
                                 .border_color(rgba_css(192, 132, 252, 0.30))
-                                .text_size(px(10.0))
+                                .text_size(fs(10.0))
                                 .text_color(hex(colors::ACP_KIND))
                                 .child("🔔 等待注意"),
                         )
@@ -782,7 +783,7 @@ pub fn empty_pane_with_context(
                                 .px(px(5.0))
                                 .rounded(px(4.0))
                                 .bg(accent_soft())
-                                .text_size(px(10.0))
+                                .text_size(fs(10.0))
                                 .text_color(hex(colors::ACCENT_HOVER))
                                 .child("未读"),
                         )
@@ -791,7 +792,7 @@ pub fn empty_pane_with_context(
                         d.child(
                             div()
                                 .font_family("monospace")
-                                .text_size(px(10.5))
+                                .text_size(fs(10.5))
                                 .text_color(hex(colors::FAINT))
                                 .child("[已退出]"),
                         )
@@ -800,14 +801,14 @@ pub fn empty_pane_with_context(
                     .child(
                         div()
                             .font_family("monospace")
-                            .text_size(px(10.5))
+                            .text_size(fs(10.5))
                             .text_color(hex(colors::FAINT))
                             .child(meta_right),
                     )
                     .child(
                         div()
                             .id(ElementId::Name(format!("bento-close-{tid_close}").into()))
-                            .size(px(22.0))
+                            .size(fs(22.0))
                             .rounded(px(5.0))
                             .flex()
                             .items_center()
@@ -870,7 +871,7 @@ fn kbd_badge(label: &'static str) -> gpui::Div {
         .border_1()
         .border_color(hex(colors::BORDER_SUBTLE))
         .font_family("monospace")
-        .text_size(px(10.5))
+        .text_size(fs(10.5))
         .text_color(hex(colors::MUTED))
         .child(label)
 }
@@ -920,7 +921,7 @@ fn home_pills(state: &Entity<AppState>, presets: &[TerminalPreset], narrow: bool
                 })
                 .child(
                     div()
-                        .size(px(24.0))
+                        .size(fs(24.0))
                         .flex_shrink_0()
                         .flex()
                         .items_center()
@@ -933,7 +934,7 @@ fn home_pills(state: &Entity<AppState>, presets: &[TerminalPreset], narrow: bool
                     div()
                         .flex_1()
                         .min_w_0()
-                        .text_size(px(12.0))
+                        .text_size(fs(12.0))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(hex(colors::TEXT_BRIGHT))
                         .overflow_hidden()
@@ -982,7 +983,7 @@ fn pill(p: &TerminalPreset) -> gpui::Stateful<gpui::Div> {
         })
         .child(
             div()
-                .size(px(24.0))
+                .size(fs(24.0))
                 .flex_shrink_0()
                 .flex()
                 .items_center()
@@ -995,7 +996,7 @@ fn pill(p: &TerminalPreset) -> gpui::Stateful<gpui::Div> {
             div()
                 .flex_1()
                 .min_w_0()
-                .text_size(px(12.0))
+                .text_size(fs(12.0))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(hex(colors::TEXT_BRIGHT))
                 .overflow_hidden()

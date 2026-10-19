@@ -11,4 +11,5 @@ pub mod icons;
 pub mod state;
 pub mod terminal_style;
 pub mod theme;
+pub mod ui_scale;
 pub mod views;

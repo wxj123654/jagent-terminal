@@ -30,6 +30,7 @@ use gpui_component::input::{Input, InputState};
 
 use crate::icons::{IconName, icon};
 use crate::theme::{accent_alpha, colors, hex};
+use crate::ui_scale::fs;
 use crate::views::field;
 use crate::views::popup::{PopupTrigger, overlay_shell};
 use crate::views::settings::SettingsView;
@@ -50,7 +51,7 @@ fn menu_row(id: gpui::SharedString) -> Stateful<gpui::Div> {
         .h(px(30.0))
         .px(px(8.0))
         .rounded(px(6.0))
-        .text_size(px(12.0))
+        .text_size(fs(12.0))
         .text_color(hex(colors::TEXT))
         .cursor_pointer()
         .hover(|d| d.bg(hex(colors::SURFACE)))
@@ -58,7 +59,7 @@ fn menu_row(id: gpui::SharedString) -> Stateful<gpui::Div> {
 
 /// 勾选槽（.ck：14 宽，accent 勾）
 fn check_slot(checked: bool) -> gpui::Div {
-    div().w(px(14.0)).flex_shrink_0().flex().when(checked, |d| {
+    div().w(fs(14.0)).flex_shrink_0().flex().when(checked, |d| {
         d.child(icon(IconName::Check, 12.0, hex(colors::ACCENT)))
     })
 }
@@ -285,7 +286,7 @@ impl RenderOnce for SelectField {
                                 .overflow_hidden()
                                 .whitespace_nowrap()
                                 .text_ellipsis()
-                                .text_size(px(field::FIELD_TEXT))
+                                .text_size(fs(field::FIELD_TEXT))
                                 .text_color(hex(colors::TEXT_BRIGHT))
                                 .child(label.clone()),
                         )
@@ -424,7 +425,7 @@ pub fn number_input(
                     // 库默认 input_px(10)：外层已给 pl 10，这里清零免得双倍
                     .px(px(0.0))
                     .font_family(field::mono_family())
-                    .text_size(px(field::FIELD_TEXT))
+                    .text_size(fs(field::FIELD_TEXT))
                     .text_color(hex(colors::TEXT_BRIGHT)),
             ),
         )
@@ -458,7 +459,8 @@ fn stepper_button(
 ) -> impl IntoElement {
     let up = matches!(ic, IconName::ChevronUp);
     div()
-        .id(id)
+        .id(id.clone())
+        .debug_selector(move || id.to_string())
         .flex_1()
         .flex()
         .items_center()
@@ -607,7 +609,7 @@ pub fn range_value(value: i64, suffix: &str) -> impl IntoElement {
         .min_w(px(44.0))
         .text_right()
         .font_family("monospace")
-        .text_size(px(12.0))
+        .text_size(fs(12.0))
         .text_color(hex(colors::TEXT_BRIGHT))
         .child(format!("{value}{suffix}"))
 }
@@ -726,7 +728,7 @@ pub fn font_select(
                                     Input::new(&search)
                                         .appearance(false)
                                         .h_full()
-                                        .text_size(px(12.0)),
+                                        .text_size(fs(12.0)),
                                 ),
                             ),
                     );
@@ -735,7 +737,7 @@ pub fn font_select(
                         div()
                             .px(px(8.0))
                             .py(px(6.0))
-                            .text_size(px(11.5))
+                            .text_size(fs(11.5))
                             .text_color(hex(colors::MUTED))
                             .child("无匹配字体"),
                     );
@@ -763,13 +765,13 @@ pub fn font_select(
                                         .when(it.free, |d| {
                                             // 自由输入行（.font-row.free）：mono + bright
                                             d.font_family("monospace")
-                                                .text_size(px(12.0))
+                                                .text_size(fs(12.0))
                                                 .text_color(hex(colors::TEXT_BRIGHT))
                                         })
                                         .when(!it.free, |d| {
                                             // 字身预览（.nm 12.5）：行文字用该字体渲染
                                             d.font_family(gpui::SharedString::from(it.name.clone()))
-                                                .text_size(px(12.5))
+                                                .text_size(fs(12.5))
                                                 .when(selected, |d| {
                                                     d.text_color(hex(colors::ACCENT))
                                                 })
@@ -820,7 +822,7 @@ fn font_trigger(value: &str, active: bool) -> impl IntoElement {
                 .whitespace_nowrap()
                 .text_ellipsis()
                 .font_family("monospace")
-                .text_size(px(12.0))
+                .text_size(fs(12.0))
                 .text_color(hex(colors::TEXT_BRIGHT))
                 .child(value.to_owned()),
         )

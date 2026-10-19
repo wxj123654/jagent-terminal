@@ -26,6 +26,7 @@ use jagent_core::git::{WorktreeFile, WorktreeFileKind};
 
 use crate::icons::{IconName, icon};
 use crate::theme::{accent_alpha, colors, hex};
+use crate::ui_scale::fs;
 use crate::views::root::{FileSurfaceMode, RootView};
 use crate::views::selectable::sel_text_id;
 
@@ -645,7 +646,7 @@ impl RootView {
                             .min_w_0()
                             .items_center()
                             .font_family("monospace")
-                            .text_size(px(12.0))
+                            .text_size(fs(12.0))
                             .when(!dir_prefix.is_empty(), |d| {
                                 d.child(
                                     div()
@@ -668,7 +669,7 @@ impl RootView {
                                         .py(px(1.0))
                                         .rounded(px(4.0))
                                         .bg(crate::theme::rgba_css(251, 191, 36, 0.14))
-                                        .text_size(px(10.5))
+                                        .text_size(fs(10.5))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
                                         .text_color(hex(colors::STATUS_RUNNING))
                                         .child("● 未保存"),
@@ -684,7 +685,7 @@ impl RootView {
                                         .rounded(px(4.0))
                                         .bg(accent_alpha(0.16))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                                        .text_size(px(11.0))
+                                        .text_size(fs(11.0))
                                         .text_color(hex(colors::ACCENT_HOVER))
                                         .child(format!(":{ln}")),
                                 )
@@ -719,7 +720,7 @@ impl RootView {
                                     .rounded(px(5.0))
                                     .bg(st_bg)
                                     .font_family("monospace")
-                                    .text_size(px(10.5))
+                                    .text_size(fs(10.5))
                                     .child(
                                         div()
                                             .font_weight(gpui::FontWeight::SEMIBOLD)
@@ -748,7 +749,7 @@ impl RootView {
                                 .rounded(px(4.0))
                                 .bg(hex(colors::SURFACE))
                                 .font_family("monospace")
-                                .text_size(px(10.0))
+                                .text_size(fs(10.0))
                                 .text_color(hex(colors::MUTED))
                                 .child(lang.to_ascii_uppercase())
                                 .into_any_element(),
@@ -760,7 +761,7 @@ impl RootView {
                             .rounded(px(4.0))
                             .bg(hex(colors::SURFACE))
                             .font_family("monospace")
-                            .text_size(px(10.0))
+                            .text_size(fs(10.0))
                             .text_color(hex(colors::MUTED))
                             .child(lang.to_ascii_uppercase())
                             .into_any_element()
@@ -782,7 +783,7 @@ impl RootView {
                                 .cursor_pointer()
                                 .bg(hex(colors::SURFACE))
                                 .hover(|h| h.bg(hex(colors::SURFACE_HOVER)))
-                                .text_size(px(11.0))
+                                .text_size(fs(11.0))
                                 .text_color(hex(colors::MUTED))
                                 .child("还原")
                                 .on_click(move |_, window, cx| {
@@ -807,7 +808,7 @@ impl RootView {
                                 .flex()
                                 .items_center()
                                 .cursor_pointer()
-                                .text_size(px(11.0))
+                                .text_size(fs(11.0))
                                 .font_weight(gpui::FontWeight::MEDIUM)
                                 .when_else(
                                     is_dirty,
@@ -856,7 +857,7 @@ impl RootView {
                                             .flex()
                                             .items_center()
                                             .cursor_pointer()
-                                            .text_size(px(11.0))
+                                            .text_size(fs(11.0))
                                             .when_else(
                                                 is_act,
                                                 |b| {
@@ -883,7 +884,7 @@ impl RootView {
                     .child(
                         div()
                             .font_family("monospace")
-                            .text_size(px(11.0))
+                            .text_size(fs(11.0))
                             .text_color(hex(colors::FAINT))
                             .child(format!("{line_count} lines · UTF-8")),
                     ),
@@ -938,7 +939,7 @@ impl RootView {
                     .border_b_1()
                     .border_color(hex(colors::BORDER))
                     .font_family("monospace")
-                    .text_size(px(11.0))
+                    .text_size(fs(11.0))
                     .child(
                         h_flex()
                             .w(gpui::relative(0.5))

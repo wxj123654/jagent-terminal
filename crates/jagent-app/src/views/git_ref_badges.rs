@@ -18,6 +18,7 @@ use jagent_core::git::actions::{
 use jagent_core::git::format::{RefDecor, RefKind};
 
 use crate::theme::{colors, hex};
+use crate::ui_scale::fs;
 use crate::views::git_context_menu::{PickHandler, apply_entries};
 
 /// 徽标三件套颜色（色块 / 边框 / 文字）。
@@ -122,7 +123,7 @@ pub fn ref_badges(
             .child(div().size(px(8.0)).rounded(px(2.0)).bg(hex(c.square)))
             .child(
                 div()
-                    .text_size(px(10.0))
+                    .text_size(fs(10.0))
                     .font_family("monospace")
                     .text_color(hex(c.text))
                     .child(d.label.clone()),

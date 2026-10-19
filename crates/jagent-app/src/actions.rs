@@ -52,6 +52,10 @@ actions!(
         ToggleFullScreen,
         MinimizeWindow,
         ZoomWindow,
+        /// 全局 UI 字号缩放：放大 / 缩小 / 重置（⌘= / ⌘- / ⌘0；非 macOS 用 Ctrl）
+        UiScaleIn,
+        UiScaleOut,
+        UiScaleReset,
     ]
 );
 
@@ -172,6 +176,33 @@ pub fn bindings(settings: &Settings) -> (Vec<KeyBinding>, Vec<Rejected>) {
         OpenGitGraph,
         Some(CTX_WORKSPACE),
     ));
+    out.push(KeyBinding::new(
+        if cfg!(target_os = "macos") {
+            "cmd-="
+        } else {
+            "ctrl-="
+        },
+        UiScaleIn,
+        Some(CTX_WORKSPACE),
+    ));
+    out.push(KeyBinding::new(
+        if cfg!(target_os = "macos") {
+            "cmd--"
+        } else {
+            "ctrl--"
+        },
+        UiScaleOut,
+        Some(CTX_WORKSPACE),
+    ));
+    out.push(KeyBinding::new(
+        if cfg!(target_os = "macos") {
+            "cmd-0"
+        } else {
+            "ctrl-0"
+        },
+        UiScaleReset,
+        Some(CTX_WORKSPACE),
+    ));
     // Git 图裸键：只在 GitGraph 上下文里生效；输入框聚焦时输入框先吃，终端的 Terminal 上下文没有这些键
     out.push(KeyBinding::new("down", GitSelectNext, Some(CTX_GIT_GRAPH)));
     out.push(KeyBinding::new("up", GitSelectPrev, Some(CTX_GIT_GRAPH)));
@@ -258,8 +289,8 @@ mod tests {
     fn default_settings_produce_every_binding_and_reject_nothing() {
         let (b, rejected) = bindings(&Settings::default());
         assert!(rejected.is_empty(), "{rejected:?}");
-        // 7 个可重绑 + cmd-t/ctrl-shift-t + ctrl-shift-g + 4 个 Git 图动作 + Settings Escape
-        assert_eq!(b.len(), 7 + 2 + 4 + 1);
+        // 7 个可重绑 + cmd-t/ctrl-shift-t + ctrl-shift-g + 3 个 UI 缩放动作 + 4 个 Git 图动作 + Settings Escape
+        assert_eq!(b.len(), 7 + 2 + 3 + 4 + 1);
     }
 
     #[test]
@@ -338,7 +369,21 @@ mod tests {
         let names: Vec<_> = rejected.iter().map(|r| r.action).collect();
         assert_eq!(names, ["cycleNext", "newSession"]);
         assert_eq!(rejected[1].keystroke, "not a key combo");
-        assert_eq!(b.len(), 14 - 2, "只丢坏的两条，其余照常");
+        assert_eq!(b.len(), 17 - 2, "只丢坏的两条，其余照常");
+    }
+
+    #[test]
+    fn ui_scale_zoom_chords_are_bound_in_workspace_context() {
+        let (b, _) = bindings(&Settings::default());
+        let all: Vec<_> = b.iter().map(keystrokes).collect();
+        let expected = if cfg!(target_os = "macos") {
+            ["cmd-=", "cmd--", "cmd-0"]
+        } else {
+            ["ctrl-=", "ctrl--", "ctrl-0"]
+        };
+        for want in expected {
+            assert!(all.iter().any(|k| k == want), "缺 {want}：{all:?}");
+        }
     }
 
     #[test]

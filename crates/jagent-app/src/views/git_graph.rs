@@ -34,6 +34,7 @@ use crate::actions::{CTX_GIT_GRAPH, GitClearSelection, GitRefresh, GitSelectNext
 use crate::icons::{IconName, icon};
 use crate::state::{AppState, StateChanged};
 use crate::theme::{Tokens, colors, hex, rgba_css};
+use crate::ui_scale::fs;
 use crate::views::git_context_menu::{
     ConfirmState, PickHandler, PromptState, apply_entries, confirm_modal, prompt_modal,
 };
@@ -640,7 +641,7 @@ impl Render for GitGraphDialog {
                 .justify_center()
                 .child(
                     div()
-                        .text_size(px(13.0))
+                        .text_size(fs(13.0))
                         .text_color(hex(colors::MUTED))
                         .child("此目录不是 git 仓库"),
                 )
@@ -696,7 +697,7 @@ impl Render for GitGraphDialog {
                         .bg(rgba_css(224, 108, 117, 0.08))
                         .border_b_1()
                         .border_color(hex(colors::BORDER))
-                        .text_size(px(12.0))
+                        .text_size(fs(12.0))
                         .text_color(hex(colors::BELL))
                         .child(sel_text_id("git-err-line", text)),
                 )
@@ -810,14 +811,14 @@ fn toolbar(
                             div()
                                 .w(px(14.0))
                                 .flex_shrink_0()
-                                .text_size(px(12.0))
+                                .text_size(fs(12.0))
                                 .text_color(hex(colors::TERMINAL_KIND))
                                 .when(is_current, |d| d.child("✓")),
                         )
                         .child(icon(IconName::GitBranch, 12.0, hex(colors::MUTED)))
                         .child(
                             div()
-                                .text_size(px(12.0))
+                                .text_size(fs(12.0))
                                 .text_color(hex(colors::TEXT))
                                 .child(name.clone()),
                         )
@@ -864,7 +865,7 @@ fn toolbar(
                 .border_1()
                 .border_color(hex(colors::BORDER_SUBTLE))
                 .font_family("monospace")
-                .text_size(px(11.0))
+                .text_size(fs(11.0))
                 .child(
                     div()
                         .font_weight(gpui::FontWeight::SEMIBOLD)
@@ -893,7 +894,7 @@ fn toolbar(
                 })
                 .child(
                     div()
-                        .text_size(px(11.5))
+                        .text_size(fs(11.5))
                         .text_color(hex(colors::MUTED))
                         .child("显示远程分支"),
                 ),
@@ -903,7 +904,7 @@ fn toolbar(
         .child(
             div()
                 .font_family("monospace")
-                .text_size(px(11.0))
+                .text_size(fs(11.0))
                 .text_color(hex(colors::MUTED))
                 .flex_shrink_0()
                 .child(if status == GitGraphStatus::Loading && loaded_count == 0 {
@@ -934,7 +935,7 @@ fn toolbar(
                         .appearance(false)
                         .w(px(150.0))
                         .h(px(22.0))
-                        .text_size(px(11.5))
+                        .text_size(fs(11.5))
                         .text_color(hex(colors::TEXT_BRIGHT)),
                 )
                 .when(has_query, |d| {
@@ -942,7 +943,7 @@ fn toolbar(
                         div()
                             .px(px(2.0))
                             .font_family("monospace")
-                            .text_size(px(10.5))
+                            .text_size(fs(10.5))
                             .text_color(hex(colors::MUTED))
                             .child(pos),
                     )
@@ -1045,7 +1046,7 @@ fn branch_button(current: &str) -> impl IntoElement {
         .child(
             div()
                 .font_family("monospace")
-                .text_size(px(12.0))
+                .text_size(fs(12.0))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(hex(colors::TEXT_BRIGHT))
                 .child(current.to_owned()),
@@ -1091,7 +1092,7 @@ fn ibtn(
 ) -> impl IntoElement {
     div()
         .id(id)
-        .size(px(26.0))
+        .size(fs(26.0))
         .flex()
         .items_center()
         .justify_center()
@@ -1112,7 +1113,7 @@ fn hbtn(
 ) -> impl IntoElement {
     div()
         .id(id)
-        .size(px(22.0))
+        .size(fs(22.0))
         .flex()
         .items_center()
         .justify_center()
@@ -1136,7 +1137,7 @@ fn graph_header(max_lanes: usize) -> gpui::Div {
         .border_b_1()
         .border_color(hex(colors::BORDER_SUBTLE))
         .bg(rgba_css(13, 15, 21, 0.75))
-        .text_size(px(10.0))
+        .text_size(fs(10.0))
         .text_color(hex(colors::MUTED))
         .child(
             div()
@@ -1307,7 +1308,7 @@ fn commit_row(
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .text_ellipsis()
-                        .text_size(px(12.0))
+                        .text_size(fs(12.0))
                         .text_color(subject_color)
                         .child(row.commit.subject.clone()),
                 ),
@@ -1331,7 +1332,7 @@ fn commit_row(
                         .bg(rgba_css(99, 102, 241, 0.22))
                         .border_1()
                         .border_color(rgba_css(99, 102, 241, 0.40))
-                        .text_size(px(9.5))
+                        .text_size(fs(9.5))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(hex(colors::ACCENT_HOVER))
                         .child(
@@ -1350,7 +1351,7 @@ fn commit_row(
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .text_ellipsis()
-                        .text_size(px(12.0))
+                        .text_size(fs(12.0))
                         .text_color(hex(colors::MUTED))
                         .child(row.commit.author_name.clone()),
                 ),
@@ -1361,7 +1362,7 @@ fn commit_row(
                 .ml(px(8.0))
                 .flex_shrink_0()
                 .text_right()
-                .text_size(px(11.5))
+                .text_size(fs(11.5))
                 .text_color(hex(colors::MUTED))
                 .child(date),
         )
@@ -1380,7 +1381,7 @@ fn commit_row(
                         .border_1()
                         .border_color(hex(colors::BORDER_SUBTLE))
                         .font_family("monospace")
-                        .text_size(px(11.0))
+                        .text_size(fs(11.0))
                         .text_color(hex(colors::ACCENT_HOVER))
                         .child(row.commit.short_sha.clone()),
                 ),
@@ -1507,7 +1508,7 @@ fn cdv_row(
                     .border_1()
                     .border_color(hex(colors::BORDER_SUBTLE))
                     .font_family("monospace")
-                    .text_size(px(11.0))
+                    .text_size(fs(11.0))
                     .text_color(hex(colors::ACCENT_HOVER))
                     .cursor_pointer()
                     .hover(|h| h.bg(hex(colors::SURFACE_HOVER)))
@@ -1527,7 +1528,7 @@ fn cdv_row(
                 div()
                     .w(px(CDV_LABEL_W))
                     .flex_shrink_0()
-                    .text_size(px(11.5))
+                    .text_size(fs(11.5))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(hex(colors::MUTED))
                     .child("Parents:"),
@@ -1544,7 +1545,7 @@ fn cdv_row(
             div()
                 .w(px(CDV_LABEL_W))
                 .flex_shrink_0()
-                .text_size(px(11.5))
+                .text_size(fs(11.5))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(hex(colors::MUTED))
                 .child("Commit:"),
@@ -1562,7 +1563,7 @@ fn cdv_row(
                         .whitespace_nowrap()
                         .text_ellipsis()
                         .font_family("monospace")
-                        .text_size(px(11.5))
+                        .text_size(fs(11.5))
                         .text_color(hex(colors::TEXT_BRIGHT))
                         .child(sel_text_id("cdv-sha", commit.sha.clone())),
                 )
@@ -1583,7 +1584,7 @@ fn cdv_row(
                         .child(icon(IconName::Copy, 10.0, hex(colors::MUTED)))
                         .child(
                             div()
-                                .text_size(px(10.0))
+                                .text_size(fs(10.0))
                                 .text_color(hex(colors::TEXT))
                                 .child("复制"),
                         )
@@ -1683,7 +1684,7 @@ fn cdv_row(
                                         .w_full()
                                         .min_w_0()
                                         .line_height(px(18.0))
-                                        .text_size(px(12.5))
+                                        .text_size(fs(12.5))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
                                         .text_color(hex(colors::TEXT_BRIGHT))
                                         .child(sel_text_id("cdv-subject", commit.subject.clone())),
@@ -1693,7 +1694,7 @@ fn cdv_row(
                                         div()
                                             .mt(px(6.0))
                                             .line_height(px(17.0))
-                                            .text_size(px(11.5))
+                                            .text_size(fs(11.5))
                                             .text_color(hex(colors::BELL))
                                             .child(sel_text_id("cdv-error", e.to_owned())),
                                     )
@@ -1705,7 +1706,7 @@ fn cdv_row(
                                             .w_full()
                                             .min_w_0()
                                             .line_height(px(17.5))
-                                            .text_size(px(11.5))
+                                            .text_size(fs(11.5))
                                             .text_color(hex(colors::TEXT))
                                             .children(b.split('\n').enumerate().map(
                                                 |(line_ix, line)| {
@@ -1759,14 +1760,14 @@ fn cdv_row(
                                 .border_color(hex(colors::BORDER_SUBTLE))
                                 .child(
                                     div()
-                                        .text_size(px(11.0))
+                                        .text_size(fs(11.0))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
                                         .text_color(hex(colors::TEXT_BRIGHT))
                                         .child(files_header_label),
                                 )
                                 .child(
                                     div()
-                                        .text_size(px(10.5))
+                                        .text_size(fs(10.5))
                                         .text_color(hex(colors::ACCENT_HOVER))
                                         .child("点击文件在主画布打开宽幅 Diff 视图 →"),
                                 ),
@@ -1792,7 +1793,7 @@ fn meta_row(label: &str, value: &str) -> gpui::Div {
             div()
                 .w(px(CDV_LABEL_W))
                 .flex_shrink_0()
-                .text_size(px(11.5))
+                .text_size(fs(11.5))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(hex(colors::MUTED))
                 .child(label.to_owned()),
@@ -1805,7 +1806,7 @@ fn meta_row(label: &str, value: &str) -> gpui::Div {
                 .whitespace_nowrap()
                 .text_ellipsis()
                 .font_family("monospace")
-                .text_size(px(11.5))
+                .text_size(fs(11.5))
                 .text_color(hex(colors::TEXT))
                 .child(sel_text_id(
                     gpui::ElementId::Name(format!("cdv-meta-{label}").into()),
@@ -1827,7 +1828,7 @@ fn file_list(
             list = list.child(
                 div()
                     .py(px(4.0))
-                    .text_size(px(11.5))
+                    .text_size(fs(11.5))
                     .text_color(hex(colors::MUTED))
                     .child("无变更文件"),
             );
@@ -1867,7 +1868,7 @@ fn render_file_tree_into(
                         .whitespace_nowrap()
                         .text_ellipsis()
                         .font_family("monospace")
-                        .text_size(px(11.5))
+                        .text_size(fs(11.5))
                         .text_color(hex(colors::MUTED))
                         .child(sel_text_id(
                             gpui::ElementId::Name(format!("cdv-dir-{collapsed_name}").into()),
@@ -1906,7 +1907,7 @@ fn render_file_tree_into(
                 .cursor_pointer()
                 .hover(|h| h.bg(hex(colors::SURFACE)))
                 .font_family("monospace")
-                .text_size(px(11.5))
+                .text_size(fs(11.5))
                 .on_click(move |_, _, cx| {
                     crate::views::work_panel::open_in_main_canvas(&st_open, &target_path, cx);
                 })
@@ -1914,7 +1915,7 @@ fn render_file_tree_into(
                     div()
                         .w(px(12.0))
                         .flex_shrink_0()
-                        .text_size(px(10.0))
+                        .text_size(fs(10.0))
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(badge_color)
                         .child(badge_char),
@@ -1935,7 +1936,7 @@ fn render_file_tree_into(
                     div()
                         .flex_shrink_0()
                         .ml(px(6.0))
-                        .text_size(px(10.5))
+                        .text_size(fs(10.5))
                         .text_color(hex(colors::MUTED))
                         .child("BIN")
                         .into_any_element()
@@ -1946,7 +1947,7 @@ fn render_file_tree_into(
                         .gap(px(3.0))
                         .ml(px(6.0))
                         .flex_shrink_0()
-                        .text_size(px(11.0))
+                        .text_size(fs(11.0))
                         .child(div().text_color(hex(colors::MUTED)).child("("))
                         .child(
                             div()

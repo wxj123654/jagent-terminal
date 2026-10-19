@@ -13,7 +13,8 @@ mod store;
 
 pub use file::{FileAdapter, FsAdapter, MemoryAdapter};
 pub use schema::{
-    AcpAgent, GpuBackend, Settings, default_terminal_font, parse_settings, serialize_settings,
+    AcpAgent, DEFAULT_UI_SCALE, GpuBackend, MAX_UI_SCALE, MIN_UI_SCALE, Settings, UI_SCALE_STEPS,
+    default_terminal_font, parse_settings, serialize_settings,
 };
 pub use store::{
     AcpAgentInput, AcpAgentPatch, PresetInput, PresetPatch, SettingsStore, WriteError,

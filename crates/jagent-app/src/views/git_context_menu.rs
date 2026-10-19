@@ -19,6 +19,7 @@ use gpui_component::menu::{PopupMenu, PopupMenuItem};
 use jagent_core::git::actions::{GitMenuEntry, GitMenuItem};
 
 use crate::theme::{colors, hex};
+use crate::ui_scale::fs;
 use crate::views::selectable::sel_text_id;
 use crate::views::sidebar::WindowActionFn;
 
@@ -62,7 +63,7 @@ fn menu_item(item: &GitMenuItem, at: Option<String>, on_pick: &PickHandler) -> P
                 .flex_row()
                 .items_center()
                 .gap(px(0.0))
-                .text_size(px(12.0))
+                .text_size(fs(12.0))
                 .text_color(hex(colors::BELL))
                 .child(danger_label.clone())
         })
@@ -114,7 +115,7 @@ pub fn confirm_modal(
                     div()
                         .px(px(16.0))
                         .pt(px(16.0))
-                        .text_size(px(15.0))
+                        .text_size(fs(15.0))
                         .text_color(hex(colors::TEXT_BRIGHT))
                         .child("确认操作"),
                 )
@@ -126,13 +127,13 @@ pub fn confirm_modal(
                         .flex()
                         .flex_col()
                         .gap(px(6.0))
-                        .text_size(px(13.0))
+                        .text_size(fs(13.0))
                         .text_color(hex(colors::TEXT))
                         .child(sel_text_id("git-confirm-title", confirm.title.clone()))
                         .child(
                             div()
                                 .font_family("monospace")
-                                .text_size(px(12.0))
+                                .text_size(fs(12.0))
                                 .text_color(hex(colors::BELL))
                                 .child(sel_text_id("git-confirm-cmd", command)),
                         ),
@@ -180,7 +181,7 @@ pub fn prompt_modal(
                     div()
                         .px(px(16.0))
                         .pt(px(16.0))
-                        .text_size(px(15.0))
+                        .text_size(fs(15.0))
                         .text_color(hex(colors::TEXT_BRIGHT))
                         .child(prompt.item.label.clone()),
                 )
@@ -255,7 +256,7 @@ fn modal_button(
         .justify_center()
         .rounded(px(8.0))
         .cursor_pointer()
-        .text_size(px(13.0))
+        .text_size(fs(13.0))
         .when(danger, |d| {
             d.bg(hex(colors::BELL))
                 .border_1()

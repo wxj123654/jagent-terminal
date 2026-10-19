@@ -23,6 +23,7 @@ use crate::actions::*;
 use crate::icons::{IconName, icon};
 use crate::state::{AppState, StateChanged};
 use crate::theme::{accent_alpha, colors, hex, sizes};
+use crate::ui_scale::fs;
 use crate::views::conversation::ConversationView;
 use crate::views::empty_presets;
 use crate::views::notif_center::{NotifSlot, notif_models};
@@ -926,7 +927,7 @@ impl Render for RootView {
                                     .pr(px(8.0))
                                     .pt(px(8.0))
                                     .pb(px(4.0))
-                                    .text_size(px(10.5))
+                                    .text_size(fs(10.5))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(hex(colors::MUTED))
                                     .child("打开文件"),
@@ -937,7 +938,7 @@ impl Render for RootView {
                                         .pl(px(8.0))
                                         .pr(px(8.0))
                                         .pb(px(4.0))
-                                        .text_size(px(11.0))
+                                        .text_size(fs(11.0))
                                         .text_color(hex(colors::MUTED))
                                         .child("当前工作区无变更文件"),
                                 );
@@ -1005,7 +1006,7 @@ impl Render for RootView {
                                 div()
                                     .px(px(6.0))
                                     .py(px(2.0))
-                                    .text_size(px(10.5))
+                                    .text_size(fs(10.5))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(hex(colors::MUTED))
                                     .child(format!(
@@ -1065,7 +1066,7 @@ impl Render for RootView {
                                                         .overflow_hidden()
                                                         .whitespace_nowrap()
                                                         .text_ellipsis()
-                                                        .text_size(px(12.0))
+                                                        .text_size(fs(12.0))
                                                         .text_color(if is_act {
                                                             hex(colors::TEXT_BRIGHT)
                                                         } else {
@@ -1080,7 +1081,7 @@ impl Render for RootView {
                                                             .rounded(px(4.0))
                                                             .bg(accent_alpha(0.14))
                                                             .font_family("monospace")
-                                                            .text_size(px(9.5))
+                                                            .text_size(fs(9.5))
                                                             .text_color(hex(colors::ACCENT_HOVER))
                                                             .child("已收纳"),
                                                     )
@@ -1091,7 +1092,7 @@ impl Render for RootView {
                                                 .id(gpui::ElementId::Name(
                                                     format!("ov-close-{}", v.id).into(),
                                                 ))
-                                                .size(px(20.0))
+                                                .size(fs(20.0))
                                                 .rounded(px(4.0))
                                                 .flex()
                                                 .items_center()
@@ -1139,7 +1140,7 @@ impl Render for RootView {
                                             .child(icon(IconName::Trash, 12.0, hex(colors::BELL)))
                                             .child(
                                                 div()
-                                                    .text_size(px(12.0))
+                                                    .text_size(fs(12.0))
                                                     .text_color(hex(colors::BELL))
                                                     .child(format!(
                                                         "关闭全部副视图 ({})",
@@ -1261,7 +1262,7 @@ impl Render for RootView {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .size(px(28.0))
+                    .size(fs(28.0))
                     .rounded(px(7.0))
                     .ml(px(6.0))
                     .mr(px(2.0))
@@ -1304,7 +1305,7 @@ impl Render for RootView {
                     .child(icon(ctx_icon, 13.5, hex(colors::ACCENT_HOVER)))
                     .child(
                         div()
-                            .text_size(px(12.0))
+                            .text_size(fs(12.0))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(hex(colors::TEXT_BRIGHT))
                             .whitespace_nowrap()
@@ -1319,7 +1320,7 @@ impl Render for RootView {
                                     .overflow_hidden()
                                     .whitespace_nowrap()
                                     .text_ellipsis()
-                                    .text_size(px(11.0))
+                                    .text_size(fs(11.0))
                                     .font_family("monospace")
                                     .text_color(hex(colors::FAINT))
                                     .child(cwd),
@@ -1402,7 +1403,7 @@ impl Render for RootView {
                             .child(div().size(px(6.0)).rounded_full().bg(fg))
                             .child(
                                 div()
-                                    .text_size(px(10.5))
+                                    .text_size(fs(10.5))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(fg)
                                     .child(label),
@@ -1428,7 +1429,7 @@ impl Render for RootView {
                     .border_1()
                     .border_color(hex(colors::BORDER_SUBTLE))
                     .font_family("monospace")
-                    .text_size(px(10.0))
+                    .text_size(fs(10.0))
                     .text_color(hex(colors::MUTED))
                     .child(
                         div()
@@ -1619,6 +1620,46 @@ impl Render for RootView {
             .on_action({
                 let state = state.clone();
                 move |_: &SearchThreads, window, cx| search_threads::open(state.clone(), window, cx)
+            })
+            .on_action({
+                let state = state.clone();
+                move |_: &UiScaleIn, _, cx| {
+                    state.update(cx, |s, cx| {
+                        let cur = s.settings.get().appearance.ui_scale;
+                        let next = crate::ui_scale::step_ui_scale(cur, 1);
+                        if next != cur {
+                            s.settings
+                                .patch("appearance.uiScale", serde_json::json!(next));
+                            s.flush(cx);
+                            cx.emit(StateChanged);
+                        }
+                    });
+                }
+            })
+            .on_action({
+                let state = state.clone();
+                move |_: &UiScaleOut, _, cx| {
+                    state.update(cx, |s, cx| {
+                        let cur = s.settings.get().appearance.ui_scale;
+                        let next = crate::ui_scale::step_ui_scale(cur, -1);
+                        if next != cur {
+                            s.settings
+                                .patch("appearance.uiScale", serde_json::json!(next));
+                            s.flush(cx);
+                            cx.emit(StateChanged);
+                        }
+                    });
+                }
+            })
+            .on_action({
+                let state = state.clone();
+                move |_: &UiScaleReset, _, cx| {
+                    state.update(cx, |s, cx| {
+                        s.settings.reset("appearance.uiScale");
+                        s.flush(cx);
+                        cx.emit(StateChanged);
+                    });
+                }
             })
             .on_action(move |_: &OpenGitGraph, window, cx| {
                 git_graph::open(state.clone(), window, cx)
@@ -1859,7 +1900,7 @@ fn render_frame_overlay(perf: &PerfTracker) -> AnyElement {
         .border_1()
         .border_color(hex(colors::BORDER_SUBTLE))
         .font_family("monospace")
-        .text_size(px(10.0))
+        .text_size(fs(10.0))
         .text_color(hex(colors::MUTED))
         .child(
             h_flex()
@@ -1946,7 +1987,7 @@ fn terminal_surface_with_statusbar(
         .border_t_1()
         .border_color(hex(colors::BORDER))
         .font_family("monospace")
-        .text_size(px(11.0))
+        .text_size(fs(11.0))
         .text_color(hex(colors::MUTED))
         .child(
             h_flex()
@@ -2568,7 +2609,7 @@ fn tb_icon_btn(
             .flex()
             .items_center()
             .justify_center()
-            .size(px(28.0))
+            .size(fs(28.0))
             .rounded(px(8.0))
             .flex_shrink_0()
             .ml(px(2.0))
@@ -2652,7 +2693,7 @@ fn sa_file_row(
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .text_ellipsis()
-                .text_size(px(12.0))
+                .text_size(fs(12.0))
                 .text_color(hex(colors::TEXT))
                 .child(name),
         )
@@ -2662,7 +2703,7 @@ fn sa_file_row(
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .text_ellipsis()
-                .text_size(px(11.0))
+                .text_size(fs(11.0))
                 .font_family("monospace")
                 .text_color(hex(colors::MUTED))
                 .child(f.path.clone()),
@@ -2731,7 +2772,7 @@ fn branch_trigger(branch: &str, open: bool) -> impl IntoElement {
                 .whitespace_nowrap()
                 .text_ellipsis()
                 .font_family("monospace")
-                .text_size(px(12.0))
+                .text_size(fs(12.0))
                 .text_color(hex(colors::TEXT))
                 .child(branch.to_owned()),
         )
@@ -3484,5 +3525,115 @@ mod tests {
                 );
             });
         }
+    }
+
+    #[gpui::test]
+    fn ui_scale_keyboard_shortcuts_step_and_reset_even_when_terminal_is_focused(
+        cx: &mut TestAppContext,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = dir.path().to_string_lossy().into_owned();
+        let state = cx.update(|cx| {
+            gpui_component::init(cx);
+            crate::theme::install(cx).unwrap();
+            crate::actions::install(cx, &jagent_core::settings::Settings::default());
+            let state = init(cx, dir.path().to_path_buf(), cwd).unwrap();
+            let ws = state.read(cx).workspaces()[0].id.clone();
+            let tid = state
+                .update(cx, |s, cx| s.spawn_from_preset("shell", Some(&ws), cx))
+                .unwrap();
+            let sid = state
+                .read(cx)
+                .threads
+                .thread(&tid)
+                .unwrap()
+                .as_terminal()
+                .unwrap()
+                .session_id;
+            let model = cx
+                .global::<jagent_terminal::TerminalPool>()
+                .get(sid)
+                .unwrap();
+            model.read(cx).shutdown();
+            state
+        });
+
+        let (root_win, cx) = cx.add_window_view(|window, cx| {
+            let root_view = cx.new(|cx| RootView::new(state.clone(), cx));
+            gpui_base::Root::new(root_view, window, cx)
+        });
+        cx.run_until_parked();
+
+        // 聚焦终端视图（key_context = "Terminal"）
+        cx.update(|window, cx| {
+            let rv = root_win
+                .read(cx)
+                .view()
+                .clone()
+                .downcast::<RootView>()
+                .unwrap();
+            if let Some((_, ref tv)) = rv.read(cx).terminal {
+                let fh = tv.read(cx).focus_handle().clone();
+                fh.focus(window, cx);
+            }
+            let _ = window.draw(cx);
+        });
+
+        let zoom_in = if cfg!(target_os = "macos") {
+            "cmd-="
+        } else {
+            "ctrl-="
+        };
+        let zoom_out = if cfg!(target_os = "macos") {
+            "cmd--"
+        } else {
+            "ctrl--"
+        };
+        let zoom_reset = if cfg!(target_os = "macos") {
+            "cmd-0"
+        } else {
+            "ctrl-0"
+        };
+
+        // 放大两次：100 -> 110 -> 125
+        cx.simulate_keystrokes(zoom_in);
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            assert_eq!(state.read(cx).settings.get().appearance.ui_scale, 110);
+            assert_eq!(crate::ui_scale::ui_scale_percent(), 110);
+        });
+        cx.simulate_keystrokes(zoom_in);
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            assert_eq!(state.read(cx).settings.get().appearance.ui_scale, 125);
+            assert_eq!(crate::ui_scale::fs(12.0), px(15.0));
+        });
+
+        // 缩小一次：125 -> 110
+        cx.simulate_keystrokes(zoom_out);
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            assert_eq!(state.read(cx).settings.get().appearance.ui_scale, 110);
+        });
+
+        // 重置：110 -> 100，并已持久化到 settings.json
+        cx.simulate_keystrokes(zoom_reset);
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            assert_eq!(state.read(cx).settings.get().appearance.ui_scale, 100);
+            assert_eq!(crate::ui_scale::fs(12.0), px(12.0));
+            let tids: Vec<String> = state
+                .read(cx)
+                .threads
+                .threads
+                .iter()
+                .map(|t| t.id().to_owned())
+                .collect();
+            state.update(cx, |s, cx| {
+                for tid in tids {
+                    s.close_thread(&tid, cx);
+                }
+            });
+        });
     }
 }

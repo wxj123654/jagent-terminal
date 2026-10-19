@@ -28,6 +28,7 @@ use jagent_core::threads::{
 use crate::icons::{IconName, icon};
 use crate::state::AppState;
 use crate::theme::{colors, hex, rgba_css};
+use crate::ui_scale::fs;
 use crate::views::field;
 
 pub struct WorkspaceDialogView {
@@ -195,7 +196,7 @@ impl Render for WorkspaceDialogView {
             .gap(px(8.0))
             .child(
                 div()
-                    .text_size(px(11.5))
+                    .text_size(fs(11.5))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(hex(colors::MUTED))
                     .child("项目目录路径"),
@@ -227,7 +228,7 @@ impl Render for WorkspaceDialogView {
                             .child(icon(IconName::Folder, 12.0, hex(colors::MUTED)))
                             .child(
                                 div()
-                                    .text_size(px(12.0))
+                                    .text_size(fs(12.0))
                                     .text_color(hex(colors::TEXT_BRIGHT))
                                     .child("浏览…"),
                             )
@@ -246,7 +247,7 @@ impl Render for WorkspaceDialogView {
                         .items_center()
                         .child(
                             div()
-                                .text_size(px(10.5))
+                                .text_size(fs(10.5))
                                 .text_color(hex(colors::FAINT))
                                 .child("快速选择:"),
                         )
@@ -262,7 +263,7 @@ impl Render for WorkspaceDialogView {
                                 .border_1()
                                 .border_color(hex(colors::BORDER_SUBTLE))
                                 .font_family("monospace")
-                                .text_size(px(10.5))
+                                .text_size(fs(10.5))
                                 .text_color(hex(colors::MUTED))
                                 .cursor_pointer()
                                 .hover(|h| h.bg(hex(colors::SURFACE)))
@@ -283,7 +284,7 @@ impl Render for WorkspaceDialogView {
             .child(
                 div()
                     .mt(px(4.0))
-                    .text_size(px(11.5))
+                    .text_size(fs(11.5))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(hex(colors::MUTED))
                     .child("自定义显示名称（留空则自动使用目录名）"),
@@ -313,7 +314,7 @@ impl Render for WorkspaceDialogView {
                                     .min_w_0()
                                     .child(
                                         div()
-                                            .text_size(px(12.0))
+                                            .text_size(fs(12.0))
                                             .font_weight(FontWeight::SEMIBOLD)
                                             .text_color(hex(colors::TEXT_BRIGHT))
                                             .child(derived_name),
@@ -324,7 +325,7 @@ impl Render for WorkspaceDialogView {
                                             .whitespace_nowrap()
                                             .text_ellipsis()
                                             .font_family("monospace")
-                                            .text_size(px(10.5))
+                                            .text_size(fs(10.5))
                                             .text_color(hex(colors::MUTED))
                                             .child(if expanded_preview_path.is_empty() {
                                                 "未指定路径".to_owned()
@@ -344,7 +345,7 @@ impl Render for WorkspaceDialogView {
                             .border_1()
                             .border_color(badge_border)
                             .font_family("monospace")
-                            .text_size(px(10.0))
+                            .text_size(fs(10.0))
                             .text_color(badge_fg)
                             .child(badge_text),
                     ),

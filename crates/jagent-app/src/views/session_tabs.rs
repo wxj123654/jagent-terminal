@@ -20,6 +20,7 @@ use jagent_core::threads::{MAIN_VIEW_ID, RunStatus, SessionView, Thread};
 
 use crate::icons::{IconName, icon};
 use crate::theme::{Tokens, colors, hex};
+use crate::ui_scale::fs;
 
 /// tab 头图标（thread kind × SessionView kind）
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -253,7 +254,7 @@ fn tab(
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .text_ellipsis()
-                .text_size(px(11.5))
+                .text_size(fs(11.5))
                 .when(t.active, |d| d.font_weight(gpui::FontWeight::MEDIUM))
                 .text_color(if t.exited {
                     tokens.exited
@@ -292,7 +293,7 @@ fn tab(
                 .flex()
                 .items_center()
                 .justify_center()
-                .size(px(20.0))
+                .size(fs(20.0))
                 .rounded(px(4.0))
                 .flex_shrink_0()
                 .opacity(0.0)
@@ -403,7 +404,7 @@ impl RenderOnce for SessionTabs {
                     .child(
                         div()
                             .font_family("monospace")
-                            .text_size(px(10.5))
+                            .text_size(fs(10.5))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(hex(colors::ACCENT_HOVER))
                             .child(format!("+{overflow_count}")),
@@ -428,7 +429,7 @@ impl RenderOnce for SessionTabs {
                 .flex()
                 .items_center()
                 .justify_center()
-                .size(px(24.0))
+                .size(fs(24.0))
                 .rounded(px(5.0))
                 .flex_shrink_0()
                 .cursor_pointer()
@@ -488,7 +489,7 @@ impl RenderOnce for ContextTab {
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .text_ellipsis()
-                .text_size(px(12.0))
+                .text_size(fs(12.0))
                 .text_color(hex(colors::TEXT_BRIGHT))
                 .child(self.label),
         )

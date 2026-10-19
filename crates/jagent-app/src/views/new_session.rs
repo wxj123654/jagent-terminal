@@ -22,6 +22,7 @@ use jagent_core::new_session::{self, Group, Model, Pick, RowIcon, ToolRow};
 use crate::icons::{IconName, icon};
 use crate::state::AppState;
 use crate::theme::{accent_alpha, colors, hex, rgba_css};
+use crate::ui_scale::fs;
 
 pub struct NewSessionView {
     state: Entity<AppState>,
@@ -237,7 +238,7 @@ impl Render for NewSessionView {
                     .child(
                         div()
                             .mr(px(4.0))
-                            .text_size(px(11.0))
+                            .text_size(fs(11.0))
                             .text_color(hex(colors::MUTED))
                             .child("目标工作区:"),
                     )
@@ -260,7 +261,7 @@ impl Render for NewSessionView {
                     .whitespace_nowrap()
                     .text_ellipsis()
                     .font_family("monospace")
-                    .text_size(px(10.5))
+                    .text_size(fs(10.5))
                     .text_color(hex(colors::FAINT))
                     .child(cwd_label),
             );
@@ -281,14 +282,14 @@ impl Render for NewSessionView {
                     Input::new(&self.filter)
                         .appearance(false)
                         .h_full()
-                        .text_size(px(12.5))
+                        .text_size(fs(12.5))
                         .text_color(hex(colors::TEXT_BRIGHT)),
                 ),
             )
             .child(
                 div()
                     .font_family("monospace")
-                    .text_size(px(10.0))
+                    .text_size(fs(10.0))
                     .text_color(hex(colors::FAINT))
                     .child("⌘N"),
             );
@@ -299,7 +300,7 @@ impl Render for NewSessionView {
                 div()
                     .p(px(16.0))
                     .text_center()
-                    .text_size(px(12.0))
+                    .text_size(fs(12.0))
                     .text_color(hex(colors::MUTED))
                     .child("没有匹配工具。自定义命令可在设置的预设/ACP 分区添加。")
                     .into_any_element(),
@@ -321,13 +322,13 @@ impl Render for NewSessionView {
             .justify_between()
             .border_t_1()
             .border_color(hex(colors::BORDER))
-            .text_size(px(11.0))
+            .text_size(fs(11.0))
             .text_color(hex(colors::MUTED))
             .child("点击任一工具立即在目标工作区下启动会话")
             .child(
                 div()
                     .font_family("monospace")
-                    .text_size(px(10.5))
+                    .text_size(fs(10.5))
                     .text_color(hex(colors::FAINT))
                     .child("↑↓ 选择 · ↵ 启动 · Esc 关闭"),
             );
@@ -426,7 +427,7 @@ fn group_view(
     let header = div()
         .px(px(4.0))
         .pt(px(4.0))
-        .text_size(px(10.5))
+        .text_size(fs(10.5))
         .font_weight(FontWeight::SEMIBOLD)
         .text_color(hex(colors::MUTED))
         .child(format!("{} ({})", g.label, g.rows.len()));
@@ -516,7 +517,7 @@ fn row_view(
         .hover(|s| s.bg(hex(colors::SURFACE)))
         .child(
             div()
-                .size(px(28.0))
+                .size(fs(28.0))
                 .rounded(px(7.0))
                 .flex_shrink_0()
                 .flex()
@@ -536,7 +537,7 @@ fn row_view(
                         .items_center()
                         .child(
                             div()
-                                .text_size(px(12.5))
+                                .text_size(fs(12.5))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(hex(colors::TEXT_BRIGHT))
                                 .child(row.name.clone()),
@@ -547,7 +548,7 @@ fn row_view(
                                     .px(px(5.0))
                                     .rounded(px(4.0))
                                     .bg(accent_alpha(0.16))
-                                    .text_size(px(10.0))
+                                    .text_size(fs(10.0))
                                     .text_color(hex(colors::ACCENT_HOVER))
                                     .child("默认"),
                             )
@@ -559,7 +560,7 @@ fn row_view(
                             .overflow_hidden()
                             .whitespace_nowrap()
                             .text_ellipsis()
-                            .text_size(px(11.0))
+                            .text_size(fs(11.0))
                             .text_color(hex(colors::MUTED))
                             .child(d),
                     )
@@ -569,7 +570,7 @@ fn row_view(
             d.child(
                 div()
                     .font_family("monospace")
-                    .text_size(px(11.0))
+                    .text_size(fs(11.0))
                     .text_color(hex(colors::FAINT))
                     .child(row.command.clone()),
             )
@@ -635,7 +636,7 @@ fn chip(
         .gap(px(4.0))
         .items_center()
         .rounded(px(5.0))
-        .text_size(px(11.5))
+        .text_size(fs(11.5))
         .cursor_pointer()
         .border_1()
         .when_else(

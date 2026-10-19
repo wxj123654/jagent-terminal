@@ -25,6 +25,7 @@ use jagent_core::git::{
 use crate::icons::{IconName, icon};
 use crate::state::{AppState, StateChanged};
 use crate::theme::{colors, hex};
+use crate::ui_scale::fs;
 use crate::views::field::text_input;
 use crate::views::selectable::sel_text_id;
 
@@ -558,7 +559,7 @@ impl Render for WorkPanel {
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .text_ellipsis()
-                        .text_size(px(11.5))
+                        .text_size(fs(11.5))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(hex(colors::TEXT_BRIGHT))
                         .child(ws_root_name),
@@ -570,7 +571,7 @@ impl Render for WorkPanel {
                             .rounded(px(4.0))
                             .bg(hex(colors::SURFACE))
                             .font_family("monospace")
-                            .text_size(px(10.0))
+                            .text_size(fs(10.0))
                             .text_color(hex(colors::MUTED))
                             .child(format!("{n}")),
                     )
@@ -582,7 +583,7 @@ impl Render for WorkPanel {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .size(px(24.0))
+                        .size(fs(24.0))
                         .rounded(px(6.0))
                         .flex_shrink_0()
                         .cursor_pointer()
@@ -598,7 +599,7 @@ impl Render for WorkPanel {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .size(px(24.0))
+                        .size(fs(24.0))
                         .rounded(px(6.0))
                         .flex_shrink_0()
                         .cursor_pointer()
@@ -650,7 +651,7 @@ impl Render for WorkPanel {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .size(px(26.0))
+                        .size(fs(26.0))
                         .rounded(px(6.0))
                         .flex_shrink_0()
                         .cursor_pointer()
@@ -668,7 +669,7 @@ impl Render for WorkPanel {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .size(px(26.0))
+                            .size(fs(26.0))
                             .rounded(px(6.0))
                             .flex_shrink_0()
                             .cursor_pointer()
@@ -758,7 +759,7 @@ impl Render for WorkPanel {
                                                 .whitespace_nowrap()
                                                 .text_ellipsis()
                                                 .font_family("monospace")
-                                                .text_size(px(11.5))
+                                                .text_size(fs(11.5))
                                                 .font_weight(gpui::FontWeight::MEDIUM)
                                                 .text_color(hex(colors::TEXT))
                                                 .child(label),
@@ -807,7 +808,7 @@ impl Render for WorkPanel {
                                                 .whitespace_nowrap()
                                                 .text_ellipsis()
                                                 .font_family("monospace")
-                                                .text_size(px(11.5))
+                                                .text_size(fs(11.5))
                                                 .when(is_sel, |d| {
                                                     d.font_weight(gpui::FontWeight::SEMIBOLD)
                                                 })
@@ -859,7 +860,7 @@ impl Render for WorkPanel {
                             .justify_between()
                             .child(
                                 div()
-                                    .text_size(px(11.5))
+                                    .text_size(fs(11.5))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(hex(colors::TEXT_BRIGHT))
                                     .child(format!("工作区未提交变更 ({})", files.len())),
@@ -868,7 +869,7 @@ impl Render for WorkPanel {
                                 h_flex()
                                     .gap(px(6.0))
                                     .font_family("monospace")
-                                    .text_size(px(11.0))
+                                    .text_size(fs(11.0))
                                     .child(
                                         div()
                                             .text_color(hex(colors::STATUS_DONE))
@@ -915,7 +916,7 @@ impl Render for WorkPanel {
                         .pt(px(2.0))
                         .pb(px(3.0))
                         .px(px(6.0))
-                        .text_size(px(10.5))
+                        .text_size(fs(10.5))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(hex(colors::MUTED))
                         .child(format!("{group_title} ({})", group_items.len())),
@@ -1042,7 +1043,7 @@ fn change_row(
                 .justify_center()
                 .bg(bdg_bg)
                 .font_family("monospace")
-                .text_size(px(10.0))
+                .text_size(fs(10.0))
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(bdg_fg)
                 .child(bdg_txt),
@@ -1058,7 +1059,7 @@ fn change_row(
                         .whitespace_nowrap()
                         .text_ellipsis()
                         .font_family("monospace")
-                        .text_size(px(12.0))
+                        .text_size(fs(12.0))
                         .font_weight(if selected {
                             gpui::FontWeight::SEMIBOLD
                         } else {
@@ -1076,7 +1077,7 @@ fn change_row(
                             .whitespace_nowrap()
                             .text_ellipsis()
                             .font_family("monospace")
-                            .text_size(px(10.0))
+                            .text_size(fs(10.0))
                             .line_height(px(12.5))
                             .text_color(hex(colors::MUTED))
                             .child(dir),
@@ -1091,14 +1092,14 @@ fn change_row(
                 .children(file.added.filter(|n| *n > 0).map(|n| {
                     div()
                         .font_family("monospace")
-                        .text_size(px(10.5))
+                        .text_size(fs(10.5))
                         .text_color(hex(colors::STATUS_DONE))
                         .child(format!("+{n}"))
                 }))
                 .children(file.deleted.filter(|n| *n > 0).map(|n| {
                     div()
                         .font_family("monospace")
-                        .text_size(px(10.5))
+                        .text_size(fs(10.5))
                         .text_color(hex(colors::STATUS_ERROR))
                         .child(format!("−{n}"))
                 })),
@@ -1129,7 +1130,7 @@ fn files_detail(panel: &WorkPanel) -> impl IntoElement {
         Some(lines) => v_flex()
             .id("code-view")
             .font_family("monospace")
-            .text_size(px(11.0))
+            .text_size(fs(11.0))
             .line_height(px(17.0))
             .overflow_hidden()
             .children(lines.iter().enumerate().map(|(i, line)| {
@@ -1188,7 +1189,7 @@ fn ptab(
         .flex_shrink_0()
         .rounded(px(6.0))
         .cursor_pointer()
-        .text_size(px(11.5))
+        .text_size(fs(11.5))
         .when_else(
             active,
             |d| {
@@ -1210,7 +1211,7 @@ fn ptab(
                         hex(colors::SURFACE)
                     })
                     .font_family("monospace")
-                    .text_size(px(10.0))
+                    .text_size(fs(10.0))
                     .text_color(if active {
                         hex(colors::ACCENT_HOVER)
                     } else {
@@ -1227,7 +1228,7 @@ fn hint(text: &str) -> gpui::AnyElement {
         .flex_1()
         .min_h_0()
         .p(px(14.0))
-        .text_size(px(11.5))
+        .text_size(fs(11.5))
         .text_color(hex(colors::MUTED))
         .child(sel_text_id("wp-hint", text.to_owned()))
         .into_any_element()
@@ -1280,7 +1281,7 @@ fn diff_view(patch: &str) -> impl IntoElement {
         .border_t_1()
         .border_color(hex(colors::BORDER))
         .font_family("monospace")
-        .text_size(px(11.0))
+        .text_size(fs(11.0))
         .line_height(px(16.5))
         .overflow_hidden()
         .children(patch.lines().enumerate().map(|(i, line)| {

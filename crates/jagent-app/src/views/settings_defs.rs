@@ -206,6 +206,17 @@ pub const SETTING_DEFS: &[SettingDef] = &[
         control: ControlKind::Toggle,
     },
     SettingDef {
+        path: "appearance.uiScale",
+        section: Section::Appearance,
+        label: "界面缩放",
+        desc: "全局 UI 字号缩放比例（80 / 90 / 100 / 110 / 125 / 150%，终端独立）",
+        control: ControlKind::Number {
+            min: 80,
+            max: 150,
+            step: 10,
+        },
+    },
+    SettingDef {
         path: "advanced.gpuBackend",
         section: Section::Advanced,
         label: "GPU 后端",

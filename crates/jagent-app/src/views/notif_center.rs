@@ -29,6 +29,7 @@ use jagent_core::threads::{NoticeTone, SessionNotice};
 
 use crate::icons::{IconName, icon};
 use crate::theme::{colors, hex};
+use crate::ui_scale::fs;
 use crate::views::popup::{PopupTrigger, overlay_shell};
 use crate::views::selectable::sel_text_id;
 
@@ -107,7 +108,7 @@ fn bell_trigger(is_open: bool, unread: usize) -> impl IntoElement {
         .flex()
         .items_center()
         .justify_center()
-        .size(px(28.0))
+        .size(fs(28.0))
         .rounded(px(8.0))
         .flex_shrink_0()
         .cursor_pointer()
@@ -161,7 +162,7 @@ fn notif_panel(slot: &NotifSlot) -> impl IntoElement {
                 .gap(px(6.0))
                 .child(
                     div()
-                        .text_size(px(12.0))
+                        .text_size(fs(12.0))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(hex(colors::TEXT_BRIGHT))
                         .child("通知中心"),
@@ -175,7 +176,7 @@ fn notif_panel(slot: &NotifSlot) -> impl IntoElement {
                             .border_1()
                             .border_color(crate::theme::accent_alpha(0.35))
                             .font_family("monospace")
-                            .text_size(px(10.0))
+                            .text_size(fs(10.0))
                             .text_color(hex(colors::ACCENT_HOVER))
                             .child(format!("{unread} 未读")),
                     )
@@ -198,7 +199,7 @@ fn notif_panel(slot: &NotifSlot) -> impl IntoElement {
                 .child(icon(IconName::Check, 12.0, hex(colors::MUTED)))
                 .child(
                     div()
-                        .text_size(px(11.0))
+                        .text_size(fs(11.0))
                         .text_color(hex(colors::MUTED))
                         .child("全部已读"),
                 )
@@ -216,7 +217,7 @@ fn notif_panel(slot: &NotifSlot) -> impl IntoElement {
             .pb(px(4.0))
             .child(
                 div()
-                    .text_size(px(11.5))
+                    .text_size(fs(11.5))
                     .text_color(hex(colors::MUTED))
                     .p(px(14.0))
                     .text_center()
@@ -280,7 +281,7 @@ fn notif_item(m: &NotifModel, on_open: &OpenFn) -> impl IntoElement {
                 .flex_1()
                 .child(
                     div()
-                        .text_size(px(12.0))
+                        .text_size(fs(12.0))
                         .text_color(hex(colors::TEXT))
                         .line_height(px(17.0))
                         .child(
@@ -301,7 +302,7 @@ fn notif_item(m: &NotifModel, on_open: &OpenFn) -> impl IntoElement {
                         .gap(px(6.0))
                         .child(
                             div()
-                                .text_size(px(10.5))
+                                .text_size(fs(10.5))
                                 .text_color(hex(colors::FAINT))
                                 .child(
                                     sel_text_id(
@@ -313,7 +314,7 @@ fn notif_item(m: &NotifModel, on_open: &OpenFn) -> impl IntoElement {
                         )
                         .child(
                             div()
-                                .text_size(px(10.0))
+                                .text_size(fs(10.0))
                                 .text_color(hex(colors::ACCENT_HOVER))
                                 .child("跳转 →"),
                         ),

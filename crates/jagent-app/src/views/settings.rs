@@ -45,6 +45,7 @@ use crate::actions::CTX_SETTINGS;
 use crate::icons::{IconName, icon};
 use crate::state::{AppState, StateChanged};
 use crate::theme::{accent_alpha, colors, hex, rgba_css};
+use crate::ui_scale::fs;
 use crate::views::field;
 use crate::views::nested_scroll;
 use crate::views::selectable::{SelectableText, sel_styled_text_id, sel_text_id};
@@ -121,7 +122,7 @@ fn drag_preview_pill(label: &str, summary: &str) -> impl IntoElement {
         .child(icon(IconName::Grip, 12.0, hex(colors::ACCENT_HOVER)))
         .child(
             div()
-                .text_size(px(12.5))
+                .text_size(fs(12.5))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(hex(colors::TEXT_BRIGHT))
                 .child(label.to_owned()),
@@ -133,7 +134,7 @@ fn drag_preview_pill(label: &str, summary: &str) -> impl IntoElement {
                 .whitespace_nowrap()
                 .text_ellipsis()
                 .font_family("monospace")
-                .text_size(px(11.0))
+                .text_size(fs(11.0))
                 .text_color(hex(colors::MUTED))
                 .child(summary.to_owned()),
         )
@@ -306,7 +307,7 @@ impl Render for SettingsView {
                     .child(icon(IconName::Gear, 14.0, hex(colors::ACCENT_HOVER)))
                     .child(
                         div()
-                            .text_size(px(12.5))
+                            .text_size(fs(12.5))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(hex(colors::TEXT_BRIGHT))
                             .child("设置中心"),
@@ -337,7 +338,7 @@ impl Render for SettingsView {
                                 .appearance(false)
                                 .h_full()
                                 .px(px(0.0))
-                                .text_size(px(12.0))
+                                .text_size(fs(12.0))
                                 .text_color(hex(colors::TEXT_BRIGHT)),
                         ),
                     )
@@ -348,7 +349,7 @@ impl Render for SettingsView {
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .size(px(16.0))
+                                .size(fs(16.0))
                                 .rounded(px(4.0))
                                 .cursor_pointer()
                                 .hover(|h| h.bg(hex(colors::SURFACE)))
@@ -371,7 +372,7 @@ impl Render for SettingsView {
                                 .border_1()
                                 .border_color(hex(colors::BORDER_SUBTLE))
                                 .font_family("monospace")
-                                .text_size(px(10.0))
+                                .text_size(fs(10.0))
                                 .text_color(hex(colors::FAINT))
                                 .child("/"),
                         )
@@ -395,7 +396,7 @@ impl Render for SettingsView {
                         .child(icon(IconName::File, 12.0, hex(colors::MUTED)))
                         .child(
                             div()
-                                .text_size(px(11.0))
+                                .text_size(fs(11.0))
                                 .text_color(hex(colors::TEXT))
                                 .child("settings.json"),
                         )
@@ -411,7 +412,7 @@ impl Render for SettingsView {
             .child(crate::views::root::stop_titlebar_drag(
                 div()
                     .id("settings-win-max")
-                    .size(px(26.0))
+                    .size(fs(26.0))
                     .rounded(px(6.0))
                     .flex()
                     .items_center()
@@ -437,7 +438,7 @@ impl Render for SettingsView {
             .child(crate::views::root::stop_titlebar_drag(
                 div()
                     .id("settings-win-close")
-                    .size(px(26.0))
+                    .size(fs(26.0))
                     .rounded(px(6.0))
                     .flex()
                     .items_center()
@@ -507,7 +508,7 @@ impl Render for SettingsView {
                             .child(icon(IconName::Reset, 11.5, hex(colors::MUTED)))
                             .child(
                                 div()
-                                    .text_size(px(11.0))
+                                    .text_size(fs(11.0))
                                     .text_color(hex(colors::TEXT))
                                     .child("重置全部默认"),
                             )
@@ -688,7 +689,7 @@ fn nav_item(
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .text_ellipsis()
-                .text_size(px(12.0))
+                .text_size(fs(12.0))
                 .font_weight(gpui::FontWeight::MEDIUM)
                 .text_color(if active {
                     hex(colors::TEXT_BRIGHT)
@@ -705,7 +706,7 @@ fn nav_item(
                     .py(px(1.0))
                     .px(px(6.0))
                     .rounded(px(8.0))
-                    .text_size(px(10.0))
+                    .text_size(fs(10.0))
                     .text_color(hex(colors::ACCENT))
                     .bg(accent_alpha(0.15))
                     .child(hit_count.to_string()),
@@ -745,7 +746,7 @@ fn page_head(title: &str, sub: &str, live: bool) -> AnyElement {
                 .min_w_0()
                 .child(
                     div()
-                        .text_size(px(18.0))
+                        .text_size(fs(18.0))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(hex(colors::TEXT_BRIGHT))
                         .child(title.to_owned()),
@@ -753,7 +754,7 @@ fn page_head(title: &str, sub: &str, live: bool) -> AnyElement {
                 .child(
                     div()
                         .mt(px(5.0))
-                        .text_size(px(12.0))
+                        .text_size(fs(12.0))
                         .text_color(hex(colors::MUTED))
                         .child(sub.to_owned()),
                 ),
@@ -779,7 +780,7 @@ fn page_head(title: &str, sub: &str, live: bool) -> AnyElement {
                     )
                     .child(
                         div()
-                            .text_size(px(10.0))
+                            .text_size(fs(10.0))
                             .text_color(hex(colors::MUTED))
                             .child("即时生效"),
                     ),
@@ -816,7 +817,7 @@ fn section_extra_cards(
     match section {
         Section::Terminal => {
             let ff = settings.terminal.font_family.clone();
-            let fs = settings.terminal.font_size;
+            let term_fs = settings.terminal.font_size;
             vec![
                 v_flex()
                     .w_full()
@@ -835,7 +836,7 @@ fn section_extra_cards(
                             .justify_between()
                             .child(
                                 div()
-                                    .text_size(px(12.0))
+                                    .text_size(fs(12.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(hex(colors::TEXT_BRIGHT))
                                     .child("终端字体与调色板实时预览"),
@@ -862,9 +863,9 @@ fn section_extra_cards(
                                         div()
                                             .ml(px(4.0))
                                             .font_family("monospace")
-                                            .text_size(px(11.0))
+                                            .text_size(fs(11.0))
                                             .text_color(hex(colors::MUTED))
-                                            .child(format!("{ff} · {fs}px")),
+                                            .child(format!("{ff} · {term_fs}px")),
                                     ),
                             ),
                     )
@@ -881,7 +882,7 @@ fn section_extra_cards(
                             .border_1()
                             .border_color(hex(colors::BORDER_SUBTLE))
                             .font_family("monospace")
-                            .text_size(px(fs as f32))
+                            .text_size(px(term_fs as f32))
                             .child(
                                 div()
                                     .flex_shrink_0()
@@ -937,7 +938,7 @@ fn section_extra_cards(
                     .border_color(hex(colors::BORDER_SUBTLE))
                     .child(
                         div()
-                            .text_size(px(12.0))
+                            .text_size(fs(12.0))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(hex(colors::TEXT_BRIGHT))
                             .child("主题色板快速切换"),
@@ -1031,7 +1032,7 @@ fn section_extra_cards(
                                                         .overflow_hidden()
                                                         .whitespace_nowrap()
                                                         .text_ellipsis()
-                                                        .text_size(px(12.0))
+                                                        .text_size(fs(12.0))
                                                         .font_weight(gpui::FontWeight::SEMIBOLD)
                                                         .text_color(hex(colors::TEXT_BRIGHT))
                                                         .child(name),
@@ -1041,7 +1042,7 @@ fn section_extra_cards(
                                                         .overflow_hidden()
                                                         .whitespace_nowrap()
                                                         .text_ellipsis()
-                                                        .text_size(px(11.0))
+                                                        .text_size(fs(11.0))
                                                         .text_color(hex(colors::MUTED))
                                                         .child(sub),
                                                 ),
@@ -1080,14 +1081,14 @@ fn section_extra_cards(
                             .justify_between()
                             .child(
                                 div()
-                                    .text_size(px(12.0))
+                                    .text_size(fs(12.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(hex(colors::TEXT_BRIGHT))
                                     .child("官方 ACP 代理模板一键接入"),
                             )
                             .child(
                                 div()
-                                    .text_size(px(11.0))
+                                    .text_size(fs(11.0))
                                     .text_color(hex(colors::MUTED))
                                     .child("点击即可添加到上方列表"),
                             ),
@@ -1125,7 +1126,7 @@ fn section_extra_cards(
                                                     .overflow_hidden()
                                                     .whitespace_nowrap()
                                                     .text_ellipsis()
-                                                    .text_size(px(12.0))
+                                                    .text_size(fs(12.0))
                                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                                     .text_color(hex(colors::TEXT_BRIGHT))
                                                     .child(lbl),
@@ -1136,7 +1137,7 @@ fn section_extra_cards(
                                                     .whitespace_nowrap()
                                                     .text_ellipsis()
                                                     .font_family("monospace")
-                                                    .text_size(px(10.5))
+                                                    .text_size(fs(10.5))
                                                     .text_color(hex(colors::MUTED))
                                                     .child(format!("{cmd} {arg}")),
                                             ),
@@ -1231,7 +1232,7 @@ fn section_extra_cards(
                                                 .overflow_hidden()
                                                 .whitespace_nowrap()
                                                 .text_ellipsis()
-                                                .text_size(px(11.0))
+                                                .text_size(fs(11.0))
                                                 .text_color(hex(colors::MUTED))
                                                 .child(title),
                                         )
@@ -1241,7 +1242,7 @@ fn section_extra_cards(
                                                 .whitespace_nowrap()
                                                 .text_ellipsis()
                                                 .font_family("monospace")
-                                                .text_size(px(12.5))
+                                                .text_size(fs(12.5))
                                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                                 .text_color(col)
                                                 .child(val),
@@ -1298,7 +1299,7 @@ fn section_extra_cards(
                                         .overflow_hidden()
                                         .whitespace_nowrap()
                                         .text_ellipsis()
-                                        .text_size(px(11.0))
+                                        .text_size(fs(11.0))
                                         .text_color(hex(colors::MUTED))
                                         .child(title),
                                 )
@@ -1308,7 +1309,7 @@ fn section_extra_cards(
                                         .whitespace_nowrap()
                                         .text_ellipsis()
                                         .font_family("monospace")
-                                        .text_size(px(13.0))
+                                        .text_size(fs(13.0))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
                                         .text_color(col)
                                         .child(val),
@@ -1354,7 +1355,7 @@ fn search_results(
                 .child(
                     div()
                         .mb(px(8.0))
-                        .text_size(px(11.0))
+                        .text_size(fs(11.0))
                         .text_color(hex(colors::MUTED))
                         .child(s.label().to_uppercase()),
                 )
@@ -1383,7 +1384,7 @@ fn empty_search_card(q: &str, search: &Entity<InputState>) -> AnyElement {
         .child(icon(IconName::Search, 18.0, hex(colors::MUTED)))
         .child(
             div()
-                .text_size(px(13.0))
+                .text_size(fs(13.0))
                 .text_color(hex(colors::MUTED))
                 .child(format!("没有匹配「{q}」的设置。")),
         )
@@ -1403,7 +1404,7 @@ fn empty_search_card(q: &str, search: &Entity<InputState>) -> AnyElement {
                 .hover(|d| d.bg(hex(colors::SURFACE_HOVER)))
                 .child(
                     div()
-                        .text_size(px(12.0))
+                        .text_size(fs(12.0))
                         .font_weight(gpui::FontWeight::MEDIUM)
                         .text_color(hex(colors::TEXT_BRIGHT))
                         .child("清除搜索"),
@@ -1505,7 +1506,7 @@ fn defs_section(
                             .px(px(16.0))
                             .pb(px(6.0))
                             .font_family("monospace")
-                            .text_size(px(11.0))
+                            .text_size(fs(11.0))
                             .text_color(hex(colors::BELL))
                             .child(format!("写入失败：{}", err.message)),
                     )
@@ -1558,7 +1559,7 @@ fn setting_row(
                         })
                         .child(
                             div()
-                                .text_size(px(13.0))
+                                .text_size(fs(13.0))
                                 .text_color(hex(colors::TEXT_BRIGHT))
                                 .child(sel_hl_text(
                                     gpui::SharedString::from(format!("srow-lbl-{}", def.path)),
@@ -1572,7 +1573,7 @@ fn setting_row(
                 .child(
                     div()
                         .mt(px(3.0))
-                        .text_size(px(12.0))
+                        .text_size(fs(12.0))
                         .line_height(px(17.0))
                         .text_color(hex(colors::MUTED))
                         .child(sel_hl_text(
@@ -1609,7 +1610,8 @@ fn reset_slot(
     };
     div()
         .id(gpui::SharedString::from(format!("reset-{path}")))
-        .size(px(18.0))
+        .debug_selector(move || format!("reset-{path}"))
+        .size(fs(18.0))
         .flex_shrink_0()
         .flex()
         .items_center()
@@ -1631,7 +1633,13 @@ fn reset_slot(
                         let value = st.read(cx).settings.get().get_path(path);
                         let text = value
                             .and_then(|v| v.as_i64())
-                            .map(|v| v.to_string())
+                            .map(|v| {
+                                if path == "appearance.uiScale" {
+                                    format!("{v}%")
+                                } else {
+                                    v.to_string()
+                                }
+                            })
                             .unwrap_or_default();
                         input.update(cx, |input, cx| input.set_value(text, window, cx));
                     }
@@ -1723,19 +1731,27 @@ fn control_for(
             .into_any_element()
         }
         defs::ControlKind::Number { min, max, step } => {
-            let initial = value.as_i64().map(|v| v.to_string()).unwrap_or_default();
+            let initial = if path == "appearance.uiScale" {
+                value.as_i64().map(|v| format!("{v}%")).unwrap_or_default()
+            } else {
+                value.as_i64().map(|v| v.to_string()).unwrap_or_default()
+            };
             let st = state.clone();
             let input = editor_input(
                 &mut view.edit_inputs,
                 path.to_owned(),
-                initial,
+                initial.clone(),
                 "",
                 window,
                 cx,
                 // 输入即时解析：合法（且范围内）且与当前值不同才生效
                 move |text, _, cx| {
-                    if let Some(n) = text
-                        .trim()
+                    let raw = if path == "appearance.uiScale" {
+                        text.trim().trim_end_matches('%').trim()
+                    } else {
+                        text.trim()
+                    };
+                    if let Some(n) = raw
                         .parse::<i64>()
                         .ok()
                         .filter(|n| (min..=max).contains(n))
@@ -1753,6 +1769,11 @@ fn control_for(
             );
             let st = state.clone();
             let focused = input.read(cx).focus_handle(cx).is_focused(window);
+            if !focused && input.read(cx).value().as_ref() != initial {
+                input.update(cx, |input, cx| {
+                    input.set_value(initial.clone(), window, cx);
+                });
+            }
             let input_for_nudge = input.clone();
             controls::number_input(
                 &format!("setting-{path}"),
@@ -1766,14 +1787,23 @@ fn control_for(
                             .get_path(path)
                             .and_then(|v| v.as_i64())
                             .unwrap_or(min);
-                        let next = (cur + dir * step).clamp(min, max);
+                        let next = if path == "appearance.uiScale" {
+                            crate::ui_scale::step_ui_scale(cur, dir)
+                        } else {
+                            (cur + dir * step).clamp(min, max)
+                        };
                         s.settings.patch(path, json!(next));
                         s.flush(cx);
                         cx.emit(StateChanged);
                         next
                     });
+                    let formatted = if path == "appearance.uiScale" {
+                        format!("{next}%")
+                    } else {
+                        next.to_string()
+                    };
                     input_for_nudge.update(cx, |input, cx| {
-                        input.set_value(next.to_string(), window, cx)
+                        input.set_value(formatted, window, cx)
                     });
                 },
             )
@@ -1834,7 +1864,7 @@ fn cli_conventions_card() -> AnyElement {
         .child(
             div()
                 .mb(px(8.0))
-                .text_size(px(12.0))
+                .text_size(fs(12.0))
                 .text_color(hex(colors::TEXT_BRIGHT))
                 .child("CLI 侧 BEL / OSC 约定（j-agent 只信任这两个信号；到各自 CLI 侧配置，此处不代管）"),
         )
@@ -1846,7 +1876,7 @@ fn cli_conventions_card() -> AnyElement {
                     div()
                         .w(px(64.0))
                         .flex_shrink_0()
-                        .text_size(px(12.0))
+                        .text_size(fs(12.0))
                         .text_color(hex(colors::TEXT))
                         .child(sel_text_id(
                             gpui::SharedString::from(format!("conv-name-{n}")),
@@ -1861,7 +1891,7 @@ fn cli_conventions_card() -> AnyElement {
                         .whitespace_nowrap()
                         .text_ellipsis()
                         .font_family("monospace")
-                        .text_size(px(11.0))
+                        .text_size(fs(11.0))
                         .text_color(hex(colors::MUTED))
                         .child(sel_text_id(
                             gpui::SharedString::from(format!("conv-desc-{n}")),
@@ -1952,14 +1982,14 @@ fn kb_section(settings: &Settings, q: &str) -> Vec<AnyElement> {
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .text_ellipsis()
-                        .text_size(px(12.5))
+                        .text_size(fs(12.5))
                         .text_color(hex(colors::TEXT))
                         .child(sel_hl_text(("kb-fixed-lbl", i), label, q)),
                 )
                 .child(
                     div()
                         .font_family("monospace")
-                        .text_size(px(11.0))
+                        .text_size(fs(11.0))
                         .text_color(hex(colors::MUTED))
                         .child(sel_text_id(("kb-fixed-key", i), *key)),
                 )
@@ -1987,7 +2017,7 @@ fn kb_row(label: &str, key: &str, q: &str, conflict: Option<String>, last: bool)
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .text_ellipsis()
-                .text_size(px(12.5))
+                .text_size(fs(12.5))
                 .text_color(hex(colors::TEXT))
                 .child(sel_hl_text(
                     gpui::ElementId::Name(format!("kb-lbl-{label}").into()),
@@ -2009,7 +2039,7 @@ fn kb_row(label: &str, key: &str, q: &str, conflict: Option<String>, last: bool)
                 .border_1()
                 .border_color(hex(colors::BORDER_SUBTLE))
                 .font_family("monospace")
-                .text_size(px(11.0))
+                .text_size(fs(11.0))
                 .text_color(hex(colors::TEXT_BRIGHT))
                 .child(sel_text_id(
                     gpui::ElementId::Name(format!("kb-key-{label}").into()),
@@ -2025,7 +2055,7 @@ fn kb_row(label: &str, key: &str, q: &str, conflict: Option<String>, last: bool)
                     .mb(px(6.0))
                     .ml(px(16.0))
                     .font_family("monospace")
-                    .text_size(px(11.0))
+                    .text_size(fs(11.0))
                     .text_color(hex(colors::BELL))
                     .child(format!("⚠ 与「{other}」冲突（同绑 {key}）")),
             )
@@ -2073,14 +2103,14 @@ fn presets_section(
                         .min_w_0()
                         .child(
                             div()
-                                .text_size(px(13.0))
+                                .text_size(fs(13.0))
                                 .text_color(hex(colors::TEXT_BRIGHT))
                                 .child("「+」按钮默认预设"),
                         )
                         .child(
                             div()
                                 .mt(px(3.0))
-                                .text_size(px(12.0))
+                                .text_size(fs(12.0))
                                 .text_color(hex(colors::MUTED))
                                 .child("点侧栏「新建会话」时直接启动该预设；选「跟随上次使用」则记住上次选择"),
                         ),
@@ -2116,14 +2146,14 @@ fn presets_section(
                         .gap(px(8.0))
                         .child(
                             div()
-                                .text_size(px(11.5))
+                                .text_size(fs(11.5))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .text_color(hex(colors::TEXT_BRIGHT))
                                 .child(format!("预设列表 ({})", visible.len())),
                         )
                         .child(
                             div()
-                                .text_size(px(11.0))
+                                .text_size(fs(11.0))
                                 .text_color(hex(colors::MUTED))
                                 .child(
                                     "按住左侧 ⋮⋮ 拖动排序 · 点击展开编辑 · 右侧垃圾桶可直接删除",
@@ -2146,7 +2176,7 @@ fn presets_section(
                         .child(icon(IconName::Reset, 11.0, hex(colors::MUTED)))
                         .child(
                             div()
-                                .text_size(px(11.0))
+                                .text_size(fs(11.0))
                                 .text_color(hex(colors::TEXT))
                                 .child("恢复默认预设"),
                         )
@@ -2233,7 +2263,7 @@ fn le_empty(text: &str) -> AnyElement {
     div()
         .py(px(14.0))
         .text_center()
-        .text_size(px(12.0))
+        .text_size(fs(12.0))
         .text_color(hex(colors::MUTED))
         .child(text.to_owned())
         .into_any_element()
@@ -2258,7 +2288,7 @@ fn le_add(
         .rounded(px(8.0))
         .border_1()
         .border_color(hex(colors::BORDER_SUBTLE))
-        .text_size(px(12.0))
+        .text_size(fs(12.0))
         .text_color(hex(colors::MUTED))
         .cursor_pointer()
         .hover(|d| d.bg(hex(colors::SURFACE)).text_color(hex(colors::TEXT)))
@@ -2437,8 +2467,8 @@ fn preset_card(
                         .flex()
                         .items_center()
                         .justify_center()
-                        .w(px(14.0))
-                        .h(px(24.0))
+                        .w(fs(14.0))
+                        .h(fs(24.0))
                         .rounded(px(4.0))
                         .cursor_grab()
                         .text_color(hex(colors::FAINT))
@@ -2457,7 +2487,7 @@ fn preset_card(
                 .child(
                     div()
                         .flex_shrink_0()
-                        .text_size(px(12.5))
+                        .text_size(fs(12.5))
                         .font_weight(gpui::FontWeight::MEDIUM)
                         .text_color(hex(colors::TEXT_BRIGHT))
                         .child(p.label.clone()),
@@ -2470,7 +2500,7 @@ fn preset_card(
                         .whitespace_nowrap()
                         .text_ellipsis()
                         .font_family("monospace")
-                        .text_size(px(11.0))
+                        .text_size(fs(11.0))
                         .text_color(hex(colors::FAINT))
                         .child(summary),
                 )
@@ -2481,7 +2511,7 @@ fn preset_card(
                         .rounded(px(3.0))
                         .border_1()
                         .border_color(hex(colors::BORDER_SUBTLE))
-                        .text_size(px(10.0))
+                        .text_size(fs(10.0))
                         .text_color(hex(colors::MUTED))
                         .child(if p.builtin { "内置" } else { "自定义" }),
                 )
@@ -2606,11 +2636,11 @@ fn mini_btn(
         .debug_selector(move || id.to_string())
         .flex()
         .items_center()
-        .h(px(22.0))
+        .h(fs(22.0))
         .px(px(8.0))
         .rounded(px(5.0))
         .cursor_pointer()
-        .text_size(px(11.0))
+        .text_size(fs(11.0))
         .text_color(hex(colors::MUTED))
         .hover(|d| {
             if danger {
@@ -2738,7 +2768,7 @@ fn field_row(label: &str, control: impl IntoElement) -> impl IntoElement {
                 .w(px(64.0))
                 .flex_shrink_0()
                 .pt(px(7.0))
-                .text_size(px(11.5))
+                .text_size(fs(11.5))
                 .text_color(hex(colors::MUTED))
                 .child(label.to_owned()),
         )
@@ -2819,7 +2849,7 @@ fn acp_section(
             .px(px(14.0))
             .child(
                 div()
-                    .text_size(px(12.0))
+                    .text_size(fs(12.0))
                     .text_color(hex(colors::MUTED))
                     .child("外部 agent 进程，经 ACP 协议接入（JSON-RPC over stdio） · 按住左侧 ⋮⋮ 拖动排序"),
             )
@@ -2839,7 +2869,7 @@ fn acp_section(
                     .child(icon(IconName::Reset, 11.0, hex(colors::MUTED)))
                     .child(
                         div()
-                            .text_size(px(11.0))
+                            .text_size(fs(11.0))
                             .text_color(hex(colors::TEXT))
                             .child("恢复默认"),
                     )
@@ -3032,8 +3062,8 @@ fn acp_card(
                         .flex()
                         .items_center()
                         .justify_center()
-                        .w(px(14.0))
-                        .h(px(24.0))
+                        .w(fs(14.0))
+                        .h(fs(24.0))
                         .rounded(px(4.0))
                         .cursor_grab()
                         .text_color(hex(colors::FAINT))
@@ -3052,7 +3082,7 @@ fn acp_card(
                 .child(
                     div()
                         .flex_shrink_0()
-                        .text_size(px(12.5))
+                        .text_size(fs(12.5))
                         .font_weight(gpui::FontWeight::MEDIUM)
                         .text_color(hex(colors::TEXT_BRIGHT))
                         .child(a.label.clone()),
@@ -3065,7 +3095,7 @@ fn acp_card(
                         .whitespace_nowrap()
                         .text_ellipsis()
                         .font_family("monospace")
-                        .text_size(px(11.0))
+                        .text_size(fs(11.0))
                         .text_color(hex(colors::FAINT))
                         .child(summary),
                 )
@@ -3076,7 +3106,7 @@ fn acp_card(
                         .rounded(px(3.0))
                         .border_1()
                         .border_color(hex(colors::BORDER_SUBTLE))
-                        .text_size(px(10.0))
+                        .text_size(fs(10.0))
                         .text_color(hex(colors::MUTED))
                         .child("ACP"),
                 )
@@ -3233,7 +3263,7 @@ fn json_view_card(
                 .mb(px(8.0))
                 .child(
                     div()
-                        .text_size(px(12.0))
+                        .text_size(fs(12.0))
                         .text_color(hex(colors::TEXT_BRIGHT))
                         .child("settings.json · 实时视图（JSON 是事实源，UI 是表单视图）"),
                 )
@@ -3241,7 +3271,7 @@ fn json_view_card(
                     d.child(
                         div()
                             .id("open-settings-json")
-                            .text_size(px(11.5))
+                            .text_size(fs(11.5))
                             .text_color(hex(colors::ACCENT))
                             .cursor_pointer()
                             .child("在编辑器中打开 ↗")
@@ -3261,7 +3291,7 @@ fn json_view_card(
             div()
                 .pr(px(6.0))
                 .font_family("monospace")
-                .text_size(px(11.0))
+                .text_size(fs(11.0))
                 .text_color(hex(colors::MUTED))
                 .children(
                     serialize_settings(settings)
@@ -3294,7 +3324,7 @@ fn info_card(title: &str, rows: &[(&str, String)]) -> AnyElement {
         .child(
             div()
                 .mb(px(8.0))
-                .text_size(px(12.0))
+                .text_size(fs(12.0))
                 .text_color(hex(colors::TEXT_BRIGHT))
                 .child(title.to_owned()),
         )
@@ -3306,7 +3336,7 @@ fn info_card(title: &str, rows: &[(&str, String)]) -> AnyElement {
                     div()
                         .w(px(88.0))
                         .flex_shrink_0()
-                        .text_size(px(12.0))
+                        .text_size(fs(12.0))
                         .text_color(hex(colors::TEXT))
                         .child(sel_text_id(
                             gpui::ElementId::Name(format!("info-k-{k}").into()),
@@ -3321,7 +3351,7 @@ fn info_card(title: &str, rows: &[(&str, String)]) -> AnyElement {
                         .whitespace_nowrap()
                         .text_ellipsis()
                         .font_family("monospace")
-                        .text_size(px(11.0))
+                        .text_size(fs(11.0))
                         .text_color(hex(colors::MUTED))
                         .child(sel_text_id(
                             gpui::ElementId::Name(format!("info-v-{k}").into()),
@@ -3842,6 +3872,77 @@ mod tests {
                 .map(|a| a.id.clone())
                 .collect();
             assert_eq!(ids, ["acp-pi", "acp-codex"]);
+        });
+    }
+
+    #[gpui::test]
+    fn appearance_ui_scale_stepper_steps_persists_resets_and_keeps_terminal_font_independent(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = dir.path().to_string_lossy().into_owned();
+        let state = cx.update(|cx| {
+            gpui_component::init(cx);
+            crate::theme::install(cx).unwrap();
+            crate::state::init(cx, dir.path().to_path_buf(), cwd).unwrap()
+        });
+        let (view, vcx) = cx.add_window_view({
+            let state = state.clone();
+            move |window, cx| SettingsView::new(state, window, cx)
+        });
+        vcx.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.set_section(Section::Appearance);
+                cx.notify();
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        // 连续点击放大步进按钮：100 -> 110 -> 125 -> 150 -> 150
+        for expected in [110, 125, 150, 150] {
+            let inc = vcx
+                .debug_bounds("setting-appearance.uiScale-inc")
+                .expect("界面缩放放大按钮应在屏");
+            vcx.simulate_click(inc.center(), gpui::Modifiers::default());
+            vcx.run_until_parked();
+            vcx.update(|window, cx| {
+                window.refresh();
+                window.draw(cx).clear(cx);
+                assert_eq!(state.read(cx).settings.get().appearance.ui_scale, expected);
+                assert_eq!(crate::ui_scale::ui_scale_percent(), expected);
+                assert_eq!(
+                    state.read(cx).settings.get().terminal.font_size,
+                    13,
+                    "终端字号不受 uiScale 影响"
+                );
+            });
+        }
+        assert_eq!(crate::ui_scale::fs(12.0), px(18.0));
+
+        // 点击缩小步进按钮：150 -> 125
+        let dec = vcx
+            .debug_bounds("setting-appearance.uiScale-dec")
+            .expect("界面缩放缩小按钮应在屏");
+        vcx.simulate_click(dec.center(), gpui::Modifiers::default());
+        vcx.run_until_parked();
+        vcx.update(|window, cx| {
+            window.refresh();
+            window.draw(cx).clear(cx);
+            assert_eq!(state.read(cx).settings.get().appearance.ui_scale, 125);
+        });
+
+        // 点击重置按钮：回到 100%
+        let reset = vcx
+            .debug_bounds("reset-appearance.uiScale")
+            .expect("界面缩放重置按钮应在屏");
+        vcx.simulate_click(reset.center(), gpui::Modifiers::default());
+        vcx.run_until_parked();
+        vcx.update(|window, cx| {
+            window.refresh();
+            window.draw(cx).clear(cx);
+            assert_eq!(state.read(cx).settings.get().appearance.ui_scale, 100);
+            assert_eq!(crate::ui_scale::fs(12.0), px(12.0));
         });
     }
 }

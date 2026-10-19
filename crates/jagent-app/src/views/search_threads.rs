@@ -14,6 +14,7 @@ use jagent_core::threads::{ActiveTarget, RunStatus, Thread, search_threads, sort
 use crate::icons::{IconName, icon};
 use crate::state::{AppState, StateChanged};
 use crate::theme::{accent_alpha, colors, hex, rgba_css};
+use crate::ui_scale::fs;
 
 pub struct SearchThreadsView {
     state: Entity<AppState>,
@@ -224,7 +225,7 @@ impl Render for SearchThreadsView {
                 div().flex_1().min_w_0().child(
                     Input::new(&self.query)
                         .appearance(false)
-                        .text_size(px(13.0))
+                        .text_size(fs(13.0))
                         .text_color(hex(colors::TEXT_BRIGHT)),
                 ),
             )
@@ -237,7 +238,7 @@ impl Render for SearchThreadsView {
                     .border_1()
                     .border_color(hex(colors::BORDER_SUBTLE))
                     .font_family("monospace")
-                    .text_size(px(10.5))
+                    .text_size(fs(10.5))
                     .text_color(hex(colors::MUTED))
                     .child(if query.is_empty() {
                         "最近活跃".to_owned()
@@ -250,7 +251,7 @@ impl Render for SearchThreadsView {
             .pt(px(4.0))
             .pb(px(4.0))
             .px(px(6.0))
-            .text_size(px(10.5))
+            .text_size(fs(10.5))
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(hex(colors::MUTED))
             .child(if query.is_empty() {
@@ -266,13 +267,13 @@ impl Render for SearchThreadsView {
             .justify_between()
             .border_t_1()
             .border_color(hex(colors::BORDER))
-            .text_size(px(11.0))
+            .text_size(fs(11.0))
             .text_color(hex(colors::MUTED))
             .child("支持按会话名称、工作区、预设工具或目录检索")
             .child(
                 div()
                     .font_family("monospace")
-                    .text_size(px(10.5))
+                    .text_size(fs(10.5))
                     .text_color(hex(colors::FAINT))
                     .child("↑↓ 选择 · ↵ 激活跳转 · Esc 关闭"),
             );
@@ -296,7 +297,7 @@ impl Render for SearchThreadsView {
                             div()
                                 .p(px(16.0))
                                 .text_center()
-                                .text_size(px(12.0))
+                                .text_size(fs(12.0))
                                 .text_color(hex(colors::MUTED))
                                 .child("没有匹配的会话。试试项目名或工具名。"),
                         )
@@ -346,7 +347,7 @@ impl Render for SearchThreadsView {
                                         .overflow_hidden()
                                         .whitespace_nowrap()
                                         .text_ellipsis()
-                                        .text_size(px(12.5))
+                                        .text_size(fs(12.5))
                                         .font_weight(FontWeight::MEDIUM)
                                         .text_color(if is_exited {
                                             hex(colors::MUTED)
@@ -364,7 +365,7 @@ impl Render for SearchThreadsView {
                                             .px(px(6.0))
                                             .rounded(px(4.0))
                                             .bg(rgba_css(251, 191, 36, 0.15))
-                                            .text_size(px(10.0))
+                                            .text_size(fs(10.0))
                                             .text_color(hex(colors::STATUS_RUNNING))
                                             .child("思考中"),
                                     )
@@ -375,7 +376,7 @@ impl Render for SearchThreadsView {
                                             .px(px(6.0))
                                             .rounded(px(4.0))
                                             .bg(rgba_css(192, 132, 252, 0.15))
-                                            .text_size(px(10.0))
+                                            .text_size(fs(10.0))
                                             .text_color(hex(colors::ACP_KIND))
                                             .child("🔔 BEL"),
                                     )
@@ -384,7 +385,7 @@ impl Render for SearchThreadsView {
                                     d.child(
                                         div()
                                             .font_family("monospace")
-                                            .text_size(px(10.0))
+                                            .text_size(fs(10.0))
                                             .text_color(hex(colors::FAINT))
                                             .child("[已退出]"),
                                     )
@@ -397,7 +398,7 @@ impl Render for SearchThreadsView {
                                         .bg(hex(colors::INPUT_BG))
                                         .border_1()
                                         .border_color(hex(colors::BORDER))
-                                        .text_size(px(11.0))
+                                        .text_size(fs(11.0))
                                         .text_color(hex(colors::MUTED))
                                         .child(ws_name),
                                 )

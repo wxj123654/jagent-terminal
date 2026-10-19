@@ -1048,6 +1048,8 @@ mod tests {
             "terminal.closeOnExit",
             "appearance.theme",
             "appearance.sidebarWidth",
+            "appearance.wordWrap",
+            "appearance.uiScale",
             "acpAgents",
             "keybindings.cycleNext",
             "keybindings.searchThreads",

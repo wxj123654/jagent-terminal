@@ -43,6 +43,7 @@ use crate::state::{
     send_acp_with_prompt, send_chat, set_acp_config_option,
 };
 use crate::theme::{accent_alpha, colors, hex, rgba_css};
+use crate::ui_scale::fs;
 use crate::views::popup::{MenuEntry, MenuItem, PopupTrigger, menu_popover, overlay_shell};
 use crate::views::selectable::sel_text_id;
 
@@ -241,6 +242,7 @@ pub struct ConversationView {
     /// 上一帧消息快照；只增量替换/重测变更条目，保留 GPUI list 的 scroll anchor。
     rendered_messages: Vec<RenderedRow>,
     rendered_pending: bool,
+    rendered_ui_scale_bits: u32,
     scrolled_away_from_tail: Rc<std::cell::Cell<bool>>,
     /// 已手动收起工具调用详情的消息 id 集合（默认展开）
     collapsed_traces: HashSet<String>,
@@ -355,6 +357,7 @@ impl ConversationView {
             md_states: HashMap::new(),
             rendered_messages: vec![],
             rendered_pending: false,
+            rendered_ui_scale_bits: crate::ui_scale::ui_scale().to_bits(),
             scrolled_away_from_tail: Rc::new(std::cell::Cell::new(false)),
             collapsed_traces: HashSet::new(),
             context_files: Vec::new(),
@@ -752,6 +755,14 @@ impl Render for ConversationView {
             self.rendered_messages = snapshot;
             self.rendered_pending = show_pending_row;
         }
+        let current_scale_bits = crate::ui_scale::ui_scale().to_bits();
+        if current_scale_bits != self.rendered_ui_scale_bits {
+            let total_rows = self.rendered_messages.len() + usize::from(self.rendered_pending);
+            if total_rows > 0 {
+                self.list.remeasure_items(0..total_rows);
+            }
+            self.rendered_ui_scale_bits = current_scale_bits;
+        }
 
         for m in &messages {
             if !m.is_user() {
@@ -888,7 +899,7 @@ fn conv_head(kind: ConversationKind, title: &str, pending: bool) -> gpui::Div {
         // .conv-avatar：22² r6 surface 块 + accent 图标
         .child(
             div()
-                .size(px(22.0))
+                .size(fs(22.0))
                 .flex_shrink_0()
                 .flex()
                 .items_center()
@@ -903,7 +914,7 @@ fn conv_head(kind: ConversationKind, title: &str, pending: bool) -> gpui::Div {
             div()
                 .min_w_0()
                 .flex_shrink_1()
-                .text_size(px(12.5))
+                .text_size(fs(12.5))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(hex(colors::TEXT_BRIGHT))
                 .overflow_hidden()
@@ -925,7 +936,7 @@ fn conv_head(kind: ConversationKind, title: &str, pending: bool) -> gpui::Div {
                 }))
                 .child(
                     div()
-                        .text_size(px(11.0))
+                        .text_size(fs(11.0))
                         .text_color(hex(colors::MUTED))
                         .child(status_text(pending)),
                 ),
@@ -1007,7 +1018,7 @@ fn message_row(
         .child(
             div()
                 .font_family("monospace")
-                .text_size(px(10.5))
+                .text_size(fs(10.5))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(if m.is_error() {
                     hex(colors::BELL)
@@ -1020,7 +1031,7 @@ fn message_row(
             d.child(
                 div()
                     .font_family("monospace")
-                    .text_size(px(10.5))
+                    .text_size(fs(10.5))
                     .text_color(hex(colors::FAINT))
                     .child(format!("· {model_label}")),
             )
@@ -1114,7 +1125,7 @@ fn tool_trace_card(
                         ))
                         .child(
                             div()
-                                .text_size(px(11.5))
+                                .text_size(fs(11.5))
                                 .font_weight(gpui::FontWeight::MEDIUM)
                                 .text_color(hex(colors::TEXT_BRIGHT))
                                 .child(format!("Agent 已执行 {} 个工具调用", tool_calls.len())),
@@ -1123,7 +1134,7 @@ fn tool_trace_card(
                             d.child(
                                 div()
                                     .font_family("monospace")
-                                    .text_size(px(10.5))
+                                    .text_size(fs(10.5))
                                     .text_color(hex(colors::FAINT))
                                     .child(kinds_summary),
                             )
@@ -1133,7 +1144,7 @@ fn tool_trace_card(
                     h_flex()
                         .gap(px(4.0))
                         .items_center()
-                        .text_size(px(11.5))
+                        .text_size(fs(11.5))
                         .text_color(hex(colors::MUTED))
                         .child(if trace_open {
                             "收起详情"
@@ -1201,7 +1212,7 @@ fn tool_trace_card(
                 .border_t_1()
                 .border_color(hex(colors::BORDER))
                 .font_family("monospace")
-                .text_size(px(11.0))
+                .text_size(fs(11.0))
                 .child(
                     div()
                         .px(px(5.0))
@@ -1209,7 +1220,7 @@ fn tool_trace_card(
                         .bg(accent_alpha(0.16))
                         .border_1()
                         .border_color(accent_alpha(0.30))
-                        .text_size(px(9.5))
+                        .text_size(fs(9.5))
                         .text_color(hex(colors::ACCENT_HOVER))
                         .child(kind_badge),
                 )
@@ -1233,14 +1244,14 @@ fn tool_trace_card(
                         .flex_shrink_0()
                         .child(
                             div()
-                                .text_size(px(10.0))
+                                .text_size(fs(10.0))
                                 .text_color(status_color)
                                 .child(status_str),
                         )
                         .when(file_path.is_some(), |d| {
                             d.child(
                                 div()
-                                    .text_size(px(10.5))
+                                    .text_size(fs(10.5))
                                     .text_color(hex(colors::ACCENT_HOVER))
                                     .child("打开文件 →"),
                             )
@@ -1296,7 +1307,7 @@ fn user_bubble_for(msg_id: &str, text: &str) -> gpui::Div {
         .shadow(bubble_shadow())
         .children(text.split('\n').enumerate().map(|(line_ix, line)| {
             div()
-                .text_size(px(14.0))
+                .text_size(fs(14.0))
                 .line_height(px(21.0))
                 .text_color(hex(colors::TEXT_BRIGHT))
                 .child(if line.is_empty() {
@@ -1342,7 +1353,7 @@ fn markdown_body_with_state(m: &ChatMessage, state: Option<&Entity<TextViewState
     };
     view.selectable(true)
         .max_w(px(700.0))
-        .text_size(px(14.0))
+        .text_size(fs(14.0))
         .line_height(px(23.1))
         .text_color(if m.is_error() {
             hex(colors::BELL)
@@ -1370,7 +1381,7 @@ fn thinking_row(narrow: bool, connecting: bool) -> AnyElement {
         THINKING_ROW_GAP,
         h_flex().gap(px(8.0)).child(dot).child(
             div()
-                .text_size(px(12.0))
+                .text_size(fs(12.0))
                 .text_color(hex(colors::MUTED))
                 .child(label),
         ),
@@ -1434,7 +1445,7 @@ fn composer(
                 .border_1()
                 .border_color(hex(colors::BORDER_SUBTLE))
                 .font_family("monospace")
-                .text_size(px(11.0))
+                .text_size(fs(11.0))
                 .text_color(hex(colors::TEXT_BRIGHT))
                 .cursor_pointer()
                 .hover(|h| h.bg(hex(colors::SURFACE_HOVER)))
@@ -1549,7 +1560,7 @@ fn composer(
                                         .appearance(false)
                                         .flex_1()
                                         .min_h(px(24.0))
-                                        .text_size(px(13.0))
+                                        .text_size(fs(13.0))
                                         .line_height(px(18.0))
                                         .py(px(3.0))
                                         .px(px(2.0))
@@ -1565,7 +1576,7 @@ fn composer(
                         .items_center()
                         .justify_between()
                         .px(px(2.0))
-                        .text_size(px(10.5))
+                        .text_size(fs(10.5))
                         .text_color(hex(colors::FAINT))
                         .child("@ 引用工作区文件 · / 执行快捷指令 · 点击代码块可复制")
                         .child("Enter 发送 · Shift + Enter 换行"),
@@ -1675,7 +1686,7 @@ fn composer_autocomplete_panel(
                         .gap(px(6.0))
                         .items_center()
                         .font_family("monospace")
-                        .text_size(px(10.5))
+                        .text_size(fs(10.5))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(hex(colors::MUTED))
                         .child(icon(title_icon, 11.0, hex(colors::ACCENT_HOVER)))
@@ -1684,7 +1695,7 @@ fn composer_autocomplete_panel(
                 .child(
                     div()
                         .font_family("monospace")
-                        .text_size(px(10.0))
+                        .text_size(fs(10.0))
                         .text_color(hex(colors::FAINT))
                         .child("↑↓ 选择 · Enter / Tab 确认 · Esc 关闭"),
                 ),
@@ -1699,7 +1710,7 @@ fn composer_autocomplete_panel(
             div()
                 .px(px(8.0))
                 .py(px(8.0))
-                .text_size(px(11.5))
+                .text_size(fs(11.5))
                 .text_color(hex(colors::MUTED))
                 .child(empty_msg),
         );
@@ -1741,7 +1752,7 @@ fn composer_autocomplete_panel(
                             div()
                                 .flex_shrink_0()
                                 .font_family("monospace")
-                                .text_size(px(11.5))
+                                .text_size(fs(11.5))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .text_color(if is_selected {
                                     hex(colors::ACCENT_HOVER)
@@ -1759,7 +1770,7 @@ fn composer_autocomplete_panel(
                                     .rounded(px(3.5))
                                     .bg(hex(colors::SURFACE))
                                     .font_family("monospace")
-                                    .text_size(px(10.0))
+                                    .text_size(fs(10.0))
                                     .text_color(hex(colors::MUTED))
                                     .child(h),
                             )
@@ -1771,7 +1782,7 @@ fn composer_autocomplete_panel(
                                 .overflow_hidden()
                                 .whitespace_nowrap()
                                 .text_ellipsis()
-                                .text_size(px(11.0))
+                                .text_size(fs(11.0))
                                 .text_color(hex(colors::MUTED))
                                 .child(desc),
                         )
@@ -1820,7 +1831,7 @@ fn composer_autocomplete_panel(
                             div()
                                 .flex_shrink_0()
                                 .font_family("monospace")
-                                .text_size(px(11.5))
+                                .text_size(fs(11.5))
                                 .font_weight(gpui::FontWeight::MEDIUM)
                                 .text_color(if is_selected {
                                     hex(colors::TEXT_BRIGHT)
@@ -1837,7 +1848,7 @@ fn composer_autocomplete_panel(
                                 .whitespace_nowrap()
                                 .text_ellipsis()
                                 .font_family("monospace")
-                                .text_size(px(10.5))
+                                .text_size(fs(10.5))
                                 .text_color(hex(colors::FAINT))
                                 .child(full_path),
                         )
@@ -1919,7 +1930,7 @@ fn context_file_picker(
                             Input::new(&filter_entity)
                                 .appearance(false)
                                 .h_full()
-                                .text_size(px(11.5))
+                                .text_size(fs(11.5))
                                 .text_color(hex(colors::TEXT_BRIGHT)),
                         ),
                     ),
@@ -1929,7 +1940,7 @@ fn context_file_picker(
                     div()
                         .py(px(12.0))
                         .px(px(8.0))
-                        .text_size(px(11.5))
+                        .text_size(fs(11.5))
                         .text_color(hex(colors::MUTED))
                         .child("无匹配的工作区文件"),
                 );
@@ -1982,7 +1993,7 @@ fn context_file_picker(
                                     .whitespace_nowrap()
                                     .text_ellipsis()
                                     .font_family("monospace")
-                                    .text_size(px(11.0))
+                                    .text_size(fs(11.0))
                                     .text_color(if is_picked {
                                         hex(colors::TEXT_BRIGHT)
                                     } else {
@@ -2019,7 +2030,7 @@ fn context_file_picker(
         })
         .when(popover_open, |d| d.bg(hex(colors::SURFACE)))
         .when(!popover_open, |d| d.hover(|h| h.bg(hex(colors::SURFACE))))
-        .text_size(px(11.0))
+        .text_size(fs(11.0))
         .text_color(hex(colors::MUTED))
         .cursor_pointer()
         .child(icon(IconName::Plus, 10.5, hex(colors::MUTED)))
@@ -2111,7 +2122,7 @@ fn acp_toolbar_pills(
                 .border_color(hex(colors::BORDER_SUBTLE))
                 .hover(|h| h.bg(hex(colors::SURFACE_HOVER)))
                 .font_family("monospace")
-                .text_size(px(10.5))
+                .text_size(fs(10.5))
                 .text_color(hex(colors::MUTED))
                 .cursor_pointer()
                 .child(icon(IconName::Agent, 10.5, hex(colors::MUTED)))
@@ -2223,7 +2234,7 @@ fn resume_session_pill(
                     .child(
                         div()
                             .font_family("monospace")
-                            .text_size(px(10.5))
+                            .text_size(fs(10.5))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(hex(colors::MUTED))
                             .child("恢复历史会话 (/resume)"),
@@ -2237,7 +2248,7 @@ fn resume_session_pill(
                             .rounded(px(4.0))
                             .cursor_pointer()
                             .hover(|h| h.bg(hex(colors::SURFACE)))
-                            .text_size(px(10.5))
+                            .text_size(fs(10.5))
                             .text_color(hex(colors::MUTED))
                             .child(icon(IconName::Reset, 10.0, hex(colors::MUTED)))
                             .child(if loading { "刷新中…" } else { "刷新" })
@@ -2264,7 +2275,7 @@ fn resume_session_pill(
                             Input::new(&filter_entity)
                                 .appearance(false)
                                 .h_full()
-                                .text_size(px(11.5))
+                                .text_size(fs(11.5))
                                 .text_color(hex(colors::TEXT_BRIGHT)),
                         ),
                     ),
@@ -2275,7 +2286,7 @@ fn resume_session_pill(
                     div()
                         .py(px(12.0))
                         .px(px(8.0))
-                        .text_size(px(11.5))
+                        .text_size(fs(11.5))
                         .text_color(hex(colors::MUTED))
                         .child("正在读取历史会话列表…"),
                 );
@@ -2284,7 +2295,7 @@ fn resume_session_pill(
                     div()
                         .py(px(12.0))
                         .px(px(8.0))
-                        .text_size(px(11.5))
+                        .text_size(fs(11.5))
                         .text_color(hex(colors::MUTED))
                         .child("当前工作区暂无可恢复的历史会话"),
                 );
@@ -2349,7 +2360,7 @@ fn resume_session_pill(
                                             .overflow_hidden()
                                             .whitespace_nowrap()
                                             .text_ellipsis()
-                                            .text_size(px(11.5))
+                                            .text_size(fs(11.5))
                                             .text_color(if is_current {
                                                 hex(colors::TEXT_BRIGHT)
                                             } else {
@@ -2362,7 +2373,7 @@ fn resume_session_pill(
                                             .gap(px(6.0))
                                             .items_center()
                                             .font_family("monospace")
-                                            .text_size(px(10.0))
+                                            .text_size(fs(10.0))
                                             .text_color(hex(colors::FAINT))
                                             .child(format!("#{short_id}"))
                                             .when(!time_str.is_empty(), |d| d.child(time_str)),
@@ -2412,7 +2423,7 @@ fn resume_session_pill(
             d.hover(|h| h.bg(hex(colors::SURFACE_HOVER)))
         })
         .font_family("monospace")
-        .text_size(px(10.5))
+        .text_size(fs(10.5))
         .text_color(hex(colors::MUTED))
         .cursor_pointer()
         .child(icon(IconName::Reset, 10.0, hex(colors::MUTED)))
@@ -2492,7 +2503,7 @@ fn config_option_pill(
                 })
                 .hover(|h| h.bg(hex(colors::SURFACE_HOVER)))
                 .font_family("monospace")
-                .text_size(px(10.5))
+                .text_size(fs(10.5))
                 .text_color(hex(colors::TEXT))
                 .cursor_pointer()
                 .child(display_label.clone())
@@ -2581,7 +2592,7 @@ fn model_selector_pill(
                             Input::new(&filter_entity)
                                 .appearance(false)
                                 .h_full()
-                                .text_size(px(11.5))
+                                .text_size(fs(11.5))
                                 .text_color(hex(colors::TEXT_BRIGHT)),
                         ),
                     ),
@@ -2591,7 +2602,7 @@ fn model_selector_pill(
                     div()
                         .py(px(12.0))
                         .px(px(8.0))
-                        .text_size(px(11.5))
+                        .text_size(fs(11.5))
                         .text_color(hex(colors::MUTED))
                         .child("无匹配的模型"),
                 );
@@ -2613,7 +2624,7 @@ fn model_selector_pill(
                                 .pt(px(5.0))
                                 .pb(px(2.0))
                                 .font_family("monospace")
-                                .text_size(px(9.5))
+                                .text_size(fs(9.5))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .text_color(hex(colors::FAINT))
                                 .child(g.to_uppercase()),
@@ -2650,7 +2661,7 @@ fn model_selector_pill(
                                 icon(IconName::Check, 11.5, hex(colors::ACCENT_HOVER))
                                     .into_any_element()
                             } else {
-                                div().w(px(11.5)).flex_shrink_0().into_any_element()
+                                div().w(fs(11.5)).flex_shrink_0().into_any_element()
                             })
                             .child(
                                 div()
@@ -2659,7 +2670,7 @@ fn model_selector_pill(
                                     .overflow_hidden()
                                     .whitespace_nowrap()
                                     .text_ellipsis()
-                                    .text_size(px(11.5))
+                                    .text_size(fs(11.5))
                                     .text_color(if is_picked {
                                         hex(colors::TEXT_BRIGHT)
                                     } else {
@@ -2672,7 +2683,7 @@ fn model_selector_pill(
                                     div()
                                         .flex_shrink_0()
                                         .font_family("monospace")
-                                        .text_size(px(10.0))
+                                        .text_size(fs(10.0))
                                         .text_color(hex(colors::FAINT))
                                         .child(g.clone()),
                                 )
@@ -2717,7 +2728,7 @@ fn model_selector_pill(
             d.hover(|h| h.bg(hex(colors::SURFACE_HOVER)))
         })
         .font_family("monospace")
-        .text_size(px(10.5))
+        .text_size(fs(10.5))
         .text_color(hex(colors::TEXT_BRIGHT))
         .cursor_pointer()
         .child(icon(IconName::Agent, 11.0, hex(colors::ACCENT_HOVER)))
@@ -2771,7 +2782,7 @@ fn agent_selector_pill(
             .border_1()
             .border_color(accent_alpha(0.24))
             .font_family("monospace")
-            .text_size(px(10.5))
+            .text_size(fs(10.5))
             .text_color(hex(colors::MUTED))
             .child(icon(IconName::Chat, 11.0, hex(colors::ACCENT_HOVER)))
             .child(label)
@@ -2826,7 +2837,7 @@ fn agent_selector_pill(
                 .border_1()
                 .border_color(accent_alpha(0.32))
                 .font_family("monospace")
-                .text_size(px(10.5))
+                .text_size(fs(10.5))
                 .text_color(hex(colors::ACCENT_HOVER))
                 .cursor_pointer()
                 .child(icon(IconName::Acp, 11.0, hex(colors::ACCENT_HOVER)))
@@ -2849,7 +2860,7 @@ fn send_button(
         .flex()
         .items_center()
         .justify_center()
-        .size(px(28.0))
+        .size(fs(28.0))
         .flex_shrink_0()
         .border_1()
         .rounded(px(7.0))
@@ -3284,5 +3295,64 @@ mod tests {
                 "crates/jagent-app/src/main.rs".to_owned()
             ]
         );
+    }
+
+    #[gpui::test]
+    fn changing_ui_scale_remeasures_conversation_list_items(cx: &mut gpui::TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = dir.path().to_string_lossy().into_owned();
+        let (state, tid) = cx.update(|cx| {
+            gpui_component::init(cx);
+            crate::theme::install(cx).unwrap();
+            let state = crate::state::init(cx, dir.path().to_path_buf(), cwd).unwrap();
+            let ws = state.read(cx).workspaces()[0].id.clone();
+            let tid = state
+                .update(cx, |s, cx| s.create_chat(Some(&ws), cx))
+                .unwrap();
+            state.update(cx, |s, cx| {
+                let req = s
+                    .threads
+                    .begin_send(&tid, "测试缩放后重测列表行高", ConversationKind::Chat)
+                    .unwrap();
+                s.threads
+                    .finish_send(&req.thread_id, req.kind, Ok("这是一段回复内容".into()));
+                s.flush(cx);
+            });
+            (state, tid)
+        });
+
+        let (view, vcx) = cx.add_window_view({
+            let state = state.clone();
+            let tid = tid.clone();
+            move |window, cx| ConversationView::new(state, tid, window, cx)
+        });
+        vcx.update(|window, cx| {
+            window.refresh();
+            window.draw(cx).clear(cx);
+            assert_eq!(view.read(cx).rendered_ui_scale_bits, (1.0f32).to_bits());
+        });
+
+        vcx.update(|window, cx| {
+            state.update(cx, |s, cx| {
+                s.settings
+                    .patch("appearance.uiScale", serde_json::json!(150));
+                s.flush(cx);
+                cx.emit(StateChanged);
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+            assert_eq!(view.read(cx).rendered_ui_scale_bits, (1.5f32).to_bits());
+        });
+
+        vcx.update(|window, cx| {
+            state.update(cx, |s, cx| {
+                s.settings.reset("appearance.uiScale");
+                s.flush(cx);
+                cx.emit(StateChanged);
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+            assert_eq!(view.read(cx).rendered_ui_scale_bits, (1.0f32).to_bits());
+        });
     }
 }

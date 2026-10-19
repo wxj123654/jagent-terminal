@@ -155,11 +155,16 @@ pub fn svg_source(name: IconName) -> &'static str {
     }
 }
 
-/// 渲染一个图标：`size` px 见方，`color` 为 `currentColor` tint。
+#[inline]
+fn scaled_icon_px(size: f32) -> gpui::Pixels {
+    crate::ui_scale::fs(size)
+}
+
+/// 渲染一个图标：`size` px 见方（随全局 `uiScale` 缩放），`color` 为 `currentColor` tint。
 pub fn icon(name: IconName, size: f32, color: Hsla) -> gpui::Svg {
     svg()
         .data(stroke(svg_source(name)).as_bytes())
-        .size(gpui::px(size))
+        .size(scaled_icon_px(size))
         .text_color(color)
 }
 
@@ -238,5 +243,17 @@ mod tests {
             );
         }
         assert!(svg_source(IconName::Search).contains("<circle"));
+    }
+
+    #[test]
+    fn scaled_icon_px_scales_with_ui_scale_and_restores_default() {
+        crate::ui_scale::set_ui_scale(1.0);
+        assert_eq!(scaled_icon_px(12.0), gpui::px(12.0));
+
+        crate::ui_scale::set_ui_scale(1.5);
+        assert_eq!(scaled_icon_px(12.0), gpui::px(18.0));
+
+        crate::ui_scale::set_ui_scale(1.0);
+        assert_eq!(scaled_icon_px(12.0), gpui::px(12.0));
     }
 }

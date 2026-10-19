@@ -16,6 +16,7 @@ use gpui::{Entity, SharedString, Styled as _, px};
 use gpui_component::input::{Input, InputState, Textarea, TextareaState};
 
 use crate::theme::{colors, hex};
+use crate::ui_scale::fs;
 
 /// 控件统一高度（与 Select / Number / Font 触发器同高）
 pub const FIELD_H: f32 = 30.0;
@@ -31,7 +32,7 @@ pub fn text_input(state: &Entity<InputState>) -> Input {
         .px(px(10.0))
         .rounded(px(FIELD_RADIUS))
         .bg(hex(colors::INPUT_BG))
-        .text_size(px(FIELD_TEXT))
+        .text_size(fs(FIELD_TEXT))
         .text_color(hex(colors::TEXT_BRIGHT))
 }
 
@@ -46,7 +47,7 @@ pub fn text_area(state: &Entity<TextareaState>, height: f32) -> Textarea {
         .h(px(height))
         .rounded(px(FIELD_RADIUS))
         .bg(hex(colors::INPUT_BG))
-        .text_size(px(FIELD_TEXT))
+        .text_size(fs(FIELD_TEXT))
         .text_color(hex(colors::TEXT_BRIGHT))
         .font_family(mono_family())
 }

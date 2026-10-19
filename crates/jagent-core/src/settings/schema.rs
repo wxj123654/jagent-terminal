@@ -11,6 +11,14 @@ use crate::presets::{TerminalPreset, builtin_presets};
 
 /// 侧栏宽度默认值（旧 `SIZES.sidebarWidth`）。
 pub const DEFAULT_SIDEBAR_WIDTH: i64 = 264;
+/// 全局 UI 字号缩放默认值（百分比）。
+pub const DEFAULT_UI_SCALE: i64 = 100;
+/// 全局 UI 字号缩放最小百分比。
+pub const MIN_UI_SCALE: i64 = 80;
+/// 全局 UI 字号缩放最大百分比。
+pub const MAX_UI_SCALE: i64 = 150;
+/// 全局 UI 字号缩放步进档位（百分比）。
+pub const UI_SCALE_STEPS: [i64; 6] = [80, 90, 100, 110, 125, 150];
 
 /// 终端必须默认到平台自带的等宽字体；不可用字体会让 gpui 回退到比例 UI 字体。
 pub fn default_terminal_font() -> &'static str {
@@ -100,6 +108,8 @@ pub struct Appearance {
     pub sidebar_width: i64,
     #[serde(rename = "wordWrap")]
     pub word_wrap: bool,
+    #[serde(rename = "uiScale")]
+    pub ui_scale: i64,
 }
 
 /// 键位串语法：modifier 以 `-` 连接（`ctrl-tab` / `cmd-k` / `/`）。语义约束在编辑面校验。
@@ -179,6 +189,7 @@ impl Default for Settings {
                 theme: "one-dark".into(),
                 sidebar_width: DEFAULT_SIDEBAR_WIDTH,
                 word_wrap: false,
+                ui_scale: DEFAULT_UI_SCALE,
             },
             acp_agents: default_acp_agents(),
             keybindings: Keybindings {
@@ -392,6 +403,13 @@ fn parse_root(root: &Map<String, Value>) -> Result<Settings, ()> {
                 d.appearance.sidebar_width,
             ),
             word_wrap: leaf_bool(appearance, "wordWrap", d.appearance.word_wrap),
+            ui_scale: leaf_int(
+                appearance,
+                "uiScale",
+                MIN_UI_SCALE,
+                MAX_UI_SCALE,
+                d.appearance.ui_scale,
+            ),
         },
         acp_agents: parse_acp_agents(root.get("acpAgents")),
         keybindings: Keybindings {
@@ -515,6 +533,7 @@ mod tests {
                 theme: "one-dark".into(),
                 sidebar_width: 264,
                 word_wrap: false,
+                ui_scale: 100,
             }
         );
         assert_eq!(d.acp_agents.len(), 3);
@@ -672,5 +691,55 @@ mod tests {
         assert_eq!(t.presets.plus_default.as_deref(), Some("claude"));
         let t = s.with_path("acpAgents", json!([])).unwrap();
         assert!(t.acp_agents.is_empty(), "数组整体可 patch");
+    }
+
+    #[test]
+    fn ui_scale_parses_clamps_out_of_range_and_round_trips() {
+        // 缺字段的老配置默认 100
+        let legacy = parse(json!({ "appearance": { "theme": "one-dark", "sidebarWidth": 280 } }));
+        assert_eq!(legacy.appearance.ui_scale, 100);
+        assert_eq!(legacy.appearance.sidebar_width, 280);
+
+        // 边界与合法值
+        assert_eq!(
+            parse(json!({ "appearance": { "uiScale": 80 } })).appearance.ui_scale,
+            80
+        );
+        assert_eq!(
+            parse(json!({ "appearance": { "uiScale": 125 } })).appearance.ui_scale,
+            125
+        );
+        assert_eq!(
+            parse(json!({ "appearance": { "uiScale": 150 } })).appearance.ui_scale,
+            150
+        );
+
+        // 越界 / 浮点 / 类型错误 → 回默认 100，其余好值保留
+        let under = parse(json!({ "appearance": { "uiScale": 79, "wordWrap": true } }));
+        assert_eq!(under.appearance.ui_scale, 100);
+        assert!(under.appearance.word_wrap);
+        assert_eq!(
+            parse(json!({ "appearance": { "uiScale": 151 } })).appearance.ui_scale,
+            100
+        );
+        assert_eq!(
+            parse(json!({ "appearance": { "uiScale": 110.5 } })).appearance.ui_scale,
+            100
+        );
+        assert_eq!(
+            parse(json!({ "appearance": { "uiScale": "110%" } })).appearance.ui_scale,
+            100
+        );
+
+        // dot-path 读写与序列化往返
+        let s = Settings::default();
+        assert_eq!(s.get_path("appearance.uiScale"), Some(json!(100)));
+        let patched = s.with_path("appearance.uiScale", json!(125)).unwrap();
+        assert_eq!(patched.appearance.ui_scale, 125);
+        let reparsed = parse_settings(&serialize_settings(&patched));
+        assert_eq!(reparsed.appearance.ui_scale, 125);
+        assert_eq!(reparsed, patched);
+        let fallback = patched.with_path("appearance.uiScale", json!(200)).unwrap();
+        assert_eq!(fallback.appearance.ui_scale, 100, "越界 patch 立即回默认");
     }
 }

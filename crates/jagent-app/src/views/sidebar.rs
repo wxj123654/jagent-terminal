@@ -17,6 +17,7 @@ use jagent_core::threads::{Thread, Workspace, sort_threads, sort_workspaces};
 
 use crate::icons::{IconName, icon};
 use crate::theme::{Tokens, colors, hex, sizes};
+use crate::ui_scale::fs;
 use crate::views::notif_center::NotifSlot;
 use crate::views::popup::{MenuEntry, PickFn, PopupTrigger, menu_surface};
 
@@ -404,7 +405,7 @@ impl RenderOnce for ThreadRow {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .size(px(20.0))
+                    .size(fs(20.0))
                     .rounded(px(5.0))
                     .when(!exited, |d| d.bg(white(0.03)))
                     .child(icon(m.kind.icon(), 13.0, kind_color))
@@ -429,7 +430,7 @@ impl RenderOnce for ThreadRow {
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_ellipsis()
-                    .text_size(px(12.5))
+                    .text_size(fs(12.5))
                     .text_color(title_color)
                     .when(unread, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
                     .child(m.title.clone()),
@@ -462,7 +463,7 @@ impl RenderOnce for ThreadRow {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .size(px(22.0))
+                            .size(fs(22.0))
                             .rounded(px(8.0))
                             .flex_shrink_0()
                             .opacity(0.0)
@@ -505,7 +506,7 @@ impl RenderOnce for ThreadRow {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .size(px(22.0))
+                    .size(fs(22.0))
                     .rounded(px(6.0))
                     .flex_shrink_0()
                     .opacity(0.0)
@@ -621,7 +622,7 @@ fn ghost_cell(
         .flex()
         .items_center()
         .justify_center()
-        .size(px(24.0))
+        .size(fs(24.0))
         .rounded(px(8.0))
         .cursor_pointer()
         .opacity(resting_opacity)
@@ -662,7 +663,7 @@ fn more_link(
         ))
         .child(
             div()
-                .text_size(px(11.0))
+                .text_size(fs(11.0))
                 .text_color(hex(colors::MUTED))
                 .child(if expanded {
                     SharedString::from("收起会话")
@@ -706,7 +707,7 @@ impl RenderOnce for Sidebar {
                         .flex()
                         .items_center()
                         .cursor_pointer()
-                        .text_size(px(11.0))
+                        .text_size(fs(11.0))
                         .when_else(
                             cur_mode == SidebarMode::Agent,
                             |b| {
@@ -735,7 +736,7 @@ impl RenderOnce for Sidebar {
                         .flex()
                         .items_center()
                         .cursor_pointer()
-                        .text_size(px(11.0))
+                        .text_size(fs(11.0))
                         .when_else(
                             cur_mode == SidebarMode::Edit,
                             |b| {
@@ -787,7 +788,7 @@ impl RenderOnce for Sidebar {
                 .flex()
                 .items_center()
                 .justify_center()
-                .size(px(26.0))
+                .size(fs(26.0))
                 .rounded(px(6.0))
                 .flex_shrink_0()
                 .cursor_pointer()
@@ -804,7 +805,7 @@ impl RenderOnce for Sidebar {
                 .flex()
                 .items_center()
                 .justify_center()
-                .size(px(26.0))
+                .size(fs(26.0))
                 .rounded(px(6.0))
                 .flex_shrink_0()
                 .cursor_pointer()
@@ -847,7 +848,7 @@ impl RenderOnce for Sidebar {
                     .child(icon(IconName::Plus, 13.0, hex(colors::ACCENT_HOVER)))
                     .child(
                         div()
-                            .text_size(px(12.0))
+                            .text_size(fs(12.0))
                             .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(hex(colors::TEXT_BRIGHT))
                             .child("新建会话"),
@@ -862,7 +863,7 @@ impl RenderOnce for Sidebar {
                             .border_1()
                             .border_color(border_subtle)
                             .font_family("monospace")
-                            .text_size(px(10.0))
+                            .text_size(fs(10.0))
                             .text_color(muted)
                             .child("⌘N"),
                     )
@@ -884,7 +885,7 @@ impl RenderOnce for Sidebar {
             .items_center()
             .child(
                 div()
-                    .text_size(px(10.0))
+                    .text_size(fs(10.0))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(muted)
                     .child(format!("工作区 ({ws_count})")),
@@ -896,7 +897,7 @@ impl RenderOnce for Sidebar {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .size(px(24.0))
+                    .size(fs(24.0))
                     .rounded(px(8.0))
                     .cursor_pointer()
                     .opacity(0.75)
@@ -944,7 +945,7 @@ impl RenderOnce for Sidebar {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .size(px(22.0))
+                            .size(fs(22.0))
                             .rounded(px(5.0))
                             .flex_shrink_0()
                             .child(
@@ -982,7 +983,7 @@ impl RenderOnce for Sidebar {
                             .overflow_hidden()
                             .whitespace_nowrap()
                             .text_ellipsis()
-                            .text_size(px(12.5))
+                            .text_size(fs(12.5))
                             .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(fg)
                             .child(g.name.clone()),
@@ -992,7 +993,7 @@ impl RenderOnce for Sidebar {
                             div()
                                 .ml(px(4.0))
                                 .font_family("monospace")
-                                .text_size(px(10.5))
+                                .text_size(fs(10.5))
                                 .text_color(hex(colors::FAINT))
                                 .flex_shrink_0()
                                 .child(format!("{total_sessions}")),
@@ -1043,7 +1044,7 @@ impl RenderOnce for Sidebar {
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .size(px(24.0))
+                                    .size(fs(24.0))
                                     .rounded(px(8.0))
                                     .cursor_pointer()
                                     .opacity(if open { 1.0 } else { 0.0 })
@@ -1159,7 +1160,7 @@ impl RenderOnce for Sidebar {
                                 .child(icon(IconName::Plus, 11.0, muted))
                                 .child(
                                     div()
-                                        .text_size(px(11.5))
+                                        .text_size(fs(11.5))
                                         .text_color(muted)
                                         .child("启动第一个会话"),
                                 )
@@ -1244,7 +1245,7 @@ impl RenderOnce for Sidebar {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .size(px(28.0))
+                    .size(fs(28.0))
                     .rounded(px(8.0))
                     .cursor_pointer()
                     .hover(|h| h.bg(hex(colors::SURFACE)))
@@ -1267,7 +1268,7 @@ impl RenderOnce for Sidebar {
             .child(
                 div()
                     .font_family("monospace")
-                    .text_size(px(11.0))
+                    .text_size(fs(11.0))
                     .text_color(hex(colors::FAINT))
                     .child(format!("{} · GPUI", self.version)),
             );

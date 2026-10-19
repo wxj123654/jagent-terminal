@@ -232,6 +232,7 @@ impl AppState {
         let persisted_acp = parse_persisted_acp_threads(raw_state.as_deref());
         let effects = GuiEffects::new(default_cwd.clone());
         effects.set_close_on_exit(settings.get().terminal.close_on_exit);
+        crate::ui_scale::set_ui_scale_percent(settings.get().appearance.ui_scale);
         let first_run = workspaces.is_empty();
         let mut threads = ThreadStore::new(effects.clone(), workspaces);
         if first_run {
@@ -339,6 +340,7 @@ impl AppState {
         self.effects
             .set_close_on_exit(self.settings.get().terminal.close_on_exit);
         apply_terminal_settings(cx, self.settings.get());
+        crate::ui_scale::apply_ui_scale(cx, self.settings.get());
     }
 
     /// 两步 spawn 的第二步在这里合并：begin_spawn → 创建 PTY → finish_spawn。
@@ -1646,6 +1648,8 @@ pub fn init(cx: &mut App, dir: PathBuf, default_cwd: String) -> std::io::Result<
     TerminalPool::init_global(cx);
     let state =
         cx.new(|_: &mut Context<AppState>| AppState::load(dir, default_cwd).expect("加载应用状态"));
+    let settings = state.read(cx).settings.get().clone();
+    crate::ui_scale::apply_ui_scale(cx, &settings);
     Ok(state)
 }
 
