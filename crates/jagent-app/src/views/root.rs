@@ -1239,6 +1239,7 @@ impl Render for RootView {
                 .items_center()
                 .pl(px(workbench_pl))
                 .pr(px(if cfg!(target_os = "macos") { 6.0 } else { 0.0 }))
+                .when(!narrow, |d| d.rounded_t(px(sizes::ISLAND_RADIUS - 1.0)))
                 .bg(crate::theme::rgba_css(13, 15, 21, 0.75))
                 .border_b_1()
                 .border_color(hex(colors::BORDER_SUBTLE)),
@@ -1485,7 +1486,7 @@ impl Render for RootView {
                 },
             )
         })
-        .child(window_controls_bar(window));
+        .child(window_controls_bar(window, !narrow));
 
         let state = self.state.clone();
         v_flex()
@@ -2397,7 +2398,16 @@ pub(crate) fn bind_titlebar_drag(
         )
 }
 
-fn window_controls_bar(window: &Window) -> AnyElement {
+/// 右上角窗口控制三键（最小化 / 最大化 / 关闭）：
+/// - `.occlude()` 设 `HitboxBehavior::BlockMouse`，遮挡外层 `#title-bar` 的 `WindowControlArea::Drag`
+///   并使外层顶栏 `is_hovered` 为 `false`（触发 `on_mouse_down_out` 重置拖拽/双击计数）；
+/// - Windows 走 `WindowControlArea::{Min, Max, Close}`（Win32 `WM_NCHITTEST` → `WM_NCLBUTTONDOWN/UP`）：
+///   **绝不可**在 Windows 按钮上注册调用 `cx.stop_propagation()` 的 `on_mouse_down`，否则
+///   `gpui-pre-windows::handle_nc_mouse_down_msg` 见到 `!func(input).propagate` 会提前 `return Some(0)`，
+///   跳过 `nc_button_pressed.set(Some(HTMINBUTTON/HTMAXBUTTON/HTCLOSE))`，导致三键点击无响应；
+/// - 圆角画布岛模式（`rounded_top_right == true`）下，最右侧关闭按钮设置 `.rounded_tr(ISLAND_RADIUS - 1.0)`，
+///   防止 GPUI 矩形 `overflow_hidden` 下关闭按钮 hover 红色背景超出画布岛右上圆角边框。
+fn window_controls_bar(window: &Window, rounded_top_right: bool) -> AnyElement {
     if cfg!(target_os = "macos") || cfg!(target_family = "wasm") {
         return div().id("window-controls").into_any_element();
     }
@@ -2411,39 +2421,61 @@ fn window_controls_bar(window: &Window) -> AnyElement {
     let supported = window.window_controls();
     let is_windows = cfg!(target_os = "windows");
     let is_linux = cfg!(target_os = "linux");
+    let is_fullscreen = window.is_fullscreen();
+    let is_zoomed = window.is_maximized() || is_fullscreen;
 
     let make_btn = |id: &'static str,
                     ic: IconName,
                     area: gpui::WindowControlArea,
                     is_close: bool,
                     action: fn(&mut Window)| {
-        stop_titlebar_drag(
-            div()
-                .id(id)
-                .flex()
-                .w(px(36.0))
-                .h_full()
-                .flex_shrink_0()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .hover(move |s| {
-                    if is_close {
-                        s.bg(hex(colors::BELL)).text_color(hex(colors::TEXT_BRIGHT))
-                    } else {
-                        s.bg(hex(colors::SURFACE))
-                            .text_color(hex(colors::TEXT_BRIGHT))
-                    }
+        div()
+            .id(id)
+            .debug_selector(move || id.to_string())
+            .group(id)
+            .occlude()
+            .flex()
+            .w(px(36.0))
+            .h_full()
+            .flex_shrink_0()
+            .items_center()
+            .justify_center()
+            .cursor_pointer()
+            .when(is_close && rounded_top_right, |d| {
+                d.rounded_tr(px(sizes::ISLAND_RADIUS - 1.0))
+            })
+            .hover(move |s| {
+                if is_close {
+                    s.bg(hex(colors::BELL)).text_color(hex(colors::TEXT_BRIGHT))
+                } else {
+                    s.bg(hex(colors::SURFACE))
+                        .text_color(hex(colors::TEXT_BRIGHT))
+                }
+            })
+            .active(move |s| {
+                if is_close {
+                    s.bg(hex(colors::BELL).opacity(0.8))
+                        .text_color(hex(colors::TEXT_BRIGHT))
+                } else {
+                    s.bg(hex(colors::SURFACE_ACTIVE))
+                        .text_color(hex(colors::TEXT_BRIGHT))
+                }
+            })
+            .when(is_windows, move |d| d.window_control_area(area))
+            .when(is_linux || (is_windows && is_fullscreen), move |d| {
+                d.on_mouse_down(MouseButton::Left, |_, window, cx| {
+                    window.prevent_default();
+                    cx.stop_propagation();
                 })
-                .when(is_windows, move |d| d.window_control_area(area))
-                .when(is_linux, move |d| {
-                    d.on_click(move |_, w, cx| {
-                        cx.stop_propagation();
-                        action(w);
-                    })
+                .on_click(move |_, w, cx| {
+                    cx.stop_propagation();
+                    action(w);
                 })
-                .child(icon(ic, 12.0, hex(colors::TEXT))),
-        )
+            })
+            .child(
+                icon(ic, 12.5, hex(colors::TEXT))
+                    .group_hover(id, |s| s.text_color(hex(colors::TEXT_BRIGHT))),
+            )
     };
 
     h_flex()
@@ -2463,10 +2495,20 @@ fn window_controls_bar(window: &Window) -> AnyElement {
         .when(supported.maximize, |d| {
             d.child(make_btn(
                 "window-btn-maximize",
-                IconName::Maximize,
+                if is_zoomed {
+                    IconName::Restore
+                } else {
+                    IconName::Maximize
+                },
                 gpui::WindowControlArea::Max,
                 false,
-                |w| w.zoom_window(),
+                |w| {
+                    if w.is_fullscreen() {
+                        w.toggle_fullscreen();
+                    } else {
+                        w.zoom_window();
+                    }
+                },
             ))
         })
         .child(make_btn(
@@ -3320,5 +3362,92 @@ mod tests {
         tracker.sample();
         assert_eq!(tracker.history_ms.len(), 24);
         assert!(tracker.p90_ms > 0.0 && tracker.max_ms >= tracker.p90_ms);
+    }
+
+    /// Windows 顶栏最小化 / 最大化 / 关闭三键回归测试：
+    /// `gpui-pre-windows` 在 `handle_nc_mouse_down_msg` / `handle_nc_mouse_up_msg` 中先向 GPUI
+    /// 派发 `MouseDown` / `MouseUp` 并检查 `if !func(input).propagate { return Some(0); }`。
+    /// 若按钮调用了 `cx.stop_propagation()`，将导致 `nc_button_pressed` 永远无法置位、三键失灵。
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    fn windows_window_control_buttons_preserve_event_propagation_for_nc_handlers(
+        cx: &mut TestAppContext,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let state = cx.update(|cx| {
+            gpui_component::init(cx);
+            crate::theme::install(cx).unwrap();
+            crate::actions::install(cx, &jagent_core::settings::Settings::default());
+            init(
+                cx,
+                dir.path().to_path_buf(),
+                dir.path().to_string_lossy().into_owned(),
+            )
+            .unwrap()
+        });
+
+        let (_root_win, cx) = cx.add_window_view(|window, cx| {
+            let root_view = cx.new(|cx| RootView::new(state.clone(), cx));
+            gpui_base::Root::new(root_view, window, cx)
+        });
+        cx.run_until_parked();
+
+        cx.update(|window, _| {
+            // 仅触发绘制以记录 debug_selector bounds
+            let _ = window;
+        });
+        cx.run_until_parked();
+
+        for selector in [
+            "window-btn-minimize",
+            "window-btn-maximize",
+            "window-btn-close",
+        ] {
+            let bounds = cx
+                .debug_bounds(selector)
+                .unwrap_or_else(|| panic!("{selector} 应在 Windows 顶栏渲染"));
+            let center = bounds.center();
+
+            cx.update(|window, cx| {
+                let move_res = window.dispatch_event(
+                    gpui::PlatformInput::MouseMove(gpui::MouseMoveEvent {
+                        position: center,
+                        pressed_button: None,
+                        modifiers: gpui::Modifiers::default(),
+                    }),
+                    cx,
+                );
+                assert!(move_res.propagate, "{selector} MouseMove 不应阻断冒泡");
+
+                let down_res = window.dispatch_event(
+                    gpui::PlatformInput::MouseDown(gpui::MouseDownEvent {
+                        button: MouseButton::Left,
+                        position: center,
+                        modifiers: gpui::Modifiers::default(),
+                        click_count: 1,
+                        first_mouse: false,
+                    }),
+                    cx,
+                );
+                assert!(
+                    down_res.propagate,
+                    "{selector} MouseDown 必须保持 propagate=true，否则 gpui-pre-windows 无法记录 nc_button_pressed"
+                );
+
+                let up_res = window.dispatch_event(
+                    gpui::PlatformInput::MouseUp(gpui::MouseUpEvent {
+                        button: MouseButton::Left,
+                        position: center,
+                        modifiers: gpui::Modifiers::default(),
+                        click_count: 1,
+                    }),
+                    cx,
+                );
+                assert!(
+                    up_res.propagate,
+                    "{selector} MouseUp 必须保持 propagate=true，否则 gpui-pre-windows 无法执行最小化/最大化/关闭"
+                );
+            });
+        }
     }
 }

@@ -31,6 +31,12 @@ pub fn setup(cx: &mut App, dir: std::path::PathBuf, default_cwd: String) -> Enti
         );
     }
     cx.on_action(|_: &Quit, cx| cx.quit());
+    cx.on_window_closed(|cx, _| {
+        if cx.windows().is_empty() {
+            cx.quit();
+        }
+    })
+    .detach();
     state
 }
 

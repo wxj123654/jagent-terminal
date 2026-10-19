@@ -24,6 +24,7 @@ pub enum IconName {
     Close,
     Minimize,
     Maximize,
+    Restore,
     Plus,
     ChevronDown,
     ChevronUp,
@@ -115,9 +116,12 @@ pub fn svg_source(name: IconName) -> &'static str {
         Gear => {
             r#"<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="6.8"/><path d="M12 2.5v2.2M12 19.3v2.2M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6"/>"#
         }
-        Close => r#"<path d="M17.5 6.5 6.5 17.5"/><path d="m6.5 6.5 11 11"/>"#,
+        Close => r#"<path d="M18.5 5.5 5.5 18.5"/><path d="m5.5 5.5 13 13"/>"#,
         Minimize => r#"<path d="M5 12h14"/>"#,
-        Maximize => r#"<rect width="18" height="18" x="3" y="3" rx="2.5"/>"#,
+        Maximize => r#"<rect width="14" height="14" x="5" y="5" rx="2"/>"#,
+        Restore => {
+            r#"<rect width="11" height="11" x="4.5" y="8.5" rx="1.8"/><path d="M8 8.5V6.5A2 2 0 0 1 10 4.5h7.5a2 2 0 0 1 2 2V14a2 2 0 0 1-2 2h-2"/>"#
+        }
         Plus => r#"<path d="M5 12h14"/><path d="M12 5v14"/>"#,
         ChevronDown => r#"<path d="m6.5 9.5 5.5 5.5 5.5-5.5"/>"#,
         ChevronUp => r#"<path d="m17.5 14.5-5.5-5.5-5.5 5.5"/>"#,
@@ -173,6 +177,7 @@ mod tests {
             IconName::Close,
             IconName::Minimize,
             IconName::Maximize,
+            IconName::Restore,
             IconName::Plus,
             IconName::ChevronDown,
             IconName::ChevronUp,

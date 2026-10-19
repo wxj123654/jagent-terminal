@@ -418,7 +418,15 @@ impl Render for SettingsView {
                     .justify_center()
                     .cursor_pointer()
                     .hover(|h| h.bg(hex(colors::SURFACE)))
-                    .child(icon(IconName::Maximize, 12.5, hex(colors::MUTED)))
+                    .child(icon(
+                        if maximized {
+                            IconName::Restore
+                        } else {
+                            IconName::Maximize
+                        },
+                        12.5,
+                        hex(colors::MUTED),
+                    ))
                     .on_click(move |_, _, cx| {
                         let _ = weak_max.update(cx, |v, cx| {
                             v.maximized = !v.maximized;
@@ -436,7 +444,7 @@ impl Render for SettingsView {
                     .justify_center()
                     .cursor_pointer()
                     .hover(|h| h.bg(hex(colors::SURFACE)))
-                    .child(icon(IconName::Close, 14.0, hex(colors::MUTED)))
+                    .child(icon(IconName::Close, 12.5, hex(colors::MUTED)))
                     .on_click(move |_, w, cx| {
                         if let Some(ref cb) = close_x {
                             cb(w, cx);

@@ -770,6 +770,7 @@ impl RenderOnce for Sidebar {
                 .gap(px(2.0))
                 .pl(px(sidebar_pl))
                 .pr(px(6.0))
+                .rounded_t(px(sizes::ISLAND_RADIUS - 1.0))
                 .bg(crate::theme::rgba_css(13, 15, 21, 0.75))
                 .border_b_1()
                 .border_color(border_subtle),
