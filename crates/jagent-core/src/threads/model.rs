@@ -105,6 +105,8 @@ pub struct ChatMessage {
     pub id: String,
     pub role: MessageRole,
     pub text: String,
+    /// ACP `agent_thought_chunk` 拼出的思考正文；普通消息为空。不并入 `text`。
+    pub thought: String,
     pub at: i64,
     /// 该条回复关联的 ACP 工具调用列表（按首次出现序）
     pub tool_calls: Vec<ToolCallTrace>,

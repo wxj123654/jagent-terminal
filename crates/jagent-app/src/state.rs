@@ -20,13 +20,13 @@ use jagent_core::git::cli::{
 use jagent_core::git::{GitGraphStore, GraphCommit, MountPlan, RootPlan, Ticket};
 use jagent_core::presets::TerminalPreset;
 use jagent_core::settings::{FsAdapter, Settings, SettingsStore};
+#[cfg(test)]
+use jagent_core::threads::serialize_workspace_state;
 use jagent_core::threads::{
     ActiveTarget, ConversationKind, Effects, SessionEvent as CoreSessionEvent, SpawnRequest,
     StoreError, Thread, ThreadStore, Workspace, echo_reply, parse_persisted_acp_threads,
     parse_workspace_state, serialize_workspace_and_acp_state,
 };
-#[cfg(test)]
-use jagent_core::threads::serialize_workspace_state;
 use jagent_terminal::{SessionEvent as TermEvent, SpawnOptions, TerminalPool};
 
 /// 数据目录（`~/.j-agent`）：settings.json / state.json / 日志都在这里。
@@ -1113,10 +1113,11 @@ pub fn send_acp_with_prompt(
                                 if let Some(commands) = chunk.available_commands {
                                     s.threads.set_acp_available_commands(&thread_id, commands);
                                 }
-                                s.threads.update_streaming_reply_with_tools(
+                                s.threads.update_streaming_reply_full(
                                     &thread_id,
                                     ConversationKind::Acp,
                                     &chunk.text,
+                                    &chunk.thought,
                                     chunk.tool_calls,
                                 );
                                 s.flush(cx);
@@ -1613,7 +1614,9 @@ fn drain_pending_acp_configs(state: &Entity<AppState>, thread_id: &str, cx: &mut
     .detach();
 }
 
-/// 回写一轮结果：成功走 finish_send_with_tools，连接 / 协议失败走 finish_send_with_tools(Err)。thread 已 close 则丢弃（core 内部处理）。
+/// 回写一轮结果：成功走 finish_send_full；连接 / 协议失败也走 finish_send_full，
+/// 思考留空（错误发生在定稿边界，流式阶段已经写入的 thought 由 store 在错误时保留）。
+/// thread 已 close 则丢弃（core 内部处理）。
 async fn finish_acp(
     state: &WeakEntity<AppState>,
     thread_id: &str,
@@ -1624,16 +1627,18 @@ async fn finish_acp(
     cx.update(|cx| {
         state.update(cx, |s, cx| {
             match reply {
-                Ok(u) => s.threads.finish_send_with_tools(
+                Ok(u) => s.threads.finish_send_full(
                     thread_id,
                     ConversationKind::Acp,
                     Ok(u.text),
+                    u.thought,
                     u.tool_calls,
                 ),
-                Err(e) => s.threads.finish_send_with_tools(
+                Err(e) => s.threads.finish_send_full(
                     thread_id,
                     ConversationKind::Acp,
                     Err(e),
+                    String::new(),
                     Vec::new(),
                 ),
             }
@@ -2510,16 +2515,25 @@ mod tests {
                 let ws = s.workspaces()[0].id.clone();
                 let tid = s.spawn_from_preset("shell", Some(&ws), cx).unwrap();
                 let _c2 = s.create_chat(Some(&ws), cx).unwrap(); // 切走焦点，使终端处于后台
-                let sid = s.threads.thread(&tid).unwrap().as_terminal().unwrap().session_id;
-                s.settings.patch("notifications.desktop", serde_json::json!(true));
-                s.settings.patch("notifications.sound", serde_json::json!(true));
+                let sid = s
+                    .threads
+                    .thread(&tid)
+                    .unwrap()
+                    .as_terminal()
+                    .unwrap()
+                    .session_id;
+                s.settings
+                    .patch("notifications.desktop", serde_json::json!(true));
+                s.settings
+                    .patch("notifications.sound", serde_json::json!(true));
                 s.on_terminal_event(&TermEvent::Bell { id: sid }, cx);
                 assert_eq!(s.dispatched_notifications.len(), 1);
                 assert_eq!(s.dispatched_notifications[0].thread_id, tid);
                 assert!(s.dispatched_notifications[0].sound);
 
                 // 关闭桌面通知开关后不再派发
-                s.settings.patch("notifications.desktop", serde_json::json!(false));
+                s.settings
+                    .patch("notifications.desktop", serde_json::json!(false));
                 s.on_terminal_event(&TermEvent::Bell { id: sid }, cx);
                 assert_eq!(
                     s.dispatched_notifications.len(),

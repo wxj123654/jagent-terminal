@@ -23,6 +23,8 @@ use serde_json::Value;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AcpTurnUpdate {
     pub text: String,
+    /// `agent_thought_chunk` 拼出的思考正文，不并入 `text`。
+    pub thought: String,
     pub tool_calls: Vec<ToolCallTrace>,
     pub config_selectors: Option<Vec<AcpConfigSelector>>,
     pub available_commands: Option<Vec<AcpCommand>>,
@@ -488,6 +490,7 @@ impl AcpConnection {
                         }
                         let _ = tx.unbounded_send(AcpTurnUpdate {
                             text: turn.text_snapshot(),
+                            thought: turn.thought_snapshot(),
                             tool_calls: turn.tool_calls_snapshot(),
                             config_selectors: changed.then(|| self.config_selectors.clone()),
                             available_commands: turn.available_commands_snapshot(),
@@ -554,6 +557,7 @@ impl AcpConnection {
                         }
                         let _ = chunks.unbounded_send(AcpTurnUpdate {
                             text: turn.text_snapshot(),
+                            thought: turn.thought_snapshot(),
                             tool_calls: turn.tool_calls_snapshot(),
                             config_selectors: changed.then(|| self.config_selectors.clone()),
                             available_commands: turn.available_commands_snapshot(),
@@ -573,6 +577,7 @@ impl AcpConnection {
                     }
                     return Ok(AcpTurnUpdate {
                         text: turn.assemble_body(stop),
+                        thought: turn.thought_snapshot(),
                         tool_calls: turn.tool_calls_snapshot(),
                         config_selectors: (!self.config_selectors.is_empty())
                             .then(|| self.config_selectors.clone()),
@@ -898,6 +903,28 @@ done
             Err(e) => panic!("应为 Spawn 错误：{e}"),
             Ok(_) => panic!("不应握手成功"),
         }
+    }
+
+    #[test]
+    fn turn_update_keeps_thought_separate_from_reply_text() {
+        let mut turn = TurnCollector::default();
+        turn.on_update(&serde_json::json!({
+            "sessionUpdate": "agent_thought_chunk",
+            "content": { "type": "text", "text": "先想清楚" }
+        }));
+        turn.on_update(&serde_json::json!({
+            "sessionUpdate": "agent_message_chunk",
+            "content": { "type": "text", "text": "再回答" }
+        }));
+        let update = AcpTurnUpdate {
+            text: turn.text_snapshot(),
+            thought: turn.thought_snapshot(),
+            tool_calls: turn.tool_calls_snapshot(),
+            ..Default::default()
+        };
+        assert_eq!(update.text, "再回答");
+        assert_eq!(update.thought, "先想清楚");
+        assert!(!update.text.contains("先想清楚"));
     }
 
     #[test]

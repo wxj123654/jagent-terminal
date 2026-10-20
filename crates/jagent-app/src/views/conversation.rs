@@ -54,6 +54,7 @@ const MAX_CONTEXT_FILE_BYTES: usize = 32 * 1024;
 struct RenderedRow {
     id: String,
     text: String,
+    thought: String,
     tool_calls: Vec<ToolCallTrace>,
 }
 
@@ -246,6 +247,8 @@ pub struct ConversationView {
     scrolled_away_from_tail: Rc<std::cell::Cell<bool>>,
     /// 已手动收起工具调用详情的消息 id 集合（默认展开）
     collapsed_traces: HashSet<String>,
+    /// 已经套过「定稿默认折叠」的思考消息，避免每帧把用户展开的块折回去。
+    thought_seen: HashSet<String>,
     /// 当前附加到下一条消息的工作区相对文件路径列表
     context_files: Vec<String>,
     /// 工作区候选文件列表（后台扫描填充）
@@ -360,6 +363,7 @@ impl ConversationView {
             rendered_ui_scale_bits: crate::ui_scale::ui_scale().to_bits(),
             scrolled_away_from_tail: Rc::new(std::cell::Cell::new(false)),
             collapsed_traces: HashSet::new(),
+            thought_seen: HashSet::new(),
             context_files: Vec::new(),
             workspace_files: Vec::new(),
             workspace_cwd: String::new(),
@@ -588,7 +592,14 @@ impl ConversationView {
             .map(|c| c.kind);
         #[cfg(not(test))]
         if kind == Some(ConversationKind::Chat) {
-            let first_acp = self.state.read(cx).settings.get().acp_agents.first().cloned();
+            let first_acp = self
+                .state
+                .read(cx)
+                .settings
+                .get()
+                .acp_agents
+                .first()
+                .cloned();
             if let Some(ag) = first_acp {
                 self.state.update(cx, |s, cx| {
                     s.switch_acp_agent(&self.thread_id, &ag.id, &ag.label, cx);
@@ -721,18 +732,38 @@ impl Render for ConversationView {
         let narrow = crate::views::root::is_narrow(f32::from(window.viewport_size().width));
         // composer-shell 的 :focus-within 等价：textarea 自报焦点
         let shell_focused = self.input.read(cx).focus_handle(cx).is_focused(window);
-        let collapsed_traces = Rc::new(self.collapsed_traces.clone());
         let weak_for_list = cx.entity().downgrade();
         let list_for_re = self.list.clone();
         let state_for_list = self.state.clone();
         let tid_for_list = self.thread_id.clone();
 
         let show_pending_row = pending || (acp_connecting && messages.is_empty());
+        // 已定稿的思考首次出现时默认折叠；正在流式的最后一条不记，定稿后再折一次。
+        // thought_seen 挡住之后的帧，避免把用户手动展开的块折回去。
+        let streaming_id = if pending {
+            messages
+                .iter()
+                .rev()
+                .find(|m| !m.is_user())
+                .map(|m| m.id.as_str())
+        } else {
+            None
+        };
+        for m in &messages {
+            if m.thought.trim().is_empty() || Some(m.id.as_str()) == streaming_id {
+                continue;
+            }
+            if self.thought_seen.insert(m.id.clone()) {
+                self.collapsed_traces.insert(format!("thought:{}", m.id));
+            }
+        }
+        let collapsed_traces = Rc::new(self.collapsed_traces.clone());
         let snapshot: Vec<RenderedRow> = messages
             .iter()
             .map(|m| RenderedRow {
                 id: m.id.clone(),
                 text: m.text.clone(),
+                thought: m.thought.clone(),
                 tool_calls: m.tool_calls.clone(),
             })
             .collect();
@@ -804,6 +835,7 @@ impl Render for ConversationView {
                     md_states.get(&m.id),
                     narrow,
                     !collapsed_traces.contains(&m.id),
+                    !collapsed_traces.contains(&format!("thought:{}", m.id)),
                     &role_agent_label,
                     weak_for_list.clone(),
                     list_for_re.clone(),
@@ -982,6 +1014,7 @@ fn message_row(
     md_state: Option<&Entity<TextViewState>>,
     narrow: bool,
     trace_open: bool,
+    thought_open: bool,
     model_label: &str,
     weak: gpui::WeakEntity<ConversationView>,
     list_state: ListState,
@@ -1036,8 +1069,18 @@ fn message_row(
                     .child(format!("· {model_label}")),
             )
         });
-    // 从上往下的信息流顺序：1. Assistant 角色与模型头 → 2. 工具调用执行链卡片 → 3. Markdown 正文回复
+    // 从上往下：角色头 → 思考 → 工具调用链 → Markdown 正文
     col = col.child(role_header);
+    if !m.thought.trim().is_empty() && !m.is_error() {
+        col = col.child(thought_block(
+            ix,
+            &m.id,
+            &m.thought,
+            thought_open,
+            weak.clone(),
+            list_state.clone(),
+        ));
+    }
     if !m.tool_calls.is_empty() && !m.is_error() {
         col = col.child(tool_trace_card(
             ix,
@@ -1054,6 +1097,91 @@ fn message_row(
         col = col.child(markdown_body_with_state(m, md_state));
     }
     conv_in(narrow, MSG_ROW_GAP, col).into_any_element()
+}
+
+fn row_content_changed(old: &RenderedRow, new: &RenderedRow) -> bool {
+    old.text != new.text || old.thought != new.thought || old.tool_calls != new.tool_calls
+}
+
+/// 思考折叠块：流式期间默认展开，定稿后由调用方决定；正文不进 markdown 回复。
+fn thought_block(
+    ix: usize,
+    msg_id: &str,
+    thought: &str,
+    open: bool,
+    weak: gpui::WeakEntity<ConversationView>,
+    list_state: ListState,
+) -> gpui::Div {
+    let key = format!("thought:{msg_id}");
+    let summary = thought_summary(thought);
+    let mut block = v_flex()
+        .mb(px(12.0))
+        .rounded(px(9.0))
+        .border_1()
+        .border_color(hex(colors::BORDER_SUBTLE))
+        .bg(hex(colors::INPUT_BG))
+        .overflow_hidden()
+        .child(
+            h_flex()
+                .id(gpui::SharedString::from(format!("conv-thought-{msg_id}")))
+                .px(px(12.0))
+                .py(px(8.0))
+                .justify_between()
+                .items_center()
+                .cursor_pointer()
+                .child(
+                    h_flex().gap(px(6.0)).items_center().child(
+                        div()
+                            .font_family("monospace")
+                            .text_size(fs(10.5))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(hex(colors::MUTED))
+                            .child("思考"),
+                    ),
+                )
+                .child(
+                    div()
+                        .text_size(fs(11.5))
+                        .text_color(hex(colors::FAINT))
+                        .child(if open { "收起".to_owned() } else { summary }),
+                )
+                .on_click(move |_, _, cx| {
+                    let key = key.clone();
+                    let _ = weak.update(cx, |v, cx| {
+                        if !v.collapsed_traces.remove(&key) {
+                            v.collapsed_traces.insert(key);
+                        }
+                        list_state.remeasure_items(ix..ix + 1);
+                        cx.notify();
+                    });
+                }),
+        );
+    if open {
+        block = block.child(
+            div()
+                .px(px(12.0))
+                .pb(px(10.0))
+                .text_size(fs(12.5))
+                .line_height(px(20.0))
+                .text_color(hex(colors::MUTED))
+                .child(thought.to_owned()),
+        );
+    }
+    block
+}
+
+/// 折叠态摘要：取首个非空行，过长截断。
+fn thought_summary(thought: &str) -> String {
+    let line = thought
+        .lines()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim();
+    if line.chars().count() > 42 {
+        format!("{}…", line.chars().take(42).collect::<String>())
+    } else {
+        line.to_owned()
+    }
 }
 
 /// Agent 工具调用执行链卡片（真实绑定 `ChatMessage::tool_calls`，点击文件打开 `FileSurface`）。
@@ -2977,6 +3105,7 @@ fn plan_list_update(
         .map(|(id, text)| RenderedRow {
             id: id.clone(),
             text: text.clone(),
+            thought: String::new(),
             tool_calls: vec![],
         })
         .collect();
@@ -2985,6 +3114,7 @@ fn plan_list_update(
         .map(|(id, text)| RenderedRow {
             id: id.clone(),
             text: text.clone(),
+            thought: String::new(),
             tool_calls: vec![],
         })
         .collect();
@@ -3026,7 +3156,7 @@ fn plan_list_update_rows(
     for ix in 0..prefix {
         if let (Some(old_r), Some(new_r)) = (old.get(ix), new.get(ix))
             && old_r.id == new_r.id
-            && (old_r.text != new_r.text || old_r.tool_calls != new_r.tool_calls)
+            && row_content_changed(old_r, new_r)
         {
             remeasure.push(ix..ix + 1);
         }
@@ -3036,7 +3166,7 @@ fn plan_list_update_rows(
         let new_ix = new_len - suffix + offset;
         if let (Some(old_r), Some(new_r)) = (old.get(old_ix), new.get(new_ix))
             && old_r.id == new_r.id
-            && (old_r.text != new_r.text || old_r.tool_calls != new_r.tool_calls)
+            && row_content_changed(old_r, new_r)
         {
             remeasure.push(new_ix..new_ix + 1);
         }
@@ -3199,15 +3329,26 @@ mod tests {
     }
 
     #[test]
+    fn thought_summary_uses_the_first_line_and_truncates() {
+        assert_eq!(thought_summary("  \n先看协议\n再决定"), "先看协议");
+        let long = "这是一段确实超过四十二个汉字的思考摘要，用来确认折叠标题会被截断，不会把整段推理过程铺在标题上给用户看";
+        let summary = thought_summary(long);
+        assert!(summary.ends_with('…'));
+        assert!(summary.chars().count() <= 43);
+    }
+
+    #[test]
     fn plan_list_update_rows_remeasures_when_tool_calls_change() {
         let r1 = RenderedRow {
             id: "a1".into(),
             text: "思考中".into(),
+            thought: String::new(),
             tool_calls: vec![],
         };
         let r2 = RenderedRow {
             id: "a1".into(),
             text: "思考中".into(),
+            thought: String::new(),
             tool_calls: vec![ToolCallTrace {
                 id: "t1".into(),
                 kind: Some("read".into()),

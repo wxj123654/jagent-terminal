@@ -144,6 +144,8 @@ pub struct AcpSessionSummary {
 pub struct ReplayedMessage {
     pub is_user: bool,
     pub text: String,
+    /// 该轮 assistant 的思考正文（`agent_thought_chunk`）；user 消息为空。
+    pub thought: String,
     pub tool_calls: Vec<ToolCallTrace>,
 }
 
@@ -164,13 +166,15 @@ impl SessionLoadCollector {
     fn flush_assistant(&mut self) {
         if let Some(turn) = self.current_assistant.take() {
             let text = turn.assemble_body("end_turn");
+            let thought = turn.thought_snapshot();
             let tool_calls = turn.tool_calls_snapshot();
-            // 仅当存在实际正文或工具调用时才生成一条 Assistant 消息
+            // 仅当存在实际正文、思考或工具调用时才生成一条 Assistant 消息
             let has_real_text = !text.is_empty() && text != "（turn 结束，无输出）";
-            if has_real_text || !tool_calls.is_empty() {
+            if has_real_text || !thought.is_empty() || !tool_calls.is_empty() {
                 self.messages.push(ReplayedMessage {
                     is_user: false,
                     text: if has_real_text { text } else { String::new() },
+                    thought,
                     tool_calls,
                 });
             }
@@ -209,6 +213,7 @@ impl SessionLoadCollector {
                 self.messages.push(ReplayedMessage {
                     is_user: true,
                     text: trimmed.to_owned(),
+                    thought: String::new(),
                     tool_calls: Vec::new(),
                 });
             }
@@ -232,7 +237,7 @@ impl SessionLoadCollector {
                     turn.on_update(u);
                 }
             }
-            "tool_call" | "tool_call_update" => {
+            "agent_thought_chunk" | "tool_call" | "tool_call_update" => {
                 self.last_user_msg_id = None;
                 let turn = self
                     .current_assistant
@@ -272,6 +277,8 @@ impl SessionLoadCollector {
 pub struct TurnCollector {
     text_parts: Vec<String>,
     current_msg_id: Option<String>,
+    thought_parts: Vec<String>,
+    current_thought_id: Option<String>,
     /// toolCallId → 摘要（按出现序见 `tool_order`）
     tools: HashMap<String, ToolRow>,
     tool_order: Vec<String>,
@@ -381,16 +388,10 @@ impl TurnCollector {
                     self.ignored_startup_text = None;
                     return;
                 }
-                let mid = str_of(u, "messageId");
-                if let (Some(mid), Some(cur)) = (&mid, &self.current_msg_id)
-                    && mid != cur
-                {
-                    self.text_parts.push("\n\n".into()); // 新消息 → 新段落
-                }
-                if mid.is_some() {
-                    self.current_msg_id = mid;
-                }
-                self.text_parts.push(text.to_owned());
+                Self::push_text_chunk(u, &mut self.text_parts, &mut self.current_msg_id);
+            }
+            "agent_thought_chunk" => {
+                Self::push_text_chunk(u, &mut self.thought_parts, &mut self.current_thought_id);
             }
             "tool_call" => {
                 let id = u.get("toolCallId").map(value_to_id).unwrap_or_default();
@@ -443,7 +444,7 @@ impl TurnCollector {
                     self.available_commands = Some(cmds);
                 }
             }
-            // user_message_chunk（本地已落列）/ thought / plan / usage 等忽略
+            // user_message_chunk（本地已落列）/ plan / usage 等忽略
             _ => {}
         }
     }
@@ -478,6 +479,33 @@ impl TurnCollector {
         self.text_parts.concat()
     }
 
+    /// 当前已收到的思考正文（`agent_thought_chunk`），不进入回复正文。
+    pub fn thought_snapshot(&self) -> String {
+        self.thought_parts.concat().trim().to_owned()
+    }
+
+    /// 把一条 text content chunk 拼进 parts；`messageId` 变化时先插一个段落分隔。
+    fn push_text_chunk(u: &Value, parts: &mut Vec<String>, current_id: &mut Option<String>) {
+        let Some(c) = u.get("content") else { return };
+        if c.get("type").and_then(Value::as_str) != Some("text") {
+            return;
+        }
+        let Some(text) = c.get("text").and_then(Value::as_str) else {
+            return;
+        };
+        let mid = str_of(u, "messageId");
+        if let (Some(mid), Some(cur)) = (&mid, &*current_id)
+            && mid != cur
+            && !parts.is_empty()
+        {
+            parts.push("\n\n".into());
+        }
+        if mid.is_some() {
+            *current_id = mid;
+        }
+        parts.push(text.to_owned());
+    }
+
     /// 当前已收到的工具调用列表（按首次出现序），供 UI 实时渲染工具调用卡片。
     pub fn tool_calls_snapshot(&self) -> Vec<ToolCallTrace> {
         self.tool_order
@@ -507,7 +535,8 @@ impl TurnCollector {
             parts.push(format!("> 停止：{note}"));
         }
         if parts.is_empty() {
-            if self.tool_order.is_empty() {
+            // 已有工具调用或思考正文时不回退占位，避免把推理过程装进回复。
+            if self.tool_order.is_empty() && self.thought_snapshot().is_empty() {
                 "（turn 结束，无输出）".into()
             } else {
                 String::new()
@@ -1362,12 +1391,43 @@ mod tests {
             &mut t,
             &[
                 r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"image","data":"x"}}}}"#,
-                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"想想"}}}}"#,
                 r#"{"method":"session/update","params":{"update":{"sessionUpdate":"plan","entries":[]}}}"#,
                 r#"{"method":"session/update","params":{"update":{"noKind":true}}}"#,
             ],
         );
         assert_eq!(t.assemble("end_turn"), "（turn 结束，无输出）");
+        assert!(t.thought_snapshot().is_empty());
+    }
+
+    #[test]
+    fn thought_chunks_stay_out_of_the_reply_and_split_on_message_id() {
+        let mut t = TurnCollector::default();
+        feed(
+            &mut t,
+            &[
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_thought_chunk","messageId":"t1","content":{"type":"text","text":"先看"}}}}"#,
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_thought_chunk","messageId":"t1","content":{"type":"text","text":"协议"}}}}"#,
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"image","data":"x"}}}}"#,
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_thought_chunk","messageId":"t2","content":{"type":"text","text":"再答"}}}}"#,
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"正文"}}}}"#,
+            ],
+        );
+        assert_eq!(t.thought_snapshot(), "先看协议\n\n再答");
+        assert_eq!(t.assemble_body("end_turn"), "正文");
+        assert_eq!(t.text_snapshot(), "正文");
+    }
+
+    #[test]
+    fn thought_only_turn_does_not_invent_reply_text() {
+        let mut t = TurnCollector::default();
+        feed(
+            &mut t,
+            &[
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"  只有思考  "}}}}"#,
+            ],
+        );
+        assert_eq!(t.thought_snapshot(), "只有思考");
+        assert_eq!(t.assemble_body("end_turn"), "");
     }
 
     #[test]
@@ -1648,6 +1708,16 @@ mod tests {
             "content": { "type": "text", "text": "看看 Cargo.toml" }
         }));
         collector.on_update(&json!({
+            "sessionUpdate": "agent_thought_chunk",
+            "messageId": "th-1",
+            "content": { "type": "text", "text": "先定位清单" }
+        }));
+        collector.on_update(&json!({
+            "sessionUpdate": "agent_thought_chunk",
+            "messageId": "th-1",
+            "content": { "type": "text", "text": "再读内容" }
+        }));
+        collector.on_update(&json!({
             "sessionUpdate": "agent_message_chunk",
             "content": { "type": "text", "text": "正在读取文件…" }
         }));
@@ -1668,6 +1738,8 @@ mod tests {
         assert!(replayed[0].is_user);
         assert_eq!(replayed[0].text, "看看 Cargo.toml");
         assert!(!replayed[1].is_user);
+        assert_eq!(replayed[0].thought, "");
+        assert_eq!(replayed[1].thought, "先定位清单再读内容");
         assert_eq!(
             replayed[1].text,
             "正在读取文件…\n\n读取完成，包含 3 个 workspace 成员。"

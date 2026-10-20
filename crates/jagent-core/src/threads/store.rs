@@ -910,6 +910,7 @@ impl<E: Effects> ThreadStore<E> {
             id: self.next_msg_id(),
             role: MessageRole::User,
             text: text.to_owned(),
+            thought: String::new(),
             at: self.effects.now(),
             tool_calls: vec![],
         };
@@ -1082,6 +1083,7 @@ impl<E: Effects> ThreadStore<E> {
                     MessageRole::Assistant { error: false }
                 },
                 text: rm.text,
+                thought: rm.thought,
                 at: now,
                 tool_calls: rm.tool_calls,
             });
@@ -1219,6 +1221,7 @@ impl<E: Effects> ThreadStore<E> {
             id: self.next_msg_id(),
             role: MessageRole::Assistant { error: false },
             text: text.to_owned(),
+            thought: String::new(),
             at: self.effects.now(),
             tool_calls: vec![],
         };
@@ -1238,7 +1241,7 @@ impl<E: Effects> ThreadStore<E> {
 
     /// 收到 ACP / streaming backend 的增量文本：新建或更新同一条 assistant 行，不结束 pending。
     pub fn update_streaming_reply(&mut self, thread_id: &str, kind: ConversationKind, text: &str) {
-        self.update_streaming_reply_with_tools(thread_id, kind, text, Vec::new());
+        self.update_streaming_reply_full(thread_id, kind, text, "", Vec::new());
     }
 
     /// 收到 ACP 的增量文本与工具调用列表：新建或更新同一条 assistant 行，不结束 pending。
@@ -1247,6 +1250,18 @@ impl<E: Effects> ThreadStore<E> {
         thread_id: &str,
         kind: ConversationKind,
         text: &str,
+        tool_calls: Vec<ToolCallTrace>,
+    ) {
+        self.update_streaming_reply_full(thread_id, kind, text, "", tool_calls);
+    }
+
+    /// 收到 ACP 的增量正文、思考与工具调用：新建或更新同一条 assistant 行，不结束 pending。
+    pub fn update_streaming_reply_full(
+        &mut self,
+        thread_id: &str,
+        kind: ConversationKind,
+        text: &str,
+        thought: &str,
         tool_calls: Vec<ToolCallTrace>,
     ) {
         if self.thread(thread_id).is_none() {
@@ -1258,6 +1273,7 @@ impl<E: Effects> ThreadStore<E> {
                 id: self.next_msg_id(),
                 role: MessageRole::Assistant { error: false },
                 text: text.to_owned(),
+                thought: thought.to_owned(),
                 at: self.effects.now(),
                 tool_calls,
             };
@@ -1272,6 +1288,7 @@ impl<E: Effects> ThreadStore<E> {
             && matches!(last.role, MessageRole::Assistant { error: false })
         {
             last.text = text.to_owned();
+            last.thought = thought.to_owned();
             last.tool_calls = tool_calls;
         }
     }
@@ -1295,6 +1312,18 @@ impl<E: Effects> ThreadStore<E> {
         reply: Result<String, String>,
         tool_calls: Vec<ToolCallTrace>,
     ) {
+        self.finish_send_full(thread_id, kind, reply, String::new(), tool_calls);
+    }
+
+    /// 第二步（正文 + 思考 + 工具调用）：若有 streaming 行则定稿替换它；否则新建 assistant 行。
+    pub fn finish_send_full(
+        &mut self,
+        thread_id: &str,
+        kind: ConversationKind,
+        reply: Result<String, String>,
+        thought: String,
+        tool_calls: Vec<ToolCallTrace>,
+    ) {
         let (text, error) = match reply {
             Ok(t) => (t, false),
             Err(e) => {
@@ -1309,6 +1338,10 @@ impl<E: Effects> ThreadStore<E> {
                     && matches!(last.role, MessageRole::Assistant { error: false })
                 {
                     last.text = text;
+                    // 失败定稿没有新的思考正文时，保留流式阶段已经收到的 thought。
+                    if !error || !thought.is_empty() {
+                        last.thought = thought;
+                    }
                     last.role = MessageRole::Assistant { error };
                     if !tool_calls.is_empty() {
                         last.tool_calls = tool_calls;
@@ -1317,7 +1350,7 @@ impl<E: Effects> ThreadStore<E> {
                 *pending = false;
             }
         } else {
-            self.push_reply_with_tools(thread_id, kind, text, error, tool_calls);
+            self.push_reply_full(thread_id, kind, text, thought, error, tool_calls);
         }
     }
 
@@ -1344,10 +1377,23 @@ impl<E: Effects> ThreadStore<E> {
         error: bool,
         tool_calls: Vec<ToolCallTrace>,
     ) {
+        self.push_reply_full(thread_id, kind, text, String::new(), error, tool_calls);
+    }
+
+    fn push_reply_full(
+        &mut self,
+        thread_id: &str,
+        kind: ConversationKind,
+        text: String,
+        thought: String,
+        error: bool,
+        tool_calls: Vec<ToolCallTrace>,
+    ) {
         let msg = ChatMessage {
             id: self.next_msg_id(),
             role: MessageRole::Assistant { error },
             text,
+            thought,
             at: self.effects.now(),
             tool_calls,
         };

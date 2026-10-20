@@ -421,6 +421,63 @@ fn streaming_reply_updates_one_assistant_row_and_finish_replaces_it() {
 }
 
 #[test]
+fn acp_streaming_keeps_thought_beside_the_reply_until_finish() {
+    let (mut s, _) = store();
+    let id = s
+        .create_acp_thread("acp-codex", "Codex (ACP)", None)
+        .unwrap();
+    s.begin_send(&id, "hi", ConversationKind::Acp).unwrap();
+    s.update_streaming_reply_full(&id, ConversationKind::Acp, "", "先看协议", Vec::new());
+    s.update_streaming_reply_full(
+        &id,
+        ConversationKind::Acp,
+        "正文",
+        "先看协议再答",
+        Vec::new(),
+    );
+    let c = acp(&s, &id);
+    assert_eq!(c.messages.len(), 2);
+    assert_eq!(c.messages[1].text, "正文");
+    assert_eq!(c.messages[1].thought, "先看协议再答");
+    assert!(c.pending_reply);
+
+    s.finish_send_full(
+        &id,
+        ConversationKind::Acp,
+        Ok("正文定稿".into()),
+        "先看协议再答".into(),
+        Vec::new(),
+    );
+    let c = acp(&s, &id);
+    assert_eq!(c.messages.len(), 2);
+    assert_eq!(c.messages[1].text, "正文定稿");
+    assert_eq!(c.messages[1].thought, "先看协议再答");
+    assert!(!c.pending_reply);
+}
+
+#[test]
+fn failed_acp_finish_keeps_the_thought_already_streamed() {
+    let (mut s, _) = store();
+    let id = s
+        .create_acp_thread("acp-codex", "Codex (ACP)", None)
+        .unwrap();
+    s.begin_send(&id, "hi", ConversationKind::Acp).unwrap();
+    s.update_streaming_reply_full(&id, ConversationKind::Acp, "半截", "先想清楚", Vec::new());
+    s.finish_send_full(
+        &id,
+        ConversationKind::Acp,
+        Err("agent died".into()),
+        String::new(),
+        Vec::new(),
+    );
+    let c = acp(&s, &id);
+    assert!(c.messages[1].is_error());
+    assert!(c.messages[1].text.contains("agent died"));
+    assert_eq!(c.messages[1].thought, "先想清楚");
+    assert!(!c.pending_reply);
+}
+
+#[test]
 fn chat_rejected_send_appends_an_error_row_and_resets_pending() {
     let (mut s, _, id, _) = two_chats();
     s.begin_send(&id, "hi", ConversationKind::Chat).unwrap();
