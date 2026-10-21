@@ -45,6 +45,12 @@
 
 新增测试：`thought_timer_starts_only_with_thought_chunks`、`thought_duration_formats_like_claude_labels`；store 既有用例补 thought_ms 流式/定稿/失败保留断言。
 
+### 2026-10-21 离屏截图验收（v_shots `v_thought`，`ONLY_THOUGHT=1`）
+
+像素级复核通过：定稿折叠卡 27px 单行（「思考了 8 秒」标题文本 + 右侧首行摘要 + ChevronRight），流式展开卡 82px（●「正在思考… 3 秒」accent 呼吸圆点在标题行 380-387 + 三行灰正文），尾部 thinking 占位行、工具卡、composer 均正常。无点击时帧间逐字节稳定；点击后 store 数据层完好（msgs/pending 不变）。
+
+**发现一个共性基建问题（非本功能引入）**：pending ACP 会话中点击折叠卡片标题（thought 卡或 #52 既有工具卡同样复现）触发 `remeasure_items` 后列表滚动跳飞、画面空白；纯正文 ACP 场景与 Chat 场景（含注入 pending）均无此现象。已二分定位到「可折叠卡片 + pending + Tail 跟随」组合，待单独修复。
+
 ## 约定侧
 
 无硬违规：未改 `.refs`，未引入依赖。

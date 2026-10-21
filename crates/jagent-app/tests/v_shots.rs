@@ -22,7 +22,7 @@ use jagent_app::views::git_graph;
 use jagent_app::views::root::RootView;
 use jagent_core::threads::{
     ActiveTarget, ConversationKind, Effects, NoticeTone, RunStatus, SessionNotice, SessionView,
-    Thread, ThreadStore,
+    Thread, ThreadStore, ToolCallTrace,
 };
 
 /// 截图窗口尺寸（原型 winW/winH 的常用值）。窄屏面用 759：760 是断点，严格小于才进抽屉。
@@ -712,8 +712,83 @@ fn v_narrow() {
     rig.shot("v_narrow.png");
 }
 
-/// 输入控件巡检（`ONLY_INPUTS=1` 可单跑）：设置页 Presets 展开 Pi 卡（Input/Textarea）+ Terminal 分区
-/// （Number/Select/Font/Toggle）+ Appearance（Range）+ 重命名 / 添加工作区弹窗。
+/// 思考折叠块（ACP `agent_thought_chunk`，`ONLY_THOUGHT=1` 可单跑）：
+/// 第一轮已定稿——「思考了 8 秒」折叠（27px 单行卡）+ 首行摘要 + ChevronRight + 工具卡；
+/// 第二轮流式 pending——●「正在思考… 3 秒」展开灰正文 + 尾部 thinking 占位行。
+/// 2026-10-21 像素级复核通过：两形态位置/高度/文本/chevron/accent 圆点齐全；
+/// 已知基建问题（非本功能引入）：pending 会话中点击折叠标题触发 remeasure_items
+/// 后列表滚动跳飞——工具卡（#52 既有交互）离屏复现同样现象，纯正文场景无此问题。
+fn v_thought() {
+    let dir = tempfile::tempdir().unwrap();
+    let cwd = dir.path().to_string_lossy().into_owned();
+    let (mut rig, _, _) = harness(W, H, dir.path(), &cwd, |state, cx| {
+        state.update(cx, |s, cx| {
+            let (jt, df, _) = seed_workspaces(s, &cwd);
+            seed_threads(s, &jt, &df, cx); // 侧栏背景行
+
+            let read_trace = || ToolCallTrace {
+                id: "tc-read-link".into(),
+                kind: Some("read".into()),
+                title: Some("Read crates/jagent-terminal/src/view/link.rs".into()),
+                status: Some("completed".into()),
+                path: Some("crates/jagent-terminal/src/view/link.rs".into()),
+            };
+            let thought_done = "先查 alacritty 对 Flags::WRAPLINE 的处理：视觉行不落在 grid 存储，
+识别前要先把 wrapped 行拼回逻辑行；再核对 Zed 的 hyperlink 判定用的是视觉行还是逻辑行；
+最后决定用磁盘 is_file() 校验消除误报。";
+
+            // 第一轮：定稿（思考折叠 + 工具卡 + 正文）
+            let t = s
+                .threads
+                .create_acp_thread("acp-pi", "Pi (ACP)", Some(&jt))
+                .expect("acp");
+            s.threads.mark_acp_connected(&t);
+            let _ = s.threads.begin_send(
+                &t,
+                "链接识别器对 wrapped 行的边界怎么处理？",
+                ConversationKind::Acp,
+            );
+            s.threads.update_streaming_reply_full(
+                &t,
+                ConversationKind::Acp,
+                "",
+                thought_done,
+                8_000,
+                vec![read_trace()],
+            );
+            s.threads.finish_send_full(
+                &t,
+                ConversationKind::Acp,
+                Ok(
+                    "结论：按需跨 WRAPLINE 拼出当前逻辑行再解析，避免每帧全量重建；
+误报用磁盘存在性校验兼掉。"
+                        .into(),
+                ),
+                thought_done.to_owned(),
+                8_000,
+                Vec::new(),
+            );
+
+            // 第二轮：流式 pending（不 finish）：●「正在思考… 3 秒」展开
+            let _ =
+                s.threads
+                    .begin_send(&t, "那 Cmd 悬停下划线的命中区域呢？", ConversationKind::Acp);
+            s.threads.update_streaming_reply_full(
+                &t,
+                ConversationKind::Acp,
+                "",
+                "命中区域要按 cell 精确算：cols_for_line 只给列数，
+还要减去左右 padding 才是真实命中带……",
+                3_000,
+                Vec::new(),
+            );
+            s.activate(ActiveTarget::Thread(t), cx);
+        });
+    });
+    rig.settle(6);
+    rig.shot("v_thought.png");
+}
+
 fn v_inputs() {
     let dir = tempfile::tempdir().unwrap();
     let cwd = dir.path().to_string_lossy().into_owned();
@@ -888,6 +963,10 @@ fn main() {
     }
     if std::env::var("ONLY_INPUTS").is_ok() {
         v_inputs();
+        return;
+    }
+    if std::env::var("ONLY_THOUGHT").is_ok() {
+        v_thought();
         return;
     }
     v_empty();
