@@ -55,6 +55,10 @@ struct RenderedRow {
     id: String,
     text: String,
     thought: String,
+    /// 思考耗时（毫秒）：流式期间为实时快照，驱动「正在思考… Ns」标题跳动。
+    thought_ms: u64,
+    /// 是否处于本轮流式生成中（pending 的最后一条 assistant 行）。
+    streaming: bool,
     tool_calls: Vec<ToolCallTrace>,
 }
 
@@ -745,12 +749,12 @@ impl Render for ConversationView {
                 .iter()
                 .rev()
                 .find(|m| !m.is_user())
-                .map(|m| m.id.as_str())
+                .map(|m| m.id.clone())
         } else {
             None
         };
         for m in &messages {
-            if m.thought.trim().is_empty() || Some(m.id.as_str()) == streaming_id {
+            if m.thought.trim().is_empty() || Some(m.id.as_str()) == streaming_id.as_deref() {
                 continue;
             }
             if self.thought_seen.insert(m.id.clone()) {
@@ -764,6 +768,8 @@ impl Render for ConversationView {
                 id: m.id.clone(),
                 text: m.text.clone(),
                 thought: m.thought.clone(),
+                thought_ms: m.thought_ms,
+                streaming: pending && streaming_id.as_deref() == Some(m.id.as_str()),
                 tool_calls: m.tool_calls.clone(),
             })
             .collect();
@@ -836,6 +842,7 @@ impl Render for ConversationView {
                     narrow,
                     !collapsed_traces.contains(&m.id),
                     !collapsed_traces.contains(&format!("thought:{}", m.id)),
+                    pending && streaming_id.as_deref() == Some(m.id.as_str()),
                     &role_agent_label,
                     weak_for_list.clone(),
                     list_for_re.clone(),
@@ -1015,6 +1022,7 @@ fn message_row(
     narrow: bool,
     trace_open: bool,
     thought_open: bool,
+    thought_streaming: bool,
     model_label: &str,
     weak: gpui::WeakEntity<ConversationView>,
     list_state: ListState,
@@ -1076,6 +1084,8 @@ fn message_row(
             ix,
             &m.id,
             &m.thought,
+            m.thought_ms,
+            thought_streaming,
             thought_open,
             weak.clone(),
             list_state.clone(),
@@ -1100,20 +1110,33 @@ fn message_row(
 }
 
 fn row_content_changed(old: &RenderedRow, new: &RenderedRow) -> bool {
+    // thought_ms 标题变化不影响行高，不计入；streaming 态切换也不改高度。
     old.text != new.text || old.thought != new.thought || old.tool_calls != new.tool_calls
 }
 
 /// 思考折叠块：流式期间默认展开，定稿后由调用方决定；正文不进 markdown 回复。
+/// 思考折叠块（对标 Claude「Thought for Ns」）：流式展开显示实时进度，定稿默认折叠。
+#[allow(clippy::too_many_arguments)]
 fn thought_block(
     ix: usize,
     msg_id: &str,
     thought: &str,
+    ms: u64,
+    streaming: bool,
     open: bool,
     weak: gpui::WeakEntity<ConversationView>,
     list_state: ListState,
 ) -> gpui::Div {
     let key = format!("thought:{msg_id}");
     let summary = thought_summary(thought);
+    // 标题（对标 Claude「Thought for Ns」）：流式「正在思考… Ns」；
+    // 定稿「思考了 Ns」；不足 1 秒或 session/load 回放无时长时退化为「思考」。
+    let title = match (streaming, format_thought_duration(ms)) {
+        (true, Some(d)) => format!("正在思考… {d}"),
+        (true, None) => "正在思考…".to_owned(),
+        (false, Some(d)) => format!("思考了 {d}"),
+        (false, None) => "思考".to_owned(),
+    };
     let mut block = v_flex()
         .mb(px(12.0))
         .rounded(px(9.0))
@@ -1130,20 +1153,51 @@ fn thought_block(
                 .items_center()
                 .cursor_pointer()
                 .child(
-                    h_flex().gap(px(6.0)).items_center().child(
-                        div()
-                            .font_family("monospace")
-                            .text_size(fs(10.5))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(hex(colors::MUTED))
-                            .child("思考"),
-                    ),
+                    h_flex()
+                        .gap(px(7.0))
+                        .items_center()
+                        // 流式期间 accent 呼吸圆点（与尾部 thinking 占位行同款）；定稿后退场
+                        .children(streaming.then(|| {
+                            div()
+                                .size(px(6.0))
+                                .flex_shrink_0()
+                                .rounded(px(9999.0))
+                                .bg(hex(colors::ACCENT))
+                                .shadow(thinking_dot_shadow())
+                        }))
+                        .child(
+                            div()
+                                .font_family("monospace")
+                                .text_size(fs(10.5))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(hex(colors::MUTED))
+                                .child(title),
+                        ),
                 )
                 .child(
-                    div()
-                        .text_size(fs(11.5))
-                        .text_color(hex(colors::FAINT))
-                        .child(if open { "收起".to_owned() } else { summary }),
+                    h_flex()
+                        .gap(px(6.0))
+                        .items_center()
+                        .overflow_hidden()
+                        .min_w_0()
+                        // 折叠时右侧显示首行摘要；展开时让位给标题
+                        .children((!open).then(move || {
+                            div()
+                                .text_size(fs(11.5))
+                                .text_color(hex(colors::FAINT))
+                                .truncate()
+                                .max_w(px(360.0))
+                                .child(summary)
+                        }))
+                        .child(icon(
+                            if open {
+                                IconName::ChevronDown
+                            } else {
+                                IconName::ChevronRight
+                            },
+                            12.0,
+                            hex(colors::FAINT),
+                        )),
                 )
                 .on_click(move |_, _, cx| {
                     let key = key.clone();
@@ -1181,6 +1235,35 @@ fn thought_summary(thought: &str) -> String {
         format!("{}…", line.chars().take(42).collect::<String>())
     } else {
         line.to_owned()
+    }
+}
+
+/// 思考耗时展示（对标 Claude「Thought for N seconds」）：不足 1 秒返回 None（标题退化），
+/// 其余按「N 秒 / N 分 M 秒 / N 时 M 分」速读分级。
+fn format_thought_duration(ms: u64) -> Option<String> {
+    let s = ms / 1000;
+    if s == 0 {
+        return None;
+    }
+    if s < 60 {
+        return Some(format!("{s} 秒"));
+    }
+    let m = s / 60;
+    let rest = s % 60;
+    if m < 60 {
+        Some(if rest == 0 {
+            format!("{m} 分钟")
+        } else {
+            format!("{m} 分 {rest} 秒")
+        })
+    } else {
+        let h = m / 60;
+        let m_rest = m % 60;
+        Some(if m_rest == 0 {
+            format!("{h} 小时")
+        } else {
+            format!("{h} 时 {m_rest} 分")
+        })
     }
 }
 
@@ -3106,6 +3189,8 @@ fn plan_list_update(
             id: id.clone(),
             text: text.clone(),
             thought: String::new(),
+            thought_ms: 0,
+            streaming: false,
             tool_calls: vec![],
         })
         .collect();
@@ -3115,6 +3200,8 @@ fn plan_list_update(
             id: id.clone(),
             text: text.clone(),
             thought: String::new(),
+            thought_ms: 0,
+            streaming: false,
             tool_calls: vec![],
         })
         .collect();
@@ -3338,17 +3425,39 @@ mod tests {
     }
 
     #[test]
+    fn thought_duration_formats_like_claude_labels() {
+        // 不足 1 秒：标题退化为「思考」，不显示时长
+        assert_eq!(format_thought_duration(0), None);
+        assert_eq!(format_thought_duration(999), None);
+        assert_eq!(format_thought_duration(1_000), Some("1 秒".into()));
+        assert_eq!(format_thought_duration(45_000), Some("45 秒".into()));
+        // 分钟级：整分不带秒尾
+        assert_eq!(format_thought_duration(60_000), Some("1 分钟".into()));
+        assert_eq!(format_thought_duration(80_000), Some("1 分 20 秒".into()));
+        // 小时级：Claude 同款「1h 21m」粒度
+        assert_eq!(format_thought_duration(3_600_000), Some("1 小时".into()));
+        assert_eq!(
+            format_thought_duration(4_900_000),
+            Some("1 时 21 分".into())
+        );
+    }
+
+    #[test]
     fn plan_list_update_rows_remeasures_when_tool_calls_change() {
         let r1 = RenderedRow {
             id: "a1".into(),
             text: "思考中".into(),
             thought: String::new(),
+            thought_ms: 0,
+            streaming: false,
             tool_calls: vec![],
         };
         let r2 = RenderedRow {
             id: "a1".into(),
             text: "思考中".into(),
             thought: String::new(),
+            thought_ms: 0,
+            streaming: false,
             tool_calls: vec![ToolCallTrace {
                 id: "t1".into(),
                 kind: Some("read".into()),

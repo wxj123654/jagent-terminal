@@ -922,6 +922,7 @@ mod tests {
             role: MessageRole::Assistant { error: true },
             text: "x".into(),
             thought: String::new(),
+            thought_ms: 0,
             at: 0,
             tool_calls: vec![],
         });

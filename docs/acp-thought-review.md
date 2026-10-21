@@ -1,6 +1,6 @@
 # ACP 思考内容审查
 
-日期：2026-10-20。范围是未提交的 ACP `agent_thought_chunk` 展示，对照确认过的方案。不含同工作区里无关的 rustfmt diff。
+日期：2026-10-20。范围是未提交的 ACP `agent_thought_chunk` 展示，对照确认过的方案。不含同工作区里无关的 rustfmt diff。后续 2026-10-22 对标 Claude 补齐时长标签与展开指示，见文末。
 
 ## 方案
 
@@ -32,7 +32,18 @@
 
 ### 4. 测试还缺折叠块本身
 
-收集器覆盖了拼接、分段、与正文隔离、只有思考没有正文。store 覆盖了流式写入、定稿保留、失败保留。视图只有摘要截断测试，没有「生成中展开、定稿后折叠」的渲染测试。
+收集器覆盖了拼接、分段、与正文隔离、只有思考没有正文。store 覆盖了流式写入、定稿保留、失败保留。视图只有摘要截断测试，没有「生成中展开、定稿后折叠」的渲染测试。（渲染测试需要离屏窗口，仍未补；时长格式化已补单测。）
+
+## 2026-10-22 对标完善：Claude「Thought for N seconds」
+
+对标 Claude Desktop / Claude Code 的思考折叠块（Zed 社区同款诉求 zed#49960）：
+
+- **时长统计**：`TurnCollector` 记录首/末 `agent_thought_chunk` 的 `Instant`，输出 `thought_ms()`；经 `AcpTurnUpdate.thought_ms` → `update_streaming_reply_full`/`finish_send_full` → `ChatMessage.thought_ms` 全链路传递。流式期间每帧写「已思考时长」实时快照（标题秒数随 chunk 跳动，chunk 停止后冻结在末 chunk 时刻，语义与 Claude 一致），定稿写最终值，失败定稿与 thought 正文一同保留。`session/load` 回放无时间信息，恒为 0。
+- **标题标签**：流式「正在思考… Ns」+ accent 呼吸圆点（复用 thinking 占位行同款）；定稿「思考了 Ns」；不足 1 秒或回放无时长退化「思考」。`format_thought_duration` 按 N 秒 / N 分 M 秒 / N 时 M 分分级。
+- **展开指示**：折叠态右侧改为「首行摘要 + ChevronRight」，展开态 ChevronDown，替换原「收起」文字。
+- **remeasure 粒度**：`row_content_changed` 不计入 `thought_ms`（标题文本变化不影响行高），避免秒数跳动触发逐帧重测。
+
+新增测试：`thought_timer_starts_only_with_thought_chunks`、`thought_duration_formats_like_claude_labels`；store 既有用例补 thought_ms 流式/定稿/失败保留断言。
 
 ## 约定侧
 

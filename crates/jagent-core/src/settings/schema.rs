@@ -702,15 +702,21 @@ mod tests {
 
         // 边界与合法值
         assert_eq!(
-            parse(json!({ "appearance": { "uiScale": 80 } })).appearance.ui_scale,
+            parse(json!({ "appearance": { "uiScale": 80 } }))
+                .appearance
+                .ui_scale,
             80
         );
         assert_eq!(
-            parse(json!({ "appearance": { "uiScale": 125 } })).appearance.ui_scale,
+            parse(json!({ "appearance": { "uiScale": 125 } }))
+                .appearance
+                .ui_scale,
             125
         );
         assert_eq!(
-            parse(json!({ "appearance": { "uiScale": 150 } })).appearance.ui_scale,
+            parse(json!({ "appearance": { "uiScale": 150 } }))
+                .appearance
+                .ui_scale,
             150
         );
 
@@ -719,15 +725,21 @@ mod tests {
         assert_eq!(under.appearance.ui_scale, 100);
         assert!(under.appearance.word_wrap);
         assert_eq!(
-            parse(json!({ "appearance": { "uiScale": 151 } })).appearance.ui_scale,
+            parse(json!({ "appearance": { "uiScale": 151 } }))
+                .appearance
+                .ui_scale,
             100
         );
         assert_eq!(
-            parse(json!({ "appearance": { "uiScale": 110.5 } })).appearance.ui_scale,
+            parse(json!({ "appearance": { "uiScale": 110.5 } }))
+                .appearance
+                .ui_scale,
             100
         );
         assert_eq!(
-            parse(json!({ "appearance": { "uiScale": "110%" } })).appearance.ui_scale,
+            parse(json!({ "appearance": { "uiScale": "110%" } }))
+                .appearance
+                .ui_scale,
             100
         );
 

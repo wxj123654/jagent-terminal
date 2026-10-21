@@ -498,7 +498,10 @@ impl TerminalView {
                     _ => {}
                 }
             }
-            if ks.modifiers.control && !ks.modifiers.shift && !ks.modifiers.platform && !is_alt_screen
+            if ks.modifiers.control
+                && !ks.modifiers.shift
+                && !ks.modifiers.platform
+                && !is_alt_screen
             {
                 match ks.key.as_str() {
                     "home" => {

@@ -146,6 +146,8 @@ pub struct ReplayedMessage {
     pub text: String,
     /// 该轮 assistant 的思考正文（`agent_thought_chunk`）；user 消息为空。
     pub thought: String,
+    /// 思考耗时（毫秒）。`session/load` 回放没有时间信息，恒为 0。
+    pub thought_ms: u64,
     pub tool_calls: Vec<ToolCallTrace>,
 }
 
@@ -167,6 +169,7 @@ impl SessionLoadCollector {
         if let Some(turn) = self.current_assistant.take() {
             let text = turn.assemble_body("end_turn");
             let thought = turn.thought_snapshot();
+            let thought_ms = turn.thought_ms();
             let tool_calls = turn.tool_calls_snapshot();
             // 仅当存在实际正文、思考或工具调用时才生成一条 Assistant 消息
             let has_real_text = !text.is_empty() && text != "（turn 结束，无输出）";
@@ -175,6 +178,7 @@ impl SessionLoadCollector {
                     is_user: false,
                     text: if has_real_text { text } else { String::new() },
                     thought,
+                    thought_ms,
                     tool_calls,
                 });
             }
@@ -214,6 +218,7 @@ impl SessionLoadCollector {
                     is_user: true,
                     text: trimmed.to_owned(),
                     thought: String::new(),
+                    thought_ms: 0,
                     tool_calls: Vec::new(),
                 });
             }
@@ -279,6 +284,10 @@ pub struct TurnCollector {
     current_msg_id: Option<String>,
     thought_parts: Vec<String>,
     current_thought_id: Option<String>,
+    /// 首个 `agent_thought_chunk` 到达时刻；「思考了多久」的起点。
+    thought_started_at: Option<std::time::Instant>,
+    /// 最后一个 `agent_thought_chunk` 到达时刻；思考流结束后不再计时。
+    thought_last_at: Option<std::time::Instant>,
     /// toolCallId → 摘要（按出现序见 `tool_order`）
     tools: HashMap<String, ToolRow>,
     tool_order: Vec<String>,
@@ -392,6 +401,11 @@ impl TurnCollector {
             }
             "agent_thought_chunk" => {
                 Self::push_text_chunk(u, &mut self.thought_parts, &mut self.current_thought_id);
+                if !self.thought_parts.is_empty() {
+                    let now = std::time::Instant::now();
+                    self.thought_started_at.get_or_insert(now);
+                    self.thought_last_at = Some(now);
+                }
             }
             "tool_call" => {
                 let id = u.get("toolCallId").map(value_to_id).unwrap_or_default();
@@ -482,6 +496,14 @@ impl TurnCollector {
     /// 当前已收到的思考正文（`agent_thought_chunk`），不进入回复正文。
     pub fn thought_snapshot(&self) -> String {
         self.thought_parts.concat().trim().to_owned()
+    }
+
+    /// 思考耗时（毫秒）：首个到最后一个 `agent_thought_chunk` 的间隔；未收到思考为 0。
+    pub fn thought_ms(&self) -> u64 {
+        match (self.thought_started_at, self.thought_last_at) {
+            (Some(start), Some(last)) => last.saturating_duration_since(start).as_millis() as u64,
+            _ => 0,
+        }
     }
 
     /// 把一条 text content chunk 拼进 parts；`messageId` 变化时先插一个段落分隔。
@@ -1217,6 +1239,31 @@ mod tests {
                 turn.on_update(u);
             }
         }
+    }
+
+    #[test]
+    fn thought_timer_starts_only_with_thought_chunks() {
+        let mut t = TurnCollector::default();
+        feed(
+            &mut t,
+            &[
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"正文"}}}}"#,
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCallId":"t1","toolKind":"read"}}}"#,
+            ],
+        );
+        assert_eq!(t.thought_ms(), 0, "没有思考 chunk 时不计时");
+        assert!(t.thought_started_at.is_none());
+
+        feed(
+            &mut t,
+            &[
+                r#"{"method":"session/update","params":{"update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"想一想"}}}}"#,
+            ],
+        );
+        assert!(t.thought_started_at.is_some(), "首个思考 chunk 启动计时");
+        assert!(t.thought_last_at.is_some());
+        // 单 chunk 内 started==last，间隔为 0；不 panic、不溢出
+        assert_eq!(t.thought_ms(), 0);
     }
 
     #[test]

@@ -251,34 +251,39 @@ impl Render for WorkspaceDialogView {
                                 .text_color(hex(colors::FAINT))
                                 .child("快速选择:"),
                         )
-                        .children(suggestions.into_iter().enumerate().map(move |(idx, sample)| {
-                            let label = shorten_home_path(&sample);
-                            let this_item = this_pick.clone();
-                            div()
-                                .id(("ws-suggest", idx))
-                                .px(px(7.0))
-                                .py(px(2.0))
-                                .rounded(px(4.0))
-                                .bg(hex(colors::INPUT_BG))
-                                .border_1()
-                                .border_color(hex(colors::BORDER_SUBTLE))
-                                .font_family("monospace")
-                                .text_size(fs(10.5))
-                                .text_color(hex(colors::MUTED))
-                                .cursor_pointer()
-                                .hover(|h| h.bg(hex(colors::SURFACE)))
-                                .child(label)
-                                .on_click(move |_, window, cx| {
-                                    let sample = sample.clone();
-                                    this_item.update(cx, |v, cx| {
-                                        v.error = None;
-                                        v.path.update(cx, |inp, cx| {
-                                            inp.set_value(sample, window, cx);
-                                        });
-                                        cx.notify();
-                                    });
-                                })
-                        })),
+                        .children(
+                            suggestions
+                                .into_iter()
+                                .enumerate()
+                                .map(move |(idx, sample)| {
+                                    let label = shorten_home_path(&sample);
+                                    let this_item = this_pick.clone();
+                                    div()
+                                        .id(("ws-suggest", idx))
+                                        .px(px(7.0))
+                                        .py(px(2.0))
+                                        .rounded(px(4.0))
+                                        .bg(hex(colors::INPUT_BG))
+                                        .border_1()
+                                        .border_color(hex(colors::BORDER_SUBTLE))
+                                        .font_family("monospace")
+                                        .text_size(fs(10.5))
+                                        .text_color(hex(colors::MUTED))
+                                        .cursor_pointer()
+                                        .hover(|h| h.bg(hex(colors::SURFACE)))
+                                        .child(label)
+                                        .on_click(move |_, window, cx| {
+                                            let sample = sample.clone();
+                                            this_item.update(cx, |v, cx| {
+                                                v.error = None;
+                                                v.path.update(cx, |inp, cx| {
+                                                    inp.set_value(sample, window, cx);
+                                                });
+                                                cx.notify();
+                                            });
+                                        })
+                                }),
+                        ),
                 )
             })
             .child(

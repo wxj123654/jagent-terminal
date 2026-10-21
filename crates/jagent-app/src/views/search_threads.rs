@@ -305,17 +305,7 @@ impl Render for SearchThreadsView {
                     .children(rows.into_iter().enumerate().map(
                         move |(
                             ix,
-                            (
-                                id,
-                                title,
-                                ws_name,
-                                ic,
-                                ic_col,
-                                pinned,
-                                pending,
-                                has_bell,
-                                is_exited,
-                            ),
+                            (id, title, ws_name, ic, ic_col, pinned, pending, has_bell, is_exited),
                         )| {
                             let st = state.clone();
                             let is_selected = ix == selected_ix;

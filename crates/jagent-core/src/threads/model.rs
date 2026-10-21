@@ -107,6 +107,9 @@ pub struct ChatMessage {
     pub text: String,
     /// ACP `agent_thought_chunk` 拼出的思考正文；普通消息为空。不并入 `text`。
     pub thought: String,
+    /// 思考耗时（毫秒）：首个到最后一个 `agent_thought_chunk` 的间隔；无思考或 session/load 回放为 0。
+    /// 流式期间是已思考时长的实时快照，定稿后为最终值。
+    pub thought_ms: u64,
     pub at: i64,
     /// 该条回复关联的 ACP 工具调用列表（按首次出现序）
     pub tool_calls: Vec<ToolCallTrace>,

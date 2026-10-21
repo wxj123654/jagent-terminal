@@ -1232,262 +1232,260 @@ impl Render for RootView {
             is_fullscreen,
             !narrow && self.sidebar_open,
         );
-        let workbench_header = bind_titlebar_drag(
-            h_flex()
-                .id("title-bar")
-                .h(px(sizes::TOOLBAR_HEIGHT))
-                .flex_shrink_0()
-                .items_center()
-                .pl(px(workbench_pl))
-                .pr(px(if cfg!(target_os = "macos") { 6.0 } else { 0.0 }))
-                .when(!narrow, |d| d.rounded_t(px(sizes::ISLAND_RADIUS - 1.0)))
-                .bg(crate::theme::rgba_css(13, 15, 21, 0.75))
-                .border_b_1()
-                .border_color(hex(colors::BORDER_SUBTLE)),
-            "workbench-titlebar-drag",
-            window,
-            cx,
-        )
-        // 窄屏汉堡钮 / 宽屏侧栏收起态的恢复钮
-        .when(narrow || !self.sidebar_open, |tb| {
-            let this = cx.entity().downgrade();
-            let (ic, on) = if narrow {
-                (IconName::Menu, self.sidebar_open)
-            } else {
-                (IconName::PanelLeft, false)
-            };
-            tb.child(stop_titlebar_drag(
-                div()
-                    .id("titlebar-sidebar-toggle")
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .size(fs(28.0))
-                    .rounded(px(7.0))
-                    .ml(px(6.0))
-                    .mr(px(2.0))
-                    .flex_shrink_0()
-                    .cursor_pointer()
-                    .when(on, |d| d.bg(hex(colors::SURFACE_ACTIVE)))
-                    .when(!on, |d| d.hover(|h| h.bg(hex(colors::SURFACE))))
-                    .child(icon(
-                        ic,
-                        15.0,
-                        if on {
-                            hex(colors::TEXT_BRIGHT)
-                        } else {
-                            hex(colors::MUTED)
-                        },
-                    ))
-                    .on_click(move |_, _, cx| {
-                        let _ = this.update(cx, |v, cx| {
-                            v.sidebar_open = !v.sidebar_open;
-                            cx.notify();
-                        });
-                    }),
-            ))
-        })
-        // 左侧工作区路径面包屑（点击返回工作区 Bento 启动台）
-        .child({
-            let this_ctx = cx.entity().downgrade();
-            let state_ctx = self.state.clone();
-            let target_ws = ctx_ws_id.clone();
-            stop_titlebar_drag(
+        let workbench_header =
+            bind_titlebar_drag(
                 h_flex()
-                    .id("tb-context")
-                    .h_full()
-                    .items_center()
-                    .gap(px(6.0))
-                    .pl(px(12.0))
-                    .pr(px(8.0))
+                    .id("title-bar")
+                    .h(px(sizes::TOOLBAR_HEIGHT))
                     .flex_shrink_0()
-                    .cursor_pointer()
-                    .child(icon(ctx_icon, 13.5, hex(colors::ACCENT_HOVER)))
-                    .child(
-                        div()
-                            .text_size(fs(12.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(hex(colors::TEXT_BRIGHT))
-                            .whitespace_nowrap()
-                            .child(ctx_label.clone()),
-                    )
-                    .when(!narrow, |d| {
-                        d.when_some(ctx_cwd.clone(), |d, cwd| {
-                            d.child(
-                                div()
-                                    .max_w(px(200.0))
-                                    .min_w_0()
-                                    .overflow_hidden()
-                                    .whitespace_nowrap()
-                                    .text_ellipsis()
-                                    .text_size(fs(11.0))
-                                    .font_family("monospace")
-                                    .text_color(hex(colors::FAINT))
-                                    .child(cwd),
-                            )
-                        })
-                    })
-                    .on_click(move |_, _, cx| {
-                        let _ = this_ctx.update(cx, |v, _| {
-                            v.settings_open = false;
-                            v.open_menu = None;
-                        });
-                        if let Some(ref wid) = target_ws {
-                            state_ctx.update(cx, |s, cx| {
-                                s.activate(ActiveTarget::Workspace(wid.clone()), cx);
-                            });
-                        }
-                    })
-                    .child(
-                        div()
-                            .ml(px(4.0))
-                            .w(px(1.0))
-                            .h(px(14.0))
-                            .bg(hex(colors::BORDER_SUBTLE)),
-                    ),
+                    .items_center()
+                    .pl(px(workbench_pl))
+                    .pr(px(if cfg!(target_os = "macos") { 6.0 } else { 0.0 }))
+                    .when(!narrow, |d| d.rounded_t(px(sizes::ISLAND_RADIUS - 1.0)))
+                    .bg(crate::theme::rgba_css(13, 15, 21, 0.75))
+                    .border_b_1()
+                    .border_color(hex(colors::BORDER_SUBTLE)),
+                "workbench-titlebar-drag",
+                window,
+                cx,
             )
-        })
-        .child(inline_tabs)
-        // AI 对话 / ACP 连接状态胶囊（替代原 conv-head 独立栏）
-        .when(!narrow && !self.settings_open, |tb| {
-            tb.when_some(
-                conv_status_badge,
-                |tb, (pending, is_acp, connected, last_err)| {
-                    let (bg, border, fg, label) = if pending {
-                        (
-                            crate::theme::rgba_css(251, 191, 36, 0.14),
-                            crate::theme::rgba_css(251, 191, 36, 0.30),
-                            hex(colors::STATUS_RUNNING),
-                            if is_acp && !connected {
-                                "正在连接 ACP…"
+            // 窄屏汉堡钮 / 宽屏侧栏收起态的恢复钮
+            .when(narrow || !self.sidebar_open, |tb| {
+                let this = cx.entity().downgrade();
+                let (ic, on) = if narrow {
+                    (IconName::Menu, self.sidebar_open)
+                } else {
+                    (IconName::PanelLeft, false)
+                };
+                tb.child(stop_titlebar_drag(
+                    div()
+                        .id("titlebar-sidebar-toggle")
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .size(fs(28.0))
+                        .rounded(px(7.0))
+                        .ml(px(6.0))
+                        .mr(px(2.0))
+                        .flex_shrink_0()
+                        .cursor_pointer()
+                        .when(on, |d| d.bg(hex(colors::SURFACE_ACTIVE)))
+                        .when(!on, |d| d.hover(|h| h.bg(hex(colors::SURFACE))))
+                        .child(icon(
+                            ic,
+                            15.0,
+                            if on {
+                                hex(colors::TEXT_BRIGHT)
                             } else {
-                                "正在回复…"
+                                hex(colors::MUTED)
                             },
+                        ))
+                        .on_click(move |_, _, cx| {
+                            let _ = this.update(cx, |v, cx| {
+                                v.sidebar_open = !v.sidebar_open;
+                                cx.notify();
+                            });
+                        }),
+                ))
+            })
+            // 左侧工作区路径面包屑（点击返回工作区 Bento 启动台）
+            .child({
+                let this_ctx = cx.entity().downgrade();
+                let state_ctx = self.state.clone();
+                let target_ws = ctx_ws_id.clone();
+                stop_titlebar_drag(
+                    h_flex()
+                        .id("tb-context")
+                        .h_full()
+                        .items_center()
+                        .gap(px(6.0))
+                        .pl(px(12.0))
+                        .pr(px(8.0))
+                        .flex_shrink_0()
+                        .cursor_pointer()
+                        .child(icon(ctx_icon, 13.5, hex(colors::ACCENT_HOVER)))
+                        .child(
+                            div()
+                                .text_size(fs(12.0))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(hex(colors::TEXT_BRIGHT))
+                                .whitespace_nowrap()
+                                .child(ctx_label.clone()),
                         )
-                    } else if is_acp && last_err && !connected {
-                        (
-                            crate::theme::rgba_css(224, 108, 117, 0.14),
-                            crate::theme::rgba_css(224, 108, 117, 0.30),
-                            hex(colors::STATUS_ERROR),
-                            "ACP 连接失败",
-                        )
-                    } else if is_acp && !connected {
-                        (
-                            crate::theme::rgba_css(148, 163, 184, 0.12),
-                            crate::theme::rgba_css(148, 163, 184, 0.26),
-                            hex(colors::MUTED),
-                            "待连接 ACP",
-                        )
-                    } else {
-                        (
-                            crate::theme::rgba_css(52, 211, 153, 0.14),
-                            crate::theme::rgba_css(52, 211, 153, 0.30),
-                            hex(colors::STATUS_DONE),
-                            if is_acp { "已连接 ACP" } else { "在线" },
-                        )
-                    };
-                    tb.child(stop_titlebar_drag(
-                        h_flex()
-                            .id("titlebar-conv-status")
-                            .debug_selector(|| "titlebar-conv-status".to_string())
-                            .ml(px(6.0))
-                            .h(px(22.0))
-                            .px(px(8.0))
-                            .gap(px(5.0))
-                            .items_center()
-                            .rounded_full()
-                            .bg(bg)
-                            .border_1()
-                            .border_color(border)
-                            .flex_shrink_0()
-                            .child(div().size(px(6.0)).rounded_full().bg(fg))
-                            .child(
-                                div()
-                                    .text_size(fs(10.5))
-                                    .font_weight(gpui::FontWeight::MEDIUM)
-                                    .text_color(fg)
-                                    .child(label),
-                            ),
-                    ))
-                },
-            )
-        })
-        .child(div().flex_1().min_w(px(8.0)).h_full())
-        // 性能指标 HUD（settings.advanced.perfHud）
-        .when(perf_hud_on, |tb| {
-            tb.child(stop_titlebar_drag(
-                h_flex()
-                    .id("perf-hud")
-                    .debug_selector(|| "perf-hud".to_string())
-                    .mr(px(6.0))
-                    .h(px(22.0))
-                    .px(px(8.0))
-                    .gap(px(6.0))
-                    .items_center()
-                    .rounded(px(5.0))
-                    .bg(hex(colors::INPUT_BG))
-                    .border_1()
-                    .border_color(hex(colors::BORDER_SUBTLE))
-                    .font_family("monospace")
-                    .text_size(fs(10.0))
-                    .text_color(hex(colors::MUTED))
-                    .child(
-                        div()
-                            .size(px(6.0))
-                            .rounded_full()
-                            .bg(if perf_snapshot.p90_ms <= 16.7 {
+                        .when(!narrow, |d| {
+                            d.when_some(ctx_cwd.clone(), |d, cwd| {
+                                d.child(
+                                    div()
+                                        .max_w(px(200.0))
+                                        .min_w_0()
+                                        .overflow_hidden()
+                                        .whitespace_nowrap()
+                                        .text_ellipsis()
+                                        .text_size(fs(11.0))
+                                        .font_family("monospace")
+                                        .text_color(hex(colors::FAINT))
+                                        .child(cwd),
+                                )
+                            })
+                        })
+                        .on_click(move |_, _, cx| {
+                            let _ = this_ctx.update(cx, |v, _| {
+                                v.settings_open = false;
+                                v.open_menu = None;
+                            });
+                            if let Some(ref wid) = target_ws {
+                                state_ctx.update(cx, |s, cx| {
+                                    s.activate(ActiveTarget::Workspace(wid.clone()), cx);
+                                });
+                            }
+                        })
+                        .child(
+                            div()
+                                .ml(px(4.0))
+                                .w(px(1.0))
+                                .h(px(14.0))
+                                .bg(hex(colors::BORDER_SUBTLE)),
+                        ),
+                )
+            })
+            .child(inline_tabs)
+            // AI 对话 / ACP 连接状态胶囊（替代原 conv-head 独立栏）
+            .when(!narrow && !self.settings_open, |tb| {
+                tb.when_some(
+                    conv_status_badge,
+                    |tb, (pending, is_acp, connected, last_err)| {
+                        let (bg, border, fg, label) = if pending {
+                            (
+                                crate::theme::rgba_css(251, 191, 36, 0.14),
+                                crate::theme::rgba_css(251, 191, 36, 0.30),
+                                hex(colors::STATUS_RUNNING),
+                                if is_acp && !connected {
+                                    "正在连接 ACP…"
+                                } else {
+                                    "正在回复…"
+                                },
+                            )
+                        } else if is_acp && last_err && !connected {
+                            (
+                                crate::theme::rgba_css(224, 108, 117, 0.14),
+                                crate::theme::rgba_css(224, 108, 117, 0.30),
+                                hex(colors::STATUS_ERROR),
+                                "ACP 连接失败",
+                            )
+                        } else if is_acp && !connected {
+                            (
+                                crate::theme::rgba_css(148, 163, 184, 0.12),
+                                crate::theme::rgba_css(148, 163, 184, 0.26),
+                                hex(colors::MUTED),
+                                "待连接 ACP",
+                            )
+                        } else {
+                            (
+                                crate::theme::rgba_css(52, 211, 153, 0.14),
+                                crate::theme::rgba_css(52, 211, 153, 0.30),
+                                hex(colors::STATUS_DONE),
+                                if is_acp { "已连接 ACP" } else { "在线" },
+                            )
+                        };
+                        tb.child(stop_titlebar_drag(
+                            h_flex()
+                                .id("titlebar-conv-status")
+                                .debug_selector(|| "titlebar-conv-status".to_string())
+                                .ml(px(6.0))
+                                .h(px(22.0))
+                                .px(px(8.0))
+                                .gap(px(5.0))
+                                .items_center()
+                                .rounded_full()
+                                .bg(bg)
+                                .border_1()
+                                .border_color(border)
+                                .flex_shrink_0()
+                                .child(div().size(px(6.0)).rounded_full().bg(fg))
+                                .child(
+                                    div()
+                                        .text_size(fs(10.5))
+                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                        .text_color(fg)
+                                        .child(label),
+                                ),
+                        ))
+                    },
+                )
+            })
+            .child(div().flex_1().min_w(px(8.0)).h_full())
+            // 性能指标 HUD（settings.advanced.perfHud）
+            .when(perf_hud_on, |tb| {
+                tb.child(stop_titlebar_drag(
+                    h_flex()
+                        .id("perf-hud")
+                        .debug_selector(|| "perf-hud".to_string())
+                        .mr(px(6.0))
+                        .h(px(22.0))
+                        .px(px(8.0))
+                        .gap(px(6.0))
+                        .items_center()
+                        .rounded(px(5.0))
+                        .bg(hex(colors::INPUT_BG))
+                        .border_1()
+                        .border_color(hex(colors::BORDER_SUBTLE))
+                        .font_family("monospace")
+                        .text_size(fs(10.0))
+                        .text_color(hex(colors::MUTED))
+                        .child(div().size(px(6.0)).rounded_full().bg(
+                            if perf_snapshot.p90_ms <= 16.7 {
                                 hex(colors::STATUS_DONE)
                             } else {
                                 hex(colors::STATUS_RUNNING)
-                            }),
+                            },
+                        ))
+                        .child(format!(
+                            "p90 {:.1}ms · max {:.1}ms · paint {}µs",
+                            perf_snapshot.p90_ms, perf_snapshot.max_ms, perf_snapshot.paint_us
+                        )),
+                ))
+            })
+            // 分支胶囊
+            .when(!narrow, |tb| {
+                tb.when_some(self.branch.clone(), |tb, branch| {
+                    tb.child(
+                        stop_titlebar_drag(div().id("tb-branch-wrap")).child(branch_menu(
+                            branch,
+                            &self.state,
+                            cx,
+                        )),
                     )
-                    .child(format!(
-                        "p90 {:.1}ms · max {:.1}ms · paint {}µs",
-                        perf_snapshot.p90_ms, perf_snapshot.max_ms, perf_snapshot.paint_us
-                    )),
-            ))
-        })
-        // 分支胶囊
-        .when(!narrow, |tb| {
-            tb.when_some(self.branch.clone(), |tb, branch| {
-                tb.child(
-                    stop_titlebar_drag(div().id("tb-branch-wrap")).child(branch_menu(
-                        branch,
-                        &self.state,
-                        cx,
-                    )),
+                })
+            })
+            // 搜索入口（仅窄屏 / 侧栏收起时显示）
+            .when(narrow || !self.sidebar_open, |tb| {
+                let state = self.state.clone();
+                tb.child(tb_icon_btn(
+                    "titlebar-search",
+                    IconName::Search,
+                    15.0,
+                    false,
+                    move |_, window, cx| search_threads::open(state.clone(), window, cx),
+                ))
+            })
+            // 右侧工作面板开关
+            .child({
+                let this = cx.entity().downgrade();
+                tb_icon_btn(
+                    "titlebar-panel-toggle",
+                    IconName::PanelRight,
+                    15.0,
+                    self.panel_open,
+                    move |_, _, cx| {
+                        let _ = this.update(cx, |v, cx| {
+                            v.panel_open = !v.panel_open;
+                            v.ensure_panel(cx);
+                            cx.notify();
+                        });
+                    },
                 )
             })
-        })
-        // 搜索入口（仅窄屏 / 侧栏收起时显示）
-        .when(narrow || !self.sidebar_open, |tb| {
-            let state = self.state.clone();
-            tb.child(tb_icon_btn(
-                "titlebar-search",
-                IconName::Search,
-                15.0,
-                false,
-                move |_, window, cx| search_threads::open(state.clone(), window, cx),
-            ))
-        })
-        // 右侧工作面板开关
-        .child({
-            let this = cx.entity().downgrade();
-            tb_icon_btn(
-                "titlebar-panel-toggle",
-                IconName::PanelRight,
-                15.0,
-                self.panel_open,
-                move |_, _, cx| {
-                    let _ = this.update(cx, |v, cx| {
-                        v.panel_open = !v.panel_open;
-                        v.ensure_panel(cx);
-                        cx.notify();
-                    });
-                },
-            )
-        })
-        .child(window_controls_bar(window, !narrow));
+            .child(window_controls_bar(window, !narrow));
 
         let state = self.state.clone();
         let active_term_for_copy = (!self.settings_open
@@ -1918,13 +1916,7 @@ fn render_frame_overlay(perf: &PerfTracker) -> AnyElement {
                     perf.frame_ms, perf.paint_max_us
                 )),
         )
-        .child(
-            h_flex()
-                .h(px(28.0))
-                .gap(px(2.0))
-                .items_end()
-                .children(bars),
-        )
+        .child(h_flex().h(px(28.0)).gap(px(2.0)).items_end().children(bars))
         .into_any_element()
 }
 

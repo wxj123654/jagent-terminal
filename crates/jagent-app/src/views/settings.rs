@@ -1751,11 +1751,7 @@ fn control_for(
                     } else {
                         text.trim()
                     };
-                    if let Some(n) = raw
-                        .parse::<i64>()
-                        .ok()
-                        .filter(|n| (min..=max).contains(n))
-                    {
+                    if let Some(n) = raw.parse::<i64>().ok().filter(|n| (min..=max).contains(n)) {
                         st.update(cx, |s, cx| {
                             if s.settings.get().get_path(path).and_then(|v| v.as_i64()) == Some(n) {
                                 return;
@@ -1802,9 +1798,7 @@ fn control_for(
                     } else {
                         next.to_string()
                     };
-                    input_for_nudge.update(cx, |input, cx| {
-                        input.set_value(formatted, window, cx)
-                    });
+                    input_for_nudge.update(cx, |input, cx| input.set_value(formatted, window, cx));
                 },
             )
             .into_any_element()

@@ -25,6 +25,8 @@ pub struct AcpTurnUpdate {
     pub text: String,
     /// `agent_thought_chunk` 拼出的思考正文，不并入 `text`。
     pub thought: String,
+    /// 思考耗时（毫秒）：流式期间为已思考时长的实时快照，定稿为最终值。
+    pub thought_ms: u64,
     pub tool_calls: Vec<ToolCallTrace>,
     pub config_selectors: Option<Vec<AcpConfigSelector>>,
     pub available_commands: Option<Vec<AcpCommand>>,
@@ -491,6 +493,7 @@ impl AcpConnection {
                         let _ = tx.unbounded_send(AcpTurnUpdate {
                             text: turn.text_snapshot(),
                             thought: turn.thought_snapshot(),
+                            thought_ms: turn.thought_ms(),
                             tool_calls: turn.tool_calls_snapshot(),
                             config_selectors: changed.then(|| self.config_selectors.clone()),
                             available_commands: turn.available_commands_snapshot(),
@@ -558,6 +561,7 @@ impl AcpConnection {
                         let _ = chunks.unbounded_send(AcpTurnUpdate {
                             text: turn.text_snapshot(),
                             thought: turn.thought_snapshot(),
+                            thought_ms: turn.thought_ms(),
                             tool_calls: turn.tool_calls_snapshot(),
                             config_selectors: changed.then(|| self.config_selectors.clone()),
                             available_commands: turn.available_commands_snapshot(),
@@ -578,6 +582,7 @@ impl AcpConnection {
                     return Ok(AcpTurnUpdate {
                         text: turn.assemble_body(stop),
                         thought: turn.thought_snapshot(),
+                        thought_ms: turn.thought_ms(),
                         tool_calls: turn.tool_calls_snapshot(),
                         config_selectors: (!self.config_selectors.is_empty())
                             .then(|| self.config_selectors.clone()),

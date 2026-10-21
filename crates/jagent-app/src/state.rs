@@ -1118,6 +1118,7 @@ pub fn send_acp_with_prompt(
                                     ConversationKind::Acp,
                                     &chunk.text,
                                     &chunk.thought,
+                                    chunk.thought_ms,
                                     chunk.tool_calls,
                                 );
                                 s.flush(cx);
@@ -1632,6 +1633,7 @@ async fn finish_acp(
                     ConversationKind::Acp,
                     Ok(u.text),
                     u.thought,
+                    u.thought_ms,
                     u.tool_calls,
                 ),
                 Err(e) => s.threads.finish_send_full(
@@ -1639,6 +1641,7 @@ async fn finish_acp(
                     ConversationKind::Acp,
                     Err(e),
                     String::new(),
+                    0,
                     Vec::new(),
                 ),
             }

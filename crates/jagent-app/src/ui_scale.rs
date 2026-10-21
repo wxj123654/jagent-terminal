@@ -7,7 +7,9 @@
 use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
 
 use gpui::{App, Global, Pixels, px};
-pub use jagent_core::settings::{DEFAULT_UI_SCALE, MAX_UI_SCALE, MIN_UI_SCALE, Settings, UI_SCALE_STEPS};
+pub use jagent_core::settings::{
+    DEFAULT_UI_SCALE, MAX_UI_SCALE, MIN_UI_SCALE, Settings, UI_SCALE_STEPS,
+};
 
 /// GPUI 全局 UI 缩放状态（倍率，1.0 = 100%）。
 #[derive(Clone, Copy, Debug, PartialEq)]

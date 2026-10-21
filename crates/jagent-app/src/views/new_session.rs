@@ -407,10 +407,7 @@ pub fn trigger_plus_or_open(
             if let Err(e) = r
                 && window.root::<gpui_base::Root>().flatten().is_some()
             {
-                window.push_notification(
-                    Notification::error(format!("启动默认预设失败：{e}")),
-                    cx,
-                );
+                window.push_notification(Notification::error(format!("启动默认预设失败：{e}")), cx);
             }
             return;
         }
@@ -734,18 +731,17 @@ mod tests {
             .unwrap();
             let w2 = state.update(cx, |s, cx| {
                 s.settings.patch("presets.plusDefault", json!("shell"));
-                let id =
-                    s.threads
-                        .add_workspace("SecondWS", &dir.path().to_string_lossy());
+                let id = s
+                    .threads
+                    .add_workspace("SecondWS", &dir.path().to_string_lossy());
                 s.flush(cx);
                 id
             });
             (state, w2)
         });
 
-        let (_, vcx) = cx.add_window_view(|window, cx| {
-            NewSessionView::new(state.clone(), window, cx)
-        });
+        let (_, vcx) =
+            cx.add_window_view(|window, cx| NewSessionView::new(state.clone(), window, cx));
 
         vcx.update(|window, app| {
             trigger_plus_or_open(state.clone(), Some(w2.clone()), false, window, app);

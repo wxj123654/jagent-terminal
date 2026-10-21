@@ -427,18 +427,30 @@ fn acp_streaming_keeps_thought_beside_the_reply_until_finish() {
         .create_acp_thread("acp-codex", "Codex (ACP)", None)
         .unwrap();
     s.begin_send(&id, "hi", ConversationKind::Acp).unwrap();
-    s.update_streaming_reply_full(&id, ConversationKind::Acp, "", "先看协议", Vec::new());
+    s.update_streaming_reply_full(
+        &id,
+        ConversationKind::Acp,
+        "",
+        "先看协议",
+        1_200,
+        Vec::new(),
+    );
     s.update_streaming_reply_full(
         &id,
         ConversationKind::Acp,
         "正文",
         "先看协议再答",
+        2_400,
         Vec::new(),
     );
     let c = acp(&s, &id);
     assert_eq!(c.messages.len(), 2);
     assert_eq!(c.messages[1].text, "正文");
     assert_eq!(c.messages[1].thought, "先看协议再答");
+    assert_eq!(
+        c.messages[1].thought_ms, 2_400,
+        "流式期间 thought_ms 是已思考时长的实时快照"
+    );
     assert!(c.pending_reply);
 
     s.finish_send_full(
@@ -446,12 +458,14 @@ fn acp_streaming_keeps_thought_beside_the_reply_until_finish() {
         ConversationKind::Acp,
         Ok("正文定稿".into()),
         "先看协议再答".into(),
+        3_000,
         Vec::new(),
     );
     let c = acp(&s, &id);
     assert_eq!(c.messages.len(), 2);
     assert_eq!(c.messages[1].text, "正文定稿");
     assert_eq!(c.messages[1].thought, "先看协议再答");
+    assert_eq!(c.messages[1].thought_ms, 3_000);
     assert!(!c.pending_reply);
 }
 
@@ -462,18 +476,27 @@ fn failed_acp_finish_keeps_the_thought_already_streamed() {
         .create_acp_thread("acp-codex", "Codex (ACP)", None)
         .unwrap();
     s.begin_send(&id, "hi", ConversationKind::Acp).unwrap();
-    s.update_streaming_reply_full(&id, ConversationKind::Acp, "半截", "先想清楚", Vec::new());
+    s.update_streaming_reply_full(
+        &id,
+        ConversationKind::Acp,
+        "半截",
+        "先想清楚",
+        1_500,
+        Vec::new(),
+    );
     s.finish_send_full(
         &id,
         ConversationKind::Acp,
         Err("agent died".into()),
         String::new(),
+        0,
         Vec::new(),
     );
     let c = acp(&s, &id);
     assert!(c.messages[1].is_error());
     assert!(c.messages[1].text.contains("agent died"));
     assert_eq!(c.messages[1].thought, "先想清楚");
+    assert_eq!(c.messages[1].thought_ms, 1_500, "失败定稿同样保留流式耗时");
     assert!(!c.pending_reply);
 }
 
